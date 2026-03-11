@@ -4,6 +4,7 @@ const WEAK_ACTION_TEXTS = new Set([
   'improvements needed',
   'improvement required',
   'action required',
+  'review needed',
   'review required',
   'tbd',
   'to be confirmed',
@@ -61,8 +62,9 @@ function cleanRecommendedAction(text: string): string {
   return `${professional}.`;
 }
 
-function moduleSpecificFallback(moduleKey?: string | null, ruleTitle?: string): string {
+function moduleSpecificFallback(moduleKey?: string | null, ruleTitle?: string, category?: string): string {
   const normalizedRule = (ruleTitle || '').toLowerCase();
+  const normalizedCategory = (category || '').toLowerCase();
 
   switch (moduleKey) {
     case 'FSD_1_REG_BASIS':
@@ -71,18 +73,27 @@ function moduleSpecificFallback(moduleKey?: string | null, ruleTitle?: string): 
       }
       return 'Document the regulatory basis, design assumptions, and any departures from guidance with supporting technical justification.';
     case 'FSD_2_EVAC_STRATEGY':
+      if (normalizedRule.includes('assist') || normalizedCategory.includes('evac')) {
+        return 'Define assisted evacuation assumptions and align them with occupancy characteristics and management procedures.';
+      }
       return 'Define assisted evacuation assumptions, management procedures, and interface requirements for all relevant occupant groups.';
     case 'FSD_3_ESCAPE_DESIGN':
       return 'Confirm means-of-escape capacity and travel distance compliance against the selected fire strategy approach and occupancy profile.';
     case 'FSD_4_PASSIVE_PROTECTION':
       return 'Provide evidence for compartmentation, fire stopping, and structural fire protection measures supporting the evacuation strategy.';
     case 'FSD_5_ACTIVE_SYSTEMS':
+      if (normalizedRule.includes('sprinkler')) {
+        return 'Document sprinkler coverage, design basis, and the applicable reference standard.';
+      }
       return 'Document active fire system coverage, design basis, cause-and-effect intent, and the applicable reference standards.';
     case 'FSD_6_FRS_ACCESS':
       return 'Confirm fire and rescue service access, facilities, and operational assumptions for fire-fighting and rescue activities.';
     case 'FSD_7_DRAWINGS':
       return 'Issue coordinated fire strategy drawings and schedules that align with the written strategy and current design stage.';
     case 'FSD_8_SMOKE_CONTROL':
+      if (normalizedRule.includes('smoke')) {
+        return 'Confirm smoke control design basis, coverage areas, and the relevant reference standard.';
+      }
       return 'Document smoke control design criteria, control philosophy, and supporting calculations for the affected spaces.';
     case 'FSD_9_CONSTRUCTION_PHASE':
       return 'Confirm temporary means of escape, fire precautions, and phasing controls for the construction period.';
@@ -100,7 +111,7 @@ export function deriveFsdProfessionalActionText(input: FsdActionWordingInput): s
   }
 
   const ruleTitle = normalizeRuleTitle(input.triggerText, input.triggerId);
-  const moduleFallback = moduleSpecificFallback(input.moduleKey, ruleTitle);
+  const moduleFallback = moduleSpecificFallback(input.moduleKey, ruleTitle, input.category);
   if (moduleFallback) return moduleFallback;
 
   const moduleTitle = (input.moduleTitle || '').trim();

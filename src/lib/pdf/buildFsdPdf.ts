@@ -126,14 +126,41 @@ const FSD_ALLOWED_MODULE_KEYS = new Set([
 ]);
 
 const MODULE_VALUE_LABELS: Record<string, string> = {
+  yes: 'Yes',
+  no: 'No',
+  included: 'Yes',
+  other: 'Other / project-specific basis',
   stay_put: 'Stay-put evacuation strategy',
   alarm_only: 'Fire alarm notification only',
   multiple_stairs: 'Multiple stair cores',
   fire_engineered: 'Fire engineered design approach',
+  gas: 'Gas suppression',
+  bsen12845: 'BS EN 12845',
+  bs_en_12845: 'BS EN 12845',
+  'bs en 12845': 'BS EN 12845',
+};
+
+const MODULE_OUTCOME_SPACING = 30;
+
+const MODULE_DETAIL_LABEL_OVERRIDES: Record<string, string> = {
+  'Property protection scope: Yes': 'Property protection considered: Yes',
+  'Evacuation lifts: Yes': 'Evacuation lifts provided: Yes',
+  'Evacuation lifts: No': 'Evacuation lifts provided: No',
+  'Sprinkler provision: Yes': 'Sprinkler protection provided: Yes',
+  'Sprinkler provision: No': 'Sprinkler protection provided: No',
+  'Other suppression: Gas suppression': 'Other suppression system: Gas suppression',
+  'Wet riser: Yes': 'Wet riser provided: Yes',
+  'Wet riser: No': 'Wet riser provided: No',
 };
 
 function mapModuleValueToLabel(value: string): string {
-  return MODULE_VALUE_LABELS[value] ?? value;
+  const normalizedValue = value.trim();
+  const canonicalKey = normalizedValue.toLowerCase();
+  return MODULE_VALUE_LABELS[canonicalKey] ?? normalizedValue;
+}
+
+function applyModuleDetailLabelOverride(label: string, value: string): string {
+  return MODULE_DETAIL_LABEL_OVERRIDES[`${label}: ${value}`] ?? `${label}: ${value}`;
 }
 function drawTableOfContents(
   pdfDoc: PDFDocument,
@@ -411,7 +438,7 @@ function drawModuleSummary(
     outcome: getOutcomeLabel(outcome),
     fonts: { regular: font, bold: fontBold },
   });
-  yPosition -= 24;
+  yPosition -= MODULE_OUTCOME_SPACING;
 
   if (moduleInstance.assessor_notes && moduleInstance.assessor_notes.trim()) {
     ({ page: currentPage, yPosition } = ensurePageSpace(30, currentPage, yPosition, pdfDoc, isDraft, totalPages));
@@ -532,7 +559,7 @@ function drawModuleKeyDetails(
         const value = source?.[key];
         const formatted = formatValue(value);
         if (formatted && !seen.has(`${label}:${formatted}`)) {
-          details.push(`${label}: ${formatted}`);
+          details.push(applyModuleDetailLabelOverride(label, formatted));
           seen.add(`${label}:${formatted}`);
           return;
         }
@@ -957,34 +984,44 @@ function drawActionRegister(
   });
   yPosition -= 30;
 
-  const colX1 = MARGIN;
-  const numberColumnWidth = 12;
+  const tableX = MARGIN;
+  const tableWidth = CONTENT_WIDTH;
   const columnGap = 8;
-  const actionColumnWidth = 300;
-  const priorityColumnWidth = 52;
-  const statusColumnWidth = 52;
+  const numberColumnWidth = 16;
+  const priorityColumnWidth = 56;
+  const statusColumnWidth = 62;
+  const targetColumnWidth = 58;
+  const actionColumnWidth = tableWidth - numberColumnWidth - priorityColumnWidth - statusColumnWidth - targetColumnWidth - (columnGap * 4);
+  const rowLineHeight = 10;
+  const minimumRowHeight = 22;
+  const headerHeight = 18;
+  const tableHeaderY = yPosition;
 
-  const actionColumnX = colX1 + numberColumnWidth + columnGap;
-  const colX2 = actionColumnX + actionColumnWidth + columnGap;
-  const colX3 = colX2 + priorityColumnWidth + columnGap;
-  const colX4 = colX3 + statusColumnWidth + columnGap;
-  const lineHeight = 10;
-  const minimumRowHeight = 16;
+  const actionColumnX = tableX + numberColumnWidth + columnGap;
+  const priorityColumnX = actionColumnX + actionColumnWidth + columnGap;
+  const statusColumnX = priorityColumnX + priorityColumnWidth + columnGap;
+  const targetColumnX = statusColumnX + statusColumnWidth + columnGap;
+  const tableEndX = tableX + tableWidth;
 
-  currentPage.drawText('#', { x: colX1, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  currentPage.drawText('Action', { x: actionColumnX, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  currentPage.drawText('Priority', { x: colX2, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  currentPage.drawText('Status', { x: colX3, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  currentPage.drawText('Target', { x: colX4, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  yPosition -= minimumRowHeight + 2;
+  const drawHeader = (): void => {
+    currentPage.drawText('#', { x: tableX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Action', { x: actionColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Priority', { x: priorityColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Status', { x: statusColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Target', { x: targetColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
 
-  currentPage.drawLine({
-    start: { x: MARGIN, y: yPosition + 2 },
-    end: { x: PAGE_WIDTH - MARGIN, y: yPosition + 2 },
-    thickness: 0.5,
-    color: rgb(0.7, 0.7, 0.7),
-  });
-  yPosition -= 4;
+    const headerBottomY = tableHeaderY - headerHeight;
+    currentPage.drawLine({
+      start: { x: tableX, y: headerBottomY },
+      end: { x: tableEndX, y: headerBottomY },
+      thickness: 0.5,
+      color: rgb(0.7, 0.7, 0.7),
+    });
+
+    yPosition = headerBottomY - 6;
+  };
+
+  drawHeader();
 
   const sortedActions = [...actions].sort(compareActionsByDisplayReference);
   const moduleById = new Map(moduleInstances.map((module) => [module.id, module]));
@@ -999,19 +1036,21 @@ function drawActionRegister(
       triggerId: action.trigger_id,
       category: action.category,
     });
-    const ownerDisplay = action.owner_display_name?.trim() || '-';
     const actionLines = wrapText(actionText, actionColumnWidth - 2, 7, font);
-    const ownerLines = wrapText(`Owner: ${ownerDisplay}`, actionColumnWidth - 2, 7, font);
-    const actionBlockLines = [...actionLines, ...ownerLines];
-    const rowHeight = Math.max(minimumRowHeight, actionBlockLines.length * lineHeight + 4);
+    const rowHeight = Math.max(minimumRowHeight, actionLines.length * rowLineHeight + 6);
 
-    ({ page: currentPage, yPosition } = ensurePageSpace(rowHeight + 6, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+    ({ page: currentPage, yPosition } = ensurePageSpace(rowHeight + headerHeight + 8, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+    if (yPosition + 2 - rowHeight < MARGIN + 40) {
+      ({ page: currentPage, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
+      yPosition = PAGE_TOP_Y;
+      drawHeader();
+    }
 
     const rowTopY = yPosition;
     const rowBottomY = yPosition - rowHeight;
 
     currentPage.drawText(`${index + 1}`, {
-      x: colX1,
+      x: tableX,
       y: rowTopY,
       size: 7,
       font,
@@ -1019,29 +1058,29 @@ function drawActionRegister(
     });
 
     let actionY = rowTopY;
-    actionBlockLines.forEach((line, lineIndex) => {
+    actionLines.forEach((line) => {
       currentPage.drawText(line, {
         x: actionColumnX,
         y: actionY,
         size: 7,
-        font: lineIndex >= actionLines.length ? fontBold : font,
+        font,
         color: rgb(0.2, 0.2, 0.2),
       });
-      actionY -= lineHeight;
+      actionY -= rowLineHeight;
     });
 
     const priorityBand = action.priority_band?.trim() || '-';
     const priorityColor = getPriorityColor(priorityBand);
     const priorityBadgeY = rowTopY - 2;
     currentPage.drawRectangle({
-      x: colX2,
+      x: priorityColumnX,
       y: priorityBadgeY,
       width: priorityColumnWidth - 18,
       height: 10,
       color: priorityColor,
     });
     currentPage.drawText(sanitizePdfText(priorityBand), {
-      x: colX2 + 4,
+      x: priorityColumnX + 4,
       y: rowTopY,
       size: 7,
       font: fontBold,
@@ -1049,7 +1088,7 @@ function drawActionRegister(
     });
 
     currentPage.drawText(sanitizePdfText(action.status?.trim() || '-'), {
-      x: colX3,
+      x: statusColumnX,
       y: rowTopY,
       size: 7,
       font,
@@ -1058,16 +1097,25 @@ function drawActionRegister(
 
     const targetDate = action.target_date ? formatDate(action.target_date) : '-';
     currentPage.drawText(targetDate, {
-      x: colX4,
+      x: targetColumnX,
       y: rowTopY,
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
 
+    for (const separatorX of [actionColumnX - (columnGap / 2), priorityColumnX - (columnGap / 2), statusColumnX - (columnGap / 2), targetColumnX - (columnGap / 2)]) {
+      currentPage.drawLine({
+        start: { x: separatorX, y: rowTopY + 2 },
+        end: { x: separatorX, y: rowBottomY },
+        thickness: 0.25,
+        color: rgb(0.88, 0.88, 0.88),
+      });
+    }
+
     currentPage.drawLine({
-      start: { x: MARGIN, y: rowBottomY },
-      end: { x: PAGE_WIDTH - MARGIN, y: rowBottomY },
+      start: { x: tableX, y: rowBottomY },
+      end: { x: tableEndX, y: rowBottomY },
       thickness: 0.35,
       color: rgb(0.9, 0.9, 0.9),
     });
