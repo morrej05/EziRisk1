@@ -30,6 +30,7 @@ import { computeFsdSummary } from '../fsd/fsdAssuranceEngine';
 import { drawSectionHeaderBar, drawOutcomeBadge, drawPageTitle } from './pdfPrimitives';
 import { PDF_THEME } from './pdfStyles';
 import { compareActionsByDisplayReference } from './actionContracts';
+import { deriveFsdProfessionalActionText } from '../fsd/fsdActionWording';
 
 interface Document {
   id: string;
@@ -77,6 +78,7 @@ interface Action {
   module_instance_id: string;
   created_at: string;
   reference_number?: string | null;
+  category?: string | null;
 }
 
 interface ActionRating {
@@ -338,7 +340,7 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   if (actions.length > 0) {
     ({ page, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
     recordToc('Action Register');
-    ({ page, yPosition } = drawActionRegister(page, yPosition, actions, pdfDoc, isDraft, totalPages, font, fontBold));
+    ({ page, yPosition } = drawActionRegister(page, yPosition, actions, moduleInstances, pdfDoc, isDraft, totalPages, font, fontBold));
   }
 
   if (attachments.length > 0) {
@@ -934,6 +936,7 @@ function drawActionRegister(
   page: PDFPage,
   startY: number,
   actions: Action[],
+  moduleInstances: ModuleInstance[],
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[],
@@ -976,11 +979,20 @@ function drawActionRegister(
   yPosition -= 4;
 
   const sortedActions = [...actions].sort(compareActionsByDisplayReference);
+  const moduleById = new Map(moduleInstances.map((module) => [module.id, module]));
 
   sortedActions.forEach((action, index) => {
     ({ page: currentPage, yPosition } = ensurePageSpace(18, currentPage, yPosition, pdfDoc, isDraft, totalPages));
 
-    const actionText = action.recommended_action?.trim() || '(No action text provided)';
+    const linkedModule = moduleById.get(action.module_instance_id);
+    const actionText = deriveFsdProfessionalActionText({
+      recommendedAction: action.recommended_action,
+      moduleKey: linkedModule?.module_key,
+      moduleTitle: linkedModule ? getModuleName(linkedModule.module_key) : undefined,
+      triggerText: action.trigger_text,
+      triggerId: action.trigger_id,
+      category: action.category,
+    });
     const ownerDisplay = action.owner_display_name?.trim() || '-';
     const actionLines = wrapText(`${actionText} (Owner: ${ownerDisplay})`, 300, 7, font);
     const firstLine = actionLines[0] || '';
@@ -1047,6 +1059,7 @@ function drawAttachmentsIndex(
   attachments: Attachment[],
   moduleInstances: ModuleInstance[],
   actions: Action[],
+  moduleInstances: ModuleInstance[],
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[],
@@ -1825,6 +1838,7 @@ function drawDesignAssuranceCommentary(
   page: PDFPage,
   summary: any,
   actions: Action[],
+  moduleInstances: ModuleInstance[],
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[],

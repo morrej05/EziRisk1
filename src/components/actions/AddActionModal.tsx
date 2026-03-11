@@ -12,6 +12,7 @@ import {
 import { deriveExplosionSeverity } from '../../lib/dsear/criticalityEngine';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 import { getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
+import { deriveFsdProfessionalActionText } from '../../lib/fsd/fsdActionWording';
 
 interface AddActionModalProps {
   documentId: string;
@@ -105,43 +106,6 @@ function getDefaultFsdCategory(sourceModuleKey?: string): FsdFindingCategory {
       return 'ConstructionPhaseFireSafety';
     default:
       return 'FireStrategy';
-  }
-}
-
-function improveGenericFsdActionText(actionText: string, sourceModuleKey?: string): string {
-  const normalized = actionText.trim().toLowerCase();
-  const genericTexts = new Set([
-    'improvement needed',
-    'improvements needed',
-    'improvement required',
-    'action required',
-  ]);
-
-  if (!genericTexts.has(normalized)) {
-    return actionText;
-  }
-
-  switch (sourceModuleKey) {
-    case 'FSD_1_REG_BASIS':
-      return 'Document the regulatory basis, standards, and any engineered departures applied to the design.';
-    case 'FSD_2_EVAC_STRATEGY':
-      return 'Define the evacuation strategy, management dependencies, and assisted evacuation assumptions for the design case.';
-    case 'FSD_3_ESCAPE_DESIGN':
-      return 'Complete and record means-of-escape capacity/travel distance checks against the selected design approach.';
-    case 'FSD_4_PASSIVE_PROTECTION':
-      return 'Define the passive fire protection strategy, including compartmentation lines, fire resistance periods, and interfaces.';
-    case 'FSD_5_ACTIVE_SYSTEMS':
-      return 'Specify active fire systems design intent, performance criteria, and key cause-and-effect interfaces.';
-    case 'FSD_6_FRS_ACCESS':
-      return 'Confirm fire and rescue service access provisions and document the supporting design assumptions.';
-    case 'FSD_7_DRAWINGS':
-      return 'Provide the required fire strategy drawings and schedules to support design coordination and approval.';
-    case 'FSD_8_SMOKE_CONTROL':
-      return 'Provide smoke control design basis, supporting calculations/drawings, and system interface requirements.';
-    case 'FSD_9_CONSTRUCTION_PHASE':
-      return 'Confirm temporary means of escape and construction-phase fire safety controls during works.';
-    default:
-      return 'Provide a clear fire safety design action with scope, basis, and deliverable evidence.';
   }
 }
 
@@ -476,7 +440,10 @@ export default function AddActionModal({
 
     try {
       const normalizedActionText = (documentType === 'FSD'
-        ? improveGenericFsdActionText(formData.recommendedAction, sourceModuleKey)
+        ? deriveFsdProfessionalActionText({
+            recommendedAction: formData.recommendedAction,
+            moduleKey: sourceModuleKey,
+          })
         : formData.recommendedAction).trim();
       const trimmedAction = normalizedActionText.toLowerCase();
 
