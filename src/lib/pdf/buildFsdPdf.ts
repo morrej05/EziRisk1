@@ -1059,7 +1059,6 @@ function drawAttachmentsIndex(
   attachments: Attachment[],
   moduleInstances: ModuleInstance[],
   actions: Action[],
-  moduleInstances: ModuleInstance[],
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[],
