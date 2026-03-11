@@ -108,8 +108,6 @@ const MODULE_ORDER = [
   'A1_DOC_CONTROL',
   'FSD_1_REG_BASIS',
   'FSD_2_EVAC_STRATEGY',
-  'A2_BUILDING_PROFILE',
-  'A3_PERSONS_AT_RISK',
   'FSD_3_ESCAPE_DESIGN',
   'FSD_4_PASSIVE_PROTECTION',
   'FSD_5_ACTIVE_SYSTEMS',
@@ -120,8 +118,6 @@ const MODULE_ORDER = [
 ];
 
 const FSD_ALLOWED_MODULE_KEYS = new Set([
-  'A2_BUILDING_PROFILE',
-  'A3_PERSONS_AT_RISK',
   ...MODULE_ORDER.filter((key) => key.startsWith('FSD_')),
 ]);
 
@@ -1004,10 +1000,10 @@ function drawActionRegister(
   const targetColumnWidth = 58;
   const actionColumnWidth = tableWidth - numberColumnWidth - priorityColumnWidth - statusColumnWidth - targetColumnWidth - (columnGap * 4);
   const rowLineHeight = 9;
-  const actionRowTopPadding = 1;
   const minimumRowHeight = 20;
   const headerHeight = 18;
-  const tableHeaderY = yPosition;
+  const bodyTextSize = 7;
+  const bodyTextHeight = 7;
 
   const actionColumnX = tableX + numberColumnWidth + columnGap;
   const priorityColumnX = actionColumnX + actionColumnWidth + columnGap;
@@ -1016,13 +1012,15 @@ function drawActionRegister(
   const tableEndX = tableX + tableWidth;
 
   const drawHeader = (): void => {
-    currentPage.drawText('#', { x: tableX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-    currentPage.drawText('Action', { x: actionColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-    currentPage.drawText('Priority', { x: priorityColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-    currentPage.drawText('Status', { x: statusColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-    currentPage.drawText('Target', { x: targetColumnX, y: tableHeaderY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    const headerY = yPosition;
 
-    const headerBottomY = tableHeaderY - headerHeight;
+    currentPage.drawText('#', { x: tableX, y: headerY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Action', { x: actionColumnX, y: headerY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Priority', { x: priorityColumnX, y: headerY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Status', { x: statusColumnX, y: headerY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    currentPage.drawText('Target', { x: targetColumnX, y: headerY, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+
+    const headerBottomY = headerY - headerHeight;
     currentPage.drawLine({
       start: { x: tableX, y: headerBottomY },
       end: { x: tableEndX, y: headerBottomY },
@@ -1050,7 +1048,7 @@ function drawActionRegister(
     });
     const actionLines = wrapText(actionText, actionColumnWidth - 2, 7, font);
     const actionTextHeight = actionLines.length * rowLineHeight;
-    const rowHeight = Math.max(minimumRowHeight, actionTextHeight + 4);
+    const rowHeight = Math.max(minimumRowHeight, actionTextHeight + 6);
 
     ({ page: currentPage, yPosition } = ensurePageSpace(rowHeight + headerHeight + 8, currentPage, yPosition, pdfDoc, isDraft, totalPages));
     if (yPosition + 2 - rowHeight < MARGIN + 40) {
@@ -1061,21 +1059,23 @@ function drawActionRegister(
 
     const rowTopY = yPosition;
     const rowBottomY = yPosition - rowHeight;
+    const centeredTextY = rowBottomY + ((rowHeight - bodyTextHeight) / 2);
 
     currentPage.drawText(`${index + 1}`, {
       x: tableX,
-      y: rowTopY - ((rowHeight - 7) / 2),
-      size: 7,
+      y: centeredTextY,
+      size: bodyTextSize,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
 
-    let actionY = rowTopY - actionRowTopPadding;
+    const actionBlockHeight = actionLines.length * rowLineHeight;
+    let actionY = rowTopY - ((rowHeight - actionBlockHeight) / 2) + (rowLineHeight - bodyTextHeight);
     actionLines.forEach((line) => {
       currentPage.drawText(line, {
         x: actionColumnX,
         y: actionY,
-        size: 7,
+        size: bodyTextSize,
         font,
         color: rgb(0.2, 0.2, 0.2),
       });
@@ -1086,20 +1086,21 @@ function drawActionRegister(
     const priorityColor = getPriorityColor(priorityBand);
     const priorityLabel = sanitizePdfText(priorityBand);
     const priorityBadgePaddingX = 3;
-    const priorityBadgeHeight = 8;
+    const priorityBadgeHeight = 9;
     const priorityLabelWidth = fontBold.widthOfTextAtSize(priorityLabel, 7);
     const priorityBadgeWidth = Math.min(priorityColumnWidth - 14, Math.max(18, priorityLabelWidth + (priorityBadgePaddingX * 2)));
     const priorityBadgeY = rowBottomY + ((rowHeight - priorityBadgeHeight) / 2);
+    const priorityBadgeX = priorityColumnX + ((priorityColumnWidth - priorityBadgeWidth) / 2);
     currentPage.drawRectangle({
-      x: priorityColumnX,
+      x: priorityBadgeX,
       y: priorityBadgeY,
       width: priorityBadgeWidth,
       height: priorityBadgeHeight,
       color: priorityColor,
     });
     currentPage.drawText(priorityLabel, {
-      x: priorityColumnX + priorityBadgePaddingX,
-      y: priorityBadgeY + ((priorityBadgeHeight - 7) / 2) + 0.5,
+      x: priorityBadgeX + ((priorityBadgeWidth - priorityLabelWidth) / 2),
+      y: priorityBadgeY + ((priorityBadgeHeight - bodyTextHeight) / 2),
       size: 7,
       font: fontBold,
       color: rgb(1, 1, 1),
@@ -1107,8 +1108,8 @@ function drawActionRegister(
 
     currentPage.drawText(sanitizePdfText(action.status?.trim() || '-'), {
       x: statusColumnX,
-      y: rowTopY - ((rowHeight - 7) / 2),
-      size: 7,
+      y: centeredTextY,
+      size: bodyTextSize,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
@@ -1116,8 +1117,8 @@ function drawActionRegister(
     const targetDate = action.target_date ? formatDate(action.target_date) : '-';
     currentPage.drawText(targetDate, {
       x: targetColumnX,
-      y: rowTopY - ((rowHeight - 7) / 2),
-      size: 7,
+      y: centeredTextY,
+      size: bodyTextSize,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
@@ -1370,14 +1371,15 @@ async function drawAttachmentPages(
     }
 
     const rawImage = embeddedImage.scale(1);
-    const maxWidth = CONTENT_WIDTH;
+    const maxWidth = CONTENT_WIDTH * 0.5;
     const maxHeight = yPosition - MARGIN;
     const scale = Math.min(maxWidth / rawImage.width, maxHeight / rawImage.height, 1);
     const imageWidth = rawImage.width * scale;
     const imageHeight = rawImage.height * scale;
+    const imageX = MARGIN + ((CONTENT_WIDTH - imageWidth) / 2);
 
     currentPage.drawImage(embeddedImage, {
-      x: MARGIN,
+      x: imageX,
       y: yPosition - imageHeight,
       width: imageWidth,
       height: imageHeight,
