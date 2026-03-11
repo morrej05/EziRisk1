@@ -1,0 +1,195 @@
+import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
+import {
+  PAGE_WIDTH,
+  PAGE_HEIGHT,
+  MARGIN,
+  CONTENT_WIDTH,
+  PAGE_TOP_Y,
+  sanitizePdfText,
+  wrapText,
+  formatDate,
+  addNewPage,
+  drawFooter,
+  addSupersededWatermark,
+  addExecutiveSummaryPages,
+  drawRecommendationsSection,
+} from './pdfUtils';
+import { addIssuedReportPages } from './issuedPdfPages';
+
+interface Document {
+  id: string;
+  document_type: string;
+  title: string;
+  status: string;
+  version: number;
+  assessment_date: string;
+  review_date: string | null;
+  assessor_name: string | null;
+  assessor_role: string | null;
+  responsible_person: string | null;
+  scope_description: string | null;
+  limitations_assumptions: string | null;
+  created_at: string;
+  updated_at: string;
+  executive_summary_ai?: string | null;
+  executive_summary_author?: string | null;
+  executive_summary_mode?: string | null;
+  jurisdiction?: string;
+  meta?: any;
+}
+
+interface ModuleInstance {
+  id: string;
+  module_key: string;
+  outcome: string | null;
+  assessor_notes: string;
+  data: Record<string, any>;
+  completed_at: string | null;
+  updated_at: string;
+}
+
+interface Action {
+  id: string;
+  recommended_action: string;
+  priority_band: string;
+  status: string;
+  owner_user_id: string | null;
+  owner_display_name?: string;
+  target_date: string | null;
+  module_instance_id: string;
+  created_at: string;
+}
+
+interface Organisation {
+  id: string;
+  name: string;
+  branding_logo_path?: string | null;
+}
+
+interface BuildPdfOptions {
+  document: Document;
+  moduleInstances: ModuleInstance[];
+  actions: Action[];
+  organisation: Organisation;
+  renderMode?: 'preview' | 'issued';
+}
+
+export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array> {
+  console.log('[PDF RE LP] Starting RE Loss Prevention PDF build');
+  const { document, moduleInstances, actions, organisation, renderMode } = options;
+
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  const isIssuedMode = renderMode === 'issued';
+  const isDraft = !isIssuedMode;
+  const totalPages: PDFPage[] = [];
+
+  console.log('[PDF RE LP] Render mode:', isIssuedMode ? 'ISSUED' : 'DRAFT');
+
+  // Use addIssuedReportPages for both draft and issued modes (logo embedding + professional layout)
+  console.log('[PDF RE LP] Adding report pages with logo (cover + doc control)');
+  const { coverPage, docControlPage } = await addIssuedReportPages({
+    pdfDoc,
+    document: {
+      id: document.id,
+      title: document.title,
+      document_type: 'RE',
+      version_number: (document as any).version_number || document.version || 1,
+      issue_date: (document as any).issue_date || new Date().toISOString(),
+      issue_status: isIssuedMode ? 'issued' : 'draft',
+      assessor_name: document.assessor_name,
+      base_document_id: (document as any).base_document_id,
+    },
+    organisation: {
+      id: organisation.id,
+      name: organisation.name,
+      branding_logo_path: organisation.branding_logo_path,
+    },
+    client: {
+      name: document.meta?.client?.name || document.responsible_person || '',
+      site: document.meta?.site?.name || document.scope_description || '',
+      address: document.meta?.site?.address,
+    },
+    fonts: { bold: fontBold, regular: font },
+  });
+  totalPages.push(coverPage, docControlPage);
+
+  // Add executive summary if configured
+  addExecutiveSummaryPages(
+    pdfDoc,
+    isDraft,
+    totalPages,
+    (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none',
+    document.executive_summary_ai,
+    document.executive_summary_author,
+    { bold: fontBold, regular: font }
+  );
+
+  // Add comprehensive analysis section
+  const { page: analysisPage } = addNewPage(pdfDoc, isDraft, totalPages);
+  let yPosition = PAGE_TOP_Y;
+
+  analysisPage.drawText('Loss Prevention Analysis', {
+    x: MARGIN,
+    y: yPosition,
+    size: 16,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  yPosition -= 30;
+
+  analysisPage.drawText('This report provides comprehensive loss prevention recommendations based on:', {
+    x: MARGIN,
+    y: yPosition,
+    size: 11,
+    font: font,
+    color: rgb(0, 0, 0),
+  });
+
+  yPosition -= 25;
+
+  const bullets = [
+    'Risk engineering assessment findings',
+    'Construction and occupancy characteristics',
+    'Fire protection systems evaluation',
+    'Exposure and natural hazard analysis',
+    'Management controls and utilities assessment',
+  ];
+
+  for (const bullet of bullets) {
+    analysisPage.drawText(`• ${bullet}`, {
+      x: MARGIN + 10,
+      y: yPosition,
+      size: 10,
+      font: font,
+      color: rgb(0, 0, 0),
+    });
+    yPosition -= 18;
+  }
+
+  // Add recommendations section
+  drawRecommendationsSection(
+    pdfDoc,
+    actions as any[],
+    { bold: fontBold, regular: font },
+    isDraft,
+    totalPages
+  );
+
+  // Add footers
+  for (let i = 0; i < totalPages.length; i++) {
+    drawFooter(totalPages[i], document.title, i + 1, totalPages.length, font);
+  }
+
+  // Add superseded watermark if needed
+  if ((document as any).issue_status === 'superseded') {
+    await addSupersededWatermark(pdfDoc);
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  console.log('[PDF RE LP] PDF build complete');
+  return pdfBytes;
+}

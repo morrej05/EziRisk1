@@ -1,0 +1,447 @@
+import { supabase } from '../lib/supabase';
+
+export interface SectorWeights {
+  construction: number;
+  protection: number;
+  detection: number;
+  management: number;
+  hazards: number;
+  bi: number;
+}
+
+export interface SectorWeighting {
+  id: string;
+  sector_name: string;
+  is_custom: boolean;
+  construction: number;
+  management: number;
+  fire_protection: number;
+  special_hazards: number;
+  business_continuity: number;
+}
+
+export interface SectorInfo {
+  name: string;
+  weights: SectorWeights;
+  description: string;
+  emphasis: string[];
+}
+
+export const SECTOR_PROFILES: Record<string, SectorInfo> = {
+  'Food & Beverage': {
+    name: 'Food & Beverage',
+    weights: {
+      construction: 0.35,
+      protection: 0.30,
+      detection: 0.15,
+      management: 0.10,
+      hazards: 0.05,
+      bi: 0.05,
+    },
+    description: 'Food processing and storage occupancies are historically associated with severe fire losses driven by combustible construction, insulated panels, ceiling void fire spread, and smoke contamination. As such, construction materials and fire protection coverage are weighted more heavily in the overall risk score.',
+    emphasis: [
+      'Construction & Combustibility (High)',
+      'Fire Protection (High)',
+      'Detection Systems (Medium)',
+    ],
+  },
+  'Foundry / Metal': {
+    name: 'Foundry / Metal',
+    weights: {
+      construction: 0.15,
+      protection: 0.20,
+      detection: 0.15,
+      management: 0.25,
+      hazards: 0.15,
+      bi: 0.10,
+    },
+    description: 'Foundry operations are typically characterised by non-combustible construction but elevated process hazards, including molten metal, high-energy equipment, and dependency on critical plant. Management systems and special hazards therefore carry increased weighting.',
+    emphasis: [
+      'Management Systems (High)',
+      'Fire Protection (Medium)',
+      'Special Hazards (Medium)',
+    ],
+  },
+  'Chemical / ATEX': {
+    name: 'Chemical / ATEX',
+    weights: {
+      construction: 0.15,
+      protection: 0.25,
+      detection: 0.15,
+      management: 0.20,
+      hazards: 0.20,
+      bi: 0.05,
+    },
+    description: 'Chemical manufacturing and ATEX-classified environments present elevated risks from flammable materials, explosive atmospheres, and reactive processes. Fire protection systems, management controls, and special hazard management are prioritised in the risk assessment.',
+    emphasis: [
+      'Fire Protection (High)',
+      'Special Hazards (High)',
+      'Management Systems (High)',
+    ],
+  },
+  'Logistics / Warehouse': {
+    name: 'Logistics / Warehouse',
+    weights: {
+      construction: 0.30,
+      protection: 0.35,
+      detection: 0.15,
+      management: 0.10,
+      hazards: 0.05,
+      bi: 0.05,
+    },
+    description: 'Warehousing and logistics operations typically involve high-piled storage in large open spaces, making fire protection coverage and building construction critical factors. These elements are weighted most heavily in the risk score.',
+    emphasis: [
+      'Fire Protection (Very High)',
+      'Construction & Combustibility (High)',
+      'Detection Systems (Medium)',
+    ],
+  },
+  'Office / Commercial': {
+    name: 'Office / Commercial',
+    weights: {
+      construction: 0.20,
+      protection: 0.20,
+      detection: 0.20,
+      management: 0.15,
+      hazards: 0.05,
+      bi: 0.20,
+    },
+    description: 'Office and commercial occupancies generally present lower fire risks but may have significant business interruption exposure. The risk assessment provides balanced weighting across protection systems with emphasis on business continuity.',
+    emphasis: [
+      'Business Interruption (High)',
+      'Detection Systems (Medium)',
+      'Fire Protection (Medium)',
+    ],
+  },
+  'General Industrial': {
+    name: 'General Industrial',
+    weights: {
+      construction: 0.25,
+      protection: 0.25,
+      detection: 0.15,
+      management: 0.15,
+      hazards: 0.10,
+      bi: 0.10,
+    },
+    description: 'General industrial occupancies employ balanced weighting across all risk factors, reflecting typical manufacturing environments without specific elevated hazards.',
+    emphasis: [
+      'Construction & Combustibility (Medium)',
+      'Fire Protection (Medium)',
+      'Management Systems (Medium)',
+    ],
+  },
+  'Other': {
+    name: 'Other',
+    weights: {
+      construction: 0.25,
+      protection: 0.25,
+      detection: 0.15,
+      management: 0.15,
+      hazards: 0.10,
+      bi: 0.10,
+    },
+    description: 'Default weighting profile applies balanced emphasis across all risk factors.',
+    emphasis: [
+      'Construction & Combustibility (Medium)',
+      'Fire Protection (Medium)',
+      'All other factors equally weighted',
+    ],
+  },
+};
+
+export async function fetchSectorWeightings(): Promise<SectorWeighting[]> {
+  try {
+    const { data, error } = await supabase
+      .from('sector_weightings')
+      .select('*')
+      .order('sector_name');
+
+    if (error) {
+      console.error('[SECTOR_CONFIG] Error fetching sector weightings:', error);
+      return [];
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('[SECTOR_CONFIG] Exception fetching sector weightings:', error);
+    return [];
+  }
+}
+
+export async function getSectorWeightsFromDB(industrySector: string): Promise<SectorWeights> {
+  try {
+    const { data: weighting, error } = await supabase
+      .from('sector_weightings')
+      .select('*')
+      .eq('sector_name', industrySector)
+      .maybeSingle();
+
+    if (error) {
+      console.error(`[SECTOR_CONFIG] Error fetching weights for "${industrySector}":`, error);
+      return getDefaultWeightsFromDB();
+    }
+
+    if (!weighting) {
+      console.warn(`[SECTOR_CONFIG] No weights found for "${industrySector}", using Default`);
+      return getDefaultWeightsFromDB();
+    }
+
+    if (!weighting.is_custom) {
+      return getDefaultWeightsFromDB();
+    }
+
+    return convertWeightingToSectorWeights(weighting);
+  } catch (error) {
+    console.error(`[SECTOR_CONFIG] Exception getting weights for "${industrySector}":`, error);
+    return getDefaultWeightsFromDB();
+  }
+}
+
+async function getDefaultWeightsFromDB(): Promise<SectorWeights> {
+  try {
+    const { data: defaultWeighting, error } = await supabase
+      .from('sector_weightings')
+      .select('*')
+      .eq('sector_name', 'Default')
+      .maybeSingle();
+
+    if (error || !defaultWeighting) {
+      console.warn('[SECTOR_CONFIG] Could not fetch Default weights, using hardcoded fallback');
+      return {
+        construction: 0.25,
+        protection: 0.25,
+        detection: 0.15,
+        management: 0.15,
+        hazards: 0.10,
+        bi: 0.10,
+      };
+    }
+
+    return convertWeightingToSectorWeights(defaultWeighting);
+  } catch (error) {
+    console.error('[SECTOR_CONFIG] Exception getting default weights:', error);
+    return {
+      construction: 0.25,
+      protection: 0.25,
+      detection: 0.15,
+      management: 0.15,
+      hazards: 0.10,
+      bi: 0.10,
+    };
+  }
+}
+
+function convertWeightingToSectorWeights(weighting: SectorWeighting): SectorWeights {
+  const detectionWeight = Math.round(weighting.fire_protection * 0.6);
+
+  const total =
+    weighting.construction +
+    weighting.management +
+    weighting.fire_protection +
+    weighting.special_hazards +
+    weighting.business_continuity +
+    detectionWeight;
+
+  const normalize = (value: number) => value / total;
+
+  return {
+    construction: normalize(weighting.construction),
+    protection: normalize(weighting.fire_protection),
+    detection: normalize(detectionWeight),
+    management: normalize(weighting.management),
+    hazards: normalize(weighting.special_hazards),
+    bi: normalize(weighting.business_continuity),
+  };
+}
+
+export function getSectorWeights(industrySector: string): SectorWeights {
+  const profile = SECTOR_PROFILES[industrySector];
+  if (!profile) {
+    console.warn(`[SECTOR_CONFIG] Unknown sector: "${industrySector}", falling back to "General Industrial"`);
+    return SECTOR_PROFILES['General Industrial'].weights;
+  }
+  return profile.weights;
+}
+
+export const AVAILABLE_SECTORS = [
+  'Food & Beverage',
+  'Foundry / Metal',
+  'Chemical / ATEX',
+  'Logistics / Warehouse',
+  'Office / Commercial',
+  'General Industrial',
+  'Other',
+] as const;
+
+if (import.meta.env.DEV) {
+  const missingSectors = AVAILABLE_SECTORS.filter(sector => !SECTOR_PROFILES[sector]);
+  if (missingSectors.length > 0) {
+    console.error(
+      '[SECTOR_CONFIG] ERROR: The following sectors are in the dropdown but missing from SECTOR_PROFILES:',
+      missingSectors
+    );
+    console.error('[SECTOR_CONFIG] Available profiles:', Object.keys(SECTOR_PROFILES));
+  } else {
+    console.log('[SECTOR_CONFIG] ✓ All dropdown sectors have corresponding SECTOR_PROFILES');
+  }
+}
+
+export function getSectorInfo(industrySector: string): SectorInfo | null {
+  const info = SECTOR_PROFILES[industrySector];
+  if (!info && industrySector) {
+    console.warn(`[SECTOR_CONFIG] getSectorInfo: Unknown sector "${industrySector}"`);
+  }
+  return info || null;
+}
+
+export function calculateOverallRiskScore(
+  constructionScore: number,
+  fireProtectionScore: number,
+  detectionScore: number,
+  managementScore: number,
+  specialHazardsScore: number,
+  businessInterruptionScore: number,
+  weights: SectorWeights
+): number {
+  const score =
+    constructionScore * weights.construction +
+    fireProtectionScore * weights.protection +
+    detectionScore * weights.detection +
+    managementScore * weights.management +
+    specialHazardsScore * weights.hazards +
+    businessInterruptionScore * weights.bi;
+
+  return Math.round(score);
+}
+
+export function getRiskBand(score: number): string {
+  if (score >= 85) return 'Very Good';
+  if (score >= 70) return 'Good';
+  if (score >= 55) return 'Tolerable';
+  if (score >= 40) return 'Poor';
+  return 'Very Poor';
+}
+
+// Grade-based scoring (1-5 scale)
+export interface SectionGrades {
+  survey_info?: number;
+  property_details?: number;
+  construction?: number;
+  occupancy?: number;
+  management?: number;
+  fire_protection?: number;
+  business_continuity?: number;
+  loss_expectancy?: number;
+  hazards?: number;
+  natural_hazards?: number;
+  recommendations?: number;
+  attachments?: number;
+}
+
+export function calculateOverallGrade(sectionGrades: SectionGrades): number {
+  const grades = Object.values(sectionGrades).filter(g => g !== undefined && g > 0);
+  if (grades.length === 0) return 3; // Default to "Adequate"
+
+  const sum = grades.reduce((acc, grade) => acc + grade, 0);
+  return sum / grades.length;
+}
+
+export function getRiskBandFromGrade(overallGrade: number): string {
+  if (overallGrade < 2.0) return 'Critical';
+  if (overallGrade < 3.0) return 'High';
+  if (overallGrade < 4.0) return 'Medium';
+  return 'Low';
+}
+
+export function getGradePriorityLevel(grade: number): 'Critical' | 'High' | 'Medium' | 'Low' {
+  if (grade === 1) return 'Critical';
+  if (grade === 2) return 'High';
+  if (grade === 3) return 'Medium';
+  return 'Low';
+}
+
+/**
+ * Get risk band color classes - using token-based semantic mapping
+ * Very Poor/Poor → high, Tolerable → medium, Good/Very Good → low
+ */
+export function getRiskBandColor(band: string): string {
+  switch (band) {
+    case 'Very Good':
+    case 'Good':
+      return 'text-risk-low-fg bg-risk-low-bg border border-risk-low-border';
+    case 'Tolerable':
+      return 'text-risk-medium-fg bg-risk-medium-bg border border-risk-medium-border';
+    case 'Poor':
+    case 'Very Poor':
+      return 'text-risk-high-fg bg-risk-high-bg border border-risk-high-border';
+    default:
+      return 'text-risk-info-fg bg-risk-info-bg border border-risk-info-border';
+  }
+}
+
+export interface DimensionContribution {
+  name: string;
+  score: number;
+  weight: number;
+  contribution: number;
+  percentage: string;
+}
+
+export function calculateDimensionContributions(
+  constructionScore: number,
+  fireProtectionScore: number,
+  detectionScore: number,
+  managementScore: number,
+  specialHazardsScore: number,
+  businessInterruptionScore: number,
+  weights: SectorWeights
+): DimensionContribution[] {
+  return [
+    {
+      name: 'Construction & Combustibility',
+      score: constructionScore,
+      weight: weights.construction,
+      contribution: constructionScore * weights.construction,
+      percentage: `${(weights.construction * 100).toFixed(0)}%`,
+    },
+    {
+      name: 'Fire Protection',
+      score: fireProtectionScore,
+      weight: weights.protection,
+      contribution: fireProtectionScore * weights.protection,
+      percentage: `${(weights.protection * 100).toFixed(0)}%`,
+    },
+    {
+      name: 'Detection Systems',
+      score: detectionScore,
+      weight: weights.detection,
+      contribution: detectionScore * weights.detection,
+      percentage: `${(weights.detection * 100).toFixed(0)}%`,
+    },
+    {
+      name: 'Management Systems',
+      score: managementScore,
+      weight: weights.management,
+      contribution: managementScore * weights.management,
+      percentage: `${(weights.management * 100).toFixed(0)}%`,
+    },
+    {
+      name: 'Special Hazards',
+      score: specialHazardsScore,
+      weight: weights.hazards,
+      contribution: specialHazardsScore * weights.hazards,
+      percentage: `${(weights.hazards * 100).toFixed(0)}%`,
+    },
+    {
+      name: 'Business Interruption',
+      score: businessInterruptionScore,
+      weight: weights.bi,
+      contribution: businessInterruptionScore * weights.bi,
+      percentage: `${(weights.bi * 100).toFixed(0)}%`,
+    },
+  ];
+}
+
+export function getLowestContributors(contributions: DimensionContribution[]): DimensionContribution[] {
+  return [...contributions].sort((a, b) => a.contribution - b.contribution).slice(0, 2);
+}

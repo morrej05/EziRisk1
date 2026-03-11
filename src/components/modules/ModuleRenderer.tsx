@@ -1,0 +1,708 @@
+import { useState, useEffect } from 'react';
+import { AlertCircle } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { getModuleName } from '../../lib/modules/moduleCatalog';
+import { sanitizeModuleInstancePayload } from '../../utils/modulePayloadSanitizer';
+import A1DocumentControlForm from './forms/A1DocumentControlForm';
+import A2BuildingProfileForm from './forms/A2BuildingProfileForm';
+import A3PersonsAtRiskForm from './forms/A3PersonsAtRiskForm';
+import A4ManagementControlsForm from './forms/A4ManagementControlsForm';
+import A5EmergencyArrangementsForm from './forms/A5EmergencyArrangementsForm';
+import A7ReviewAssuranceForm from './forms/A7ReviewAssuranceForm';
+import FRA1FireHazardsForm from './forms/FRA1FireHazardsForm';
+import FRA2MeansOfEscapeForm from './forms/FRA2MeansOfEscapeForm';
+import FRA3FireProtectionForm from './forms/FRA3FireProtectionForm';
+import FRA4SignificantFindingsForm from './forms/FRA4SignificantFindingsForm';
+import FRA5ExternalFireSpreadForm from './forms/FRA5ExternalFireSpreadForm';
+import FSD1RegulatoryBasisForm from './forms/FSD1RegulatoryBasisForm';
+import FSD2EvacuationStrategyForm from './forms/FSD2EvacuationStrategyForm';
+import FSD3MeansOfEscapeDesignForm from './forms/FSD3MeansOfEscapeDesignForm';
+import FSD4PassiveFireProtectionForm from './forms/FSD4PassiveFireProtectionForm';
+import FSD5ActiveFireSystemsDesignForm from './forms/FSD5ActiveFireSystemsDesignForm';
+import FSD6FireServiceAccessForm from './forms/FSD6FireServiceAccessForm';
+import FSD7DrawingsIndexForm from './forms/FSD7DrawingsIndexForm';
+import FSD8SmokeControlForm from './forms/FSD8SmokeControlForm';
+import FSD9ConstructionPhaseFireSafetyForm from './forms/FSD9ConstructionPhaseFireSafetyForm';
+import DSEAR1DangerousSubstancesForm from './forms/DSEAR1DangerousSubstancesForm';
+import DSEAR2ProcessReleasesForm from './forms/DSEAR2ProcessReleasesForm';
+import DSEAR3HazardousAreaClassificationForm from './forms/DSEAR3HazardousAreaClassificationForm';
+import DSEAR4IgnitionSourcesForm from './forms/DSEAR4IgnitionSourcesForm';
+import DSEAR5ExplosionProtectionForm from './forms/DSEAR5ExplosionProtectionForm';
+import DSEAR6RiskAssessmentTableForm from './forms/DSEAR6RiskAssessmentTableForm';
+import DSEAR10HierarchyControlForm from './forms/DSEAR10HierarchyControlForm';
+import DSEAR11ExplosionEmergencyResponseForm from './forms/DSEAR11ExplosionEmergencyResponseForm';
+import OutcomePanel from './OutcomePanel';
+import ModuleActions from './ModuleActions';
+import { resolveSectionAssessmentOutcome, resolveSectionAssessmentNotes } from '../../utils/moduleAssessment';
+// RiskEngineeringForm is deprecated - RISK_ENGINEERING now routes to RE14DraftOutputsForm (RE-11 Summary)
+import RE01DocumentControlForm from './forms/RE01DocumentControlForm';
+import RE02ConstructionForm from './forms/RE02ConstructionForm';
+import RE03OccupancyForm from './forms/RE03OccupancyForm';
+import RE06FireProtectionForm from './forms/RE06FireProtectionForm';
+import RE07ExposuresForm from './forms/RE07ExposuresForm';
+import RE08UtilitiesForm from './forms/RE08UtilitiesForm';
+import RE09ManagementForm from './forms/RE09ManagementForm';
+import RE10ProcessRiskForm from './forms/RE10ProcessRiskForm';
+import RE10SitePhotosForm from './forms/RE10SitePhotosForm';
+import RE12LossValuesForm from './forms/RE12LossValuesForm';
+import RE09RecommendationsForm from './forms/RE09RecommendationsForm';
+import RE14DraftOutputsForm from './forms/RE14DraftOutputsForm';
+
+interface Document {
+  id: string;
+  document_type: string;
+  title: string;
+  assessment_date: string;
+  assessor_name: string | null;
+  assessor_role: string | null;
+  responsible_person: string | null;
+  scope_description: string | null;
+  limitations_assumptions: string | null;
+  standards_selected: string[];
+}
+
+interface ModuleInstance {
+  id: string;
+  module_key: string;
+  outcome: string | null;
+  completed_at: string | null;
+  assessor_notes: string;
+  data: Record<string, any>;
+  updated_at: string;
+}
+
+interface ModuleRendererProps {
+  moduleInstance: ModuleInstance;
+  document: Document;
+  onSaved: (moduleId?: string, updatedData?: any) => void;
+}
+
+export default function ModuleRenderer({
+  moduleInstance,
+  document,
+  onSaved,
+}: ModuleRendererProps) {
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+
+  // Lifecycle instrumentation: track mount/unmount and prop changes
+  useEffect(() => {
+    const dataHash = JSON.stringify(moduleInstance.data || {}).substring(0, 100);
+    console.log('[ModuleRenderer] MOUNT', {
+      moduleKey: moduleInstance.module_key,
+      moduleId: moduleInstance.id,
+      documentId: document.id,
+      dataPreview: dataHash,
+      updatedAt: moduleInstance.updated_at,
+    });
+
+    return () => {
+      console.log('[ModuleRenderer] UNMOUNT', {
+        moduleKey: moduleInstance.module_key,
+        moduleId: moduleInstance.id,
+      });
+    };
+  }, []); // Empty deps = mount/unmount only
+
+  // Track when moduleInstance changes
+  useEffect(() => {
+    const dataHash = JSON.stringify(moduleInstance.data || {}).substring(0, 100);
+    console.log('[ModuleRenderer] PROPS CHANGE', {
+      moduleKey: moduleInstance.module_key,
+      moduleId: moduleInstance.id,
+      dataPreview: dataHash,
+      updatedAt: moduleInstance.updated_at,
+    });
+  }, [moduleInstance]);
+
+  // Hide saved indicator after 3 seconds
+  useEffect(() => {
+    if (showSavedIndicator) {
+      const timer = setTimeout(() => {
+        setShowSavedIndicator(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSavedIndicator]);
+
+  // Wrap onSaved to show indicator
+  const handleSaved = (moduleId?: string, updatedData?: any) => {
+    setLastSavedAt(new Date());
+    setShowSavedIndicator(true);
+    onSaved(moduleId, updatedData);
+  };
+
+  // Saved indicator component
+  const SavedIndicator = showSavedIndicator && lastSavedAt ? (
+    <div className="fixed top-20 right-6 z-50 bg-green-50 border border-green-200 rounded-lg px-4 py-2 shadow-lg flex items-center gap-2 animate-fade-in">
+      <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+      </svg>
+      <span className="text-sm font-medium text-green-800">
+        Saved {lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+      </span>
+    </div>
+  ) : null;
+
+  if (moduleInstance.module_key === 'A1_DOC_CONTROL') {
+    return (
+      <>
+        {SavedIndicator}
+        <A1DocumentControlForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+        {document?.id && moduleInstance?.id && (
+          <div className="px-6 pb-6 max-w-5xl mx-auto">
+            <ModuleActions
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+            />
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'A2_BUILDING_PROFILE') {
+    return (
+      <>
+        {SavedIndicator}
+        <A2BuildingProfileForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'A3_PERSONS_AT_RISK') {
+    return (
+      <>
+        {SavedIndicator}
+        <A3PersonsAtRiskForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'A4_MANAGEMENT_CONTROLS' || moduleInstance.module_key === 'FRA_6_MANAGEMENT_SYSTEMS') {
+    return (
+      <>
+        {SavedIndicator}
+        <A4ManagementControlsForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'A5_EMERGENCY_ARRANGEMENTS' || moduleInstance.module_key === 'FRA_7_EMERGENCY_ARRANGEMENTS') {
+    return (
+      <>
+        {SavedIndicator}
+        <A5EmergencyArrangementsForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'A7_REVIEW_ASSURANCE') {
+    return (
+      <>
+        {SavedIndicator}
+        <A7ReviewAssuranceForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FRA_1_HAZARDS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FRA1FireHazardsForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FRA_2_ESCAPE_ASIS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FRA2MeansOfEscapeForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (['FRA_3_PROTECTION_ASIS', 'FRA_3_ACTIVE_SYSTEMS', 'FRA_4_PASSIVE_PROTECTION', 'FRA_8_FIREFIGHTING_EQUIPMENT'].includes(moduleInstance.module_key)) {
+    return (
+      <>
+        {SavedIndicator}
+        <FRA3FireProtectionForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FRA_4_SIGNIFICANT_FINDINGS' || moduleInstance.module_key === 'FRA_90_SIGNIFICANT_FINDINGS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FRA4SignificantFindingsForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FRA_5_EXTERNAL_FIRE_SPREAD') {
+    return (
+      <>
+        {SavedIndicator}
+        <FRA5ExternalFireSpreadForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_1_REG_BASIS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD1RegulatoryBasisForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_2_EVAC_STRATEGY') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD2EvacuationStrategyForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_3_ESCAPE_DESIGN') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD3MeansOfEscapeDesignForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_4_PASSIVE_PROTECTION') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD4PassiveFireProtectionForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_5_ACTIVE_SYSTEMS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD5ActiveFireSystemsDesignForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_6_FRS_ACCESS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD6FireServiceAccessForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_7_DRAWINGS') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD7DrawingsIndexForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_8_SMOKE_CONTROL') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD8SmokeControlForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_9_CONSTRUCTION_PHASE') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD9ConstructionPhaseFireSafetyForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RISK_ENGINEERING') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE14DraftOutputsForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_01_DOC_CONTROL') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE01DocumentControlForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_02_CONSTRUCTION') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE02ConstructionForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_03_OCCUPANCY') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE03OccupancyForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_06_FIRE_PROTECTION') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE06FireProtectionForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_07_NATURAL_HAZARDS') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE07ExposuresForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_08_UTILITIES') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE08UtilitiesForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_09_MANAGEMENT') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE09ManagementForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_10_PROCESS_RISK') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE10ProcessRiskForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_10_SITE_PHOTOS') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE10SitePhotosForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_12_LOSS_VALUES') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE12LossValuesForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_13_RECOMMENDATIONS') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE09RecommendationsForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'RE_14_DRAFT_OUTPUTS') {
+    return (
+      <>
+        {SavedIndicator}
+        <RE14DraftOutputsForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_1_DANGEROUS_SUBSTANCES') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR1DangerousSubstancesForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_2_PROCESS_RELEASES') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR2ProcessReleasesForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_3_HAZARDOUS_AREA_CLASSIFICATION') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR3HazardousAreaClassificationForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_4_IGNITION_SOURCES') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR4IgnitionSourcesForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_5_EXPLOSION_PROTECTION') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR5ExplosionProtectionForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_6_RISK_ASSESSMENT') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR6RiskAssessmentTableForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_10_HIERARCHY_OF_CONTROL') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR10HierarchyControlForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR11ExplosionEmergencyResponseForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {SavedIndicator}
+      <PlaceholderModuleForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+    </>
+  );
+}
+
+function PlaceholderModuleForm({
+  moduleInstance,
+  document,
+  onSaved,
+}: ModuleRendererProps) {
+  const [isSaving, setIsSaving] = useState(false);
+  const [outcome, setOutcome] = useState(resolveSectionAssessmentOutcome(moduleInstance));
+  const [assessorNotes, setAssessorNotes] = useState(resolveSectionAssessmentNotes(moduleInstance));
+
+  const handleSave = async () => {
+    setIsSaving(true);
+
+    try {
+      const completedAt = outcome ? new Date().toISOString() : null;
+
+       const payload = sanitizeModuleInstancePayload({
+        outcome: outcome || null,
+        assessor_notes: assessorNotes,
+        completed_at: completedAt,
+      }, moduleInstance.module_key);
+
+      console.log('MODULE SAVE PAYLOAD', JSON.parse(JSON.stringify(payload)));
+      const { error } = await supabase
+        .from('module_instances')
+        .update(payload)
+        .eq('id', moduleInstance.id);
+
+      if (error) throw error;
+
+      onSaved();
+    } catch (error) {
+      console.error('Error saving module:', error);
+      alert('Failed to save module. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-neutral-900 mb-2">
+          {getModuleName(moduleInstance.module_key)}
+        </h2>
+        <p className="text-neutral-600">
+          Module editor coming soon
+        </p>
+      </div>
+
+      <div className="bg-white rounded-lg border border-neutral-200 p-6 mb-6">
+        <div className="flex items-start gap-4 mb-4">
+          <AlertCircle className="w-6 h-6 text-blue-500 flex-shrink-0 mt-1" />
+          <div>
+            <h3 className="text-lg font-bold text-neutral-900 mb-2">
+              Module Editor Under Construction
+            </h3>
+            <p className="text-neutral-600 mb-4">
+              The detailed form for this module is being developed. For now, you can:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-neutral-600 text-sm">
+              <li>Set the module outcome below</li>
+              <li>Add assessor notes</li>
+              <li>Create actions that need to be addressed</li>
+              <li>Mark the module as complete</li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-neutral-200">
+          <p className="text-sm text-neutral-500">
+            <strong>Module Key:</strong> {moduleInstance.module_key}
+          </p>
+          <p className="text-sm text-neutral-500 mt-1">
+            <strong>Document Type:</strong> {document.document_type}
+          </p>
+        </div>
+      </div>
+
+      <OutcomePanel
+        outcome={outcome}
+        assessorNotes={assessorNotes}
+        onOutcomeChange={setOutcome}
+        onNotesChange={setAssessorNotes}
+        onSave={handleSave}
+        isSaving={isSaving}
+        moduleKey={moduleInstance.module_key}
+      />
+
+      {document?.id && moduleInstance?.id && (
+        <ModuleActions
+          documentId={document.id}
+          moduleInstanceId={moduleInstance.id}
+        />
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,530 @@
+export interface InfoGapQuickAction {
+  action: string;
+  reason: string;
+  priority: 'P2' | 'P3';
+  defaultLikelihood?: number;
+  defaultImpact?: number;
+}
+
+export interface InfoGapDetection {
+  hasInfoGap: boolean;
+  reasons: string[];
+  quickActions: InfoGapQuickAction[];
+}
+
+export interface InfoGapContext {
+  documentType?: string;
+  enabledModules?: string[];
+  jurisdiction?: string;
+  framework?: 'FRA' | 'DSEAR' | 'COMBINED';
+}
+
+/**
+ * Wrapper API for detectInfoGaps that accepts module and document objects.
+ * Provides cleaner interface for common use cases while maintaining backward compatibility.
+ */
+export function detectInfoGapsForModule(
+  module: { module_key: string; data: Record<string, any>; outcome: string | null },
+  document?: {
+    responsible_person?: string;
+    standards_selected?: string[];
+    document_type?: string;
+    jurisdiction?: string
+  },
+  context?: InfoGapContext
+): InfoGapDetection {
+  // Build effective context with proper defaults
+  const effectiveContext: InfoGapContext = context || {
+    documentType: document?.document_type || 'FRA',
+    jurisdiction: document?.jurisdiction || 'GB-ENG',
+  };
+
+  return detectInfoGaps(
+    module.module_key,
+    module.data,
+    module.outcome,
+    document,
+    effectiveContext
+  );
+}
+
+export function detectInfoGaps(
+  moduleKey: string,
+  moduleData: Record<string, any>,
+  outcome: string | null,
+  documentData?: { responsible_person?: string; standards_selected?: string[]; document_type?: string; jurisdiction?: string },
+  context?: InfoGapContext
+): InfoGapDetection {
+  const reasons: string[] = [];
+  const quickActions: InfoGapQuickAction[] = [];
+
+  // Default context from document if not provided
+  const effectiveContext: InfoGapContext = context || {
+    documentType: documentData?.document_type || 'FRA',
+    jurisdiction: documentData?.jurisdiction || 'GB-ENG',
+  };
+
+  // Determine framework based on module key and context
+  const isFraModule = moduleKey.startsWith('FRA_');
+  const isDsearModule = moduleKey.startsWith('DSEAR_');
+  const isSharedModule = moduleKey.startsWith('A');
+
+  // Determine which rules to apply
+  const applyFraRules = isFraModule || (isSharedModule && effectiveContext.documentType !== 'DSEAR');
+  const applyDsearRules = isDsearModule || (isSharedModule && effectiveContext.documentType === 'DSEAR');
+
+  // If outcome is explicitly set to info_gap, include that
+  if (outcome === 'info_gap') {
+    reasons.push('Module outcome marked as Information Gap');
+  }
+
+  // Module-specific info gap detection
+  switch (moduleKey) {
+    case 'A1_DOC_CONTROL':
+      // Check document-level fields (not module data) for A1_DOC_CONTROL
+      if (documentData) {
+        if (!documentData.responsible_person || !documentData.responsible_person.trim()) {
+          if (applyFraRules) {
+            reasons.push('Responsible person not identified (fire safety)');
+            quickActions.push({
+              action: 'Identify and document the responsible person for fire safety',
+              reason: 'Legal requirement under Regulatory Reform (Fire Safety) Order 2005',
+              priority: 'P2',
+            });
+          }
+          if (applyDsearRules) {
+            reasons.push('Dutyholder / responsible person not identified (DSEAR)');
+            quickActions.push({
+              action: 'Identify and document the dutyholder / responsible person for control of explosive atmospheres',
+              reason: 'Legal requirement under Dangerous Substances and Explosive Atmospheres Regulations (DSEAR) 2002',
+              priority: 'P2',
+            });
+          }
+        }
+        if (!documentData.standards_selected || documentData.standards_selected.length === 0) {
+          if (applyFraRules) {
+            reasons.push('No assessment standards selected');
+            quickActions.push({
+              action: 'Select and document applicable fire safety standards (e.g., BS 9999, BS 9991)',
+              reason: 'Defines assessment methodology and compliance framework',
+              priority: 'P3',
+            });
+          }
+          if (applyDsearRules) {
+            reasons.push('No assessment standards selected');
+            quickActions.push({
+              action: 'Select and document applicable explosive atmospheres standards (e.g., EN 60079-10-1 / 10-2; EN 60079-14/17 as applicable)',
+              reason: 'Defines hazardous area classification methodology and ATEX compliance requirements',
+              priority: 'P3',
+            });
+          }
+        }
+      }
+      break;
+
+    case 'A4_MANAGEMENT_CONTROLS':
+    case 'FRA_6_MANAGEMENT_SYSTEMS':
+      if (applyFraRules) {
+        if (moduleData.testing_records === 'unknown' || !moduleData.testing_records) {
+          reasons.push('Testing records availability unknown');
+          quickActions.push({
+            action: 'Obtain fire safety inspection/testing records (alarm, emergency lighting, doors, extinguishers) and establish logbook.',
+            reason: 'Demonstrates ongoing system maintenance and compliance',
+            priority: 'P2',
+            defaultLikelihood: 4,
+            defaultImpact: 3,
+          });
+        }
+        if (moduleData.fire_safety_policy === 'unknown' || !moduleData.fire_safety_policy) {
+          reasons.push('Fire safety policy status unknown');
+          quickActions.push({
+            action: 'Verify existence of fire safety policy and management procedures',
+            reason: 'Essential for demonstrating management commitment',
+            priority: 'P2',
+            defaultLikelihood: 4,
+            defaultImpact: 3,
+          });
+        }
+        if (moduleData.training_induction === 'unknown' || !moduleData.training_induction) {
+          reasons.push('Staff training status unknown');
+          quickActions.push({
+            action: 'Obtain fire safety training records and verify induction procedures',
+            reason: 'Trained staff are critical to fire safety management',
+            priority: 'P2',
+            defaultLikelihood: 4,
+            defaultImpact: 3,
+          });
+        }
+      }
+      break;
+
+    case 'A5_EMERGENCY_ARRANGEMENTS':
+    case 'FRA_7_EMERGENCY_ARRANGEMENTS':
+      if (applyFraRules) {
+        if (moduleData.emergency_plan_exists === 'unknown' || !moduleData.emergency_plan_exists || moduleData.drill_frequency === 'unknown' || !moduleData.drill_frequency) {
+          reasons.push('Emergency plan or drill records status unknown');
+          quickActions.push({
+            action: 'Obtain emergency plan and fire drill records; confirm drill frequency and competence.',
+            reason: 'Legal requirement and critical for life safety',
+            priority: 'P2',
+            defaultLikelihood: 4,
+            defaultImpact: 3,
+          });
+        }
+        if (moduleData.peeps_in_place === 'unknown' || !moduleData.peeps_in_place) {
+          reasons.push('PEEPs status unknown');
+          quickActions.push({
+            action: 'Confirm PEEPs exist, are documented for those needing assistance, and records are available.',
+            reason: 'Legal duty to ensure all persons can evacuate safely',
+            priority: 'P2',
+            defaultLikelihood: 4,
+            defaultImpact: 5,
+          });
+        }
+      }
+      break;
+
+    case 'FRA_1_HAZARDS':
+      if (!applyFraRules) break;
+      if (!moduleData.ignition_sources || moduleData.ignition_sources.length === 0) {
+        reasons.push('No ignition sources identified');
+        quickActions.push({
+          action: 'Conduct detailed walkthrough to identify all potential ignition sources',
+          reason: 'Ignition sources are fundamental to fire risk assessment',
+          priority: 'P2',
+        });
+      }
+      if (!moduleData.fuel_sources || moduleData.fuel_sources.length === 0) {
+        reasons.push('No fuel sources identified');
+        quickActions.push({
+          action: 'Survey premises to identify and document all combustible materials and fuel sources',
+          reason: 'Fuel sources determine potential fire load and spread',
+          priority: 'P2',
+        });
+      }
+      if (moduleData.arson_risk === 'unknown' || !moduleData.arson_risk) {
+        reasons.push('Arson risk not assessed');
+        quickActions.push({
+          action: 'Assess arson vulnerability including external security, waste storage, and access control',
+          reason: 'Arson is a significant cause of fire in commercial premises',
+          priority: 'P3',
+        });
+      }
+      break;
+
+    case 'FRA_2_ESCAPE_ASIS':
+      if (!applyFraRules) break;
+      if (moduleData.travel_distances_compliant === 'unknown' || !moduleData.travel_distances_compliant) {
+        reasons.push('Travel distances not verified');
+        quickActions.push({
+          action: 'Measure and verify travel distances to final exits against applicable standards',
+          reason: 'Travel distances are critical for safe evacuation',
+          priority: 'P2',
+        });
+      }
+      if (moduleData.escape_strategy === 'unknown' || !moduleData.escape_strategy) {
+        reasons.push('Escape strategy not determined');
+        quickActions.push({
+          action: 'Determine and document the building\'s fire evacuation strategy (simultaneous, phased, stay-put)',
+          reason: 'Defines evacuation approach and influences all other provisions',
+          priority: 'P2',
+        });
+      }
+      if (moduleData.stair_protection_status === 'unknown' || !moduleData.stair_protection_status) {
+        reasons.push('Stair protection status unknown');
+        quickActions.push({
+          action: 'Verify staircase fire protection including enclosure and fire doors',
+          reason: 'Protected stairs are essential for multi-storey evacuation',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'FRA_3_PROTECTION_ASIS':
+    case 'FRA_3_ACTIVE_SYSTEMS':
+      if (!applyFraRules) break;
+      if (moduleData.alarm_present === 'unknown' || !moduleData.alarm_present) {
+        reasons.push('Fire alarm system presence unknown');
+        quickActions.push({
+          action: 'Verify fire alarm installation, category and coverage; obtain certificates and test records.',
+          reason: 'Alarm system is primary means of warning occupants',
+          priority: 'P2',
+          defaultLikelihood: 4,
+          defaultImpact: 4,
+        });
+      }
+      if (moduleData.alarm_present === 'yes' && (!moduleData.alarm_category || moduleData.alarm_category === 'unknown')) {
+        reasons.push('Fire alarm category not identified');
+        quickActions.push({
+          action: 'Verify fire alarm installation, category and coverage; obtain certificates and test records.',
+          reason: 'Category defines level of protection provided',
+          priority: 'P2',
+          defaultLikelihood: 4,
+          defaultImpact: 4,
+        });
+      }
+      if (moduleData.alarm_testing_evidence === 'unknown' || moduleData.alarm_testing_evidence === 'partial') {
+        reasons.push('Alarm testing evidence incomplete');
+        quickActions.push({
+          action: 'Obtain evidence of alarm testing regime and implement logbook if missing.',
+          reason: 'Regular testing is essential for system reliability',
+          priority: 'P2',
+          defaultLikelihood: 4,
+          defaultImpact: 3,
+        });
+      }
+      if (moduleData.emergency_lighting_present === 'unknown' || !moduleData.emergency_lighting_present) {
+        reasons.push('Emergency lighting presence unknown');
+        quickActions.push({
+          action: 'Verify emergency lighting provision and testing records (monthly/annual); document results.',
+          reason: 'Emergency lighting enables safe evacuation in power failure',
+          priority: 'P2',
+          defaultLikelihood: 4,
+          defaultImpact: 3,
+        });
+      }
+      break;
+
+    case 'FRA_4_PASSIVE_PROTECTION':
+      if (!applyFraRules) break;
+      if (moduleData.fire_stopping_confidence === 'low' || moduleData.fire_stopping_confidence === 'unknown') {
+        reasons.push('Fire stopping integrity uncertain');
+        quickActions.push({
+          action: 'Commission fire-stopping verification survey (intrusive where necessary) and remediate defects.',
+          reason: 'Fire stopping breaches can compromise compartmentation',
+          priority: 'P2',
+          defaultLikelihood: 4,
+          defaultImpact: 4,
+        });
+      }
+      if (moduleData.compartmentation_condition === 'unknown' || !moduleData.compartmentation_condition) {
+        reasons.push('Compartmentation condition unknown');
+        quickActions.push({
+          action: 'Inspect and record compartmentation condition, including walls/ceilings and penetrations.',
+          reason: 'Compartmentation limits fire and smoke spread',
+          priority: 'P2',
+          defaultLikelihood: 4,
+          defaultImpact: 4,
+        });
+      }
+      break;
+
+    case 'FRA_8_FIREFIGHTING_EQUIPMENT':
+      if (!applyFraRules) break;
+      if (moduleData.extinguishers_present === 'unknown' || !moduleData.extinguishers_present) {
+        reasons.push('Portable firefighting equipment provision unknown');
+        quickActions.push({
+          action: 'Survey and document extinguisher types, locations, and coverage to verify suitability.',
+          reason: 'Initial attack equipment supports early-stage fire control',
+          priority: 'P2',
+          defaultLikelihood: 3,
+          defaultImpact: 3,
+        });
+      }
+      if (moduleData.extinguishers_servicing === 'unknown' || moduleData.extinguishers_servicing === 'partial') {
+        reasons.push('Extinguisher servicing evidence incomplete');
+        quickActions.push({
+          action: 'Obtain extinguisher servicing records and implement routine maintenance schedule.',
+          reason: 'Servicing is needed to ensure reliable firefighting equipment',
+          priority: 'P2',
+          defaultLikelihood: 3,
+          defaultImpact: 3,
+        });
+      }
+      break;
+
+    case 'FRA_5_EXTERNAL_FIRE_SPREAD':
+      if (!applyFraRules) break;
+      if (!moduleData.building_height_m || moduleData.building_height_m === 0) {
+        reasons.push('Building height not recorded');
+        quickActions.push({
+          action: 'Measure or obtain building height (from plans or building records)',
+          reason: 'Buildings ≥18m have specific regulatory requirements',
+          priority: 'P2',
+        });
+      }
+      if (moduleData.cladding_present === 'unknown' || !moduleData.cladding_present) {
+        reasons.push('Cladding system presence/type unknown');
+        quickActions.push({
+          action: 'Inspect external walls and identify cladding system type and materials',
+          reason: 'Combustible cladding poses significant external fire spread risk',
+          priority: 'P2',
+        });
+      }
+      if (moduleData.cladding_present === 'yes' && (moduleData.insulation_combustibility_known === 'unknown' || !moduleData.insulation_combustibility_known)) {
+        reasons.push('Insulation combustibility unknown');
+        quickActions.push({
+          action: 'Obtain building records or commission testing to determine insulation combustibility classification',
+          reason: 'Combustible insulation can lead to rapid vertical fire spread',
+          priority: 'P2',
+        });
+      }
+      if (moduleData.building_height_m >= 18 && (!moduleData.pas9980_or_equivalent_appraisal || moduleData.pas9980_or_equivalent_appraisal === 'unknown')) {
+        reasons.push('PAS 9980 appraisal status unknown for high-rise building');
+        quickActions.push({
+          action: 'Confirm whether PAS 9980 external wall appraisal has been completed',
+          reason: 'Legal requirement for residential buildings ≥18m',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'FRA_4_SIGNIFICANT_FINDINGS':
+    case 'FRA_90_SIGNIFICANT_FINDINGS':
+      if (!applyFraRules) break;
+      if (!moduleData.overall_risk_rating || moduleData.overall_risk_rating === 'unknown') {
+        reasons.push('Overall risk rating not determined');
+        quickActions.push({
+          action: 'Complete all other modules to determine overall fire risk rating',
+          reason: 'Overall rating drives risk communication and action prioritization',
+          priority: 'P2',
+        });
+      }
+      if (!moduleData.executive_summary || !moduleData.executive_summary.trim()) {
+        reasons.push('Executive summary not written');
+        quickActions.push({
+          action: 'Draft executive summary of key findings, deficiencies, and recommendations',
+          reason: 'Summary provides client with clear understanding of risk',
+          priority: 'P3',
+        });
+      }
+      break;
+
+    // DSEAR-specific info gap detection
+    case 'DSEAR_1_DANGEROUS_SUBSTANCES':
+      if (!applyDsearRules) break;
+      if (!moduleData.substances || moduleData.substances.length === 0) {
+        reasons.push('No dangerous substances recorded');
+        quickActions.push({
+          action: 'Create/complete dangerous substances register including SDS, quantities, storage locations, flash point/LEL/UEL where relevant',
+          reason: 'DSEAR 2002 requires identification of all dangerous substances and their properties',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'DSEAR_2_PROCESS_RELEASES':
+      if (!applyDsearRules) break;
+      if (!moduleData.release_sources || moduleData.release_sources.length === 0) {
+        reasons.push('No release sources documented');
+        quickActions.push({
+          action: 'Document sources of release, grade of release (continuous/primary/secondary), ventilation assessment, and foreseeable abnormal conditions',
+          reason: 'Release characterization is fundamental to hazardous area classification per EN 60079-10-1/-10-2',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'DSEAR_3_HAZARDOUS_AREA_CLASSIFICATION':
+      if (!applyDsearRules) break;
+      if (!moduleData.zones || moduleData.zones.length === 0) {
+        reasons.push('No hazardous areas classified');
+        quickActions.push({
+          action: 'Complete hazardous area classification (zones 0/1/2 for gas/vapour or 20/21/22 for dust) per EN 60079-10-1/-10-2; record assumptions and extent of zones',
+          reason: 'Zone classification determines equipment selection and ignition source control requirements',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'DSEAR_4_IGNITION_SOURCES':
+      if (!applyDsearRules) break;
+      if (!moduleData.ignition_sources || moduleData.ignition_sources.length === 0 || !moduleData.controls_implemented) {
+        reasons.push('Ignition sources or controls not documented');
+        quickActions.push({
+          action: 'Identify potential ignition sources (hot work, mechanical sparks, electrical equipment, static discharge) and implement controls in classified zoned areas',
+          reason: 'DSEAR requires elimination or control of ignition sources in explosive atmospheres; ATEX equipment required in zones',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'DSEAR_5_EXPLOSION_PROTECTION':
+      if (!applyDsearRules) break;
+      if (!moduleData.protection_measures || !moduleData.mitigation_systems) {
+        reasons.push('Explosion protection/mitigation measures not documented');
+        quickActions.push({
+          action: 'Confirm explosion protection/mitigation measures (venting, suppression, isolation, containment) where required by risk assessment',
+          reason: 'Passive and active explosion protection may be required where elimination/prevention is not reasonably practicable',
+          priority: 'P3',
+        });
+      }
+      break;
+
+    case 'DSEAR_6_RISK_ASSESSMENT':
+      if (!applyDsearRules) break;
+      if (!moduleData.risk_scenarios || moduleData.risk_scenarios.length === 0) {
+        reasons.push('No DSEAR risk scenarios recorded');
+        quickActions.push({
+          action: 'Populate DSEAR risk table (scenario, likelihood, consequence, existing controls, residual risk, recommended actions)',
+          reason: 'DSEAR requires suitable and sufficient risk assessment of activities involving dangerous substances',
+          priority: 'P2',
+        });
+      }
+      break;
+
+    case 'DSEAR_10_HIERARCHY_OF_CONTROL':
+      if (!applyDsearRules) break;
+      if (!moduleData.hierarchy_decisions || !moduleData.control_strategy) {
+        reasons.push('Hierarchy of control not documented');
+        quickActions.push({
+          action: 'Document hierarchy of control decisions (eliminate/substitute dangerous substances, reduce quantities, engineering controls, administrative controls, PPE) for key scenarios',
+          reason: 'DSEAR requires application of hierarchy of control to minimize explosion risk',
+          priority: 'P3',
+        });
+      }
+      break;
+
+    case 'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE':
+      if (!applyDsearRules) break;
+      if (!moduleData.emergency_arrangements || !moduleData.explosion_response_plan) {
+        reasons.push('Explosion emergency response not documented');
+        quickActions.push({
+          action: 'Document explosion/fire emergency response arrangements, isolation procedures, alarm systems, evacuation interfaces with fire strategy, emergency drills',
+          reason: 'DSEAR requires emergency arrangements proportionate to explosion risk; interfaces with fire evacuation',
+          priority: 'P2',
+        });
+      }
+      break;
+  }
+
+  // Determine if there's an actionable info gap
+  const hasInfoGap = outcome === 'info_gap' || quickActions.length > 0;
+
+  return {
+    hasInfoGap,
+    reasons,
+    quickActions,
+  };
+}
+
+export function getModuleInfoGapTitle(moduleKey: string): string {
+  switch (moduleKey) {
+    case 'A1_DOC_CONTROL':
+      return 'Document Control Information Gaps';
+    case 'A4_MANAGEMENT_CONTROLS':
+    case 'FRA_6_MANAGEMENT_SYSTEMS':
+      return 'Management Systems Information Gaps';
+    case 'A5_EMERGENCY_ARRANGEMENTS':
+    case 'FRA_7_EMERGENCY_ARRANGEMENTS':
+      return 'Emergency Arrangements Information Gaps';
+    case 'FRA_1_HAZARDS':
+      return 'Hazard Identification Information Gaps';
+    case 'FRA_2_ESCAPE_ASIS':
+      return 'Means of Escape Information Gaps';
+    case 'FRA_3_PROTECTION_ASIS':
+    case 'FRA_3_ACTIVE_SYSTEMS':
+      return 'Active Fire Protection Information Gaps';
+    case 'FRA_4_PASSIVE_PROTECTION':
+      return 'Passive Fire Protection Information Gaps';
+    case 'FRA_8_FIREFIGHTING_EQUIPMENT':
+      return 'Firefighting Equipment Information Gaps';
+    case 'FRA_5_EXTERNAL_FIRE_SPREAD':
+      return 'External Fire Spread Information Gaps';
+    case 'FRA_4_SIGNIFICANT_FINDINGS':
+    case 'FRA_90_SIGNIFICANT_FINDINGS':
+      return 'Assessment Completion Information Gaps';
+    default:
+      return 'Information Gaps';
+  }
+}
