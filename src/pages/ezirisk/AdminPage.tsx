@@ -59,6 +59,12 @@ export default function AdminPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+          <div className="px-8 py-4 border-b border-slate-200 bg-slate-50">
+            <p className="text-sm text-slate-600">
+              Platform API credentials and provider URLs are managed via environment variables and are not editable in-app.
+            </p>
+          </div>
+
           {activeTab === 'organisation' && (
             <OrganisationBranding />
           )}
@@ -99,21 +105,21 @@ export default function AdminPage() {
           {activeTab === 'assessment-settings' && (
             <div className="p-8">
               <h2 className="text-xl font-semibold text-slate-900 mb-4">Assessment Settings</h2>
-              <p className="text-sm text-slate-600">Configure default assessment parameters and workflows.</p>
+              <p className="text-sm text-slate-600">Assessment defaults are managed centrally by the platform team.</p>
             </div>
           )}
 
           {activeTab === 'recommendations' && (
             <div className="p-8">
               <h2 className="text-xl font-semibold text-slate-900 mb-4">Recommendations Management</h2>
-              <p className="text-sm text-slate-600">Manage recommendation templates and approval workflows.</p>
+              <p className="text-sm text-slate-600">Recommendation templates and workflows are platform-managed.</p>
             </div>
           )}
 
           {activeTab === 'document-control' && (
             <div className="p-8">
               <h2 className="text-xl font-semibold text-slate-900 mb-4">Document Control</h2>
-              <p className="text-sm text-slate-600">Configure document numbering, versioning, and approval processes.</p>
+              <p className="text-sm text-slate-600">Document numbering, versioning, and approval rules are centrally managed.</p>
             </div>
           )}
 
