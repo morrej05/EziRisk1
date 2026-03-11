@@ -31,14 +31,17 @@ export function runFsdConsistencyChecks(context: {
   const fsd4 = modules.find((m) => m.module_key === 'FSD_4_PASSIVE_PROTECTION');
   const fsd5 = modules.find((m) => m.module_key === 'FSD_5_ACTIVE_SYSTEMS');
   const fsd6 = modules.find((m) => m.module_key === 'FSD_6_FRS_ACCESS');
+  const fsd7 = modules.find((m) => m.module_key === 'FSD_7_DRAWINGS');
   const fsd8 = modules.find((m) => m.module_key === 'FSD_8_SMOKE_CONTROL');
+  const fsd9 = modules.find((m) => m.module_key === 'FSD_9_CONSTRUCTION_PHASE');
 
   checkEvacuationStrategyDependencies(flags, fsd2, fsd8, fsd4);
   checkHeightFirefighting(flags, a2, fsd6);
-  checkGuidanceRouteConsistency(flags, fsd1, modules);
+  checkGuidanceRouteConsistency(flags, fsd1, modules, fsd7);
   checkSmokeControlConsistency(flags, fsd8);
   checkSuppressionConsistency(flags, fsd5);
   checkDeviationsWithoutJustification(flags, fsd1);
+  checkConstructionPhaseDependencies(flags, fsd9);
   checkInformationGapConcentration(flags, modules);
 
   flags.sort((a, b) => {
@@ -94,6 +97,12 @@ function checkEvacuationStrategyDependencies(
       !fsd4.data.compartmentation_strategy ||
       fsd4.data.compartmentation_strategy.trim().length < 20;
 
+    const passiveProtectionMissing =
+      !fsd4 ||
+      fsd4.outcome === 'info_gap' ||
+      !isMeaningfulText(fsd4.data.structural_fire_resistance_minutes, 2) ||
+      !isMeaningfulText(fsd4.data.penetrations_fire_stopping_strategy);
+
     if (compartmentationMissing) {
       flags.push({
         id: 'CHK-ES-02',
@@ -102,6 +111,36 @@ function checkEvacuationStrategyDependencies(
         detail:
           'Evacuation strategy is stay put, which requires robust compartmentation to contain fire and smoke. However, compartmentation strategy is not adequately evidenced or marked as information gap.',
         relatedModules: ['FSD_2_EVAC_STRATEGY', 'FSD_4_PASSIVE_PROTECTION'],
+      });
+    }
+
+    if (passiveProtectionMissing) {
+      flags.push({
+        id: 'CHK-ES-03',
+        severity: 'major',
+        title: 'Stay put strategy requires passive fire protection evidence',
+        detail:
+          'Evacuation strategy is stay put, but supporting passive protection evidence is incomplete. Structural fire resistance assumptions and fire-stopping strategy should be documented to demonstrate containment performance.',
+        relatedModules: ['FSD_2_EVAC_STRATEGY', 'FSD_4_PASSIVE_PROTECTION'],
+      });
+    }
+
+    const smokeControlRelevant = fsd8 && fsd8.data.smoke_control_present !== 'na';
+    const smokeControlMissing =
+      smokeControlRelevant &&
+      (fsd8.outcome === 'info_gap' ||
+        fsd8.data.smoke_control_present === 'unknown' ||
+        (fsd8.data.smoke_control_present === 'yes' &&
+          !isMeaningfulText(fsd8.data.design_standard_or_basis)));
+
+    if (smokeControlMissing) {
+      flags.push({
+        id: 'CHK-ES-04',
+        severity: 'info',
+        title: 'Stay put strategy should confirm smoke control basis where relevant',
+        detail:
+          'Stay put strategy can rely on smoke containment in common areas. Where smoke control is relevant, the strategy should confirm whether smoke control is provided and the associated design basis.',
+        relatedModules: ['FSD_2_EVAC_STRATEGY', 'FSD_8_SMOKE_CONTROL'],
       });
     }
   }
@@ -150,13 +189,14 @@ function checkHeightFirefighting(
 function checkGuidanceRouteConsistency(
   flags: AssuranceFlag[],
   fsd1: ModuleInstance | undefined,
-  modules: ModuleInstance[]
+  modules: ModuleInstance[],
+  fsd7: ModuleInstance | undefined
 ): void {
   if (!fsd1) return;
 
   const regulatoryFramework = fsd1.data.regulatory_framework;
 
-  if (regulatoryFramework === 'BS7974') {
+  if (regulatoryFramework === 'BS7974' || regulatoryFramework === 'fire_engineered') {
     const hasModellingModule = modules.some(
       (m) =>
         m.module_key.includes('SCENARIO') ||
@@ -173,6 +213,51 @@ function checkGuidanceRouteConsistency(
         detail:
           'Regulatory framework is BS 7974 (engineered approach), but design fire scenarios, ASET/RSET calculations, or modelling assumptions are not evidenced.',
         relatedModules: ['FSD_1_REG_BASIS'],
+      });
+    }
+
+    const deviations = Array.isArray(fsd1.data.deviations) ? fsd1.data.deviations : [];
+    const documentedDeviations = deviations.filter((d: any) => d.topic || d.deviation);
+    const fullyJustifiedDeviations = documentedDeviations.filter(
+      (d: any) => isMeaningfulText(d.justification, 10)
+    );
+
+    if (documentedDeviations.length === 0 || fullyJustifiedDeviations.length !== documentedDeviations.length) {
+      flags.push({
+        id: 'CHK-GD-03',
+        severity: 'major',
+        title: 'Fire engineered basis requires a justified deviations register',
+        detail:
+          'Regulatory framework is fire engineered, but deviations/alternative solutions are not fully documented and justified. A complete deviations register is required for traceable design assurance.',
+        relatedModules: ['FSD_1_REG_BASIS'],
+      });
+    }
+
+    const standards = Array.isArray(fsd1.data.standards_referenced)
+      ? fsd1.data.standards_referenced.filter((s: string) => !!s)
+      : [];
+    const assumptionsWeak = !isMeaningfulText(fsd1.data.key_assumptions, 50);
+
+    if (standards.length === 0 || assumptionsWeak) {
+      flags.push({
+        id: 'CHK-GD-04',
+        severity: 'major',
+        title: 'Fire engineered basis needs standards and design assumptions',
+        detail:
+          'Fire engineered strategy should cite supporting standards/design basis and record key design assumptions. These items are missing or insufficiently defined.',
+        relatedModules: ['FSD_1_REG_BASIS'],
+      });
+    }
+
+    const hasDrawingEvidence = hasAdequateDrawingsEvidence(fsd7);
+    if (!hasDrawingEvidence) {
+      flags.push({
+        id: 'CHK-GD-05',
+        severity: 'major',
+        title: 'Fire engineered basis requires drawings and schedule evidence',
+        detail:
+          'Fire engineered strategy should be backed by coordinated strategy drawings/schedules. Current drawings evidence is limited or missing.',
+        relatedModules: ['FSD_1_REG_BASIS', 'FSD_7_DRAWINGS'],
       });
     }
   }
@@ -247,17 +332,70 @@ function checkSuppressionConsistency(
     const coverageUndocumented =
       !fsd5.data.sprinkler_notes || fsd5.data.sprinkler_notes.trim().length < 20;
 
-    if (standardUnknown || coverageUndocumented) {
+    const waterSupplyAssumptionsMissing = !isMeaningfulText(fsd5.data.interface_dependencies, 20);
+
+    if (standardUnknown || coverageUndocumented || waterSupplyAssumptionsMissing) {
       flags.push({
         id: 'CHK-SP-01',
         severity: 'major',
         title: 'Suppression system without adequate specification',
         detail:
-          'Sprinkler or suppression system is present, but coverage, standard, or design assumptions are not adequately documented.',
+          'Sprinkler or suppression system is present, but required design evidence is incomplete (standard, coverage basis, or water supply/system assumptions).',
         relatedModules: ['FSD_5_ACTIVE_SYSTEMS'],
       });
     }
   }
+}
+
+function checkConstructionPhaseDependencies(
+  flags: AssuranceFlag[],
+  fsd9: ModuleInstance | undefined
+): void {
+  if (!fsd9 || fsd9.data.construction_phase_applicable !== 'yes') return;
+
+  const temporaryEscapeMissing =
+    fsd9.data.temporary_means_of_escape === 'unknown' ||
+    fsd9.data.temporary_means_of_escape === 'inadequate';
+
+  if (temporaryEscapeMissing) {
+    flags.push({
+      id: 'CHK-CP-01',
+      severity: 'critical',
+      title: 'Construction phase requires temporary means of escape',
+      detail:
+        'Construction phase fire safety is marked as applicable, but temporary means of escape arrangements are unknown or inadequate.',
+      relatedModules: ['FSD_9_CONSTRUCTION_PHASE'],
+    });
+  }
+
+  const constructionFirePlanMissing =
+    fsd9.data.fire_plan_exists === 'unknown' || fsd9.data.fire_plan_exists === 'no';
+
+  if (constructionFirePlanMissing) {
+    flags.push({
+      id: 'CHK-CP-02',
+      severity: 'major',
+      title: 'Construction phase requires fire plan and controls',
+      detail:
+        'Construction phase fire safety is applicable, but a construction fire plan/controls are not confirmed as in place.',
+      relatedModules: ['FSD_9_CONSTRUCTION_PHASE'],
+    });
+  }
+}
+
+function hasAdequateDrawingsEvidence(fsd7: ModuleInstance | undefined): boolean {
+  if (!fsd7) return false;
+
+  const checklist = fsd7.data.drawings_checklist || {};
+  const completedChecklist = Object.values(checklist).filter(Boolean).length;
+  const uploadedCount = Array.isArray(fsd7.data.drawings_uploaded) ? fsd7.data.drawings_uploaded.length : 0;
+
+  return completedChecklist >= 3 && uploadedCount > 0;
+}
+
+function isMeaningfulText(value: unknown, minLength = 20): boolean {
+  if (value === null || value === undefined) return false;
+  return String(value).trim().length >= minLength;
 }
 
 function checkDeviationsWithoutJustification(
