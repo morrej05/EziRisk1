@@ -294,6 +294,10 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
     recordToc('Assurance Checks');
     page = drawAssuranceChecks(page, computedSummary.assuranceFlags, pdfDoc, isDraft, totalPages, font, fontBold);
   }
+  ({ page, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
+  recordToc('Design Assurance Commentary');
+  page = drawDesignAssuranceCommentary(page, computedSummary, actions, pdfDoc, isDraft, totalPages, font, fontBold);
+
 
   ({ page, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
   recordToc('Purpose and Scope');
@@ -1800,6 +1804,82 @@ function drawAssuranceChecks(
       yPosition -= 13;
     }
 
+    yPosition -= 10;
+  }
+
+  return page;
+}
+function drawDesignAssuranceCommentary(
+  page: PDFPage,
+  summary: any,
+  actions: Action[],
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any
+): PDFPage {
+  let yPosition = PAGE_TOP_Y;
+
+  const assuranceLevel = summary?.computedOutcome === 'compliant' ? 'high' :
+    summary?.computedOutcome === 'minor_def' || summary?.computedOutcome === 'info_gap' ? 'medium' :
+      summary?.computedOutcome === 'material_def' ? 'low' : 'medium';
+  const deviationCount = Array.isArray(summary?.deviations) ? summary.deviations.length : 0;
+  const infoGapCount = Array.isArray(summary?.infoGaps) ? summary.infoGaps.length : 0;
+  const assuranceFlags = Array.isArray(summary?.assuranceFlags) ? summary.assuranceFlags : [];
+  const criticalFlagCount = assuranceFlags.filter((flag: any) => flag.severity === 'critical').length;
+  const highFlagCount = assuranceFlags.filter((flag: any) => flag.severity === 'high').length;
+  const openActionCount = actions.filter((action) => !['closed', 'complete', 'completed', 'resolved'].includes((action.status || '').toLowerCase())).length;
+
+  const levelSentence = assuranceLevel === 'low'
+    ? 'Overall assurance is currently LOW, indicating material residual risk within the presented fire strategy evidence base.'
+    : assuranceLevel === 'medium'
+      ? 'Overall assurance is currently MEDIUM, indicating the strategy direction is credible but requires targeted improvement and closure of outstanding matters.'
+      : 'Overall assurance is currently HIGH, indicating the strategy broadly aligns with the stated design basis and applicable guidance subject to routine close-out actions.';
+
+  const strengthsSentence = assuranceLevel === 'low'
+    ? 'The assessment still demonstrates a structured design approach across core modules, which provides a foundation for remediation and re-validation.'
+    : assuranceLevel === 'medium'
+      ? 'The assessment demonstrates a coherent design approach with many core components addressed and a workable basis for compliance refinement.'
+      : 'The assessment demonstrates a coherent and coordinated design approach, with key strategy modules generally addressed to a strong assurance standard.';
+
+  const riskSentence = assuranceLevel === 'low'
+    ? `Key uncertainties remain elevated, including ${deviationCount} recorded deviation${deviationCount === 1 ? '' : 's'}, ${infoGapCount} information gap${infoGapCount === 1 ? '' : 's'}, and ${criticalFlagCount + highFlagCount} high-severity assurance check${criticalFlagCount + highFlagCount === 1 ? '' : 's'} that require prompt technical resolution.`
+    : assuranceLevel === 'medium'
+      ? `Residual uncertainty is driven by ${deviationCount} deviation${deviationCount === 1 ? '' : 's'}, ${infoGapCount} information gap${infoGapCount === 1 ? '' : 's'}, and ${criticalFlagCount + highFlagCount} high-severity assurance check${criticalFlagCount + highFlagCount === 1 ? '' : 's'}; these should be addressed before final acceptance.`
+      : `Remaining uncertainty is limited but not absent, with ${deviationCount} deviation${deviationCount === 1 ? '' : 's'}, ${infoGapCount} information gap${infoGapCount === 1 ? '' : 's'}, and ${criticalFlagCount + highFlagCount} high-severity assurance check${criticalFlagCount + highFlagCount === 1 ? '' : 's'} requiring managed closure.`;
+
+  const acceptabilitySentence = assuranceLevel === 'low'
+    ? `On the current evidence, the strategy should not be treated as fully acceptable until critical issues are resolved and the ${openActionCount} open action${openActionCount === 1 ? '' : 's'} are demonstrably progressed.`
+    : assuranceLevel === 'medium'
+      ? `The strategy may be considered conditionally acceptable, subject to timely completion of ${openActionCount} open action${openActionCount === 1 ? '' : 's'} and verification of outstanding evidence.`
+      : `The strategy is acceptable in principle, subject to normal governance and completion of ${openActionCount} open action${openActionCount === 1 ? '' : 's'} to formally close residual matters.`;
+
+  const paragraphs = [levelSentence, strengthsSentence, riskSentence, acceptabilitySentence];
+
+  page.drawText('DESIGN ASSURANCE COMMENTARY', {
+    x: MARGIN,
+    y: yPosition,
+    size: 16,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  yPosition -= 30;
+
+  for (const paragraph of paragraphs) {
+    const lines = wrapText(sanitizePdfText(paragraph), CONTENT_WIDTH, 10, font);
+    for (const line of lines) {
+      ({ page, yPosition } = ensurePageSpace(18, page, yPosition, pdfDoc, isDraft, totalPages));
+      page.drawText(line, {
+        x: MARGIN,
+        y: yPosition,
+        size: 10,
+        font,
+        color: rgb(0.15, 0.15, 0.15),
+      });
+      yPosition -= 14;
+    }
     yPosition -= 10;
   }
 
