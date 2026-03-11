@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { getModuleName } from '../modules/moduleCatalog';
 import { detectInfoGaps } from '../../utils/infoGapQuickActions';
-import { listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, listAttachments, type Attachment } from '../supabase/attachments';
 import {
   fsdPurposeAndScopeText,
   fsdLimitationsText,
@@ -161,6 +161,15 @@ function mapModuleValueToLabel(value: string): string {
 
 function applyModuleDetailLabelOverride(label: string, value: string): string {
   return MODULE_DETAIL_LABEL_OVERRIDES[`${label}: ${value}`] ?? `${label}: ${value}`;
+}
+
+function stripModuleCodePrefix(moduleName: string): string {
+  return moduleName.replace(/^[A-Z]+-\d+\s*[–-]\s*/u, '').trim();
+}
+
+function isEmbeddableImageAttachment(attachment: Attachment): boolean {
+  const fileType = attachment.file_type.toLowerCase();
+  return fileType === 'image/png' || fileType === 'image/jpg' || fileType === 'image/jpeg';
 }
 function drawTableOfContents(
   pdfDoc: PDFDocument,
@@ -374,6 +383,8 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
     ({ page, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
     recordToc('Attachments Index');
     ({ page, yPosition } = drawAttachmentsIndex(page, yPosition, attachments, filteredModules, actions, pdfDoc, isDraft, totalPages, font, fontBold));
+
+    ({ page, yPosition } = await drawAttachmentPages(page, yPosition, attachments, filteredModules, actions, pdfDoc, isDraft, totalPages, font, fontBold));
   }
 
   drawTableOfContents(pdfDoc, totalPages, tocPage, tocEntries, font, fontBold);
@@ -419,7 +430,7 @@ function drawModuleSummary(
 
   ({ page: currentPage, yPosition } = ensurePageSpace(90, currentPage, yPosition, pdfDoc, isDraft, totalPages));
 
-  const moduleName = getModuleName(moduleInstance.module_key);
+  const moduleName = stripModuleCodePrefix(getModuleName(moduleInstance.module_key));
   yPosition = drawSectionHeaderBar({
     page: currentPage,
     x: MARGIN,
@@ -1078,7 +1089,7 @@ function drawActionRegister(
     const priorityBadgeHeight = 8;
     const priorityLabelWidth = fontBold.widthOfTextAtSize(priorityLabel, 7);
     const priorityBadgeWidth = Math.min(priorityColumnWidth - 14, Math.max(18, priorityLabelWidth + (priorityBadgePaddingX * 2)));
-    const priorityBadgeY = rowTopY - ((rowHeight - priorityBadgeHeight) / 2);
+    const priorityBadgeY = rowBottomY + ((rowHeight - priorityBadgeHeight) / 2);
     currentPage.drawRectangle({
       x: priorityColumnX,
       y: priorityBadgeY,
@@ -1088,7 +1099,7 @@ function drawActionRegister(
     });
     currentPage.drawText(priorityLabel, {
       x: priorityColumnX + priorityBadgePaddingX,
-      y: priorityBadgeY + 1,
+      y: priorityBadgeY + ((priorityBadgeHeight - 7) / 2) + 0.5,
       size: 7,
       font: fontBold,
       color: rgb(1, 1, 1),
@@ -1245,6 +1256,135 @@ function drawAttachmentsIndex(
   }
 
   return { page, yPosition };
+}
+
+async function drawAttachmentPages(
+  page: PDFPage,
+  startY: number,
+  attachments: Attachment[],
+  moduleInstances: ModuleInstance[],
+  actions: Action[],
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any
+): Promise<{ page: PDFPage; yPosition: number }> {
+  let currentPage = page;
+  let yPosition = startY;
+
+  const imageAttachments = attachments.filter(isEmbeddableImageAttachment);
+
+  if (imageAttachments.length === 0) {
+    return { page: currentPage, yPosition };
+  }
+
+  for (let i = 0; i < imageAttachments.length; i += 1) {
+    const attachment = imageAttachments[i];
+    ({ page: currentPage } = addNewPage(pdfDoc, isDraft, totalPages));
+    yPosition = PAGE_TOP_Y;
+
+    const refNum = `E-${String(i + 1).padStart(3, '0')}`;
+
+    currentPage.drawText('ATTACHMENT EVIDENCE', {
+      x: MARGIN,
+      y: yPosition,
+      size: 14,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+    yPosition -= 20;
+
+    currentPage.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
+      x: MARGIN,
+      y: yPosition,
+      size: 11,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    yPosition -= 18;
+
+    if (attachment.caption) {
+      const captionLines = wrapText(attachment.caption, CONTENT_WIDTH, 9, font);
+      for (const line of captionLines) {
+        currentPage.drawText(line, {
+          x: MARGIN,
+          y: yPosition,
+          size: 9,
+          font,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+        yPosition -= 11;
+      }
+    }
+
+    if (attachment.linked_module_instance_id) {
+      const linkedModule = moduleInstances.find((m) => m.id === attachment.linked_module_instance_id);
+      if (linkedModule) {
+        const moduleName = stripModuleCodePrefix(getModuleName(linkedModule.module_key));
+        currentPage.drawText(`Module: ${sanitizePdfText(moduleName)}`, {
+          x: MARGIN,
+          y: yPosition,
+          size: 8,
+          font,
+          color: rgb(0.45, 0.45, 0.45),
+        });
+        yPosition -= 11;
+      }
+    }
+
+    if (attachment.linked_action_id) {
+      const linkedAction = actions.find((a) => a.id === attachment.linked_action_id);
+      if (linkedAction?.reference_number) {
+        currentPage.drawText(`Action: ${sanitizePdfText(linkedAction.reference_number)}`, {
+          x: MARGIN,
+          y: yPosition,
+          size: 8,
+          font,
+          color: rgb(0.45, 0.45, 0.45),
+        });
+        yPosition -= 11;
+      }
+    }
+
+    yPosition -= 8;
+
+    const bytes = await fetchAttachmentBytes(attachment);
+    if (!bytes) {
+      currentPage.drawText('Unable to load image.', {
+        x: MARGIN,
+        y: yPosition,
+        size: 9,
+        font,
+        color: rgb(0.65, 0.2, 0.2),
+      });
+      continue;
+    }
+
+    let embeddedImage;
+    const fileType = attachment.file_type.toLowerCase();
+    if (fileType === 'image/png') {
+      embeddedImage = await pdfDoc.embedPng(bytes);
+    } else {
+      embeddedImage = await pdfDoc.embedJpg(bytes);
+    }
+
+    const rawImage = embeddedImage.scale(1);
+    const maxWidth = CONTENT_WIDTH;
+    const maxHeight = yPosition - MARGIN;
+    const scale = Math.min(maxWidth / rawImage.width, maxHeight / rawImage.height, 1);
+    const imageWidth = rawImage.width * scale;
+    const imageHeight = rawImage.height * scale;
+
+    currentPage.drawImage(embeddedImage, {
+      x: MARGIN,
+      y: yPosition - imageHeight,
+      width: imageWidth,
+      height: imageHeight,
+    });
+  }
+
+  return { page: currentPage, yPosition };
 }
 
 function drawPurposeAndScope(
