@@ -958,17 +958,25 @@ function drawActionRegister(
   yPosition -= 30;
 
   const colX1 = MARGIN;
-  const colX2 = MARGIN + 320;
-  const colX3 = MARGIN + 395;
-  const colX4 = MARGIN + 445;
-  const rowHeight = 14;
+  const numberColumnWidth = 12;
+  const columnGap = 8;
+  const actionColumnWidth = 300;
+  const priorityColumnWidth = 52;
+  const statusColumnWidth = 52;
+
+  const actionColumnX = colX1 + numberColumnWidth + columnGap;
+  const colX2 = actionColumnX + actionColumnWidth + columnGap;
+  const colX3 = colX2 + priorityColumnWidth + columnGap;
+  const colX4 = colX3 + statusColumnWidth + columnGap;
+  const lineHeight = 10;
+  const minimumRowHeight = 16;
 
   currentPage.drawText('#', { x: colX1, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  currentPage.drawText('Action', { x: colX1 + 15, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  currentPage.drawText('Action', { x: actionColumnX, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
   currentPage.drawText('Priority', { x: colX2, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
   currentPage.drawText('Status', { x: colX3, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
   currentPage.drawText('Target', { x: colX4, y: yPosition, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
-  yPosition -= rowHeight + 2;
+  yPosition -= minimumRowHeight + 2;
 
   currentPage.drawLine({
     start: { x: MARGIN, y: yPosition + 2 },
@@ -982,8 +990,6 @@ function drawActionRegister(
   const moduleById = new Map(moduleInstances.map((module) => [module.id, module]));
 
   sortedActions.forEach((action, index) => {
-    ({ page: currentPage, yPosition } = ensurePageSpace(18, currentPage, yPosition, pdfDoc, isDraft, totalPages));
-
     const linkedModule = moduleById.get(action.module_instance_id);
     const actionText = deriveFsdProfessionalActionText({
       recommendedAction: action.recommended_action,
@@ -994,37 +1000,49 @@ function drawActionRegister(
       category: action.category,
     });
     const ownerDisplay = action.owner_display_name?.trim() || '-';
-    const actionLines = wrapText(`${actionText} (Owner: ${ownerDisplay})`, 300, 7, font);
-    const firstLine = actionLines[0] || '';
+    const actionLines = wrapText(actionText, actionColumnWidth - 2, 7, font);
+    const ownerLines = wrapText(`Owner: ${ownerDisplay}`, actionColumnWidth - 2, 7, font);
+    const actionBlockLines = [...actionLines, ...ownerLines];
+    const rowHeight = Math.max(minimumRowHeight, actionBlockLines.length * lineHeight + 4);
+
+    ({ page: currentPage, yPosition } = ensurePageSpace(rowHeight + 6, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+
+    const rowTopY = yPosition;
+    const rowBottomY = yPosition - rowHeight;
 
     currentPage.drawText(`${index + 1}`, {
       x: colX1,
-      y: yPosition,
+      y: rowTopY,
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
 
-    currentPage.drawText(firstLine, {
-      x: colX1 + 15,
-      y: yPosition,
-      size: 7,
-      font,
-      color: rgb(0.2, 0.2, 0.2),
+    let actionY = rowTopY;
+    actionBlockLines.forEach((line, lineIndex) => {
+      currentPage.drawText(line, {
+        x: actionColumnX,
+        y: actionY,
+        size: 7,
+        font: lineIndex >= actionLines.length ? fontBold : font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      actionY -= lineHeight;
     });
 
     const priorityBand = action.priority_band?.trim() || '-';
     const priorityColor = getPriorityColor(priorityBand);
+    const priorityBadgeY = rowTopY - 2;
     currentPage.drawRectangle({
       x: colX2,
-      y: yPosition - 2,
-      width: 30,
+      y: priorityBadgeY,
+      width: priorityColumnWidth - 18,
       height: 10,
       color: priorityColor,
     });
     currentPage.drawText(sanitizePdfText(priorityBand), {
-      x: colX2 + 5,
-      y: yPosition,
+      x: colX2 + 4,
+      y: rowTopY,
       size: 7,
       font: fontBold,
       color: rgb(1, 1, 1),
@@ -1032,7 +1050,7 @@ function drawActionRegister(
 
     currentPage.drawText(sanitizePdfText(action.status?.trim() || '-'), {
       x: colX3,
-      y: yPosition,
+      y: rowTopY,
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
@@ -1041,13 +1059,20 @@ function drawActionRegister(
     const targetDate = action.target_date ? formatDate(action.target_date) : '-';
     currentPage.drawText(targetDate, {
       x: colX4,
-      y: yPosition,
+      y: rowTopY,
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
 
-    yPosition -= rowHeight;
+    currentPage.drawLine({
+      start: { x: MARGIN, y: rowBottomY },
+      end: { x: PAGE_WIDTH - MARGIN, y: rowBottomY },
+      thickness: 0.35,
+      color: rgb(0.9, 0.9, 0.9),
+    });
+
+    yPosition = rowBottomY - 4;
   });
 
   return { page: currentPage, yPosition };
