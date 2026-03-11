@@ -992,8 +992,9 @@ function drawActionRegister(
   const statusColumnWidth = 62;
   const targetColumnWidth = 58;
   const actionColumnWidth = tableWidth - numberColumnWidth - priorityColumnWidth - statusColumnWidth - targetColumnWidth - (columnGap * 4);
-  const rowLineHeight = 10;
-  const minimumRowHeight = 22;
+  const rowLineHeight = 9;
+  const actionRowTopPadding = 1;
+  const minimumRowHeight = 20;
   const headerHeight = 18;
   const tableHeaderY = yPosition;
 
@@ -1037,7 +1038,8 @@ function drawActionRegister(
       category: action.category,
     });
     const actionLines = wrapText(actionText, actionColumnWidth - 2, 7, font);
-    const rowHeight = Math.max(minimumRowHeight, actionLines.length * rowLineHeight + 6);
+    const actionTextHeight = actionLines.length * rowLineHeight;
+    const rowHeight = Math.max(minimumRowHeight, actionTextHeight + 4);
 
     ({ page: currentPage, yPosition } = ensurePageSpace(rowHeight + headerHeight + 8, currentPage, yPosition, pdfDoc, isDraft, totalPages));
     if (yPosition + 2 - rowHeight < MARGIN + 40) {
@@ -1051,13 +1053,13 @@ function drawActionRegister(
 
     currentPage.drawText(`${index + 1}`, {
       x: tableX,
-      y: rowTopY,
+      y: rowTopY - ((rowHeight - 7) / 2),
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
     });
 
-    let actionY = rowTopY;
+    let actionY = rowTopY - actionRowTopPadding;
     actionLines.forEach((line) => {
       currentPage.drawText(line, {
         x: actionColumnX,
@@ -1071,17 +1073,22 @@ function drawActionRegister(
 
     const priorityBand = action.priority_band?.trim() || '-';
     const priorityColor = getPriorityColor(priorityBand);
-    const priorityBadgeY = rowTopY - 2;
+    const priorityLabel = sanitizePdfText(priorityBand);
+    const priorityBadgePaddingX = 3;
+    const priorityBadgeHeight = 8;
+    const priorityLabelWidth = fontBold.widthOfTextAtSize(priorityLabel, 7);
+    const priorityBadgeWidth = Math.min(priorityColumnWidth - 14, Math.max(18, priorityLabelWidth + (priorityBadgePaddingX * 2)));
+    const priorityBadgeY = rowTopY - ((rowHeight - priorityBadgeHeight) / 2);
     currentPage.drawRectangle({
       x: priorityColumnX,
       y: priorityBadgeY,
-      width: priorityColumnWidth - 18,
-      height: 10,
+      width: priorityBadgeWidth,
+      height: priorityBadgeHeight,
       color: priorityColor,
     });
-    currentPage.drawText(sanitizePdfText(priorityBand), {
-      x: priorityColumnX + 4,
-      y: rowTopY,
+    currentPage.drawText(priorityLabel, {
+      x: priorityColumnX + priorityBadgePaddingX,
+      y: priorityBadgeY + 1,
       size: 7,
       font: fontBold,
       color: rgb(1, 1, 1),
@@ -1089,7 +1096,7 @@ function drawActionRegister(
 
     currentPage.drawText(sanitizePdfText(action.status?.trim() || '-'), {
       x: statusColumnX,
-      y: rowTopY,
+      y: rowTopY - ((rowHeight - 7) / 2),
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
@@ -1098,7 +1105,7 @@ function drawActionRegister(
     const targetDate = action.target_date ? formatDate(action.target_date) : '-';
     currentPage.drawText(targetDate, {
       x: targetColumnX,
-      y: rowTopY,
+      y: rowTopY - ((rowHeight - 7) / 2),
       size: 7,
       font,
       color: rgb(0.2, 0.2, 0.2),
