@@ -458,79 +458,242 @@ function drawModuleKeyDetails(
   });
   yPosition -= 16;
 
+  type FieldConfig = { label: string; keys: string[] };
+
+  const dataCandidates: Record<string, any>[] = [data];
+  for (const key of ['responses', 'answers', 'scoringData', 'fields']) {
+    const nested = data?.[key];
+    if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+      dataCandidates.push(nested);
+    }
+  }
+
   const details: string[] = [];
+  const seen = new Set<string>();
+
+  const isValueEmpty = (value: any): boolean => {
+    if (value === null || value === undefined) return true;
+    if (typeof value === 'string') return value.trim().length === 0 || value === 'unknown' || value === 'na';
+    if (Array.isArray(value)) return value.length === 0;
+    if (typeof value === 'object') return Object.keys(value).length === 0;
+    return false;
+  };
+
+  const formatValue = (value: any): string | null => {
+    if (isValueEmpty(value)) return null;
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (Array.isArray(value)) {
+      const items = value
+        .map((item) => {
+          if (item === null || item === undefined) return null;
+          if (typeof item === 'string') return item.trim();
+          if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+          if (typeof item === 'object') {
+            const pairs = Object.entries(item)
+              .filter(([, v]) => !isValueEmpty(v))
+              .map(([k, v]) => `${k}: ${String(v)}`);
+            return pairs.length > 0 ? pairs.join(', ') : null;
+          }
+          return null;
+        })
+        .filter((item): item is string => !!item && item.trim().length > 0);
+      return items.length > 0 ? items.join(', ') : null;
+    }
+    if (typeof value === 'object') {
+      const pairs = Object.entries(value)
+        .filter(([, v]) => !isValueEmpty(v))
+        .map(([k, v]) => `${k}: ${String(v)}`);
+      return pairs.length > 0 ? pairs.join(', ') : null;
+    }
+    return String(value);
+  };
+
+  const addField = (label: string, keys: string[]) => {
+    for (const source of dataCandidates) {
+      for (const key of keys) {
+        const value = source?.[key];
+        const formatted = formatValue(value);
+        if (formatted && !seen.has(`${label}:${formatted}`)) {
+          details.push(`${label}: ${formatted}`);
+          seen.add(`${label}:${formatted}`);
+          return;
+        }
+      }
+    }
+  };
+
+  const addFields = (fields: FieldConfig[]) => {
+    for (const field of fields) {
+      addField(field.label, field.keys);
+    }
+  };
 
   switch (moduleInstance.module_key) {
     case 'A2_BUILDING_PROFILE':
-      if (data.building_height_m) details.push(`Height: ${data.building_height_m}m`);
-      if (data.number_of_storeys) details.push(`Storeys: ${data.number_of_storeys}`);
-      if (data.total_floor_area_sqm) details.push(`Area: ${data.total_floor_area_sqm} sqm`);
-      if (data.primary_use) details.push(`Use: ${data.primary_use}`);
-      if (data.frame_type) details.push(`Frame: ${data.frame_type}`);
+      addFields([
+        { label: 'Building name', keys: ['building_name'] },
+        { label: 'Height (m)', keys: ['height_m', 'building_height_m'] },
+        { label: 'Storeys', keys: ['number_of_storeys'] },
+        { label: 'Floor area (sqm)', keys: ['floor_area_sqm', 'total_floor_area_sqm'] },
+        { label: 'Primary use', keys: ['building_use_primary', 'primary_use'] },
+        { label: 'Secondary uses', keys: ['secondary_uses'] },
+        { label: 'Construction frame', keys: ['construction_frame', 'frame_type'] },
+      ]);
       break;
 
     case 'A3_PERSONS_AT_RISK':
-      if (data.max_occupancy) details.push(`Max Occupancy: ${data.max_occupancy}`);
-      if (data.normal_occupancy) details.push(`Normal Occupancy: ${data.normal_occupancy}`);
-      if (data.vulnerable_groups_present === 'yes') {
-        details.push('Vulnerable groups present');
-      }
+      addFields([
+        { label: 'Max occupancy', keys: ['max_occupancy'] },
+        { label: 'Normal occupancy', keys: ['normal_occupancy'] },
+        { label: 'Occupancy profile', keys: ['occupancy_profile'] },
+        { label: 'Vulnerable groups', keys: ['vulnerable_groups', 'vulnerable_groups_present'] },
+        { label: 'Lone working', keys: ['lone_working'] },
+        { label: 'Out-of-hours occupation', keys: ['out_of_hours_occupation'] },
+        { label: 'Evacuation assistance required', keys: ['evacuation_assistance_required'] },
+      ]);
       break;
 
     case 'FSD_1_REG_BASIS':
-      if (data.regulatory_framework_selected) details.push(`Framework: ${data.regulatory_framework_selected}`);
-      if (data.standards_list) {
-        const standardsCount = Array.isArray(data.standards_list) ? data.standards_list.length : 0;
-        details.push(`Standards: ${standardsCount} referenced`);
-      }
+      addFields([
+        { label: 'Regulatory framework', keys: ['regulatory_framework', 'regulatory_framework_selected'] },
+        { label: 'Design objectives', keys: ['design_objectives'] },
+        { label: 'Life safety scope', keys: ['life_safety_scope'] },
+        { label: 'Property protection scope', keys: ['property_protection_scope'] },
+        { label: 'Control body', keys: ['building_reg_control_body'] },
+        { label: 'Standards referenced', keys: ['standards_referenced', 'standards_list'] },
+      ]);
       break;
 
     case 'FSD_2_EVAC_STRATEGY':
-      if (data.evacuation_strategy_type) details.push(`Strategy: ${data.evacuation_strategy_type}`);
-      if (data.travel_distance_compliance) details.push(`Travel distances: ${data.travel_distance_compliance}`);
+      addFields([
+        { label: 'Evacuation strategy', keys: ['evacuation_strategy', 'evacuation_strategy_type'] },
+        { label: 'Alarm philosophy', keys: ['alarm_philosophy'] },
+        { label: 'Management dependencies', keys: ['management_dependencies'] },
+        { label: 'Evacuation lifts', keys: ['evacuation_lifts'] },
+        { label: 'Refuges provided', keys: ['refuges_provided'] },
+        { label: 'Communication method', keys: ['communication_method'] },
+      ]);
       break;
 
     case 'FSD_3_ESCAPE_DESIGN':
-      if (data.escape_route_adequacy) details.push(`Escape routes: ${data.escape_route_adequacy}`);
-      if (data.signage_lighting) details.push(`Signage/lighting: ${data.signage_lighting}`);
+      addFields([
+        { label: 'Travel distance basis', keys: ['travel_distance_basis'] },
+        { label: 'Travel distance limits', keys: ['travel_distance_limits_summary'] },
+        { label: 'Exit capacity calculation', keys: ['exit_capacity_calculation_done'] },
+        { label: 'Exit widths summary', keys: ['exit_widths_summary'] },
+        { label: 'Stairs strategy', keys: ['stairs_strategy'] },
+        { label: 'Final exit security strategy', keys: ['final_exit_security_strategy'] },
+      ]);
       break;
 
     case 'FSD_4_PASSIVE_PROTECTION':
-      if (data.compartmentation_adequacy) details.push(`Compartmentation: ${data.compartmentation_adequacy}`);
-      if (data.fire_doors_status) details.push(`Fire doors: ${data.fire_doors_status}`);
+      addFields([
+        { label: 'Structural fire resistance (mins)', keys: ['structural_fire_resistance_minutes'] },
+        { label: 'Compartmentation strategy', keys: ['compartmentation_strategy'] },
+        { label: 'Compartmentation standard', keys: ['compartmentation_standard'] },
+        { label: 'Fire door ratings', keys: ['fire_door_ratings'] },
+        { label: 'Cavity barriers strategy', keys: ['cavity_barriers_strategy'] },
+        { label: 'Penetrations fire stopping', keys: ['penetrations_fire_stopping_strategy'] },
+      ]);
       break;
 
     case 'FSD_5_ACTIVE_SYSTEMS':
-      if (data.detection_system_present) details.push(`Detection: ${data.detection_system_present}`);
-      if (data.suppression_system_present) details.push(`Suppression: ${data.suppression_system_present}`);
+      addFields([
+        { label: 'Detection/alarm category', keys: ['detection_alarm_design_category'] },
+        { label: 'Alarm cause/effect summary', keys: ['alarm_cause_and_effect_summary'] },
+        { label: 'Emergency lighting principles', keys: ['emergency_lighting_design_principles'] },
+        { label: 'Sprinkler provision', keys: ['sprinkler_provision'] },
+        { label: 'Sprinkler standard', keys: ['sprinkler_standard'] },
+        { label: 'Other suppression', keys: ['suppression_other'] },
+        { label: 'Firefighting equipment strategy', keys: ['fire_fighting_equipment_strategy'] },
+      ]);
       break;
 
     case 'FSD_6_FRS_ACCESS':
-      if (data.access_adequacy) details.push(`Access: ${data.access_adequacy}`);
-      if (data.vehicle_access) details.push(`Vehicle access: ${data.vehicle_access}`);
+      addFields([
+        { label: 'Appliance access routes', keys: ['appliance_access_routes_summary'] },
+        { label: 'Water supplies/hydrants', keys: ['water_supplies_hydrants'] },
+        { label: 'Dry riser', keys: ['dry_riser'] },
+        { label: 'Wet riser', keys: ['wet_riser'] },
+        { label: 'Firefighting shaft', keys: ['firefighting_shaft'] },
+        { label: 'Fire service lift', keys: ['fire_service_lift'] },
+        { label: 'Fire control point location', keys: ['fire_control_point_location'] },
+      ]);
       break;
 
     case 'FSD_7_DRAWINGS':
-      if (data.drawings_checklist) {
-        const checked = Object.values(data.drawings_checklist).filter(Boolean).length;
-        const total = Object.keys(data.drawings_checklist).length;
+      if (data.drawings_checklist || dataCandidates.some((s) => s.drawings_checklist)) {
+        const checklist = data.drawings_checklist || dataCandidates.find((s) => s.drawings_checklist)?.drawings_checklist;
+        const checked = Object.values(checklist).filter(Boolean).length;
+        const total = Object.keys(checklist).length;
         details.push(`Drawings: ${checked}/${total} types provided`);
       }
+      addFields([
+        { label: 'Drawings uploaded', keys: ['drawings_uploaded'] },
+      ]);
       break;
 
     case 'FSD_8_SMOKE_CONTROL':
-      if (data.smoke_control_present) details.push(`Smoke control: ${data.smoke_control_present}`);
-      if (data.system_type && data.smoke_control_present === 'yes') {
-        details.push(`Type: ${data.system_type}`);
-      }
+      addFields([
+        { label: 'Smoke control present', keys: ['smoke_control_present'] },
+        { label: 'System type', keys: ['system_type'] },
+        { label: 'Coverage areas', keys: ['coverage_areas'] },
+        { label: 'Design standard/basis', keys: ['design_standard_or_basis'] },
+        { label: 'Activation and controls', keys: ['activation_and_controls'] },
+      ]);
       break;
 
     case 'FSD_9_CONSTRUCTION_PHASE':
-      if (data.construction_phase_applicable) details.push(`Applicable: ${data.construction_phase_applicable}`);
-      if (data.fire_plan_exists && data.construction_phase_applicable === 'yes') {
-        details.push(`Fire plan: ${data.fire_plan_exists}`);
-      }
+      addFields([
+        { label: 'Construction phase applicable', keys: ['construction_phase_applicable'] },
+        { label: 'Fire plan exists', keys: ['fire_plan_exists'] },
+        { label: 'Hot work controls', keys: ['hot_work_controls'] },
+        { label: 'Temporary detection/alarm', keys: ['temporary_detection_alarm'] },
+        { label: 'Temporary means of escape', keys: ['temporary_means_of_escape'] },
+        { label: 'Combustible storage controls', keys: ['combustible_storage_controls'] },
+        { label: 'Emergency access maintained', keys: ['emergency_access_maintained'] },
+      ]);
       break;
+  }
+
+  const detailSources = dataCandidates;
+  const structuredNotes = detailSources
+    .flatMap((source) => ['notes', 'note', 'comments', 'comment'].map((k) => source?.[k]))
+    .map((value) => formatValue(value))
+    .filter((value): value is string => !!value);
+  if (structuredNotes.length > 0) {
+    details.push(`Notes: ${structuredNotes.join(' | ')}`);
+  }
+
+  const infoGaps = detailSources
+    .flatMap((source) => ['info_gaps', 'information_gaps', 'gaps'].map((k) => source?.[k]))
+    .map((value) => formatValue(value))
+    .filter((value): value is string => !!value);
+  if (infoGaps.length > 0) {
+    details.push(`Information gaps: ${infoGaps.join(' | ')}`);
+  }
+
+  const warnings = detailSources
+    .flatMap((source) => ['warnings', 'warning_flags', 'flags'].map((k) => source?.[k]))
+    .map((value) => formatValue(value))
+    .filter((value): value is string => !!value);
+  if (warnings.length > 0) {
+    details.push(`Warnings: ${warnings.join(' | ')}`);
+  }
+
+  const deviations = detailSources
+    .map((source) => source?.deviations)
+    .filter((value) => Array.isArray(value))
+    .flatMap((value: any) => value)
+    .map((dev: any) => {
+      const topic = formatValue(dev?.topic);
+      const deviationText = formatValue(dev?.deviation);
+      if (!topic && !deviationText) return null;
+      return topic && deviationText ? `${topic} - ${deviationText}` : topic || deviationText;
+    })
+    .filter((value): value is string => !!value);
+  if (deviations.length > 0) {
+    details.push(`Deviations: ${deviations.join(' | ')}`);
   }
 
   for (const detail of details) {
