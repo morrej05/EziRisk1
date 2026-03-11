@@ -123,6 +123,16 @@ const FSD_ALLOWED_MODULE_KEYS = new Set([
   ...MODULE_ORDER.filter((key) => key.startsWith('FSD_')),
 ]);
 
+const MODULE_VALUE_LABELS: Record<string, string> = {
+  stay_put: 'Stay-put evacuation strategy',
+  alarm_only: 'Fire alarm notification only',
+  multiple_stairs: 'Multiple stair cores',
+  fire_engineered: 'Fire engineered design approach',
+};
+
+function mapModuleValueToLabel(value: string): string {
+  return MODULE_VALUE_LABELS[value] ?? value;
+}
 function drawTableOfContents(
   pdfDoc: PDFDocument,
   totalPages: PDFPage[],
@@ -490,12 +500,13 @@ function drawModuleKeyDetails(
       const items = value
         .map((item) => {
           if (item === null || item === undefined) return null;
-          if (typeof item === 'string') return item.trim();
-          if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+           if (typeof item === 'string') return mapModuleValueToLabel(item.trim());
+          if (typeof item === 'number') return String(item);
+          if (typeof item === 'boolean') return item ? 'Yes' : 'No';
           if (typeof item === 'object') {
             const pairs = Object.entries(item)
               .filter(([, v]) => !isValueEmpty(v))
-              .map(([k, v]) => `${k}: ${String(v)}`);
+             .map(([k, v]) => `${k}: ${formatValue(v) ?? String(v)}`);
             return pairs.length > 0 ? pairs.join(', ') : null;
           }
           return null;
@@ -506,9 +517,10 @@ function drawModuleKeyDetails(
     if (typeof value === 'object') {
       const pairs = Object.entries(value)
         .filter(([, v]) => !isValueEmpty(v))
-        .map(([k, v]) => `${k}: ${String(v)}`);
+        .map(([k, v]) => `${k}: ${formatValue(v) ?? String(v)}`);
       return pairs.length > 0 ? pairs.join(', ') : null;
     }
+    if (typeof value === 'string') return mapModuleValueToLabel(value.trim());
     return String(value);
   };
 
