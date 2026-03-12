@@ -86,6 +86,15 @@ type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
 
 type Row = [string, string, string?];
 
+interface LossValuesSummary {
+  buildings: number;
+  plantMachinery: number;
+  stock: number;
+  grossProfitAnnual: number;
+  indemnityMonths: number;
+  effectivePropertyTotal: number;
+}
+
 const RE_SECTION_CONFIG: Record<string, { title: string; key: string }> = {
   RE_02_CONSTRUCTION: { title: 'Construction', key: 'construction' },
   RE_03_OCCUPANCY: { title: 'Occupancy', key: 'occupancy' },
@@ -130,6 +139,44 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function numericOrZero(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getLossValuesSummary(data: Record<string, unknown> | undefined): LossValuesSummary {
+  const d = data || {};
+  const sums = (d.sums_insured as Record<string, unknown>) || (d.property_sums_insured as Record<string, unknown>) || {};
+  const propertySums = (d.property_sums_insured as Record<string, unknown>) || {};
+  const bi = (sums.business_interruption as Record<string, unknown>) || (d.business_interruption as Record<string, unknown>) || {};
+
+  const buildings = numericOrZero(sums.buildings ?? propertySums.buildings ?? d.buildings);
+  const plantMachinery = numericOrZero(
+    sums.plant_machinery ??
+    sums.plantAndMachinery ??
+    propertySums.plant_machinery ??
+    propertySums.plantAndMachinery ??
+    d.plant_machinery
+  );
+  const stock = numericOrZero(sums.stock ?? propertySums.stock ?? d.stock);
+
+  const explicitPropertyTotal = numericOrZero(sums.total ?? sums.total_sum_insured ?? propertySums.total ?? propertySums.total_sum_insured);
+  const derivedPropertyTotal = buildings + plantMachinery + stock;
+  const effectivePropertyTotal = explicitPropertyTotal > 0 ? explicitPropertyTotal : derivedPropertyTotal;
+
+  const grossProfitAnnual = numericOrZero(bi.gross_profit_annual ?? bi.gross_profit ?? d.gross_profit_annual ?? d.gross_profit);
+  const indemnityMonths = numericOrZero(bi.indemnity_period_months ?? d.indemnity_period_months);
+
+  return {
+    buildings,
+    plantMachinery,
+    stock,
+    grossProfitAnnual,
+    indemnityMonths,
+    effectivePropertyTotal,
+  };
+}
+
 function drawParagraph(
   page: PDFPage,
   yPosition: number,
@@ -149,34 +196,48 @@ function drawSimpleTable(
   yPosition: number,
   headers: string[],
   rows: Row[],
-  fonts: { regular: any; bold: any }
-): number {
-  const colWidths = headers.length === 2 ? [180, CONTENT_WIDTH - 180] : [170, 115, CONTENT_WIDTH - 285];
-  const fontSize = 8;
+  fonts: { regular: any; bold: any },
+  options: {
+    colWidths?: number[];
+    fontSize?: number;
+    minRowHeight?: number;
+    onPageBreak?: () => { page: PDFPage; yPosition: number };
+  } = {}
+): { page: PDFPage; yPosition: number } {
+  const colWidths = options.colWidths || (headers.length === 2 ? [180, CONTENT_WIDTH - 180] : [170, 115, CONTENT_WIDTH - 285]);
+  const fontSize = options.fontSize ?? 8.5;
   const lineHeight = 10;
   const cellPaddingX = 6;
   const cellPaddingY = 4;
+  const minRowHeight = options.minRowHeight ?? 16;
+  const bottomSafeY = MARGIN + 20;
   const tableLeft = MARGIN;
   const tableRight = MARGIN + CONTENT_WIDTH;
   let x = MARGIN;
 
-  const headerHeight = 18;
-  page.drawRectangle({
-    x: tableLeft,
-    y: yPosition - headerHeight + 4,
-    width: CONTENT_WIDTH,
-    height: headerHeight,
-    color: rgb(0.94, 0.95, 0.97),
-    borderColor: rgb(0.78, 0.8, 0.84),
-    borderWidth: 0.8,
-  });
+  const drawHeader = (): number => {
+    const headerHeight = 18;
+    page.drawRectangle({
+      x: tableLeft,
+      y: yPosition - headerHeight + 4,
+      width: CONTENT_WIDTH,
+      height: headerHeight,
+      color: rgb(0.94, 0.95, 0.97),
+      borderColor: rgb(0.78, 0.8, 0.84),
+      borderWidth: 0.8,
+    });
 
-  for (let i = 0; i < headers.length; i++) {
-    page.drawText(headers[i], { x: x + cellPaddingX, y: yPosition - 8, size: 8.5, font: fonts.bold, color: rgb(0.08, 0.08, 0.08) });
-    x += colWidths[i];
-  }
+    x = MARGIN;
+    for (let i = 0; i < headers.length; i++) {
+      page.drawText(headers[i], { x: x + cellPaddingX, y: yPosition - 8, size: 8.5, font: fonts.bold, color: rgb(0.08, 0.08, 0.08) });
+      x += colWidths[i];
+    }
 
-  yPosition -= headerHeight;
+    yPosition -= headerHeight;
+    return headerHeight;
+  };
+
+  drawHeader();
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
@@ -185,7 +246,14 @@ function drawSimpleTable(
       return wrapText(value, colWidths[i] - cellPaddingX * 2, fontSize, fonts.regular);
     });
     const maxLines = Math.max(1, ...wrappedCells.map(lines => lines.length));
-    const rowHeight = maxLines * lineHeight + cellPaddingY * 2;
+    const rowHeight = Math.max(minRowHeight, maxLines * lineHeight + cellPaddingY * 2);
+
+    if (yPosition - rowHeight < bottomSafeY && options.onPageBreak) {
+      const pageBreakState = options.onPageBreak();
+      page = pageBreakState.page;
+      yPosition = pageBreakState.yPosition;
+      drawHeader();
+    }
 
     if (rowIndex % 2 === 1) {
       page.drawRectangle({
@@ -238,7 +306,7 @@ function drawSimpleTable(
     color: rgb(0.78, 0.8, 0.84),
   });
 
-  return yPosition - 8;
+  return { page, yPosition: yPosition - 8 };
 }
 
 function getSectionTableRows(module: ModuleInstance): Row[] {
@@ -261,14 +329,13 @@ function getSectionTableRows(module: ModuleInstance): Row[] {
     ];
   }
   if (module.module_key === 'RE_12_LOSS_VALUES') {
-    const sums = (d as any).sums_insured || (d as any).property_sums_insured || {};
-    const bi = sums.business_interruption || (d as any).business_interruption || {};
+    const loss = getLossValuesSummary(d);
     return [
-      ['Buildings', formatValue(sums.buildings)],
-      ['Plant & machinery', formatValue(sums.plant_machinery)],
-      ['Stock / contents', formatValue(sums.stock)],
-      ['BI gross profit (annual)', formatValue(bi.gross_profit_annual || bi.gross_profit)],
-      ['Indemnity period (months)', formatValue(bi.indemnity_period_months)],
+      ['Buildings', formatValue(loss.buildings || '')],
+      ['Plant & machinery', formatValue(loss.plantMachinery || '')],
+      ['Stock / contents', formatValue(loss.stock || '')],
+      ['BI gross profit (annual)', formatValue(loss.grossProfitAnnual || '')],
+      ['Indemnity period (months)', formatValue(loss.indemnityMonths || '')],
     ];
   }
 
@@ -389,20 +456,10 @@ function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { le
   }
 
   if (module.module_key === 'RE_12_LOSS_VALUES') {
-    const sums = (module.data?.sums_insured as Record<string, unknown>) || (module.data?.property_sums_insured as Record<string, unknown>) || {};
-    const bi = (sums.business_interruption as Record<string, unknown>) || (module.data?.business_interruption as Record<string, unknown>) || {};
-    const numeric = (value: unknown): number => {
-      const n = Number(value);
-      return Number.isFinite(n) ? n : 0;
-    };
-
-    const propertySums = (module.data?.property_sums_insured as Record<string, unknown>) || {};
-    const propertyTotal = numeric(sums.total ?? sums.total_sum_insured ?? propertySums.total);
-    const gp = numeric((bi.gross_profit_annual ?? bi.gross_profit));
-    const indemnityMonths = numeric(bi.indemnity_period_months);
-    const highMagnitude = propertyTotal >= 10000000 || gp >= 3000000 || indemnityMonths >= 12;
-    const level: SignificanceLevel = highMagnitude ? 'High' : propertyTotal > 0 || gp > 0 ? 'Moderate' : 'Low';
-    const narrative = `Declared loss values indicate property exposure of ${propertyTotal > 0 ? propertyTotal.toLocaleString() : 'not stated'} and BI gross profit of ${gp > 0 ? gp.toLocaleString() : 'not stated'}. This frames potential loss quantum and insurer balance-sheet sensitivity for severe but plausible scenarios.`;
+    const loss = getLossValuesSummary(module.data);
+    const highMagnitude = loss.effectivePropertyTotal >= 10000000 || loss.grossProfitAnnual >= 3000000 || loss.indemnityMonths >= 12;
+    const level: SignificanceLevel = highMagnitude ? 'High' : loss.effectivePropertyTotal > 0 || loss.grossProfitAnnual > 0 ? 'Moderate' : 'Low';
+    const narrative = `Declared loss values indicate property exposure of ${loss.effectivePropertyTotal > 0 ? loss.effectivePropertyTotal.toLocaleString() : 'not stated'} and BI gross profit of ${loss.grossProfitAnnual > 0 ? loss.grossProfitAnnual.toLocaleString() : 'not stated'}. This frames potential loss quantum and insurer balance-sheet sensitivity for severe but plausible scenarios.`;
     return { level, narrative };
   }
 
@@ -488,7 +545,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     font
   );
 
-  yPosition = drawSimpleTable(
+  ({ page, yPosition } = drawSimpleTable(
     page,
     yPosition,
     ['Executive indicator', 'Assessment'],
@@ -499,8 +556,11 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       ['Overall engineering opinion', engineeringOpinion],
       ['Overall risk significance', overallRiskSignificance],
     ],
-    { regular: font, bold: fontBold }
-  );
+    { regular: font, bold: fontBold },
+    {
+      onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+    }
+  ));
 
   yPosition = drawRiskSignificanceBlock({
     page,
@@ -525,7 +585,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     fonts: { regular: font, bold: fontBold },
   });
 
-  yPosition = drawSimpleTable(
+  ({ page, yPosition } = drawSimpleTable(
     page,
     yPosition,
     ['Metric', 'Value'],
@@ -534,18 +594,25 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       ['Total weighted score', `${breakdown.totalScore.toFixed(1)} / ${breakdown.maxScore.toFixed(1)}`],
       ['Performance ratio', `${((breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100).toFixed(0)}%`],
     ],
-    { regular: font, bold: fontBold }
-  );
+    { regular: font, bold: fontBold },
+    {
+      onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+    }
+  ));
 
   yPosition -= 6;
   yPosition = drawParagraph(page, yPosition, 'Global pillars:', fontBold);
-  yPosition = drawSimpleTable(
+  ({ page, yPosition } = drawSimpleTable(
     page,
     yPosition,
     ['Pillar', 'Rating', 'Weighted Score'],
     breakdown.globalPillars.map(p => [p.label, `${p.rating ?? 'N/A'}/5`, `${p.score.toFixed(1)} of ${p.maxScore.toFixed(1)}`]),
-    { regular: font, bold: fontBold }
-  );
+    { regular: font, bold: fontBold },
+    {
+      fontSize: 8.25,
+      onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+    }
+  ));
 
   ({ page, yPosition } = ensurePageSpace(180, page, yPosition, pdfDoc, isDraft, totalPages));
   yPosition = drawSectionHeaderBar({
@@ -562,7 +629,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ...breakdown.occupancyDrivers.slice(0, 5).map((d): Row => [d.label, `${d.rating ?? 'N/A'}/5`, `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
     ...breakdown.topContributors.map((c): Row => [`Top contributor: ${c.label}`, `${c.rating ?? 'N/A'}/5`, `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
   ];
-  yPosition = drawSimpleTable(page, yPosition, ['Driver', 'Rating', 'Weighted Score'], driverRows, { regular: font, bold: fontBold });
+  ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Driver', 'Rating', 'Weighted Score'], driverRows, { regular: font, bold: fontBold }, {
+    fontSize: 8.25,
+    onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+  }));
 
   const orderedSections = [
     'RE_02_CONSTRUCTION',
@@ -595,7 +665,12 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (tableRows.length > 0) {
       ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawParagraph(page, yPosition, 'Section Snapshot', fontBold);
-      yPosition = drawSimpleTable(page, yPosition, ['Item', 'Detail'], tableRows, { regular: font, bold: fontBold });
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Detail'], tableRows, { regular: font, bold: fontBold }, {
+        colWidths: [195, CONTENT_WIDTH - 195],
+        fontSize: 9,
+        minRowHeight: 18,
+        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+      }));
     }
 
     const commentary = getNarrativeCommentary(module);
