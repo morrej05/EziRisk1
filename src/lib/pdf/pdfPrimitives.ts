@@ -113,6 +113,91 @@ export function drawSectionHeaderBar(args: {
   return drawY - REPORT_HEADING_STYLES.section.spacingBelow;
 }
 
+export type SignificanceLevel = 'Low' | 'Moderate' | 'High';
+
+export function drawRiskSignificanceBlock(args: {
+  page: PDFPage;
+  x: number;
+  y: number;
+  w: number;
+  level: SignificanceLevel;
+  narrative: string;
+  fonts: Fonts;
+}) {
+  const { page, x, y, w, level, narrative, fonts } = args;
+
+  const levelColours = {
+    Low: PDF_THEME.colours.risk.low,
+    Moderate: PDF_THEME.colours.risk.medium,
+    High: PDF_THEME.colours.risk.high,
+  } as const;
+
+  const colour = levelColours[level];
+  const titleY = y - 14;
+
+  page.drawRectangle({
+    x,
+    y: y - 4,
+    width: w,
+    height: 2,
+    color: PDF_THEME.colours.divider,
+  });
+
+  page.drawText('Risk Significance', {
+    x,
+    y: titleY,
+    size: 11,
+    font: fonts.bold,
+    color: PDF_THEME.colours.ink,
+  });
+
+  const badgeText = level.toUpperCase();
+  const badgeFontSize = 9;
+  const badgeTextWidth = fonts.bold.widthOfTextAtSize(badgeText, badgeFontSize);
+  const badgeW = badgeTextWidth + 14;
+  const badgeH = 14;
+  const badgeX = x + w - badgeW;
+  const badgeY = titleY + 2;
+
+  page.drawRectangle({
+    x: badgeX,
+    y: badgeY - badgeH,
+    width: badgeW,
+    height: badgeH,
+    color: colour.bg,
+    borderColor: colour.border,
+    borderWidth: 0.8,
+    borderRadius: 3,
+  });
+
+  page.drawText(badgeText, {
+    x: badgeX + 7,
+    y: badgeY - badgeH + 3,
+    size: badgeFontSize,
+    font: fonts.bold,
+    color: colour.fg,
+  });
+
+  const lines = wrapText(sanitizePdfText(narrative), w, 10, fonts.regular);
+  let cursorY = titleY - 18;
+
+  for (const line of lines) {
+    page.drawText(line, {
+      x,
+      y: cursorY,
+      size: 10,
+      font: fonts.regular,
+      color: PDF_THEME.colours.text,
+    });
+    cursorY -= 13;
+  }
+
+  return {
+    y: cursorY - 6,
+    estimatedHeight: 40 + lines.length * 13,
+  };
+}
+
 function normalizeOutcome(outcome: string) {
   const o = (outcome || '').toLowerCase();
   if (o.includes('compliant') || o === 'ok' || o === 'pass') return { label: 'Compliant', key: 'compliant' as const };
