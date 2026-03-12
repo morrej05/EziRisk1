@@ -37,6 +37,7 @@ import PlatformLayout from './components/PlatformLayout';
 import ErrorBoundary from './components/ErrorBoundary';
 import BuildingsPage from "./pages/re/BuildingsPage";
 import FireProtectionPage from "./pages/re/FireProtectionPage";
+import ReSurveyPdfFixturePage from "./pages/dev/ReSurveyPdfFixturePage";
 
 function App() {
   return (
@@ -221,6 +222,12 @@ function App() {
               </AuthedLayout>
             }
           />
+          {import.meta.env.DEV && (
+            <Route
+              path="/dev/re-survey-pdf-fixture"
+              element={<ReSurveyPdfFixturePage />}
+            />
+          )}
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           </ErrorBoundary>

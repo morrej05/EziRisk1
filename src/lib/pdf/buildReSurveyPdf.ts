@@ -80,6 +80,7 @@ interface BuildPdfOptions {
   organisation: Organisation;
   renderMode?: 'preview' | 'issued';
   selectedModules?: string[];
+  scoreBreakdownOverride?: Breakdown;
 }
 
 type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
@@ -512,7 +513,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
   const riskEngineeringData = modulesByKey.get('RISK_ENGINEERING')?.data || {};
-  const breakdown = await buildRiskEngineeringScoreBreakdown(document.id, riskEngineeringData);
+  const breakdown = options.scoreBreakdownOverride || await buildRiskEngineeringScoreBreakdown(document.id, riskEngineeringData);
 
   let { page } = addNewPage(pdfDoc, isDraft, totalPages);
   let yPosition = PAGE_TOP_Y;
