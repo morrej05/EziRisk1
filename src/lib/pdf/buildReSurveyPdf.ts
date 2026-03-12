@@ -85,6 +85,8 @@ interface BuildPdfOptions {
 
 type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
 
+type Row = [string, string, string?];
+
 const RE_SECTION_CONFIG: Record<string, { title: string; key: string }> = {
   RE_02_CONSTRUCTION: { title: 'Construction', key: 'construction' },
   RE_03_OCCUPANCY: { title: 'Occupancy', key: 'occupancy' },
@@ -93,6 +95,7 @@ const RE_SECTION_CONFIG: Record<string, { title: string; key: string }> = {
   RE_08_UTILITIES: { title: 'Utilities & Critical Services', key: 'utilities' },
   RE_09_MANAGEMENT: { title: 'Management Systems', key: 'management' },
   RE_12_LOSS_VALUES: { title: 'Loss & Values', key: 'loss_values' },
+  RE_14_DRAFT_OUTPUTS: { title: 'Supporting Documentation / Evidence Appendix', key: 'supporting_documentation' },
 };
 
 function getRatingFromModule(module?: ModuleInstance | null): number | null {
@@ -119,6 +122,107 @@ function levelFromPercent(percent: number): SignificanceLevel {
   if (percent < 45) return 'High';
   if (percent < 70) return 'Moderate';
   return 'Low';
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Not stated';
+  if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString() : 'Not stated';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+function drawParagraph(
+  page: PDFPage,
+  yPosition: number,
+  text: string,
+  font: any
+): number {
+  const lines = wrapText(sanitizePdfText(text), CONTENT_WIDTH, 10, font);
+  for (const line of lines) {
+    page.drawText(line, { x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
+    yPosition -= 14;
+  }
+  return yPosition;
+}
+
+function drawSimpleTable(
+  page: PDFPage,
+  yPosition: number,
+  headers: string[],
+  rows: Row[],
+  fonts: { regular: any; bold: any }
+): number {
+  const colWidths = headers.length === 2 ? [180, CONTENT_WIDTH - 180] : [170, 115, CONTENT_WIDTH - 285];
+  const rowHeight = 16;
+  let x = MARGIN;
+
+  for (let i = 0; i < headers.length; i++) {
+    page.drawText(headers[i], { x, y: yPosition, size: 9, font: fonts.bold, color: rgb(0.1, 0.1, 0.1) });
+    x += colWidths[i];
+  }
+
+  yPosition -= 10;
+  page.drawLine({
+    start: { x: MARGIN, y: yPosition },
+    end: { x: MARGIN + CONTENT_WIDTH, y: yPosition },
+    thickness: 0.7,
+    color: rgb(0.75, 0.75, 0.75),
+  });
+  yPosition -= 12;
+
+  for (const row of rows) {
+    x = MARGIN;
+    for (let i = 0; i < headers.length; i++) {
+      const value = sanitizePdfText((row[i] || '').toString());
+      const lines = wrapText(value, colWidths[i] - 4, 8, fonts.regular);
+      page.drawText(lines[0] || '', { x, y: yPosition, size: 8, font: fonts.regular, color: rgb(0.15, 0.15, 0.15) });
+      x += colWidths[i];
+    }
+    yPosition -= rowHeight;
+  }
+
+  return yPosition - 4;
+}
+
+function getSectionTableRows(module: ModuleInstance): Row[] {
+  const d = module.data || {};
+  if (module.module_key === 'RE_06_FIRE_PROTECTION') {
+    return [
+      ['Automatic sprinkler protection', formatValue((d as any).fire_protection?.sprinklers_present ?? (d as any).sprinklers_present)],
+      ['Automatic fire detection', formatValue((d as any).fire_protection?.automatic_detection ?? (d as any).automatic_detection)],
+      ['Hydrant / water supplies', formatValue((d as any).fire_protection?.hydrants ?? (d as any).hydrants)],
+      ['Impairment management process', formatValue((d as any).management?.impairment_management ?? (d as any).impairment_management)],
+    ];
+  }
+  if (module.module_key === 'RE_08_UTILITIES') {
+    const spof = Array.isArray((d as any).single_points_of_failure) ? (d as any).single_points_of_failure.length : 0;
+    return [
+      ['Primary power resilience', formatValue((d as any).power?.resilience_level ?? (d as any).power_resilience_level)],
+      ['Backup generation', formatValue((d as any).power?.backup_generation ?? (d as any).backup_generation)],
+      ['Critical utility dependencies', formatValue((d as any).critical_dependencies ?? (d as any).critical_utility_dependencies)],
+      ['Single points of failure', String(spof)],
+    ];
+  }
+  if (module.module_key === 'RE_12_LOSS_VALUES') {
+    const sums = (d as any).sums_insured || (d as any).property_sums_insured || {};
+    const bi = sums.business_interruption || (d as any).business_interruption || {};
+    return [
+      ['Buildings', formatValue(sums.buildings)],
+      ['Plant & machinery', formatValue(sums.plant_machinery)],
+      ['Stock / contents', formatValue(sums.stock)],
+      ['BI gross profit (annual)', formatValue(bi.gross_profit_annual || bi.gross_profit)],
+      ['Indemnity period (months)', formatValue(bi.indemnity_period_months)],
+    ];
+  }
+  if (module.module_key === 'RE_14_DRAFT_OUTPUTS') {
+    return [
+      ['Site plans / layout available', formatValue((d as any).site_plans_available)],
+      ['Fire system test evidence', formatValue((d as any).fire_system_test_evidence)],
+      ['Business continuity documents', formatValue((d as any).bcp_documents_available)],
+      ['Photos / records attached', formatValue((d as any).evidence_pack_attached)],
+    ];
+  }
+  return [];
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -263,20 +367,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
 
   const summary = buildExecutiveSignificanceNarrative(breakdown);
-  const summaryLines = wrapText(
-    sanitizePdfText(
-      `Weighted total score is ${breakdown.totalScore.toFixed(1)} out of ${breakdown.maxScore.toFixed(1)} (${((breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100).toFixed(0)}%). Industry context: ${breakdown.industryLabel}.`
-    ),
-    CONTENT_WIDTH,
-    10,
+  ({ page, yPosition } = ensurePageSpace(170, page, yPosition, pdfDoc, isDraft, totalPages));
+  yPosition = drawParagraph(
+    page,
+    yPosition,
+    `This report summarises risk engineering findings for ${document.meta?.site?.name || document.scope_description || 'the assessed site'} in ${breakdown.industryLabel} context. Weighted total score is ${breakdown.totalScore.toFixed(1)} of ${breakdown.maxScore.toFixed(1)} (${((breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100).toFixed(0)}%).`,
     font
   );
-
-  ({ page, yPosition } = ensurePageSpace(26 + summaryLines.length * 14 + 90, page, yPosition, pdfDoc, isDraft, totalPages));
-  for (const line of summaryLines) {
-    page.drawText(line, { x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
-    yPosition -= 14;
-  }
 
   yPosition = drawRiskSignificanceBlock({
     page,
@@ -290,7 +387,70 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
   yPosition -= 8;
 
-  for (const module of modulesToInclude) {
+  ({ page, yPosition } = ensurePageSpace(220, page, yPosition, pdfDoc, isDraft, totalPages));
+  yPosition = drawSectionHeaderBar({
+    page,
+    x: MARGIN,
+    y: yPosition,
+    w: CONTENT_WIDTH,
+    title: 'Risk Scoring Summary',
+    product: 're',
+    fonts: { regular: font, bold: fontBold },
+  });
+
+  yPosition = drawSimpleTable(
+    page,
+    yPosition,
+    ['Metric', 'Value'],
+    [
+      ['Industry label', breakdown.industryLabel],
+      ['Total weighted score', `${breakdown.totalScore.toFixed(1)} / ${breakdown.maxScore.toFixed(1)}`],
+      ['Performance ratio', `${((breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100).toFixed(0)}%`],
+    ],
+    { regular: font, bold: fontBold }
+  );
+
+  yPosition -= 6;
+  yPosition = drawParagraph(page, yPosition, 'Global pillars:', fontBold);
+  yPosition = drawSimpleTable(
+    page,
+    yPosition,
+    ['Pillar', 'Rating', 'Weighted Score'],
+    breakdown.globalPillars.map(p => [p.label, `${p.rating ?? 'N/A'}/5`, `${p.score.toFixed(1)} of ${p.maxScore.toFixed(1)}`]),
+    { regular: font, bold: fontBold }
+  );
+
+  ({ page, yPosition } = ensurePageSpace(180, page, yPosition, pdfDoc, isDraft, totalPages));
+  yPosition = drawSectionHeaderBar({
+    page,
+    x: MARGIN,
+    y: yPosition,
+    w: CONTENT_WIDTH,
+    title: 'Key Risk Drivers',
+    product: 're',
+    fonts: { regular: font, bold: fontBold },
+  });
+
+  const driverRows: Row[] = [
+    ...breakdown.occupancyDrivers.slice(0, 5).map(d => [d.label, `${d.rating ?? 'N/A'}/5`, `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
+    ...breakdown.topContributors.map(c => [`Top contributor: ${c.label}`, `${c.rating ?? 'N/A'}/5`, `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
+  ];
+  yPosition = drawSimpleTable(page, yPosition, ['Driver', 'Rating', 'Weighted Score'], driverRows, { regular: font, bold: fontBold });
+
+  const orderedSections = [
+    'RE_02_CONSTRUCTION',
+    'RE_03_OCCUPANCY',
+    'RE_06_FIRE_PROTECTION',
+    'RE_07_NATURAL_HAZARDS',
+    'RE_08_UTILITIES',
+    'RE_09_MANAGEMENT',
+    'RE_12_LOSS_VALUES',
+    'RE_14_DRAFT_OUTPUTS',
+  ];
+
+  for (const moduleKey of orderedSections) {
+    const module = modulesByKey.get(moduleKey);
+    if (!module) continue;
     if (module.module_key === 'RE_13_RECOMMENDATIONS') {
       continue;
     }
@@ -309,18 +469,14 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     });
 
     if (module.assessor_notes) {
-      const lines = wrapText(module.assessor_notes, CONTENT_WIDTH, 10, font);
-      ({ page, yPosition } = ensurePageSpace(lines.length * 14 + 20, page, yPosition, pdfDoc, isDraft, totalPages));
-      for (const line of lines) {
-        page.drawText(line, {
-          x: MARGIN,
-          y: yPosition,
-          size: 10,
-          font,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-        yPosition -= 14;
-      }
+      ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawParagraph(page, yPosition, module.assessor_notes, font);
+    }
+
+    const tableRows = getSectionTableRows(module);
+    if (tableRows.length > 0) {
+      ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawSimpleTable(page, yPosition, ['Item', 'Detail'], tableRows, { regular: font, bold: fontBold });
     }
 
     const significance = sectionSignificance(module, breakdown);
@@ -346,7 +502,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     x: MARGIN,
     y: yPosition,
     w: CONTENT_WIDTH,
-    title: 'Final Conclusion',
+    title: 'Conclusion',
     product: 're',
     fonts: { regular: font, bold: fontBold },
   });
