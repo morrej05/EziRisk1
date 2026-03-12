@@ -8,7 +8,6 @@ import {
   addNewPage,
   drawFooter,
   addSupersededWatermark,
-  addExecutiveSummaryPages,
   ensurePageSpace,
 } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
@@ -153,35 +152,93 @@ function drawSimpleTable(
   fonts: { regular: any; bold: any }
 ): number {
   const colWidths = headers.length === 2 ? [180, CONTENT_WIDTH - 180] : [170, 115, CONTENT_WIDTH - 285];
-  const rowHeight = 16;
+  const fontSize = 8;
+  const lineHeight = 10;
+  const cellPaddingX = 6;
+  const cellPaddingY = 4;
+  const tableLeft = MARGIN;
+  const tableRight = MARGIN + CONTENT_WIDTH;
   let x = MARGIN;
 
+  const headerHeight = 18;
+  page.drawRectangle({
+    x: tableLeft,
+    y: yPosition - headerHeight + 4,
+    width: CONTENT_WIDTH,
+    height: headerHeight,
+    color: rgb(0.94, 0.95, 0.97),
+    borderColor: rgb(0.78, 0.8, 0.84),
+    borderWidth: 0.8,
+  });
+
   for (let i = 0; i < headers.length; i++) {
-    page.drawText(headers[i], { x, y: yPosition, size: 9, font: fonts.bold, color: rgb(0.1, 0.1, 0.1) });
+    page.drawText(headers[i], { x: x + cellPaddingX, y: yPosition - 8, size: 8.5, font: fonts.bold, color: rgb(0.08, 0.08, 0.08) });
     x += colWidths[i];
   }
 
-  yPosition -= 10;
-  page.drawLine({
-    start: { x: MARGIN, y: yPosition },
-    end: { x: MARGIN + CONTENT_WIDTH, y: yPosition },
-    thickness: 0.7,
-    color: rgb(0.75, 0.75, 0.75),
-  });
-  yPosition -= 12;
+  yPosition -= headerHeight;
 
-  for (const row of rows) {
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
+    const wrappedCells = headers.map((_, i) => {
+      const value = sanitizePdfText((row[i] || '').toString());
+      return wrapText(value, colWidths[i] - cellPaddingX * 2, fontSize, fonts.regular);
+    });
+    const maxLines = Math.max(1, ...wrappedCells.map(lines => lines.length));
+    const rowHeight = maxLines * lineHeight + cellPaddingY * 2;
+
+    if (rowIndex % 2 === 1) {
+      page.drawRectangle({
+        x: tableLeft,
+        y: yPosition - rowHeight + 2,
+        width: CONTENT_WIDTH,
+        height: rowHeight,
+        color: rgb(0.98, 0.98, 0.99),
+      });
+    }
+
+    page.drawLine({
+      start: { x: tableLeft, y: yPosition + 2 },
+      end: { x: tableRight, y: yPosition + 2 },
+      thickness: 0.5,
+      color: rgb(0.84, 0.85, 0.88),
+    });
+
     x = MARGIN;
     for (let i = 0; i < headers.length; i++) {
-      const value = sanitizePdfText((row[i] || '').toString());
-      const lines = wrapText(value, colWidths[i] - 4, 8, fonts.regular);
-      page.drawText(lines[0] || '', { x, y: yPosition, size: 8, font: fonts.regular, color: rgb(0.15, 0.15, 0.15) });
+      const lines = wrappedCells[i];
+      const textY = yPosition - cellPaddingY - lineHeight + 2;
+      lines.forEach((line, lineIndex) => {
+        page.drawText(line, {
+          x: x + cellPaddingX,
+          y: textY - lineIndex * lineHeight,
+          size: fontSize,
+          font: fonts.regular,
+          color: rgb(0.15, 0.15, 0.15),
+        });
+      });
+
+      if (i < headers.length - 1) {
+        page.drawLine({
+          start: { x: x + colWidths[i], y: yPosition - rowHeight + 2 },
+          end: { x: x + colWidths[i], y: yPosition + 2 },
+          thickness: 0.4,
+          color: rgb(0.88, 0.89, 0.91),
+        });
+      }
       x += colWidths[i];
     }
     yPosition -= rowHeight;
   }
 
-  return yPosition - 4;
+  page.drawLine({
+    start: { x: tableLeft, y: yPosition + 2 },
+    end: { x: tableRight, y: yPosition + 2 },
+    thickness: 0.6,
+    color: rgb(0.78, 0.8, 0.84),
+  });
+
+  return yPosition - 8;
 }
 
 function getSectionTableRows(module: ModuleInstance): Row[] {
@@ -214,6 +271,46 @@ function getSectionTableRows(module: ModuleInstance): Row[] {
       ['Indemnity period (months)', formatValue(bi.indemnity_period_months)],
     ];
   }
+
+  if (module.module_key === 'RE_02_CONSTRUCTION') {
+    const construction = (d as any).construction || d;
+    return [
+      ['Primary construction type', formatValue(construction.primary_construction_type ?? construction.construction_type)],
+      ['Wall construction', formatValue(construction.wall_construction)],
+      ['Roof construction', formatValue(construction.roof_construction)],
+      ['Compartmentation quality', formatValue(construction.compartmentation_quality)],
+    ];
+  }
+
+  if (module.module_key === 'RE_03_OCCUPANCY') {
+    const occupancy = (d as any).occupancy || d;
+    return [
+      ['Occupancy type', formatValue(occupancy.occupancy_type ?? occupancy.primary_occupancy)],
+      ['Process / use description', formatValue(occupancy.process_description ?? occupancy.operations_description)],
+      ['Shift pattern', formatValue(occupancy.shift_pattern)],
+      ['Combustible loading', formatValue(occupancy.combustible_loading ?? occupancy.fire_load_level)],
+    ];
+  }
+
+  if (module.module_key === 'RE_07_NATURAL_HAZARDS') {
+    const exposures = (d as any).exposures || d;
+    return [
+      ['Flood exposure', formatValue(exposures.flood_exposure_level ?? exposures.flood_risk)],
+      ['Windstorm exposure', formatValue(exposures.windstorm_exposure_level ?? exposures.windstorm_risk)],
+      ['Wildfire exposure', formatValue(exposures.wildfire_exposure_level ?? exposures.wildfire_risk)],
+      ['Neighbouring hazards', formatValue(exposures.adjoining_risk ?? exposures.neighbouring_hazards)],
+    ];
+  }
+
+  if (module.module_key === 'RE_09_MANAGEMENT') {
+    const management = (d as any).management || d;
+    return [
+      ['Formal risk management system', formatValue(management.formal_risk_management_system ?? management.risk_management_system)],
+      ['Hot work permit process', formatValue(management.hot_work_permit_process ?? management.hot_work_permits)],
+      ['Housekeeping standards', formatValue(management.housekeeping_standard ?? management.housekeeping)],
+      ['Emergency response planning', formatValue(management.emergency_response_plan ?? management.emergency_plan)],
+    ];
+  }
   if (module.module_key === 'RE_14_DRAFT_OUTPUTS') {
     return [
       ['Site plans / layout available', formatValue((d as any).site_plans_available)],
@@ -223,6 +320,15 @@ function getSectionTableRows(module: ModuleInstance): Row[] {
     ];
   }
   return [];
+}
+
+
+function getNarrativeCommentary(module: ModuleInstance): string {
+  const notes = sanitizePdfText(module.assessor_notes || '').trim();
+  if (notes) return notes;
+
+  const sectionTitle = RE_SECTION_CONFIG[module.module_key]?.title || 'Section';
+  return `${sectionTitle} commentary is based on submitted survey fields and risk-engineering calibration outputs for this assessment.`;
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -283,9 +389,17 @@ function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { le
   }
 
   if (module.module_key === 'RE_12_LOSS_VALUES') {
-    const propertyTotal = Number(module.data?.property_sums_insured?.total || 0);
-    const gp = Number(module.data?.business_interruption?.gross_profit || 0);
-    const indemnityMonths = Number(module.data?.business_interruption?.indemnity_period_months || 0);
+    const sums = (module.data?.sums_insured as Record<string, unknown>) || (module.data?.property_sums_insured as Record<string, unknown>) || {};
+    const bi = (sums.business_interruption as Record<string, unknown>) || (module.data?.business_interruption as Record<string, unknown>) || {};
+    const numeric = (value: unknown): number => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const propertySums = (module.data?.property_sums_insured as Record<string, unknown>) || {};
+    const propertyTotal = numeric(sums.total ?? sums.total_sum_insured ?? propertySums.total);
+    const gp = numeric((bi.gross_profit_annual ?? bi.gross_profit));
+    const indemnityMonths = numeric(bi.indemnity_period_months);
     const highMagnitude = propertyTotal >= 10000000 || gp >= 3000000 || indemnityMonths >= 12;
     const level: SignificanceLevel = highMagnitude ? 'High' : propertyTotal > 0 || gp > 0 ? 'Moderate' : 'Low';
     const narrative = `Declared loss values indicate property exposure of ${propertyTotal > 0 ? propertyTotal.toLocaleString() : 'not stated'} and BI gross profit of ${gp > 0 ? gp.toLocaleString() : 'not stated'}. This frames potential loss quantum and insurer balance-sheet sensitivity for severe but plausible scenarios.`;
@@ -335,16 +449,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
   totalPages.push(coverPage, docControlPage);
 
-  addExecutiveSummaryPages(
-    pdfDoc,
-    isDraft,
-    totalPages,
-    (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none',
-    document.executive_summary_ai,
-    document.executive_summary_author,
-    { bold: fontBold, regular: font }
-  );
-
   const modulesToInclude = selectedModules
     ? moduleInstances.filter(m => selectedModules.includes(m.module_key))
     : moduleInstances;
@@ -367,12 +471,35 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
 
   const summary = buildExecutiveSignificanceNarrative(breakdown);
+  const performanceRatio = (breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100;
+  const overallRating = levelFromPercent(performanceRatio);
+  const overallRiskSignificance = summary.level;
+  const engineeringOpinion =
+    overallRiskSignificance === 'High'
+      ? 'Material engineering vulnerabilities are present and require prioritised risk improvement to reduce likely loss severity.'
+      : overallRiskSignificance === 'Moderate'
+        ? 'Engineering controls are mixed with meaningful opportunities to improve resilience and reduce volatility in loss outcomes.'
+        : 'Engineering controls are generally robust with lower relative loss volatility at present conditions.';
   ({ page, yPosition } = ensurePageSpace(170, page, yPosition, pdfDoc, isDraft, totalPages));
   yPosition = drawParagraph(
     page,
     yPosition,
-    `This report summarises risk engineering findings for ${document.meta?.site?.name || document.scope_description || 'the assessed site'} in ${breakdown.industryLabel} context. Weighted total score is ${breakdown.totalScore.toFixed(1)} of ${breakdown.maxScore.toFixed(1)} (${((breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100).toFixed(0)}%).`,
+    `This report summarises risk engineering findings for ${document.meta?.site?.name || document.scope_description || 'the assessed site'} in ${breakdown.industryLabel} context. Weighted total score is ${breakdown.totalScore.toFixed(1)} of ${breakdown.maxScore.toFixed(1)} (${performanceRatio.toFixed(0)}%) with an overall ${overallRating} rating.`,
     font
+  );
+
+  yPosition = drawSimpleTable(
+    page,
+    yPosition,
+    ['Executive indicator', 'Assessment'],
+    [
+      ['Overall score', `${breakdown.totalScore.toFixed(1)} / ${breakdown.maxScore.toFixed(1)} (${performanceRatio.toFixed(0)}%)`],
+      ['Overall rating', overallRating],
+      ['Key risk drivers', breakdown.topContributors.slice(0, 3).map(driver => driver.label).join('; ') || 'Not stated'],
+      ['Overall engineering opinion', engineeringOpinion],
+      ['Overall risk significance', overallRiskSignificance],
+    ],
+    { regular: font, bold: fontBold }
   );
 
   yPosition = drawRiskSignificanceBlock({
@@ -432,8 +559,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
 
   const driverRows: Row[] = [
-    ...breakdown.occupancyDrivers.slice(0, 5).map(d => [d.label, `${d.rating ?? 'N/A'}/5`, `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
-    ...breakdown.topContributors.map(c => [`Top contributor: ${c.label}`, `${c.rating ?? 'N/A'}/5`, `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
+    ...breakdown.occupancyDrivers.slice(0, 5).map((d): Row => [d.label, `${d.rating ?? 'N/A'}/5`, `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
+    ...breakdown.topContributors.map((c): Row => [`Top contributor: ${c.label}`, `${c.rating ?? 'N/A'}/5`, `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
   ];
   yPosition = drawSimpleTable(page, yPosition, ['Driver', 'Rating', 'Weighted Score'], driverRows, { regular: font, bold: fontBold });
 
@@ -451,10 +578,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   for (const moduleKey of orderedSections) {
     const module = modulesByKey.get(moduleKey);
     if (!module) continue;
-    if (module.module_key === 'RE_13_RECOMMENDATIONS') {
-      continue;
-    }
-
     ({ page, yPosition } = ensurePageSpace(170, page, yPosition, pdfDoc, isDraft, totalPages));
 
     const sectionTitle = RE_SECTION_CONFIG[module.module_key]?.title || module.module_key;
@@ -468,16 +591,17 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       fonts: { regular: font, bold: fontBold },
     });
 
-    if (module.assessor_notes) {
-      ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, module.assessor_notes, font);
-    }
-
     const tableRows = getSectionTableRows(module);
     if (tableRows.length > 0) {
       ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawParagraph(page, yPosition, 'Section Snapshot', fontBold);
       yPosition = drawSimpleTable(page, yPosition, ['Item', 'Detail'], tableRows, { regular: font, bold: fontBold });
     }
+
+    const commentary = getNarrativeCommentary(module);
+    ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
+    yPosition = drawParagraph(page, yPosition, 'Narrative Commentary', fontBold);
+    yPosition = drawParagraph(page, yPosition, commentary, font);
 
     const significance = sectionSignificance(module, breakdown);
     if (significance) {
