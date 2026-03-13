@@ -13,6 +13,38 @@ interface PortfolioAiPayload {
     totalActions: number;
     openP1Actions: number;
     updatedLast30Days: number;
+    createdCurrent30Days: number;
+    createdPrevious30Days: number;
+    updatedCurrent30Days: number;
+    updatedPrevious30Days: number;
+    openReRecommendations: number;
+    openHighPriorityReRecommendations: number;
+  };
+  assessmentTrends: {
+    createdCurrent30Days: number;
+    createdPrevious30Days: number;
+    updatedCurrent30Days: number;
+    updatedPrevious30Days: number;
+  };
+  remediationTrends: {
+    bySource: Array<{
+      sourceType: 'assessment_action' | 're_recommendation';
+      sourceLabel: string;
+      discipline?: 'fra' | 'fsd' | 'dsear' | 'risk_engineering';
+      totalOpen: number;
+      openedCurrent30: number;
+      openedPrevious30: number;
+      closedCurrent30: number;
+      closedPrevious30: number;
+      urgentOpen?: number;
+    }>;
+    combined?: {
+      totalOpen: number;
+      netFlowCurrent30: number;
+      netFlowPrevious30: number;
+      safeToCombine: boolean;
+      caveat: string;
+    };
   };
   assessmentStatusDistribution: Array<{ label: string; count: number }>;
   commonActionModules: Array<{ label: string; count: number }>;
@@ -68,8 +100,11 @@ You must only interpret the aggregate portfolio data provided.
 
 Non-negotiable rules:
 - Use only provided data fields and counts.
+- Treat assessment actions and risk engineering recommendations as distinct remediation source models unless payload explicitly says safeToCombine=true.
 - Do not infer or mention claims, premium, underwriting outcomes, loss ratios, compliance certification, or causes.
 - Do not invent risk scores, bands, trends, or confidence levels if not explicitly included.
+- If discussing remediation trends, comment on each remediation source separately where possible.
+- Do not imply causal engineering outcomes from count movement alone.
 - Phrase outputs as decision support for review, not definitive conclusions.
 - If data is limited, say so briefly.
 - Keep tone concise, professional, and non-alarmist.`;
@@ -86,6 +121,8 @@ Output requirements:
 3) Priorities must be phrased as items to review, not autonomous directives.
 4) Mention data limits if stronger statements cannot be supported.
 5) Do not include markdown. Return valid JSON only.
+6) If remediation trend data is present, explicitly differentiate assessment actions vs risk engineering recommendations.
+7) Refer to a combined remediation view only when remediationTrends.combined.safeToCombine is true.
 
 Portfolio aggregate payload:
 ${JSON.stringify(portfolio)}`;
