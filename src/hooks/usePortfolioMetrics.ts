@@ -4,6 +4,7 @@ import { useAssessments } from './useAssessments';
 import { getActionRegisterOrgLevel, type ActionRegisterEntry } from '../utils/actionRegister';
 
 export interface SiteAttentionRow {
+  documentId: string;
   siteName: string;
   clientName: string;
   openActions: number;
@@ -113,6 +114,7 @@ export function usePortfolioMetrics() {
       const siteKey = assessment.id;
       if (!siteMap.has(siteKey)) {
         siteMap.set(siteKey, {
+          documentId: assessment.id,
           siteName: assessment.siteName,
           clientName: assessment.clientName,
           openActions: 0,
@@ -126,6 +128,7 @@ export function usePortfolioMetrics() {
     actions.forEach((action) => {
       const siteKey = action.document_id;
       const existing = siteMap.get(siteKey) || {
+        documentId: action.document_id,
         siteName: action.document_title,
         clientName: 'Unassigned',
         openActions: 0,

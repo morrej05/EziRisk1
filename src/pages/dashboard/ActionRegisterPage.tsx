@@ -8,14 +8,10 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  TrendingUp,
-  X,
 } from 'lucide-react';
 import {
   ActionRegisterEntry,
-  OrgActionStats,
   getActionRegisterOrgLevel,
-  getOrgActionStats,
   filterActionRegister,
   downloadActionRegisterCSV,
   getActionRegisterStats,
@@ -33,10 +29,13 @@ export default function ActionRegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const documentFilter = searchParams.get('document');
+  const statusParam = searchParams.get('status');
+  const priorityParam = searchParams.get('priority');
+  const moduleParam = searchParams.get('module');
+  const siteParam = searchParams.get('site');
 
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
   const [filteredActions, setFilteredActions] = useState<ActionRegisterEntry[]>([]);
-  const [orgStats, setOrgStats] = useState<OrgActionStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [documentTitle, setDocumentTitle] = useState<string | null>(null);
@@ -47,7 +46,7 @@ export default function ActionRegisterPage() {
     priority: [] as string[],
     trackingStatus: [] as string[],
     documentType: [] as string[],
-    moduleKey: [] as string[],
+    moduleKey: moduleParam ? [moduleParam] : [] as string[],
     overdue: false,
     documentId: documentFilter || undefined,
   });
@@ -61,7 +60,34 @@ export default function ActionRegisterPage() {
     if (organisation?.id) {
       fetchData();
     }
+    // fetchData intentionally reads latest filter state during hydration after URL params update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organisation?.id, actionsVersion]);
+
+
+  useEffect(() => {
+    const nextStatus = statusParam ? [statusParam] : [];
+    const nextPriority = priorityParam ? [priorityParam] : [];
+    const nextModule = moduleParam ? [moduleParam] : [];
+
+    setFilters((prev) => {
+      const changed =
+        JSON.stringify(prev.status) !== JSON.stringify(nextStatus) ||
+        JSON.stringify(prev.priority) !== JSON.stringify(nextPriority) ||
+        JSON.stringify(prev.moduleKey) !== JSON.stringify(nextModule) ||
+        prev.documentId !== (documentFilter || undefined);
+
+      if (!changed) return prev;
+
+      return {
+        ...prev,
+        status: nextStatus,
+        priority: nextPriority,
+        moduleKey: nextModule,
+        documentId: documentFilter || undefined,
+      };
+    });
+  }, [documentFilter, statusParam, priorityParam, moduleParam]);
 
   useEffect(() => {
     if (documentFilter && actions.length > 0) {
@@ -81,14 +107,10 @@ export default function ActionRegisterPage() {
     if (!organisation?.id) return;
 
     setIsLoading(true);
-    const [actionsData, statsData] = await Promise.all([
-      getActionRegisterOrgLevel(organisation.id),
-      getOrgActionStats(organisation.id),
-    ]);
+    const actionsData = await getActionRegisterOrgLevel(organisation.id);
 
     setActions(actionsData);
     setFilteredActions(actionsData);
-    setOrgStats(statsData);
     setIsLoading(false);
   };
 
@@ -120,6 +142,7 @@ export default function ActionRegisterPage() {
       documentType: [],
       moduleKey: [],
       overdue: false,
+      documentId: documentFilter || undefined,
     });
   };
 
@@ -164,6 +187,12 @@ export default function ActionRegisterPage() {
                     ? 'Document-level action tracking'
                     : 'Organisation-wide action tracking and management'}
                 </p>
+                {(statusParam || priorityParam || moduleParam || siteParam) && (
+                  <p className="text-xs text-blue-700 mt-1">
+                    Portfolio drill-through filters applied where supported.
+                    {siteParam ? ` Site hint: ${siteParam}.` : ''}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -355,8 +384,8 @@ export default function ActionRegisterPage() {
                         onChange={() => toggleFilter('moduleKey', key)}
                         className="rounded border-neutral-300"
                       />
-                      <span className="text-sm text-neutral-700" title={getModuleKeyLabel(key)}>
-                        {key}
+                      <span className="text-sm text-neutral-700" title={key}>
+                        {getModuleKeyLabel(key)}
                       </span>
                     </label>
                   ))}
@@ -436,7 +465,7 @@ export default function ActionRegisterPage() {
                       </div>
                       {action.module_key && (
                         <div className="text-xs text-neutral-500 mt-0.5">
-                          {action.module_key}
+                          {getModuleKeyLabel(action.module_key)}
                         </div>
                       )}
                     </td>

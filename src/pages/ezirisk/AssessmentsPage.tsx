@@ -3,18 +3,18 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { Plus, Search, MoreVertical, TrendingUp, FileText, CheckCircle, Trash2 } from 'lucide-react';
 import { useAssessments, AssessmentViewModel } from '../../hooks/useAssessments';
 import { useAuth } from '../../contexts/AuthContext';
-import { canCreateSurveys, isSubscriptionActive } from '../../utils/entitlements';
+import { canCreateSurveys, isSubscriptionActive, type User } from '../../utils/entitlements';
 import { DeleteDocumentModal } from '../../components/DeleteDocumentModal';
 
 export default function AssessmentsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [refreshKey, setRefreshKey] = useState(0);
   const { assessments, loading } = useAssessments({ refreshKey });
   const { user, organisation } = useAuth();
 
-  const canCreate = user && organisation && canCreateSurveys(user as any, organisation) && isSubscriptionActive(organisation);
+  const canCreate = user && organisation && canCreateSurveys(user as User, organisation) && isSubscriptionActive(organisation);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState('All');
@@ -24,15 +24,35 @@ export default function AssessmentsPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
 
-  // Sync discipline filter with URL params
+  // Sync supported filters with URL params for drill-through navigation.
   useEffect(() => {
     const disciplineParam = searchParams.get('discipline');
+    const statusParam = searchParams.get('status');
+    const updatedWithinParam = searchParams.get('updatedWithinDays');
+    const siteParam = searchParams.get('site');
+
     if (disciplineParam === 'risk') {
       setDisciplineFilter('Risk Engineering');
     } else if (disciplineParam === 'fire') {
       setDisciplineFilter('Fire');
     } else {
       setDisciplineFilter('All');
+    }
+
+    if (statusParam === 'Draft' || statusParam === 'Issued') {
+      setStatusFilter(statusParam);
+    } else {
+      setStatusFilter('All');
+    }
+
+    if (siteParam) {
+      setSearchTerm(siteParam);
+    } else {
+      setSearchTerm('');
+    }
+
+    if (updatedWithinParam) {
+      setSortBy('updated');
     }
   }, [searchParams]);
 
@@ -74,6 +94,16 @@ export default function AssessmentsPage() {
       filtered = filtered.filter(a => a.type === typeFilter);
     }
 
+    const updatedWithinParam = searchParams.get('updatedWithinDays');
+    if (updatedWithinParam) {
+      const dayCount = Number(updatedWithinParam);
+      if (!Number.isNaN(dayCount) && dayCount > 0) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - dayCount);
+        filtered = filtered.filter((a) => a.updatedAt >= cutoff);
+      }
+    }
+
     const sorted = [...filtered];
     switch (sortBy) {
       case 'updated':
@@ -88,7 +118,7 @@ export default function AssessmentsPage() {
     }
 
     return sorted;
-  }, [assessments, searchTerm, disciplineFilter, statusFilter, typeFilter, sortBy]);
+  }, [assessments, searchTerm, disciplineFilter, statusFilter, typeFilter, sortBy, searchParams]);
 
   function formatDate(date: Date): string {
     return date.toLocaleDateString('en-GB', {
@@ -98,7 +128,7 @@ export default function AssessmentsPage() {
     });
   }
 
-  function handleContinue(assessmentId: string, status: string) {
+  function handleContinue(assessmentId: string) {
     navigate(`/documents/${assessmentId}/workspace`, { state: { returnTo: '/assessments' } });
   }
 
@@ -363,7 +393,7 @@ export default function AssessmentsPage() {
                       <td className="px-6 py-4 text-sm">
                         <div className="flex items-center gap-3">
                           <button
-                            onClick={() => handleContinue(assessment.id, assessment.status)}
+                            onClick={() => handleContinue(assessment.id)}
                             className="text-slate-900 hover:text-slate-700 font-medium"
                           >
                             {assessment.status === 'Draft' ? 'Continue' : 'View'}
