@@ -25,11 +25,26 @@ export interface RemediationTrendRow {
   sourceLabel: string;
   discipline?: 'fra' | 'fsd' | 'dsear' | 'risk_engineering';
   totalOpen: number;
-  openedCurrent30: number;
-  openedPrevious30: number;
-  closedCurrent30: number;
-  closedPrevious30: number;
+  openedCurrentWindow: number;
+  openedPreviousWindow: number;
+  closedCurrentWindow: number;
+  closedPreviousWindow: number;
   urgentOpen?: number;
+}
+
+function getPortfolioWindowBounds(windowDays: 30 | 90) {
+  const now = new Date();
+  const currentWindowStart = new Date(now);
+  currentWindowStart.setDate(now.getDate() - windowDays);
+
+  const previousWindowStart = new Date(currentWindowStart);
+  previousWindowStart.setDate(currentWindowStart.getDate() - windowDays);
+
+  return {
+    now,
+    currentWindowStart,
+    previousWindowStart,
+  };
 }
 
 export interface SiteAttentionRow {
@@ -42,7 +57,7 @@ export interface SiteAttentionRow {
   latestAssessmentUpdate: Date | null;
 }
 
-export function usePortfolioMetrics() {
+export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
   const { organisation } = useAuth();
   const { assessments, loading: assessmentsLoading, error: assessmentsError } = useAssessments();
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
@@ -146,22 +161,18 @@ export function usePortfolioMetrics() {
     const draftAssessments = assessments.filter((assessment) => assessment.status === 'Draft').length;
     const issuedAssessments = assessments.filter((assessment) => assessment.status === 'Issued').length;
 
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-    const sixtyDaysAgo = new Date(now);
-    sixtyDaysAgo.setDate(now.getDate() - 60);
+    const { now, currentWindowStart, previousWindowStart } = getPortfolioWindowBounds(windowDays);
 
     const isWithinRange = (date: Date | null, rangeStart: Date, rangeEnd: Date) => {
       if (!date) return false;
       return date >= rangeStart && date < rangeEnd;
     };
 
-    const updatedLast30Days = assessments.filter((assessment) => assessment.updatedAt >= thirtyDaysAgo).length;
-    const createdCurrent30Days = assessments.filter((assessment) => isWithinRange(assessment.createdAt, thirtyDaysAgo, now)).length;
-    const createdPrevious30Days = assessments.filter((assessment) => isWithinRange(assessment.createdAt, sixtyDaysAgo, thirtyDaysAgo)).length;
-    const updatedCurrent30Days = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, thirtyDaysAgo, now)).length;
-    const updatedPrevious30Days = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, sixtyDaysAgo, thirtyDaysAgo)).length;
+    const updatedWithinWindowDays = assessments.filter((assessment) => assessment.updatedAt >= currentWindowStart).length;
+    const createdCurrentWindow = assessments.filter((assessment) => isWithinRange(assessment.createdAt, currentWindowStart, now)).length;
+    const createdPreviousWindow = assessments.filter((assessment) => isWithinRange(assessment.createdAt, previousWindowStart, currentWindowStart)).length;
+    const updatedCurrentWindow = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, currentWindowStart, now)).length;
+    const updatedPreviousWindow = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, previousWindowStart, currentWindowStart)).length;
 
     const assessmentStatusCounts = assessments.reduce<Record<string, number>>((acc, assessment) => {
       acc[assessment.status] = (acc[assessment.status] || 0) + 1;
@@ -197,10 +208,10 @@ export function usePortfolioMetrics() {
     ].map((seed) => ({
       ...seed,
       totalOpen: 0,
-      openedCurrent30: 0,
-      openedPrevious30: 0,
-      closedCurrent30: 0,
-      closedPrevious30: 0,
+      openedCurrentWindow: 0,
+      openedPreviousWindow: 0,
+      closedCurrentWindow: 0,
+      closedPreviousWindow: 0,
       urgentOpen: 0,
     }));
 
@@ -216,10 +227,10 @@ export function usePortfolioMetrics() {
       const row = actionTrendRowsByDiscipline[index];
 
       if (isOpen) row.totalOpen += 1;
-      if (isWithinRange(createdAt, thirtyDaysAgo, now)) row.openedCurrent30 += 1;
-      if (isWithinRange(createdAt, sixtyDaysAgo, thirtyDaysAgo)) row.openedPrevious30 += 1;
-      if (isWithinRange(closedAt, thirtyDaysAgo, now)) row.closedCurrent30 += 1;
-      if (isWithinRange(closedAt, sixtyDaysAgo, thirtyDaysAgo)) row.closedPrevious30 += 1;
+      if (isWithinRange(createdAt, currentWindowStart, now)) row.openedCurrentWindow += 1;
+      if (isWithinRange(createdAt, previousWindowStart, currentWindowStart)) row.openedPreviousWindow += 1;
+      if (isWithinRange(closedAt, currentWindowStart, now)) row.closedCurrentWindow += 1;
+      if (isWithinRange(closedAt, previousWindowStart, currentWindowStart)) row.closedPreviousWindow += 1;
       if (isOpen && action.priority_band === 'P1') row.urgentOpen = (row.urgentOpen || 0) + 1;
     });
 
@@ -227,19 +238,19 @@ export function usePortfolioMetrics() {
       sourceType: 'assessment_action',
       sourceLabel: 'Assessment Actions',
       totalOpen: acc.totalOpen + row.totalOpen,
-      openedCurrent30: acc.openedCurrent30 + row.openedCurrent30,
-      openedPrevious30: acc.openedPrevious30 + row.openedPrevious30,
-      closedCurrent30: acc.closedCurrent30 + row.closedCurrent30,
-      closedPrevious30: acc.closedPrevious30 + row.closedPrevious30,
+      openedCurrentWindow: acc.openedCurrentWindow + row.openedCurrentWindow,
+      openedPreviousWindow: acc.openedPreviousWindow + row.openedPreviousWindow,
+      closedCurrentWindow: acc.closedCurrentWindow + row.closedCurrentWindow,
+      closedPreviousWindow: acc.closedPreviousWindow + row.closedPreviousWindow,
       urgentOpen: (acc.urgentOpen || 0) + (row.urgentOpen || 0),
     }), {
       sourceType: 'assessment_action',
       sourceLabel: 'Assessment Actions',
       totalOpen: 0,
-      openedCurrent30: 0,
-      openedPrevious30: 0,
-      closedCurrent30: 0,
-      closedPrevious30: 0,
+      openedCurrentWindow: 0,
+      openedPreviousWindow: 0,
+      closedCurrentWindow: 0,
+      closedPreviousWindow: 0,
       urgentOpen: 0,
     } satisfies RemediationTrendRow);
 
@@ -248,10 +259,10 @@ export function usePortfolioMetrics() {
       sourceLabel: 'Risk Engineering Recommendations',
       discipline: 'risk_engineering',
       totalOpen: 0,
-      openedCurrent30: 0,
-      openedPrevious30: 0,
-      closedCurrent30: 0,
-      closedPrevious30: 0,
+      openedCurrentWindow: 0,
+      openedPreviousWindow: 0,
+      closedCurrentWindow: 0,
+      closedPreviousWindow: 0,
       urgentOpen: 0,
     };
 
@@ -261,12 +272,12 @@ export function usePortfolioMetrics() {
       const isOpen = rec.status !== 'Completed';
 
       if (isOpen) reRecommendationTrend.totalOpen += 1;
-      if (isWithinRange(createdAt, thirtyDaysAgo, now)) reRecommendationTrend.openedCurrent30 += 1;
-      if (isWithinRange(createdAt, sixtyDaysAgo, thirtyDaysAgo)) reRecommendationTrend.openedPrevious30 += 1;
+      if (isWithinRange(createdAt, currentWindowStart, now)) reRecommendationTrend.openedCurrentWindow += 1;
+      if (isWithinRange(createdAt, previousWindowStart, currentWindowStart)) reRecommendationTrend.openedPreviousWindow += 1;
       // RE recommendations do not currently expose a dedicated closed_at field.
       // We count "Completed" recommendations updated within the period as closure movement.
-      if (rec.status === 'Completed' && isWithinRange(updatedAt, thirtyDaysAgo, now)) reRecommendationTrend.closedCurrent30 += 1;
-      if (rec.status === 'Completed' && isWithinRange(updatedAt, sixtyDaysAgo, thirtyDaysAgo)) reRecommendationTrend.closedPrevious30 += 1;
+      if (rec.status === 'Completed' && isWithinRange(updatedAt, currentWindowStart, now)) reRecommendationTrend.closedCurrentWindow += 1;
+      if (rec.status === 'Completed' && isWithinRange(updatedAt, previousWindowStart, currentWindowStart)) reRecommendationTrend.closedPreviousWindow += 1;
       if (isOpen && rec.priority === 'High') reRecommendationTrend.urgentOpen = (reRecommendationTrend.urgentOpen || 0) + 1;
     });
 
@@ -277,10 +288,10 @@ export function usePortfolioMetrics() {
     ];
 
     const combinedOpenRemediation = assessmentActionTrend.totalOpen + reRecommendationTrend.totalOpen;
-    const combinedNetFlowCurrent = (assessmentActionTrend.openedCurrent30 + reRecommendationTrend.openedCurrent30)
-      - (assessmentActionTrend.closedCurrent30 + reRecommendationTrend.closedCurrent30);
-    const combinedNetFlowPrevious = (assessmentActionTrend.openedPrevious30 + reRecommendationTrend.openedPrevious30)
-      - (assessmentActionTrend.closedPrevious30 + reRecommendationTrend.closedPrevious30);
+    const combinedNetFlowCurrent = (assessmentActionTrend.openedCurrentWindow + reRecommendationTrend.openedCurrentWindow)
+      - (assessmentActionTrend.closedCurrentWindow + reRecommendationTrend.closedCurrentWindow);
+    const combinedNetFlowPrevious = (assessmentActionTrend.openedPreviousWindow + reRecommendationTrend.openedPreviousWindow)
+      - (assessmentActionTrend.closedPreviousWindow + reRecommendationTrend.closedPreviousWindow);
 
     const priorityCounts = actions.reduce<Record<string, number>>((acc, action) => {
       const key = action.priority_band || 'Unspecified';
@@ -360,11 +371,12 @@ export function usePortfolioMetrics() {
       totalAssessments: assessments.length,
       draftAssessments,
       issuedAssessments,
-      createdCurrent30Days,
-      createdPrevious30Days,
-      updatedCurrent30Days,
-      updatedPrevious30Days,
-      updatedLast30Days,
+      selectedWindowDays: windowDays,
+      createdCurrentWindow,
+      createdPreviousWindow,
+      updatedCurrentWindow,
+      updatedPreviousWindow,
+      updatedWithinWindowDays,
       openHighPriorityActions,
       openReRecommendations: openReRecommendations.length,
       openHighPriorityReRecommendations,
@@ -379,13 +391,13 @@ export function usePortfolioMetrics() {
       remediationTrends,
       combinedRemediation: {
         totalOpen: combinedOpenRemediation,
-        netFlowCurrent30: combinedNetFlowCurrent,
-        netFlowPrevious30: combinedNetFlowPrevious,
+        netFlowCurrentWindow: combinedNetFlowCurrent,
+        netFlowPreviousWindow: combinedNetFlowPrevious,
         safeToCombine: true,
         caveat: 'Combined remediation counts are volume-only because assessment actions and RE recommendations use different status and urgency models.',
       },
     };
-  }, [actions, assessments, reRecommendations]);
+  }, [actions, assessments, reRecommendations, windowDays]);
 
   return {
     assessments,

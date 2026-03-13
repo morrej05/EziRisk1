@@ -43,6 +43,9 @@ export default function ActionRegisterPage() {
   const moduleParams = getParamValues('module');
   const siteParam = searchParams.get('site');
   const clientParam = searchParams.get('client');
+  const sourceTypeParam = searchParams.get('sourceType');
+  const openedWithinParam = searchParams.get('openedWithinDays');
+  const closedWithinParam = searchParams.get('closedWithinDays');
   const portfolioSourceState = (location.state as { source?: string } | null)?.source;
 
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
@@ -60,6 +63,9 @@ export default function ActionRegisterPage() {
     moduleKey: moduleParams,
     overdue: false,
     documentId: documentFilter || undefined,
+    sourceType: sourceTypeParam || undefined,
+    openedWithinDays: openedWithinParam ? Number(openedWithinParam) : undefined,
+    closedWithinDays: closedWithinParam ? Number(closedWithinParam) : undefined,
   });
 
   useEffect(() => {
@@ -82,11 +88,16 @@ export default function ActionRegisterPage() {
     const nextModule = moduleParams;
 
     setFilters((prev) => {
+      const nextOpenedWithin = openedWithinParam ? Number(openedWithinParam) : undefined;
+      const nextClosedWithin = closedWithinParam ? Number(closedWithinParam) : undefined;
       const changed =
         JSON.stringify(prev.status) !== JSON.stringify(nextStatus) ||
         JSON.stringify(prev.priority) !== JSON.stringify(nextPriority) ||
         JSON.stringify(prev.moduleKey) !== JSON.stringify(nextModule) ||
-        prev.documentId !== (documentFilter || undefined);
+        prev.documentId !== (documentFilter || undefined) ||
+        prev.sourceType !== (sourceTypeParam || undefined) ||
+        prev.openedWithinDays !== nextOpenedWithin ||
+        prev.closedWithinDays !== nextClosedWithin;
 
       if (!changed) return prev;
 
@@ -96,9 +107,12 @@ export default function ActionRegisterPage() {
         priority: nextPriority,
         moduleKey: nextModule,
         documentId: documentFilter || undefined,
+        sourceType: sourceTypeParam || undefined,
+        openedWithinDays: nextOpenedWithin,
+        closedWithinDays: nextClosedWithin,
       };
     });
-  }, [documentFilter, statusParams, priorityParams, moduleParams]);
+  }, [closedWithinParam, documentFilter, moduleParams, openedWithinParam, priorityParams, sourceTypeParam, statusParams]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -118,10 +132,28 @@ export default function ActionRegisterPage() {
       nextParams.delete('document');
     }
 
+
+    if (filters.sourceType) {
+      nextParams.set('sourceType', filters.sourceType);
+    } else {
+      nextParams.delete('sourceType');
+    }
+
+    if (filters.openedWithinDays) {
+      nextParams.set('openedWithinDays', String(filters.openedWithinDays));
+    } else {
+      nextParams.delete('openedWithinDays');
+    }
+
+    if (filters.closedWithinDays) {
+      nextParams.set('closedWithinDays', String(filters.closedWithinDays));
+    } else {
+      nextParams.delete('closedWithinDays');
+    }
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
     }
-  }, [filters.documentId, filters.moduleKey, filters.priority, filters.status, searchParams, setSearchParams]);
+  }, [filters.closedWithinDays, filters.documentId, filters.moduleKey, filters.openedWithinDays, filters.priority, filters.sourceType, filters.status, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (documentFilter && actions.length > 0) {
@@ -133,7 +165,40 @@ export default function ActionRegisterPage() {
   }, [documentFilter, actions]);
 
   useEffect(() => {
-    const filtered = filterActionRegister(actions, filters);
+    const toDate = (value: string | null) => {
+      if (!value) return null;
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const now = new Date();
+    const openedCutoff = filters.openedWithinDays
+      ? new Date(now.getTime() - filters.openedWithinDays * 24 * 60 * 60 * 1000)
+      : null;
+    const closedCutoff = filters.closedWithinDays
+      ? new Date(now.getTime() - filters.closedWithinDays * 24 * 60 * 60 * 1000)
+      : null;
+
+    let filtered = filterActionRegister(actions, filters);
+
+    if (filters.sourceType === 'assessment_action') {
+      filtered = filtered.filter((action) => action.source !== 're_recommendation');
+    }
+
+    if (openedCutoff) {
+      filtered = filtered.filter((action) => {
+        const createdAt = toDate(action.created_at);
+        return createdAt !== null && createdAt >= openedCutoff;
+      });
+    }
+
+    if (closedCutoff) {
+      filtered = filtered.filter((action) => {
+        const closedAt = toDate(action.closed_at);
+        return closedAt !== null && closedAt >= closedCutoff;
+      });
+    }
+
     setFilteredActions(filtered);
   }, [actions, filters]);
 
@@ -177,6 +242,9 @@ export default function ActionRegisterPage() {
       moduleKey: [],
       overdue: false,
       documentId: undefined,
+      sourceType: undefined,
+      openedWithinDays: undefined,
+      closedWithinDays: undefined,
     });
   };
 
@@ -190,7 +258,10 @@ export default function ActionRegisterPage() {
     filters.trackingStatus.length > 0 ||
     filters.documentType.length > 0 ||
     filters.moduleKey.length > 0 ||
-    filters.overdue;
+    filters.overdue ||
+    Boolean(filters.sourceType) ||
+    Boolean(filters.openedWithinDays) ||
+    Boolean(filters.closedWithinDays);
 
   const formatStatusLabel = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
   const activeChips = (() => {
@@ -216,6 +287,24 @@ export default function ActionRegisterPage() {
       });
     }
 
+
+
+    if (filters.sourceType) {
+      chips.push({
+        key: `sourceType:${filters.sourceType}`,
+        label: 'Source',
+        value: filters.sourceType === 'assessment_action' ? 'Assessment Actions' : filters.sourceType,
+      });
+    }
+
+    if (filters.openedWithinDays) {
+      chips.push({ key: 'openedWithinDays', label: 'Opened', value: `Last ${filters.openedWithinDays} days` });
+    }
+
+    if (filters.closedWithinDays) {
+      chips.push({ key: 'closedWithinDays', label: 'Closed', value: `Last ${filters.closedWithinDays} days` });
+    }
+
     return chips;
   })();
 
@@ -236,6 +325,18 @@ export default function ActionRegisterPage() {
 
     if (type === 'document') {
       setFilters((prev) => ({ ...prev, documentId: undefined }));
+    }
+
+    if (type === 'sourceType') {
+      setFilters((prev) => ({ ...prev, sourceType: undefined }));
+    }
+
+    if (chipKey === 'openedWithinDays') {
+      setFilters((prev) => ({ ...prev, openedWithinDays: undefined }));
+    }
+
+    if (chipKey === 'closedWithinDays') {
+      setFilters((prev) => ({ ...prev, closedWithinDays: undefined }));
     }
   };
 

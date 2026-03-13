@@ -31,6 +31,7 @@ export default function AssessmentsPage() {
     const disciplineParam = searchParams.get('discipline');
     const statusParam = searchParams.get('status');
     const updatedWithinParam = searchParams.get('updatedWithinDays');
+    const createdWithinParam = searchParams.get('createdWithinDays');
     const siteParam = searchParams.get('site');
     const typeParam = searchParams.get('type');
 
@@ -62,6 +63,10 @@ export default function AssessmentsPage() {
 
     if (updatedWithinParam) {
       setSortBy('updated');
+    }
+
+    if (createdWithinParam) {
+      setSortBy('created');
     }
   }, [searchParams]);
 
@@ -147,6 +152,16 @@ export default function AssessmentsPage() {
       }
     }
 
+    const createdWithinParam = searchParams.get('createdWithinDays');
+    if (createdWithinParam) {
+      const dayCount = Number(createdWithinParam);
+      if (!Number.isNaN(dayCount) && dayCount > 0) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - dayCount);
+        filtered = filtered.filter((a) => a.createdAt >= cutoff);
+      }
+    }
+
     const sorted = [...filtered];
     switch (sortBy) {
       case 'updated':
@@ -220,12 +235,15 @@ export default function AssessmentsPage() {
 
   const showRiskEngineeringOverview = disciplineFilter === 'Risk Engineering';
   const updatedWithinParam = searchParams.get('updatedWithinDays');
+  const createdWithinParam = searchParams.get('createdWithinDays');
   const isPortfolioArrival = portfolioSourceState === 'portfolio';
   const hasPortfolioContext = isPortfolioArrival && (
     Boolean(searchParams.get('status')) ||
     Boolean(searchParams.get('site')) ||
     Boolean(searchParams.get('updatedWithinDays')) ||
-    Boolean(searchParams.get('discipline'))
+    Boolean(searchParams.get('createdWithinDays')) ||
+    Boolean(searchParams.get('discipline')) ||
+    Boolean(searchParams.get('type'))
   );
 
   const activeChips = useMemo<ActiveFilterChip[]>(() => {
@@ -258,8 +276,15 @@ export default function AssessmentsPage() {
       }
     }
 
+    if (createdWithinParam) {
+      const dayCount = Number(createdWithinParam);
+      if (!Number.isNaN(dayCount) && dayCount > 0) {
+        chips.push({ key: 'createdWithinDays', label: 'Created', value: `Last ${dayCount} days` });
+      }
+    }
+
     return chips;
-  }, [disciplineFilter, searchTerm, searchParams, statusFilter, typeFilter, updatedWithinParam]);
+  }, [createdWithinParam, disciplineFilter, searchTerm, searchParams, statusFilter, typeFilter, updatedWithinParam]);
 
   const removeChip = (chipKey: string) => {
     if (chipKey === 'discipline') setDisciplineFilter('All');
@@ -267,9 +292,9 @@ export default function AssessmentsPage() {
     if (chipKey === 'type') setTypeFilter('All');
     if (chipKey === 'site') setSearchTerm('');
 
-    if (chipKey === 'updatedWithinDays') {
+    if (chipKey === 'updatedWithinDays' || chipKey === 'createdWithinDays') {
       const nextParams = new URLSearchParams(searchParams);
-      nextParams.delete('updatedWithinDays');
+      nextParams.delete(chipKey);
       setSearchParams(nextParams, { replace: true });
     }
   };
@@ -281,6 +306,7 @@ export default function AssessmentsPage() {
     setSearchTerm('');
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('updatedWithinDays');
+    nextParams.delete('createdWithinDays');
     setSearchParams(nextParams, { replace: true });
   };
 

@@ -7,24 +7,25 @@ const corsHeaders = {
 };
 
 interface PortfolioAiPayload {
+  selectedWindowDays: 30 | 90;
   summary: {
     totalSites: number;
     totalAssessments: number;
     totalActions: number;
     openP1Actions: number;
-    updatedLast30Days: number;
-    createdCurrent30Days: number;
-    createdPrevious30Days: number;
-    updatedCurrent30Days: number;
-    updatedPrevious30Days: number;
+    updatedWithinWindowDays: number;
+    createdCurrentWindow: number;
+    createdPreviousWindow: number;
+    updatedCurrentWindow: number;
+    updatedPreviousWindow: number;
     openReRecommendations: number;
     openHighPriorityReRecommendations: number;
   };
   assessmentTrends: {
-    createdCurrent30Days: number;
-    createdPrevious30Days: number;
-    updatedCurrent30Days: number;
-    updatedPrevious30Days: number;
+    createdCurrentWindow: number;
+    createdPreviousWindow: number;
+    updatedCurrentWindow: number;
+    updatedPreviousWindow: number;
   };
   remediationTrends: {
     bySource: Array<{
@@ -32,16 +33,16 @@ interface PortfolioAiPayload {
       sourceLabel: string;
       discipline?: 'fra' | 'fsd' | 'dsear' | 'risk_engineering';
       totalOpen: number;
-      openedCurrent30: number;
-      openedPrevious30: number;
-      closedCurrent30: number;
-      closedPrevious30: number;
+      openedCurrentWindow: number;
+      openedPreviousWindow: number;
+      closedCurrentWindow: number;
+      closedPreviousWindow: number;
       urgentOpen?: number;
     }>;
     combined?: {
       totalOpen: number;
-      netFlowCurrent30: number;
-      netFlowPrevious30: number;
+      netFlowCurrentWindow: number;
+      netFlowPreviousWindow: number;
       safeToCombine: boolean;
       caveat: string;
     };
@@ -123,6 +124,7 @@ Output requirements:
 5) Do not include markdown. Return valid JSON only.
 6) If remediation trend data is present, explicitly differentiate assessment actions vs risk engineering recommendations.
 7) Refer to a combined remediation view only when remediationTrends.combined.safeToCombine is true.
+8) Explicitly frame trend comparisons as current selectedWindowDays versus previous selectedWindowDays windows.
 
 Portfolio aggregate payload:
 ${JSON.stringify(portfolio)}`;

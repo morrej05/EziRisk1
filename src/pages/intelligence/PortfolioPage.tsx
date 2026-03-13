@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
@@ -14,11 +14,11 @@ interface CardMetric {
   state?: Record<string, unknown>;
 }
 
-function TrendDelta({ value }: { value: number }) {
+function TrendDelta({ value, windowDays }: { value: number; windowDays: 30 | 90 }) {
   const prefix = value > 0 ? '+' : '';
   const colour = value > 0 ? 'text-rose-700' : value < 0 ? 'text-emerald-700' : 'text-slate-500';
 
-  return <p className={`mt-2 text-xs font-medium ${colour}`}>{`${prefix}${value} vs previous 30 days`}</p>;
+  return <p className={`mt-2 text-xs font-medium ${colour}`}>{`${prefix}${value} vs previous ${windowDays} days`}</p>;
 }
 
 function InteractiveRow({
@@ -57,6 +57,10 @@ function InteractiveRow({
 
 export default function PortfolioPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const windowParam = searchParams.get('window');
+  const selectedWindowDays: 30 | 90 = windowParam === '90' ? 90 : 30;
+
   const {
     metrics,
     loading,
@@ -65,9 +69,16 @@ export default function PortfolioPage() {
     assessmentsError,
     actionsError,
     recommendationsError,
-  } = usePortfolioMetrics();
+  } = usePortfolioMetrics(selectedWindowDays);
 
   const [showInsightPanel, setShowInsightPanel] = useState(false);
+
+  const setWindowDays = (windowDays: 30 | 90) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('window', String(windowDays));
+    setSearchParams(nextParams, { replace: true });
+  };
+
 
   const statusDistributionRows = useMemo(
     () => Object.entries(metrics.assessmentStatusCounts)
@@ -100,24 +111,25 @@ export default function PortfolioPage() {
   );
 
   const portfolioAiPayload = useMemo<PortfolioAiPayload>(() => ({
+    selectedWindowDays,
     summary: {
       totalSites: metrics.totalSites,
       totalAssessments: metrics.totalAssessments,
       totalActions: metrics.totalActions,
       openP1Actions: metrics.openHighPriorityActions,
-      updatedLast30Days: metrics.updatedLast30Days,
-      createdCurrent30Days: metrics.createdCurrent30Days,
-      createdPrevious30Days: metrics.createdPrevious30Days,
-      updatedCurrent30Days: metrics.updatedCurrent30Days,
-      updatedPrevious30Days: metrics.updatedPrevious30Days,
+      updatedWithinWindowDays: metrics.updatedWithinWindowDays,
+      createdCurrentWindow: metrics.createdCurrentWindow,
+      createdPreviousWindow: metrics.createdPreviousWindow,
+      updatedCurrentWindow: metrics.updatedCurrentWindow,
+      updatedPreviousWindow: metrics.updatedPreviousWindow,
       openReRecommendations: metrics.openReRecommendations,
       openHighPriorityReRecommendations: metrics.openHighPriorityReRecommendations,
     },
     assessmentTrends: {
-      createdCurrent30Days: metrics.createdCurrent30Days,
-      createdPrevious30Days: metrics.createdPrevious30Days,
-      updatedCurrent30Days: metrics.updatedCurrent30Days,
-      updatedPrevious30Days: metrics.updatedPrevious30Days,
+      createdCurrentWindow: metrics.createdCurrentWindow,
+      createdPreviousWindow: metrics.createdPreviousWindow,
+      updatedCurrentWindow: metrics.updatedCurrentWindow,
+      updatedPreviousWindow: metrics.updatedPreviousWindow,
     },
     remediationTrends: {
       bySource: metrics.remediationTrends,
@@ -155,15 +167,16 @@ export default function PortfolioPage() {
     metrics.totalActions,
     metrics.totalAssessments,
     metrics.totalSites,
-    metrics.createdCurrent30Days,
-    metrics.createdPrevious30Days,
-    metrics.updatedCurrent30Days,
-    metrics.updatedPrevious30Days,
+    metrics.createdCurrentWindow,
+    metrics.createdPreviousWindow,
+    metrics.updatedCurrentWindow,
+    metrics.updatedPreviousWindow,
     metrics.openReRecommendations,
     metrics.openHighPriorityReRecommendations,
     metrics.remediationTrends,
     metrics.combinedRemediation,
-    metrics.updatedLast30Days,
+    metrics.updatedWithinWindowDays,
+    selectedWindowDays,
     statusDistributionRows,
   ]);
 
@@ -182,26 +195,26 @@ export default function PortfolioPage() {
     {
       label: 'Total Assessments',
       value: metrics.totalAssessments,
-      trendValue: metrics.createdCurrent30Days - metrics.createdPrevious30Days,
-      to: '/assessments',
+      trendValue: metrics.createdCurrentWindow - metrics.createdPreviousWindow,
+      to: `/assessments?createdWithinDays=${selectedWindowDays}`,
     },
     {
       label: 'Open Assessment Actions',
       value: assessmentActionTrend?.totalOpen ?? 0,
-      trendValue: (assessmentActionTrend?.openedCurrent30 ?? 0) - (assessmentActionTrend?.openedPrevious30 ?? 0),
-      to: '/dashboard/action-register',
+      trendValue: (assessmentActionTrend?.openedCurrentWindow ?? 0) - (assessmentActionTrend?.openedPreviousWindow ?? 0),
+      to: `/dashboard/action-register?status=open&status=in_progress&sourceType=assessment_action`,
     },
     {
       label: 'Open Risk Engineering Recommendations',
       value: reRecommendationTrend?.totalOpen ?? 0,
-      trendValue: (reRecommendationTrend?.openedCurrent30 ?? 0) - (reRecommendationTrend?.openedPrevious30 ?? 0),
-      to: '/assessments?type=RE',
+      trendValue: (reRecommendationTrend?.openedCurrentWindow ?? 0) - (reRecommendationTrend?.openedPreviousWindow ?? 0),
+      to: `/assessments?type=RE`,
     },
     {
-      label: 'Updated Last 30 Days',
-      value: metrics.updatedLast30Days,
-      trendValue: metrics.updatedCurrent30Days - metrics.updatedPrevious30Days,
-      to: '/assessments?updatedWithinDays=30',
+      label: `Updated Last ${selectedWindowDays} Days`,
+      value: metrics.updatedWithinWindowDays,
+      trendValue: metrics.updatedCurrentWindow - metrics.updatedPreviousWindow,
+      to: `/assessments?updatedWithinDays=${selectedWindowDays}`,
     },
   ];
 
@@ -233,6 +246,24 @@ export default function PortfolioPage() {
         >
           <Sparkles className="w-4 h-4" />
           Analyse Portfolio
+        </button>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-slate-600">Trend window:</span>
+        <button
+          type="button"
+          onClick={() => setWindowDays(30)}
+          className={`px-3 py-1.5 text-xs rounded-md border ${selectedWindowDays === 30 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+        >
+          30D
+        </button>
+        <button
+          type="button"
+          onClick={() => setWindowDays(90)}
+          className={`px-3 py-1.5 text-xs rounded-md border ${selectedWindowDays === 90 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
+        >
+          90D
         </button>
       </div>
 
@@ -294,7 +325,7 @@ export default function PortfolioPage() {
                     <p className={`mt-2 text-3xl font-bold ${card.label === 'Open P1 Actions' ? 'text-rose-700' : 'text-slate-900'}`}>
                       {card.value}
                     </p>
-                    {typeof card.trendValue === 'number' && <TrendDelta value={card.trendValue} />}
+                    {typeof card.trendValue === 'number' && <TrendDelta value={card.trendValue} windowDays={selectedWindowDays} />}
                   </button>
                 );
               })}
@@ -309,17 +340,37 @@ export default function PortfolioPage() {
                 <h3 className="text-sm font-semibold text-slate-800">Assessment Actions</h3>
                 <div className="mt-3 space-y-2 text-sm text-slate-700">
                   <p>Open total: <span className="font-semibold">{assessmentActionTrend?.totalOpen ?? 0}</span></p>
-                  <p>Opened (current / previous 30): <span className="font-semibold">{assessmentActionTrend?.openedCurrent30 ?? 0} / {assessmentActionTrend?.openedPrevious30 ?? 0}</span></p>
-                  <p>Closed (current / previous 30): <span className="font-semibold">{assessmentActionTrend?.closedCurrent30 ?? 0} / {assessmentActionTrend?.closedPrevious30 ?? 0}</span></p>
-                  <p>Urgent Assessment Actions (P1 open): <span className="font-semibold text-rose-700">{assessmentActionTrend?.urgentOpen ?? 0}</span></p>
+                  <InteractiveRow
+                    label={`Opened (current / previous ${selectedWindowDays})`}
+                    value={`${assessmentActionTrend?.openedCurrentWindow ?? 0} / ${assessmentActionTrend?.openedPreviousWindow ?? 0}`}
+                    onClick={() => navigate(`/dashboard/action-register?status=open&status=in_progress&openedWithinDays=${selectedWindowDays}&sourceType=assessment_action`, { state: { source: 'portfolio' } })}
+                  />
+                  <InteractiveRow
+                    label={`Closed (current / previous ${selectedWindowDays})`}
+                    value={`${assessmentActionTrend?.closedCurrentWindow ?? 0} / ${assessmentActionTrend?.closedPreviousWindow ?? 0}`}
+                    onClick={() => navigate(`/dashboard/action-register?status=closed&closedWithinDays=${selectedWindowDays}&sourceType=assessment_action`, { state: { source: 'portfolio' } })}
+                  />
+                  <InteractiveRow
+                    label="Urgent Assessment Actions (P1 open)"
+                    value={String(assessmentActionTrend?.urgentOpen ?? 0)}
+                    onClick={() => navigate('/dashboard/action-register?status=open&status=in_progress&priority=P1&sourceType=assessment_action', { state: { source: 'portfolio' } })}
+                  />
                 </div>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <h3 className="text-sm font-semibold text-slate-800">Risk Engineering Recommendations</h3>
                 <div className="mt-3 space-y-2 text-sm text-slate-700">
                   <p>Open total: <span className="font-semibold">{reRecommendationTrend?.totalOpen ?? 0}</span></p>
-                  <p>Opened (current / previous 30): <span className="font-semibold">{reRecommendationTrend?.openedCurrent30 ?? 0} / {reRecommendationTrend?.openedPrevious30 ?? 0}</span></p>
-                  <p>Completed updates (current / previous 30): <span className="font-semibold">{reRecommendationTrend?.closedCurrent30 ?? 0} / {reRecommendationTrend?.closedPrevious30 ?? 0}</span></p>
+                  <InteractiveRow
+                    label={`Opened (current / previous ${selectedWindowDays})`}
+                    value={`${reRecommendationTrend?.openedCurrentWindow ?? 0} / ${reRecommendationTrend?.openedPreviousWindow ?? 0}`}
+                    onClick={() => navigate(`/assessments?type=RE&createdWithinDays=${selectedWindowDays}`, { state: { source: 'portfolio' } })}
+                  />
+                  <InteractiveRow
+                    label={`Completed updates (current / previous ${selectedWindowDays})`}
+                    value={`${reRecommendationTrend?.closedCurrentWindow ?? 0} / ${reRecommendationTrend?.closedPreviousWindow ?? 0}`}
+                    onClick={() => navigate(`/assessments?type=RE&status=Issued&updatedWithinDays=${selectedWindowDays}`, { state: { source: 'portfolio' } })}
+                  />
                   <p>High-Priority RE Recommendations (open): <span className="font-semibold text-amber-700">{reRecommendationTrend?.urgentOpen ?? 0}</span></p>
                 </div>
                 <p className="mt-3 text-xs text-slate-500">RE closure trend uses Completed status updated timestamps because a dedicated RE closed_at field is not currently exposed.</p>
@@ -328,8 +379,8 @@ export default function PortfolioPage() {
             <div className="mt-4 rounded-lg border border-slate-200 p-4 bg-slate-50">
               <h3 className="text-sm font-semibold text-slate-800">Combined Remediation (explicitly caveated)</h3>
               <p className="mt-2 text-sm text-slate-700">Open remediation total: <span className="font-semibold">{metrics.combinedRemediation.totalOpen}</span></p>
-              <p className="text-sm text-slate-700">Net flow current 30 days: <span className="font-semibold">{metrics.combinedRemediation.netFlowCurrent30 > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowCurrent30}</span></p>
-              <p className="text-sm text-slate-700">Net flow previous 30 days: <span className="font-semibold">{metrics.combinedRemediation.netFlowPrevious30 > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowPrevious30}</span></p>
+              <p className="text-sm text-slate-700">Net flow current window: <span className="font-semibold">{metrics.combinedRemediation.netFlowCurrentWindow > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowCurrentWindow}</span></p>
+              <p className="text-sm text-slate-700">Net flow previous window: <span className="font-semibold">{metrics.combinedRemediation.netFlowPreviousWindow > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowPreviousWindow}</span></p>
               <p className="mt-2 text-xs text-slate-500">Combined totals are shown for volume context only; source-specific cards remain authoritative because status and urgency models differ.</p>
             </div>
           </section>
