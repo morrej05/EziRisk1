@@ -5,11 +5,12 @@ import { useAssessments, AssessmentViewModel } from '../../hooks/useAssessments'
 import { useAuth } from '../../contexts/AuthContext';
 import { canCreateSurveys, isSubscriptionActive, type User } from '../../utils/entitlements';
 import { DeleteDocumentModal } from '../../components/DeleteDocumentModal';
+import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 
 export default function AssessmentsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [refreshKey, setRefreshKey] = useState(0);
   const { assessments, loading } = useAssessments({ refreshKey });
   const { user, organisation } = useAuth();
@@ -23,6 +24,7 @@ export default function AssessmentsPage() {
   const [sortBy, setSortBy] = useState('updated');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
+  const portfolioSourceState = (location.state as { source?: string } | null)?.source;
 
   // Sync supported filters with URL params for drill-through navigation.
   useEffect(() => {
@@ -30,6 +32,7 @@ export default function AssessmentsPage() {
     const statusParam = searchParams.get('status');
     const updatedWithinParam = searchParams.get('updatedWithinDays');
     const siteParam = searchParams.get('site');
+    const typeParam = searchParams.get('type');
 
     if (disciplineParam === 'risk') {
       setDisciplineFilter('Risk Engineering');
@@ -51,10 +54,50 @@ export default function AssessmentsPage() {
       setSearchTerm('');
     }
 
+    if (typeParam) {
+      setTypeFilter(typeParam);
+    } else {
+      setTypeFilter('All');
+    }
+
     if (updatedWithinParam) {
       setSortBy('updated');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (disciplineFilter === 'Risk Engineering') {
+      nextParams.set('discipline', 'risk');
+    } else if (disciplineFilter === 'Fire') {
+      nextParams.set('discipline', 'fire');
+    } else {
+      nextParams.delete('discipline');
+    }
+
+    if (statusFilter !== 'All') {
+      nextParams.set('status', statusFilter);
+    } else {
+      nextParams.delete('status');
+    }
+
+    if (typeFilter !== 'All') {
+      nextParams.set('type', typeFilter);
+    } else {
+      nextParams.delete('type');
+    }
+
+    if (searchTerm.trim()) {
+      nextParams.set('site', searchTerm.trim());
+    } else {
+      nextParams.delete('site');
+    }
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [disciplineFilter, statusFilter, typeFilter, searchTerm, searchParams, setSearchParams]);
 
   const subNavItems = [
     { label: 'All Assessments', path: '/assessments' },
@@ -176,6 +219,70 @@ export default function AssessmentsPage() {
   }, [assessments]);
 
   const showRiskEngineeringOverview = disciplineFilter === 'Risk Engineering';
+  const updatedWithinParam = searchParams.get('updatedWithinDays');
+  const isPortfolioArrival = portfolioSourceState === 'portfolio';
+  const hasPortfolioContext = isPortfolioArrival && (
+    Boolean(searchParams.get('status')) ||
+    Boolean(searchParams.get('site')) ||
+    Boolean(searchParams.get('updatedWithinDays')) ||
+    Boolean(searchParams.get('discipline'))
+  );
+
+  const activeChips = useMemo<ActiveFilterChip[]>(() => {
+    const chips: ActiveFilterChip[] = [];
+
+    if (disciplineFilter !== 'All') {
+      chips.push({ key: 'discipline', label: 'Discipline', value: disciplineFilter });
+    }
+
+    if (statusFilter !== 'All') {
+      chips.push({ key: 'status', label: 'Status', value: statusFilter });
+    }
+
+    if (typeFilter !== 'All') {
+      chips.push({ key: 'type', label: 'Type', value: typeFilter });
+    }
+
+    if (searchTerm.trim()) {
+      chips.push({
+        key: 'site',
+        label: searchParams.get('site') ? 'Site' : 'Search',
+        value: searchTerm.trim(),
+      });
+    }
+
+    if (updatedWithinParam) {
+      const dayCount = Number(updatedWithinParam);
+      if (!Number.isNaN(dayCount) && dayCount > 0) {
+        chips.push({ key: 'updatedWithinDays', label: 'Updated', value: `Last ${dayCount} days` });
+      }
+    }
+
+    return chips;
+  }, [disciplineFilter, searchTerm, searchParams, statusFilter, typeFilter, updatedWithinParam]);
+
+  const removeChip = (chipKey: string) => {
+    if (chipKey === 'discipline') setDisciplineFilter('All');
+    if (chipKey === 'status') setStatusFilter('All');
+    if (chipKey === 'type') setTypeFilter('All');
+    if (chipKey === 'site') setSearchTerm('');
+
+    if (chipKey === 'updatedWithinDays') {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('updatedWithinDays');
+      setSearchParams(nextParams, { replace: true });
+    }
+  };
+
+  const clearAllChips = () => {
+    setDisciplineFilter('All');
+    setStatusFilter('All');
+    setTypeFilter('All');
+    setSearchTerm('');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('updatedWithinDays');
+    setSearchParams(nextParams, { replace: true });
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -209,6 +316,14 @@ export default function AssessmentsPage() {
             ))}
           </nav>
         </div>
+
+        {hasPortfolioContext && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Showing results filtered from Portfolio.
+          </div>
+        )}
+
+        <ActiveFilterChips chips={activeChips} onRemove={removeChip} onClearAll={clearAllChips} />
 
         {showRiskEngineeringOverview && (
           <div className="mb-6 bg-gradient-to-br from-blue-50 to-slate-50 rounded-lg shadow-sm border border-slate-200 p-6">
