@@ -23,6 +23,7 @@ export default function PrimaryNavigation() {
     { label: 'Reports', path: '/reports', show: true },
     { label: 'Impairments', path: '/impairments', show: isFeatureEnabled('IMPAIRMENTS_ENABLED') },
     { label: 'Library', path: '/library', show: true },
+    // TODO: Add a Portfolio nav item here when /portfolio route and page are ready.
     { label: 'Admin', path: '/admin', show: user && canAccessAdmin(user as any) },
     { label: 'Platform', path: '/platform', show: user && canAccessPlatformSettings(user as any) },
   ];
