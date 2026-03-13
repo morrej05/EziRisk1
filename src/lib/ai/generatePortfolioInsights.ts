@@ -1,22 +1,23 @@
 export interface PortfolioAiPayload {
+  selectedWindowDays: 30 | 90;
   summary: {
     totalSites: number;
     totalAssessments: number;
     totalActions: number;
     openP1Actions: number;
-    updatedLast30Days: number;
-    createdCurrent30Days: number;
-    createdPrevious30Days: number;
-    updatedCurrent30Days: number;
-    updatedPrevious30Days: number;
+    updatedWithinWindowDays: number;
+    createdCurrentWindow: number;
+    createdPreviousWindow: number;
+    updatedCurrentWindow: number;
+    updatedPreviousWindow: number;
     openReRecommendations: number;
     openHighPriorityReRecommendations: number;
   };
   assessmentTrends: {
-    createdCurrent30Days: number;
-    createdPrevious30Days: number;
-    updatedCurrent30Days: number;
-    updatedPrevious30Days: number;
+    createdCurrentWindow: number;
+    createdPreviousWindow: number;
+    updatedCurrentWindow: number;
+    updatedPreviousWindow: number;
   };
   remediationTrends: {
     bySource: Array<{
@@ -24,16 +25,16 @@ export interface PortfolioAiPayload {
       sourceLabel: string;
       discipline?: 'fra' | 'fsd' | 'dsear' | 'risk_engineering';
       totalOpen: number;
-      openedCurrent30: number;
-      openedPrevious30: number;
-      closedCurrent30: number;
-      closedPrevious30: number;
+      openedCurrentWindow: number;
+      openedPreviousWindow: number;
+      closedCurrentWindow: number;
+      closedPreviousWindow: number;
       urgentOpen?: number;
     }>;
     combined?: {
       totalOpen: number;
-      netFlowCurrent30: number;
-      netFlowPrevious30: number;
+      netFlowCurrentWindow: number;
+      netFlowPreviousWindow: number;
       safeToCombine: boolean;
       caveat: string;
     };
