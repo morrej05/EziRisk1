@@ -57,7 +57,30 @@ export interface SiteAttentionRow {
   latestAssessmentUpdate: Date | null;
 }
 
-export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
+export interface PortfolioScope {
+  client: string | null;
+  disciplineOrType: string | null;
+  windowDays: 30 | 90;
+  siteQuery?: string;
+}
+
+interface PortfolioScopeOptions {
+  clients: string[];
+  disciplineOrTypes: string[];
+}
+
+function normaliseDisciplineOrType(value: string | null | undefined): string {
+  if (!value) return '';
+  return value.trim().toUpperCase().replace(/\s+/g, '_').replace(/[/-]+/g, '_');
+}
+
+function toAssessmentTypeToken(rawType: string): string {
+  const token = normaliseDisciplineOrType(rawType);
+  if (token === 'FIRE_STRATEGY') return 'FSD';
+  return token;
+}
+
+export function usePortfolioMetrics(scope: PortfolioScope) {
   const { organisation } = useAuth();
   const { assessments, loading: assessmentsLoading, error: assessmentsError } = useAssessments();
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
@@ -156,30 +179,122 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
     };
   }, [organisation?.id]);
 
-  const metrics = useMemo(() => {
-    const uniqueSites = new Set(assessments.map((assessment) => `${assessment.clientName}::${assessment.siteName}`));
-    const draftAssessments = assessments.filter((assessment) => assessment.status === 'Draft').length;
-    const issuedAssessments = assessments.filter((assessment) => assessment.status === 'Issued').length;
+  const scopeOptions = useMemo<PortfolioScopeOptions>(() => {
+    const clients = new Set<string>();
+    const disciplineOrTypes = new Set<string>();
 
-    const { now, currentWindowStart, previousWindowStart } = getPortfolioWindowBounds(windowDays);
+    assessments.forEach((assessment) => {
+      if (assessment.clientName) clients.add(assessment.clientName);
+      const typeToken = toAssessmentTypeToken(assessment.type);
+      if (typeToken) disciplineOrTypes.add(typeToken);
+    });
+
+    actions.forEach((action) => {
+      const typeToken = toAssessmentTypeToken(action.document_type);
+      if (typeToken) disciplineOrTypes.add(typeToken);
+    });
+
+    if (reRecommendations.length > 0) {
+      disciplineOrTypes.add('RISK_ENGINEERING');
+    }
+
+    return {
+      clients: Array.from(clients).sort((a, b) => a.localeCompare(b)),
+      disciplineOrTypes: Array.from(disciplineOrTypes).sort((a, b) => a.localeCompare(b)),
+    };
+  }, [actions, assessments, reRecommendations]);
+
+  const metrics = useMemo(() => {
+    const selectedClient = scope.client?.trim() || null;
+    const selectedDisciplineOrType = normaliseDisciplineOrType(scope.disciplineOrType);
+    const selectedSiteQuery = scope.siteQuery?.trim().toLowerCase() || '';
+
+    const assessmentById = new Map(assessments.map((assessment) => [assessment.id, assessment]));
+
+    const scopedAssessments = assessments.filter((assessment) => {
+      if (selectedClient && assessment.clientName !== selectedClient) return false;
+
+      if (selectedDisciplineOrType) {
+        const assessmentTypeToken = toAssessmentTypeToken(assessment.type);
+        if (assessmentTypeToken !== selectedDisciplineOrType) return false;
+      }
+
+      if (selectedSiteQuery) {
+        const siteMatches = assessment.siteName.toLowerCase().includes(selectedSiteQuery);
+        const clientMatches = assessment.clientName.toLowerCase().includes(selectedSiteQuery);
+        if (!siteMatches && !clientMatches) return false;
+      }
+
+      return true;
+    });
+
+    const scopedActions = actions.filter((action) => {
+      const linkedAssessment = assessmentById.get(action.document_id);
+
+      if (selectedClient) {
+        const clientName = linkedAssessment?.clientName || '';
+        if (clientName !== selectedClient) return false;
+      }
+
+      if (selectedDisciplineOrType) {
+        const actionTypeToken = toAssessmentTypeToken(action.document_type);
+        if (actionTypeToken !== selectedDisciplineOrType) return false;
+      }
+
+      if (selectedSiteQuery) {
+        const siteMatches = action.document_title.toLowerCase().includes(selectedSiteQuery);
+        const clientMatches = linkedAssessment?.clientName.toLowerCase().includes(selectedSiteQuery) || false;
+        if (!siteMatches && !clientMatches) return false;
+      }
+
+      return true;
+    });
+
+    const scopedReRecommendations = reRecommendations.filter((recommendation) => {
+      const linkedAssessment = assessmentById.get(recommendation.document_id);
+
+      if (selectedClient) {
+        const clientName = linkedAssessment?.clientName || '';
+        if (clientName !== selectedClient) return false;
+      }
+
+      if (selectedDisciplineOrType && selectedDisciplineOrType !== 'RISK_ENGINEERING') {
+        return false;
+      }
+
+      if (selectedSiteQuery) {
+        const siteTitle = recommendation.documents?.title || linkedAssessment?.siteName || '';
+        const siteMatches = siteTitle.toLowerCase().includes(selectedSiteQuery);
+        const clientMatches = linkedAssessment?.clientName.toLowerCase().includes(selectedSiteQuery) || false;
+        if (!siteMatches && !clientMatches) return false;
+      }
+
+      return true;
+    });
+
+    const uniqueSites = new Set(scopedAssessments.map((assessment) => `${assessment.clientName}::${assessment.siteName}`));
+    const draftAssessments = scopedAssessments.filter((assessment) => assessment.status === 'Draft').length;
+    const issuedAssessments = scopedAssessments.filter((assessment) => assessment.status === 'Issued').length;
+
+    const { now, currentWindowStart, previousWindowStart } = getPortfolioWindowBounds(scope.windowDays);
 
     const isWithinRange = (date: Date | null, rangeStart: Date, rangeEnd: Date) => {
       if (!date) return false;
       return date >= rangeStart && date < rangeEnd;
     };
 
-    const updatedWithinWindowDays = assessments.filter((assessment) => assessment.updatedAt >= currentWindowStart).length;
-    const createdCurrentWindow = assessments.filter((assessment) => isWithinRange(assessment.createdAt, currentWindowStart, now)).length;
-    const createdPreviousWindow = assessments.filter((assessment) => isWithinRange(assessment.createdAt, previousWindowStart, currentWindowStart)).length;
-    const updatedCurrentWindow = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, currentWindowStart, now)).length;
-    const updatedPreviousWindow = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, previousWindowStart, currentWindowStart)).length;
+    const updatedWithinWindowDays = scopedAssessments.filter((assessment) => assessment.updatedAt >= currentWindowStart).length;
+    const createdCurrentWindow = scopedAssessments.filter((assessment) => isWithinRange(assessment.createdAt, currentWindowStart, now)).length;
+    const createdPreviousWindow = scopedAssessments.filter((assessment) => isWithinRange(assessment.createdAt, previousWindowStart, currentWindowStart)).length;
+    const updatedCurrentWindow = scopedAssessments.filter((assessment) => isWithinRange(assessment.updatedAt, currentWindowStart, now)).length;
+    const updatedPreviousWindow = scopedAssessments.filter((assessment) => isWithinRange(assessment.updatedAt, previousWindowStart, currentWindowStart)).length;
 
-    const assessmentStatusCounts = assessments.reduce<Record<string, number>>((acc, assessment) => {
+    const assessmentStatusCounts = scopedAssessments.reduce<Record<string, number>>((acc, assessment) => {
       acc[assessment.status] = (acc[assessment.status] || 0) + 1;
       return acc;
     }, {});
 
-    const assessmentTypeCounts = assessments.reduce<Record<string, number>>((acc, assessment) => {
+    const assessmentTypeCounts = scopedAssessments.reduce<Record<string, number>>((acc, assessment) => {
       acc[assessment.type] = (acc[assessment.type] || 0) + 1;
       return acc;
     }, {});
@@ -189,10 +304,10 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    const openActions = actions.filter((action) => action.status !== 'closed');
+    const openActions = scopedActions.filter((action) => action.status !== 'closed');
     const openHighPriorityActions = openActions.filter((action) => action.priority_band === 'P1').length;
 
-    const openReRecommendations = reRecommendations.filter((rec) => rec.status !== 'Completed');
+    const openReRecommendations = scopedReRecommendations.filter((rec) => rec.status !== 'Completed');
     const openHighPriorityReRecommendations = openReRecommendations.filter((rec) => rec.priority === 'High').length;
 
     const parseDate = (value: string | null | undefined) => {
@@ -217,7 +332,7 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
 
     const disciplineIndex: Record<string, number> = { FRA: 0, FSD: 1, DSEAR: 2 };
 
-    actions.forEach((action) => {
+    scopedActions.forEach((action) => {
       const createdAt = parseDate(action.created_at);
       const closedAt = parseDate(action.closed_at);
       const isOpen = action.status !== 'closed';
@@ -266,7 +381,7 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
       urgentOpen: 0,
     };
 
-    reRecommendations.forEach((rec) => {
+    scopedReRecommendations.forEach((rec) => {
       const createdAt = parseDate(rec.created_at);
       const updatedAt = parseDate(rec.updated_at);
       const isOpen = rec.status !== 'Completed';
@@ -293,19 +408,19 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
     const combinedNetFlowPrevious = (assessmentActionTrend.openedPreviousWindow + reRecommendationTrend.openedPreviousWindow)
       - (assessmentActionTrend.closedPreviousWindow + reRecommendationTrend.closedPreviousWindow);
 
-    const priorityCounts = actions.reduce<Record<string, number>>((acc, action) => {
+    const priorityCounts = scopedActions.reduce<Record<string, number>>((acc, action) => {
       const key = action.priority_band || 'Unspecified';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
 
-    const statusCounts = actions.reduce<Record<string, number>>((acc, action) => {
+    const statusCounts = scopedActions.reduce<Record<string, number>>((acc, action) => {
       const key = action.status || 'unknown';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
 
-    const moduleKeyCounts = actions.reduce<Record<string, number>>((acc, action) => {
+    const moduleKeyCounts = scopedActions.reduce<Record<string, number>>((acc, action) => {
       const key = action.module_key || 'Unassigned module';
       acc[key] = (acc[key] || 0) + 1;
       return acc;
@@ -318,7 +433,7 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
 
     const siteMap = new Map<string, SiteAttentionRow>();
 
-    assessments.forEach((assessment) => {
+    scopedAssessments.forEach((assessment) => {
       const siteKey = assessment.id;
       if (!siteMap.has(siteKey)) {
         siteMap.set(siteKey, {
@@ -333,7 +448,7 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
       }
     });
 
-    actions.forEach((action) => {
+    scopedActions.forEach((action) => {
       const siteKey = action.document_id;
       const existing = siteMap.get(siteKey) || {
         documentId: action.document_id,
@@ -368,10 +483,10 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
 
     return {
       totalSites: uniqueSites.size,
-      totalAssessments: assessments.length,
+      totalAssessments: scopedAssessments.length,
       draftAssessments,
       issuedAssessments,
-      selectedWindowDays: windowDays,
+      selectedWindowDays: scope.windowDays,
       createdCurrentWindow,
       createdPreviousWindow,
       updatedCurrentWindow,
@@ -382,8 +497,8 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
       openHighPriorityReRecommendations,
       assessmentStatusCounts,
       commonAssessmentTypes,
-      totalActions: actions.length,
-      totalReRecommendations: reRecommendations.length,
+      totalActions: scopedActions.length,
+      totalReRecommendations: scopedReRecommendations.length,
       priorityCounts,
       statusCounts,
       commonActionGroups,
@@ -397,11 +512,12 @@ export function usePortfolioMetrics(windowDays: 30 | 90 = 30) {
         caveat: 'Combined remediation counts are volume-only because assessment actions and RE recommendations use different status and urgency models.',
       },
     };
-  }, [actions, assessments, reRecommendations, windowDays]);
+  }, [actions, assessments, reRecommendations, scope.client, scope.disciplineOrType, scope.siteQuery, scope.windowDays]);
 
   return {
     assessments,
     actions,
+    scopeOptions,
     metrics,
     loading: assessmentsLoading || actionsLoading || recommendationsLoading,
     assessmentsLoading,
