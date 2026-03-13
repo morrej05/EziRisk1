@@ -1,33 +1,83 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Copy, RefreshCw } from 'lucide-react';
+import {
+  type PortfolioAiInsights,
+  type PortfolioAiPayload,
+  generatePortfolioInsights,
+} from '../../lib/ai/generatePortfolioInsights';
+
 interface PortfolioInsightPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  totals: {
-    assessments: number;
-    actions: number;
-    sites: number;
-    updatedLast30Days: number;
-  };
-  statusRowCount: number;
-  moduleRowCount: number;
-  topSiteCount: number;
+  payload: PortfolioAiPayload;
+  canGenerate: boolean;
 }
+
+type PanelState = 'idle' | 'loading' | 'success' | 'error';
 
 export default function PortfolioInsightPanel({
   isOpen,
   onClose,
-  totals,
-  statusRowCount,
-  moduleRowCount,
-  topSiteCount,
+  payload,
+  canGenerate,
 }: PortfolioInsightPanelProps) {
+  const [panelState, setPanelState] = useState<PanelState>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [insights, setInsights] = useState<PortfolioAiInsights | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const payloadSignature = useMemo(() => JSON.stringify(payload), [payload]);
+
+  const runGeneration = async () => {
+    if (!canGenerate) return;
+
+    setPanelState('loading');
+    setErrorMessage(null);
+
+    try {
+      const result = await generatePortfolioInsights(payload);
+      setInsights(result);
+      setPanelState('success');
+    } catch (error) {
+      setPanelState('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to generate portfolio insights right now.');
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (!canGenerate) {
+      setPanelState('idle');
+      setErrorMessage(null);
+      setInsights(null);
+      return;
+    }
+
+    void runGeneration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, canGenerate, payloadSignature]);
+
   if (!isOpen) return null;
+
+  const handleCopyCommentary = async () => {
+    if (!insights?.draftCommentary) return;
+
+    try {
+      await navigator.clipboard.writeText(insights.draftCommentary);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   return (
     <aside className="w-full xl:w-[28rem] bg-white rounded-lg shadow-sm border border-slate-200 h-fit">
       <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Portfolio Insight</h2>
-          <p className="text-sm text-slate-600">Scaffold using current portfolio aggregates only.</p>
+          <p className="text-sm text-slate-600">AI interpretation of current portfolio aggregates.</p>
         </div>
         <button
           onClick={onClose}
@@ -38,38 +88,94 @@ export default function PortfolioInsightPanel({
       </div>
 
       <div className="p-5 space-y-5">
-        <section>
-          <h3 className="text-sm font-semibold text-slate-900 mb-2">Summary</h3>
-          <p className="text-sm text-slate-600">
-            Portfolio analysis of {totals.assessments} assessments and {totals.actions} actions will appear here.
-          </p>
-        </section>
+        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+          AI-generated insight should be reviewed before external use.
+        </p>
 
-        <section>
-          <h3 className="text-sm font-semibold text-slate-900 mb-2">Concentrations</h3>
-          <p className="text-sm text-slate-600">
-            Current scaffold can reference {statusRowCount} assessment statuses and {moduleRowCount} frequent action modules.
-          </p>
-        </section>
+        {!canGenerate && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-700">
+              Insufficient portfolio data for AI insight. Add assessments and actions, then try again.
+            </p>
+          </div>
+        )}
 
-        <section>
-          <h3 className="text-sm font-semibold text-slate-900 mb-2">Priorities</h3>
-          <p className="text-sm text-slate-600">
-            Priority insight placeholders currently cover {topSiteCount} high-attention sites and {totals.updatedLast30Days} recently updated assessments.
-          </p>
-        </section>
+        {canGenerate && panelState === 'loading' && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-700">Generating concise portfolio insights from aggregate data…</p>
+          </div>
+        )}
 
-        <section>
-          <h3 className="text-sm font-semibold text-slate-900 mb-2">Commentary</h3>
-          <p className="text-sm text-slate-600">
-            Concentration and trend insights will be available when AI portfolio analysis is connected.
-          </p>
-        </section>
+        {canGenerate && panelState === 'error' && (
+          <div className="rounded-md border border-rose-200 bg-rose-50 p-4 space-y-3">
+            <p className="text-sm text-rose-800">
+              We could not generate portfolio insight at this time. Please try again.
+            </p>
+            {errorMessage && <p className="text-xs text-rose-700">Details: {errorMessage}</p>}
+            <button
+              type="button"
+              onClick={() => void runGeneration()}
+              className="inline-flex items-center gap-2 text-sm font-medium text-rose-800 hover:text-rose-900"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Retry
+            </button>
+          </div>
+        )}
 
-        {/* TODO: Connect this panel to backend AI portfolio analysis service when contracts are finalised. */}
-        {/* TODO: Add trend detection across reporting periods and baseline comparisons. */}
-        {/* TODO: Add source traceability/citations for each generated insight. */}
-        {/* TODO: Add workflow for human-reviewed external commentary before client-facing use. */}
+        {canGenerate && panelState === 'success' && insights && (
+          <>
+            <section>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Summary</h3>
+              <p className="text-sm text-slate-700">{insights.summary}</p>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Concentrations</h3>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-slate-700">
+                {insights.concentrations.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </section>
+
+            <section>
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Priorities</h3>
+              <ul className="list-disc pl-5 space-y-1 text-sm text-slate-700">
+                {insights.priorities.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <h3 className="text-sm font-semibold text-slate-900">Draft Commentary</h3>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyCommentary()}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-800"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {copied ? 'Copied' : 'Copy commentary'}
+                </button>
+              </div>
+              <p className="text-sm text-slate-700">{insights.draftCommentary}</p>
+            </section>
+
+            <button
+              type="button"
+              onClick={() => void runGeneration()}
+              className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Regenerate
+            </button>
+          </>
+        )}
+
+        {/* TODO: Surface aggregate-to-output traceability per section for reviewer confidence. */}
+        {/* TODO: Add approval gates before enabling export of AI commentary into formal reports. */}
       </div>
     </aside>
   );

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
+import { type PortfolioAiPayload } from '../../lib/ai/generatePortfolioInsights';
 import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
 
 interface CardMetric {
@@ -89,6 +90,50 @@ export default function PortfolioPage() {
     [metrics.statusCounts]
   );
 
+  const portfolioAiPayload = useMemo<PortfolioAiPayload>(() => ({
+    summary: {
+      totalSites: metrics.totalSites,
+      totalAssessments: metrics.totalAssessments,
+      totalActions: metrics.totalActions,
+      openP1Actions: metrics.openHighPriorityActions,
+      updatedLast30Days: metrics.updatedLast30Days,
+    },
+    assessmentStatusDistribution: statusDistributionRows
+      .slice(0, 6)
+      .map((row) => ({ label: row.label, count: row.count })),
+    commonActionModules: metrics.commonActionGroups
+      .slice(0, 5)
+      .map((row) => ({ label: row.label, count: row.count })),
+    actionProfile: {
+      byPriority: actionPriorityRows
+        .slice(0, 6)
+        .map((row) => ({ label: row.label, count: row.count })),
+      byStatus: actionStatusRows
+        .slice(0, 6)
+        .map((row) => ({ label: row.label, count: row.count })),
+    },
+    sitesRequiringAttention: metrics.topSites
+      .slice(0, 5)
+      .map((site) => ({
+        siteName: site.siteName,
+        clientName: site.clientName,
+        openActions: site.openActions,
+        overdueActions: site.overdueActions,
+        p1OpenActions: site.p1OpenActions,
+      })),
+  }), [
+    actionPriorityRows,
+    actionStatusRows,
+    metrics.commonActionGroups,
+    metrics.openHighPriorityActions,
+    metrics.topSites,
+    metrics.totalActions,
+    metrics.totalAssessments,
+    metrics.totalSites,
+    metrics.updatedLast30Days,
+    statusDistributionRows,
+  ]);
+
   const summaryCards: CardMetric[] = [
     { label: 'Total Sites', value: metrics.totalSites, to: '/assessments' },
     { label: 'Total Assessments', value: metrics.totalAssessments, to: '/assessments' },
@@ -131,15 +176,8 @@ export default function PortfolioPage() {
         <PortfolioInsightPanel
           isOpen={showInsightPanel}
           onClose={() => setShowInsightPanel(false)}
-          totals={{
-            assessments: metrics.totalAssessments,
-            actions: metrics.totalActions,
-            sites: metrics.totalSites,
-            updatedLast30Days: metrics.updatedLast30Days,
-          }}
-          statusRowCount={statusDistributionRows.length}
-          moduleRowCount={metrics.commonActionGroups.length}
-          topSiteCount={metrics.topSites.length}
+          payload={portfolioAiPayload}
+          canGenerate={!hasNoData}
         />
       )}
 
