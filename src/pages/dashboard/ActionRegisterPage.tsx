@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileText,
   Download,
@@ -23,16 +23,27 @@ import {
 } from '../../utils/actionRegister';
 import { Button, Card } from '../../components/ui/DesignSystem';
 import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 
 export default function ActionRegisterPage() {
   const { organisation } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const getParamValues = (key: string): string[] => {
+    const allValues = searchParams.getAll(key).filter(Boolean);
+    if (allValues.length > 0) return allValues;
+    const singleValue = searchParams.get(key);
+    return singleValue ? [singleValue] : [];
+  };
+
   const documentFilter = searchParams.get('document');
-  const statusParam = searchParams.get('status');
-  const priorityParam = searchParams.get('priority');
-  const moduleParam = searchParams.get('module');
+  const statusParams = getParamValues('status');
+  const priorityParams = getParamValues('priority');
+  const moduleParams = getParamValues('module');
   const siteParam = searchParams.get('site');
+  const clientParam = searchParams.get('client');
+  const portfolioSourceState = (location.state as { source?: string } | null)?.source;
 
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
   const [filteredActions, setFilteredActions] = useState<ActionRegisterEntry[]>([]);
@@ -46,7 +57,7 @@ export default function ActionRegisterPage() {
     priority: [] as string[],
     trackingStatus: [] as string[],
     documentType: [] as string[],
-    moduleKey: moduleParam ? [moduleParam] : [] as string[],
+    moduleKey: moduleParams,
     overdue: false,
     documentId: documentFilter || undefined,
   });
@@ -66,9 +77,9 @@ export default function ActionRegisterPage() {
 
 
   useEffect(() => {
-    const nextStatus = statusParam ? [statusParam] : [];
-    const nextPriority = priorityParam ? [priorityParam] : [];
-    const nextModule = moduleParam ? [moduleParam] : [];
+    const nextStatus = statusParams;
+    const nextPriority = priorityParams;
+    const nextModule = moduleParams;
 
     setFilters((prev) => {
       const changed =
@@ -87,7 +98,30 @@ export default function ActionRegisterPage() {
         documentId: documentFilter || undefined,
       };
     });
-  }, [documentFilter, statusParam, priorityParam, moduleParam]);
+  }, [documentFilter, statusParams, priorityParams, moduleParams]);
+
+  useEffect(() => {
+    const nextParams = new URLSearchParams(searchParams);
+
+    nextParams.delete('status');
+    filters.status.forEach((status) => nextParams.append('status', status));
+
+    nextParams.delete('priority');
+    filters.priority.forEach((priority) => nextParams.append('priority', priority));
+
+    nextParams.delete('module');
+    filters.moduleKey.forEach((moduleKey) => nextParams.append('module', moduleKey));
+
+    if (filters.documentId) {
+      nextParams.set('document', filters.documentId);
+    } else {
+      nextParams.delete('document');
+    }
+
+    if (nextParams.toString() !== searchParams.toString()) {
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [filters.documentId, filters.moduleKey, filters.priority, filters.status, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (documentFilter && actions.length > 0) {
@@ -142,7 +176,7 @@ export default function ActionRegisterPage() {
       documentType: [],
       moduleKey: [],
       overdue: false,
-      documentId: documentFilter || undefined,
+      documentId: undefined,
     });
   };
 
@@ -150,12 +184,62 @@ export default function ActionRegisterPage() {
   const availableModuleKeys = getUniqueModuleKeys(actions);
   const availableDocumentTypes = getUniqueDocumentTypes(actions);
   const hasActiveFilters =
+    Boolean(filters.documentId) ||
     filters.status.length > 0 ||
     filters.priority.length > 0 ||
     filters.trackingStatus.length > 0 ||
     filters.documentType.length > 0 ||
     filters.moduleKey.length > 0 ||
     filters.overdue;
+
+  const formatStatusLabel = (value: string) => value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  const activeChips = (() => {
+    const chips: ActiveFilterChip[] = [];
+
+    filters.priority.forEach((priority) => {
+      chips.push({ key: `priority:${priority}`, label: 'Priority', value: priority });
+    });
+
+    filters.status.forEach((status) => {
+      chips.push({ key: `status:${status}`, label: 'Status', value: formatStatusLabel(status) });
+    });
+
+    filters.moduleKey.forEach((moduleKey) => {
+      chips.push({ key: `module:${moduleKey}`, label: 'Module', value: getModuleKeyLabel(moduleKey) });
+    });
+
+    if (filters.documentId) {
+      chips.push({
+        key: `document:${filters.documentId}`,
+        label: 'Document',
+        value: documentTitle || filters.documentId,
+      });
+    }
+
+    return chips;
+  })();
+
+  const removeChip = (chipKey: string) => {
+    const [type, value] = chipKey.split(':');
+
+    if (type === 'status') {
+      setFilters((prev) => ({ ...prev, status: prev.status.filter((item) => item !== value) }));
+    }
+
+    if (type === 'priority') {
+      setFilters((prev) => ({ ...prev, priority: prev.priority.filter((item) => item !== value) }));
+    }
+
+    if (type === 'module') {
+      setFilters((prev) => ({ ...prev, moduleKey: prev.moduleKey.filter((item) => item !== value) }));
+    }
+
+    if (type === 'document') {
+      setFilters((prev) => ({ ...prev, documentId: undefined }));
+    }
+  };
+
+  const hasPortfolioContext = (portfolioSourceState === 'portfolio' || Boolean(siteParam) || Boolean(clientParam)) && activeChips.length > 0;
 
   if (isLoading) {
     return (
@@ -187,11 +271,8 @@ export default function ActionRegisterPage() {
                     ? 'Document-level action tracking'
                     : 'Organisation-wide action tracking and management'}
                 </p>
-                {(statusParam || priorityParam || moduleParam || siteParam) && (
-                  <p className="text-xs text-blue-700 mt-1">
-                    Portfolio drill-through filters applied where supported.
-                    {siteParam ? ` Site hint: ${siteParam}.` : ''}
-                  </p>
+                {siteParam && (
+                  <p className="text-xs text-neutral-600 mt-1">Site hint: {siteParam}</p>
                 )}
               </div>
             </div>
@@ -232,6 +313,14 @@ export default function ActionRegisterPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
+        {hasPortfolioContext && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Showing results filtered from Portfolio.
+          </div>
+        )}
+
+        <ActiveFilterChips chips={activeChips} onRemove={removeChip} onClearAll={clearFilters} />
+
         {/* Stats Cards */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           <Card>
