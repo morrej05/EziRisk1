@@ -2,17 +2,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
 import LandingPage from './pages/LandingPage';
 import SignIn from './pages/SignIn';
-import Dashboard from './pages/Dashboard';
-import CommonDashboard from './pages/CommonDashboard';
-import FireSafetyDashboard from './pages/dashboard/FireSafetyDashboard';
-import ExplosionDashboard from './pages/dashboard/ExplosionDashboard';
 import ActionsDashboard from './pages/dashboard/ActionsDashboard';
 import ActionRegisterPage from './pages/dashboard/ActionRegisterPage';
 import DocumentOverview from './pages/documents/DocumentOverview';
 import DocumentWorkspace from './pages/documents/DocumentWorkspace';
 import DocumentEvidence from './pages/documents/DocumentEvidenceV2';
 import DocumentPreviewPage from './pages/documents/DocumentPreviewPage';
-import AdminDashboard from './pages/AdminDashboard';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import UpgradeSubscription from './pages/UpgradeSubscription';
 import ExternalSurvey from './pages/ExternalSurvey';
@@ -28,7 +23,6 @@ import CombinedReportsPage from './pages/ezirisk/CombinedReportsPage';
 import ImpairmentsPage from './pages/ezirisk/ImpairmentsPage';
 import LibraryPage from './pages/ezirisk/LibraryPage';
 import AdminPage from './pages/ezirisk/AdminPage';
-import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import PlatformAdminRoute from './components/SuperAdminRoute';
 import AuthedLayout from './components/AuthedLayout';
@@ -38,6 +32,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import BuildingsPage from "./pages/re/BuildingsPage";
 import FireProtectionPage from "./pages/re/FireProtectionPage";
 import ReSurveyPdfFixturePage from "./pages/dev/ReSurveyPdfFixturePage";
+import PortfolioPage from './pages/intelligence/PortfolioPage';
 
 function App() {
   return (
@@ -145,6 +140,15 @@ function App() {
             element={
               <AuthedLayout>
                 <ReportsPage />
+              </AuthedLayout>
+            }
+          />
+
+          <Route
+            path="/portfolio"
+            element={
+              <AuthedLayout>
+                <PortfolioPage />
               </AuthedLayout>
             }
           />
