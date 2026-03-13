@@ -1,5 +1,11 @@
 export interface PortfolioAiPayload {
   selectedWindowDays: 30 | 90;
+  scope: {
+    client: string | null;
+    disciplineOrType: string | null;
+    siteQuery: string;
+    windowDays: 30 | 90;
+  };
   summary: {
     totalSites: number;
     totalAssessments: number;

@@ -44,6 +44,7 @@ export default function ActionRegisterPage() {
   const siteParam = searchParams.get('site');
   const clientParam = searchParams.get('client');
   const sourceTypeParam = searchParams.get('sourceType');
+  const typeParam = searchParams.get('type');
   const openedWithinParam = searchParams.get('openedWithinDays');
   const closedWithinParam = searchParams.get('closedWithinDays');
   const portfolioSourceState = (location.state as { source?: string } | null)?.source;
@@ -66,6 +67,7 @@ export default function ActionRegisterPage() {
     sourceType: sourceTypeParam || undefined,
     openedWithinDays: openedWithinParam ? Number(openedWithinParam) : undefined,
     closedWithinDays: closedWithinParam ? Number(closedWithinParam) : undefined,
+    type: typeParam || undefined,
   });
 
   useEffect(() => {
@@ -97,7 +99,8 @@ export default function ActionRegisterPage() {
         prev.documentId !== (documentFilter || undefined) ||
         prev.sourceType !== (sourceTypeParam || undefined) ||
         prev.openedWithinDays !== nextOpenedWithin ||
-        prev.closedWithinDays !== nextClosedWithin;
+        prev.closedWithinDays !== nextClosedWithin ||
+        prev.type !== (typeParam || undefined);
 
       if (!changed) return prev;
 
@@ -110,9 +113,10 @@ export default function ActionRegisterPage() {
         sourceType: sourceTypeParam || undefined,
         openedWithinDays: nextOpenedWithin,
         closedWithinDays: nextClosedWithin,
+        type: typeParam || undefined,
       };
     });
-  }, [closedWithinParam, documentFilter, moduleParams, openedWithinParam, priorityParams, sourceTypeParam, statusParams]);
+  }, [closedWithinParam, documentFilter, moduleParams, openedWithinParam, priorityParams, sourceTypeParam, statusParams, typeParam]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -150,10 +154,16 @@ export default function ActionRegisterPage() {
     } else {
       nextParams.delete('closedWithinDays');
     }
+
+    if (filters.type) {
+      nextParams.set('type', filters.type);
+    } else {
+      nextParams.delete('type');
+    }
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
     }
-  }, [filters.closedWithinDays, filters.documentId, filters.moduleKey, filters.openedWithinDays, filters.priority, filters.sourceType, filters.status, searchParams, setSearchParams]);
+  }, [filters.closedWithinDays, filters.documentId, filters.moduleKey, filters.openedWithinDays, filters.priority, filters.sourceType, filters.status, filters.type, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (documentFilter && actions.length > 0) {
@@ -181,6 +191,19 @@ export default function ActionRegisterPage() {
 
     let filtered = filterActionRegister(actions, filters);
 
+    if (filters.type) {
+      const normalised = filters.type.toUpperCase();
+      filtered = filtered.filter((action) => {
+        if (normalised === 'FIRE STRATEGY') return action.document_type.toUpperCase() === 'FSD';
+        return action.document_type.toUpperCase() === normalised;
+      });
+    }
+
+    if (siteParam) {
+      const term = siteParam.toLowerCase();
+      filtered = filtered.filter((action) => action.document_title.toLowerCase().includes(term));
+    }
+
     if (filters.sourceType === 'assessment_action') {
       filtered = filtered.filter((action) => action.source !== 're_recommendation');
     }
@@ -200,7 +223,7 @@ export default function ActionRegisterPage() {
     }
 
     setFilteredActions(filtered);
-  }, [actions, filters]);
+  }, [actions, filters, siteParam]);
 
   const fetchData = async () => {
     if (!organisation?.id) return;
@@ -245,6 +268,7 @@ export default function ActionRegisterPage() {
       sourceType: undefined,
       openedWithinDays: undefined,
       closedWithinDays: undefined,
+      type: undefined,
     });
   };
 
@@ -258,6 +282,7 @@ export default function ActionRegisterPage() {
     filters.trackingStatus.length > 0 ||
     filters.documentType.length > 0 ||
     filters.moduleKey.length > 0 ||
+    Boolean(filters.type) ||
     filters.overdue ||
     Boolean(filters.sourceType) ||
     Boolean(filters.openedWithinDays) ||

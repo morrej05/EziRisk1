@@ -21,6 +21,7 @@ export default function AssessmentsPage() {
   const [disciplineFilter, setDisciplineFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
+  const [clientFilter, setClientFilter] = useState('All');
   const [sortBy, setSortBy] = useState('updated');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [documentToDelete, setDocumentToDelete] = useState<{ id: string; title: string } | null>(null);
@@ -34,6 +35,7 @@ export default function AssessmentsPage() {
     const createdWithinParam = searchParams.get('createdWithinDays');
     const siteParam = searchParams.get('site');
     const typeParam = searchParams.get('type');
+    const clientParam = searchParams.get('client');
 
     if (disciplineParam === 'risk') {
       setDisciplineFilter('Risk Engineering');
@@ -59,6 +61,12 @@ export default function AssessmentsPage() {
       setTypeFilter(typeParam);
     } else {
       setTypeFilter('All');
+    }
+
+    if (clientParam) {
+      setClientFilter(clientParam);
+    } else {
+      setClientFilter('All');
     }
 
     if (updatedWithinParam) {
@@ -93,6 +101,12 @@ export default function AssessmentsPage() {
       nextParams.delete('type');
     }
 
+    if (clientFilter !== 'All') {
+      nextParams.set('client', clientFilter);
+    } else {
+      nextParams.delete('client');
+    }
+
     if (searchTerm.trim()) {
       nextParams.set('site', searchTerm.trim());
     } else {
@@ -102,7 +116,7 @@ export default function AssessmentsPage() {
     if (nextParams.toString() !== searchParams.toString()) {
       setSearchParams(nextParams, { replace: true });
     }
-  }, [disciplineFilter, statusFilter, typeFilter, searchTerm, searchParams, setSearchParams]);
+  }, [clientFilter, disciplineFilter, statusFilter, typeFilter, searchTerm, searchParams, setSearchParams]);
 
   const subNavItems = [
     { label: 'All Assessments', path: '/assessments' },
@@ -142,6 +156,10 @@ export default function AssessmentsPage() {
       filtered = filtered.filter(a => a.type === typeFilter);
     }
 
+    if (clientFilter !== 'All') {
+      filtered = filtered.filter(a => a.clientName === clientFilter);
+    }
+
     const updatedWithinParam = searchParams.get('updatedWithinDays');
     if (updatedWithinParam) {
       const dayCount = Number(updatedWithinParam);
@@ -176,7 +194,7 @@ export default function AssessmentsPage() {
     }
 
     return sorted;
-  }, [assessments, searchTerm, disciplineFilter, statusFilter, typeFilter, sortBy, searchParams]);
+  }, [assessments, searchTerm, disciplineFilter, statusFilter, typeFilter, clientFilter, sortBy, searchParams]);
 
   function formatDate(date: Date): string {
     return date.toLocaleDateString('en-GB', {
@@ -261,6 +279,10 @@ export default function AssessmentsPage() {
       chips.push({ key: 'type', label: 'Type', value: typeFilter });
     }
 
+    if (clientFilter !== 'All') {
+      chips.push({ key: 'client', label: 'Client', value: clientFilter });
+    }
+
     if (searchTerm.trim()) {
       chips.push({
         key: 'site',
@@ -284,13 +306,14 @@ export default function AssessmentsPage() {
     }
 
     return chips;
-  }, [createdWithinParam, disciplineFilter, searchTerm, searchParams, statusFilter, typeFilter, updatedWithinParam]);
+  }, [clientFilter, createdWithinParam, disciplineFilter, searchTerm, searchParams, statusFilter, typeFilter, updatedWithinParam]);
 
   const removeChip = (chipKey: string) => {
     if (chipKey === 'discipline') setDisciplineFilter('All');
     if (chipKey === 'status') setStatusFilter('All');
     if (chipKey === 'type') setTypeFilter('All');
     if (chipKey === 'site') setSearchTerm('');
+    if (chipKey === 'client') setClientFilter('All');
 
     if (chipKey === 'updatedWithinDays' || chipKey === 'createdWithinDays') {
       const nextParams = new URLSearchParams(searchParams);
@@ -303,6 +326,7 @@ export default function AssessmentsPage() {
     setDisciplineFilter('All');
     setStatusFilter('All');
     setTypeFilter('All');
+    setClientFilter('All');
     setSearchTerm('');
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('updatedWithinDays');

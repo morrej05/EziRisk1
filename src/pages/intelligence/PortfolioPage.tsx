@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
-import { usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
+import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
 import { type PortfolioAiPayload } from '../../lib/ai/generatePortfolioInsights';
 import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
 
@@ -12,6 +12,18 @@ interface CardMetric {
   trendValue?: number;
   to?: string;
   state?: Record<string, unknown>;
+}
+
+const ALL_CLIENTS_VALUE = '__all_clients__';
+const ALL_DISCIPLINES_VALUE = '__all_disciplines__';
+
+function encodeScopeValue(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function decodeScopeValue(value: string | null): string | null {
+  if (!value) return null;
+  return decodeURIComponent(value);
 }
 
 function TrendDelta({ value, windowDays }: { value: number; windowDays: 30 | 90 }) {
@@ -59,26 +71,87 @@ export default function PortfolioPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const windowParam = searchParams.get('window');
+  const clientParam = decodeScopeValue(searchParams.get('client'));
+  const disciplineParam = decodeScopeValue(searchParams.get('discipline'));
+  const siteParam = searchParams.get('site') || '';
   const selectedWindowDays: 30 | 90 = windowParam === '90' ? 90 : 30;
+
+  const scope: PortfolioScope = {
+    client: clientParam,
+    disciplineOrType: disciplineParam,
+    windowDays: selectedWindowDays,
+    siteQuery: siteParam,
+  };
 
   const {
     metrics,
+    scopeOptions,
     loading,
     assessmentsLoading,
     actionsLoading,
     assessmentsError,
     actionsError,
     recommendationsError,
-  } = usePortfolioMetrics(selectedWindowDays);
+  } = usePortfolioMetrics(scope);
 
   const [showInsightPanel, setShowInsightPanel] = useState(false);
 
-  const setWindowDays = (windowDays: 30 | 90) => {
+  const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('window', String(windowDays));
+    if (!value || !value.trim()) {
+      nextParams.delete(key);
+    } else {
+      nextParams.set(key, value);
+    }
     setSearchParams(nextParams, { replace: true });
   };
 
+  const setWindowDays = (windowDays: 30 | 90) => {
+    setScopeParam('window', String(windowDays));
+  };
+
+  const setClient = (value: string) => {
+    setScopeParam('client', value === ALL_CLIENTS_VALUE ? null : encodeScopeValue(value));
+  };
+
+  const setDisciplineOrType = (value: string) => {
+    setScopeParam('discipline', value === ALL_DISCIPLINES_VALUE ? null : encodeScopeValue(value));
+  };
+
+  const setSiteQuery = (value: string) => {
+    setScopeParam('site', value || null);
+  };
+
+  const clearScope = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('client');
+    nextParams.delete('discipline');
+    nextParams.delete('site');
+    nextParams.delete('window');
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const activeScopeCount = Number(Boolean(scope.client)) + Number(Boolean(scope.disciplineOrType)) + Number(Boolean(scope.siteQuery?.trim()));
+
+  const appendScopeToPath = (path: string) => {
+    const next = new URLSearchParams();
+    const [basePath, existingQuery = ''] = path.split('?');
+    const existing = new URLSearchParams(existingQuery);
+    existing.forEach((v, k) => next.append(k, v));
+
+    if (scope.client) next.set('client', scope.client);
+    if (scope.disciplineOrType) {
+      if (scope.disciplineOrType === 'RISK_ENGINEERING') {
+        next.set('discipline', 'risk');
+      } else {
+        next.set('type', scope.disciplineOrType === 'FSD' ? 'Fire Strategy' : scope.disciplineOrType);
+      }
+    }
+    if (scope.siteQuery?.trim()) next.set('site', scope.siteQuery.trim());
+
+    const q = next.toString();
+    return q ? `${basePath}?${q}` : basePath;
+  };
 
   const statusDistributionRows = useMemo(
     () => Object.entries(metrics.assessmentStatusCounts)
@@ -112,6 +185,12 @@ export default function PortfolioPage() {
 
   const portfolioAiPayload = useMemo<PortfolioAiPayload>(() => ({
     selectedWindowDays,
+    scope: {
+      client: scope.client,
+      disciplineOrType: scope.disciplineOrType,
+      siteQuery: scope.siteQuery || '',
+      windowDays: selectedWindowDays,
+    },
     summary: {
       totalSites: metrics.totalSites,
       totalAssessments: metrics.totalAssessments,
@@ -178,6 +257,9 @@ export default function PortfolioPage() {
     metrics.updatedWithinWindowDays,
     selectedWindowDays,
     statusDistributionRows,
+    scope.client,
+    scope.disciplineOrType,
+    scope.siteQuery,
   ]);
 
   const assessmentActionTrend = useMemo(
@@ -191,30 +273,30 @@ export default function PortfolioPage() {
   );
 
   const summaryCards: CardMetric[] = [
-    { label: 'Total Sites', value: metrics.totalSites, to: '/assessments' },
+    { label: 'Total Sites', value: metrics.totalSites, to: appendScopeToPath('/assessments') },
     {
       label: 'Total Assessments',
       value: metrics.totalAssessments,
       trendValue: metrics.createdCurrentWindow - metrics.createdPreviousWindow,
-      to: `/assessments?createdWithinDays=${selectedWindowDays}`,
+      to: appendScopeToPath(`/assessments?createdWithinDays=${selectedWindowDays}`),
     },
     {
       label: 'Open Assessment Actions',
       value: assessmentActionTrend?.totalOpen ?? 0,
       trendValue: (assessmentActionTrend?.openedCurrentWindow ?? 0) - (assessmentActionTrend?.openedPreviousWindow ?? 0),
-      to: `/dashboard/action-register?status=open&status=in_progress&sourceType=assessment_action`,
+      to: appendScopeToPath(`/dashboard/action-register?status=open&status=in_progress&sourceType=assessment_action`),
     },
     {
       label: 'Open Risk Engineering Recommendations',
       value: reRecommendationTrend?.totalOpen ?? 0,
       trendValue: (reRecommendationTrend?.openedCurrentWindow ?? 0) - (reRecommendationTrend?.openedPreviousWindow ?? 0),
-      to: `/assessments?type=RE`,
+      to: appendScopeToPath('/assessments?type=RE'),
     },
     {
       label: `Updated Last ${selectedWindowDays} Days`,
       value: metrics.updatedWithinWindowDays,
       trendValue: metrics.updatedCurrentWindow - metrics.updatedPreviousWindow,
-      to: `/assessments?updatedWithinDays=${selectedWindowDays}`,
+      to: appendScopeToPath(`/assessments?updatedWithinDays=${selectedWindowDays}`),
     },
   ];
 
@@ -249,22 +331,62 @@ export default function PortfolioPage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-600">Trend window:</span>
-        <button
-          type="button"
-          onClick={() => setWindowDays(30)}
-          className={`px-3 py-1.5 text-xs rounded-md border ${selectedWindowDays === 30 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
-        >
-          30D
-        </button>
-        <button
-          type="button"
-          onClick={() => setWindowDays(90)}
-          className={`px-3 py-1.5 text-xs rounded-md border ${selectedWindowDays === 90 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}
-        >
-          90D
-        </button>
+      <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <label className="text-sm text-slate-700">
+            <span className="block mb-1 font-medium">Client</span>
+            <select
+              value={scope.client || ALL_CLIENTS_VALUE}
+              onChange={(event) => setClient(event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value={ALL_CLIENTS_VALUE}>All clients</option>
+              {scopeOptions.clients.map((client) => (
+                <option key={client} value={client}>{client}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-slate-700">
+            <span className="block mb-1 font-medium">Discipline / type</span>
+            <select
+              value={scope.disciplineOrType || ALL_DISCIPLINES_VALUE}
+              onChange={(event) => setDisciplineOrType(event.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value={ALL_DISCIPLINES_VALUE}>All disciplines</option>
+              {scopeOptions.disciplineOrTypes.map((item) => (
+                <option key={item} value={item}>{item === 'RISK_ENGINEERING' ? 'Risk Engineering' : item}</option>
+              ))}
+            </select>
+          </label>
+          <div className="text-sm text-slate-700">
+            <span className="block mb-1 font-medium">Trend window</span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setWindowDays(30)} className={`px-3 py-2 text-xs rounded-md border ${selectedWindowDays === 30 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>30D</button>
+              <button type="button" onClick={() => setWindowDays(90)} className={`px-3 py-2 text-xs rounded-md border ${selectedWindowDays === 90 ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'}`}>90D</button>
+            </div>
+          </div>
+          <label className="text-sm text-slate-700">
+            <span className="block mb-1 font-medium">Site search</span>
+            <input
+              value={scope.siteQuery || ''}
+              onChange={(event) => setSiteQuery(event.target.value)}
+              placeholder="Site or client"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Client: {scope.client || 'All clients'}</span>
+            <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Discipline: {scope.disciplineOrType ? (scope.disciplineOrType === 'RISK_ENGINEERING' ? 'Risk Engineering' : scope.disciplineOrType) : 'All disciplines'}</span>
+            <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Window: {selectedWindowDays}D</span>
+            {scope.siteQuery?.trim() && <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700">Site: {scope.siteQuery.trim()}</span>}
+          </div>
+          {activeScopeCount > 0 && (
+            <button type="button" onClick={clearScope} className="text-xs text-slate-600 hover:text-slate-900">Reset scope</button>
+          )}
+        </div>
       </div>
 
       {showInsightPanel && (
@@ -343,17 +465,17 @@ export default function PortfolioPage() {
                   <InteractiveRow
                     label={`Opened (current / previous ${selectedWindowDays})`}
                     value={`${assessmentActionTrend?.openedCurrentWindow ?? 0} / ${assessmentActionTrend?.openedPreviousWindow ?? 0}`}
-                    onClick={() => navigate(`/dashboard/action-register?status=open&status=in_progress&openedWithinDays=${selectedWindowDays}&sourceType=assessment_action`, { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=open&status=in_progress&openedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label={`Closed (current / previous ${selectedWindowDays})`}
                     value={`${assessmentActionTrend?.closedCurrentWindow ?? 0} / ${assessmentActionTrend?.closedPreviousWindow ?? 0}`}
-                    onClick={() => navigate(`/dashboard/action-register?status=closed&closedWithinDays=${selectedWindowDays}&sourceType=assessment_action`, { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=closed&closedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label="Urgent Assessment Actions (P1 open)"
                     value={String(assessmentActionTrend?.urgentOpen ?? 0)}
-                    onClick={() => navigate('/dashboard/action-register?status=open&status=in_progress&priority=P1&sourceType=assessment_action', { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath('/dashboard/action-register?status=open&status=in_progress&priority=P1&sourceType=assessment_action'), { state: { source: 'portfolio' } })}
                   />
                 </div>
               </div>
@@ -364,12 +486,12 @@ export default function PortfolioPage() {
                   <InteractiveRow
                     label={`Opened (current / previous ${selectedWindowDays})`}
                     value={`${reRecommendationTrend?.openedCurrentWindow ?? 0} / ${reRecommendationTrend?.openedPreviousWindow ?? 0}`}
-                    onClick={() => navigate(`/assessments?type=RE&createdWithinDays=${selectedWindowDays}`, { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath(`/assessments?type=RE&createdWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label={`Completed updates (current / previous ${selectedWindowDays})`}
                     value={`${reRecommendationTrend?.closedCurrentWindow ?? 0} / ${reRecommendationTrend?.closedPreviousWindow ?? 0}`}
-                    onClick={() => navigate(`/assessments?type=RE&status=Issued&updatedWithinDays=${selectedWindowDays}`, { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath(`/assessments?type=RE&status=Issued&updatedWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <p>High-Priority RE Recommendations (open): <span className="font-semibold text-amber-700">{reRecommendationTrend?.urgentOpen ?? 0}</span></p>
                 </div>
@@ -399,11 +521,11 @@ export default function PortfolioPage() {
                       key={row.label}
                       role="button"
                       tabIndex={0}
-                      onClick={() => navigate(`/assessments?status=${encodeURIComponent(row.label)}`)}
+                      onClick={() => navigate(appendScopeToPath(`/assessments?status=${encodeURIComponent(row.label)}`))}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
-                          navigate(`/assessments?status=${encodeURIComponent(row.label)}`);
+                          navigate(appendScopeToPath(`/assessments?status=${encodeURIComponent(row.label)}`));
                         }
                       }}
                       className="rounded-md border border-slate-200 p-3 hover:bg-slate-50 cursor-pointer transition-colors"
@@ -445,7 +567,7 @@ export default function PortfolioPage() {
                     metrics.commonActionGroups.map((row, index) => (
                       <tr
                         key={row.label}
-                        onClick={() => navigate(`/dashboard/action-register?module=${encodeURIComponent(row.label)}`)}
+                        onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?module=${encodeURIComponent(row.label)}`))}
                         className="hover:bg-slate-50 cursor-pointer transition-colors"
                       >
                         <td className="px-4 py-3 text-sm text-slate-600">#{index + 1}</td>
@@ -474,7 +596,7 @@ export default function PortfolioPage() {
                         key={row.label}
                         label={row.label}
                         value={String(row.count)}
-                        onClick={() => navigate(`/dashboard/action-register?priority=${encodeURIComponent(row.label)}`)}
+                        onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?priority=${encodeURIComponent(row.label)}`))}
                       />
                     ))
                   )}
@@ -491,7 +613,7 @@ export default function PortfolioPage() {
                         key={row.label}
                         label={formatPortfolioStatusLabel(row.label)}
                         value={String(row.count)}
-                        onClick={() => navigate(`/dashboard/action-register?status=${encodeURIComponent(row.label)}`)}
+                        onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=${encodeURIComponent(row.label)}`))}
                       />
                     ))
                   )}
@@ -530,7 +652,7 @@ export default function PortfolioPage() {
                         className="hover:bg-slate-50 cursor-pointer transition-colors"
                         onClick={() => {
                           // Best-effort drill-through: document filter is exact, site/client included as context hint.
-                          navigate(`/dashboard/action-register?document=${encodeURIComponent(site.documentId)}&site=${encodeURIComponent(site.siteName)}&client=${encodeURIComponent(site.clientName)}`);
+                          navigate(appendScopeToPath(`/dashboard/action-register?document=${encodeURIComponent(site.documentId)}&site=${encodeURIComponent(site.siteName)}&client=${encodeURIComponent(site.clientName)}`));
                         }}
                       >
                         <td className="px-4 py-3 text-sm font-medium text-slate-900">{site.siteName}</td>

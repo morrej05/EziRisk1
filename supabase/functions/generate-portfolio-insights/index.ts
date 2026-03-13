@@ -8,6 +8,12 @@ const corsHeaders = {
 
 interface PortfolioAiPayload {
   selectedWindowDays: 30 | 90;
+  scope: {
+    client: string | null;
+    disciplineOrType: string | null;
+    siteQuery: string;
+    windowDays: 30 | 90;
+  };
   summary: {
     totalSites: number;
     totalAssessments: number;
@@ -101,6 +107,7 @@ You must only interpret the aggregate portfolio data provided.
 
 Non-negotiable rules:
 - Use only provided data fields and counts.
+- Treat this as a scoped portfolio slice when scope values are set; do not generalise to organisation-wide conclusions.
 - Treat assessment actions and risk engineering recommendations as distinct remediation source models unless payload explicitly says safeToCombine=true.
 - Do not infer or mention claims, premium, underwriting outcomes, loss ratios, compliance certification, or causes.
 - Do not invent risk scores, bands, trends, or confidence levels if not explicitly included.
@@ -125,6 +132,7 @@ Output requirements:
 6) If remediation trend data is present, explicitly differentiate assessment actions vs risk engineering recommendations.
 7) Refer to a combined remediation view only when remediationTrends.combined.safeToCombine is true.
 8) Explicitly frame trend comparisons as current selectedWindowDays versus previous selectedWindowDays windows.
+9) Mention current scope (client/discipline/site) briefly when provided.
 
 Portfolio aggregate payload:
 ${JSON.stringify(portfolio)}`;
