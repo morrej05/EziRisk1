@@ -2,6 +2,35 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useAssessments } from './useAssessments';
 import { getActionRegisterOrgLevel, type ActionRegisterEntry } from '../utils/actionRegister';
+import { supabase } from '../lib/supabase';
+
+type RemediationSourceType = 'assessment_action' | 're_recommendation';
+
+interface ReRecommendationEntry {
+  id: string;
+  document_id: string;
+  status: 'Open' | 'In Progress' | 'Completed';
+  priority: 'High' | 'Medium' | 'Low';
+  created_at: string;
+  updated_at: string;
+  documents?: {
+    id: string;
+    title: string;
+    organisation_id: string;
+  };
+}
+
+export interface RemediationTrendRow {
+  sourceType: RemediationSourceType;
+  sourceLabel: string;
+  discipline?: 'fra' | 'fsd' | 'dsear' | 'risk_engineering';
+  totalOpen: number;
+  openedCurrent30: number;
+  openedPrevious30: number;
+  closedCurrent30: number;
+  closedPrevious30: number;
+  urgentOpen?: number;
+}
 
 export interface SiteAttentionRow {
   documentId: string;
@@ -17,8 +46,11 @@ export function usePortfolioMetrics() {
   const { organisation } = useAuth();
   const { assessments, loading: assessmentsLoading, error: assessmentsError } = useAssessments();
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
+  const [reRecommendations, setReRecommendations] = useState<ReRecommendationEntry[]>([]);
   const [actionsLoading, setActionsLoading] = useState(true);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(true);
   const [actionsError, setActionsError] = useState<string | null>(null);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!organisation?.id) {
@@ -57,15 +89,79 @@ export function usePortfolioMetrics() {
     };
   }, [organisation?.id]);
 
+  useEffect(() => {
+    if (!organisation?.id) {
+      setReRecommendations([]);
+      setRecommendationsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchRecommendations() {
+      try {
+        setRecommendationsLoading(true);
+        setRecommendationsError(null);
+
+        const { data, error } = await supabase
+          .from('re_recommendations')
+          .select(`
+            id,
+            document_id,
+            status,
+            priority,
+            created_at,
+            updated_at,
+            documents!inner(id, title, organisation_id)
+          `)
+          .eq('is_suppressed', false)
+          .eq('documents.organisation_id', organisation.id);
+
+        if (error) throw error;
+
+        if (!cancelled) {
+          setReRecommendations((data || []) as ReRecommendationEntry[]);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRecommendationsError(error instanceof Error ? error.message : 'Failed to load risk engineering recommendations');
+          setReRecommendations([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setRecommendationsLoading(false);
+        }
+      }
+    }
+
+    fetchRecommendations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organisation?.id]);
+
   const metrics = useMemo(() => {
     const uniqueSites = new Set(assessments.map((assessment) => `${assessment.clientName}::${assessment.siteName}`));
     const draftAssessments = assessments.filter((assessment) => assessment.status === 'Draft').length;
     const issuedAssessments = assessments.filter((assessment) => assessment.status === 'Issued').length;
 
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    const sixtyDaysAgo = new Date(now);
+    sixtyDaysAgo.setDate(now.getDate() - 60);
+
+    const isWithinRange = (date: Date | null, rangeStart: Date, rangeEnd: Date) => {
+      if (!date) return false;
+      return date >= rangeStart && date < rangeEnd;
+    };
 
     const updatedLast30Days = assessments.filter((assessment) => assessment.updatedAt >= thirtyDaysAgo).length;
+    const createdCurrent30Days = assessments.filter((assessment) => isWithinRange(assessment.createdAt, thirtyDaysAgo, now)).length;
+    const createdPrevious30Days = assessments.filter((assessment) => isWithinRange(assessment.createdAt, sixtyDaysAgo, thirtyDaysAgo)).length;
+    const updatedCurrent30Days = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, thirtyDaysAgo, now)).length;
+    const updatedPrevious30Days = assessments.filter((assessment) => isWithinRange(assessment.updatedAt, sixtyDaysAgo, thirtyDaysAgo)).length;
 
     const assessmentStatusCounts = assessments.reduce<Record<string, number>>((acc, assessment) => {
       acc[assessment.status] = (acc[assessment.status] || 0) + 1;
@@ -84,6 +180,107 @@ export function usePortfolioMetrics() {
 
     const openActions = actions.filter((action) => action.status !== 'closed');
     const openHighPriorityActions = openActions.filter((action) => action.priority_band === 'P1').length;
+
+    const openReRecommendations = reRecommendations.filter((rec) => rec.status !== 'Completed');
+    const openHighPriorityReRecommendations = openReRecommendations.filter((rec) => rec.priority === 'High').length;
+
+    const parseDate = (value: string | null | undefined) => {
+      if (!value) return null;
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const actionTrendRowsByDiscipline: RemediationTrendRow[] = [
+      { sourceType: 'assessment_action', sourceLabel: 'Assessment Actions', discipline: 'fra' },
+      { sourceType: 'assessment_action', sourceLabel: 'Assessment Actions', discipline: 'fsd' },
+      { sourceType: 'assessment_action', sourceLabel: 'Assessment Actions', discipline: 'dsear' },
+    ].map((seed) => ({
+      ...seed,
+      totalOpen: 0,
+      openedCurrent30: 0,
+      openedPrevious30: 0,
+      closedCurrent30: 0,
+      closedPrevious30: 0,
+      urgentOpen: 0,
+    }));
+
+    const disciplineIndex: Record<string, number> = { FRA: 0, FSD: 1, DSEAR: 2 };
+
+    actions.forEach((action) => {
+      const createdAt = parseDate(action.created_at);
+      const closedAt = parseDate(action.closed_at);
+      const isOpen = action.status !== 'closed';
+
+      const index = disciplineIndex[action.document_type];
+      if (index === undefined) return;
+      const row = actionTrendRowsByDiscipline[index];
+
+      if (isOpen) row.totalOpen += 1;
+      if (isWithinRange(createdAt, thirtyDaysAgo, now)) row.openedCurrent30 += 1;
+      if (isWithinRange(createdAt, sixtyDaysAgo, thirtyDaysAgo)) row.openedPrevious30 += 1;
+      if (isWithinRange(closedAt, thirtyDaysAgo, now)) row.closedCurrent30 += 1;
+      if (isWithinRange(closedAt, sixtyDaysAgo, thirtyDaysAgo)) row.closedPrevious30 += 1;
+      if (isOpen && action.priority_band === 'P1') row.urgentOpen = (row.urgentOpen || 0) + 1;
+    });
+
+    const assessmentActionTrend: RemediationTrendRow = actionTrendRowsByDiscipline.reduce((acc, row) => ({
+      sourceType: 'assessment_action',
+      sourceLabel: 'Assessment Actions',
+      totalOpen: acc.totalOpen + row.totalOpen,
+      openedCurrent30: acc.openedCurrent30 + row.openedCurrent30,
+      openedPrevious30: acc.openedPrevious30 + row.openedPrevious30,
+      closedCurrent30: acc.closedCurrent30 + row.closedCurrent30,
+      closedPrevious30: acc.closedPrevious30 + row.closedPrevious30,
+      urgentOpen: (acc.urgentOpen || 0) + (row.urgentOpen || 0),
+    }), {
+      sourceType: 'assessment_action',
+      sourceLabel: 'Assessment Actions',
+      totalOpen: 0,
+      openedCurrent30: 0,
+      openedPrevious30: 0,
+      closedCurrent30: 0,
+      closedPrevious30: 0,
+      urgentOpen: 0,
+    } satisfies RemediationTrendRow);
+
+    const reRecommendationTrend: RemediationTrendRow = {
+      sourceType: 're_recommendation',
+      sourceLabel: 'Risk Engineering Recommendations',
+      discipline: 'risk_engineering',
+      totalOpen: 0,
+      openedCurrent30: 0,
+      openedPrevious30: 0,
+      closedCurrent30: 0,
+      closedPrevious30: 0,
+      urgentOpen: 0,
+    };
+
+    reRecommendations.forEach((rec) => {
+      const createdAt = parseDate(rec.created_at);
+      const updatedAt = parseDate(rec.updated_at);
+      const isOpen = rec.status !== 'Completed';
+
+      if (isOpen) reRecommendationTrend.totalOpen += 1;
+      if (isWithinRange(createdAt, thirtyDaysAgo, now)) reRecommendationTrend.openedCurrent30 += 1;
+      if (isWithinRange(createdAt, sixtyDaysAgo, thirtyDaysAgo)) reRecommendationTrend.openedPrevious30 += 1;
+      // RE recommendations do not currently expose a dedicated closed_at field.
+      // We count "Completed" recommendations updated within the period as closure movement.
+      if (rec.status === 'Completed' && isWithinRange(updatedAt, thirtyDaysAgo, now)) reRecommendationTrend.closedCurrent30 += 1;
+      if (rec.status === 'Completed' && isWithinRange(updatedAt, sixtyDaysAgo, thirtyDaysAgo)) reRecommendationTrend.closedPrevious30 += 1;
+      if (isOpen && rec.priority === 'High') reRecommendationTrend.urgentOpen = (reRecommendationTrend.urgentOpen || 0) + 1;
+    });
+
+    const remediationTrends: RemediationTrendRow[] = [
+      assessmentActionTrend,
+      reRecommendationTrend,
+      ...actionTrendRowsByDiscipline,
+    ];
+
+    const combinedOpenRemediation = assessmentActionTrend.totalOpen + reRecommendationTrend.totalOpen;
+    const combinedNetFlowCurrent = (assessmentActionTrend.openedCurrent30 + reRecommendationTrend.openedCurrent30)
+      - (assessmentActionTrend.closedCurrent30 + reRecommendationTrend.closedCurrent30);
+    const combinedNetFlowPrevious = (assessmentActionTrend.openedPrevious30 + reRecommendationTrend.openedPrevious30)
+      - (assessmentActionTrend.closedPrevious30 + reRecommendationTrend.closedPrevious30);
 
     const priorityCounts = actions.reduce<Record<string, number>>((acc, action) => {
       const key = action.priority_band || 'Unspecified';
@@ -163,26 +360,43 @@ export function usePortfolioMetrics() {
       totalAssessments: assessments.length,
       draftAssessments,
       issuedAssessments,
+      createdCurrent30Days,
+      createdPrevious30Days,
+      updatedCurrent30Days,
+      updatedPrevious30Days,
       updatedLast30Days,
       openHighPriorityActions,
+      openReRecommendations: openReRecommendations.length,
+      openHighPriorityReRecommendations,
       assessmentStatusCounts,
       commonAssessmentTypes,
       totalActions: actions.length,
+      totalReRecommendations: reRecommendations.length,
       priorityCounts,
       statusCounts,
       commonActionGroups,
       topSites,
+      remediationTrends,
+      combinedRemediation: {
+        totalOpen: combinedOpenRemediation,
+        netFlowCurrent30: combinedNetFlowCurrent,
+        netFlowPrevious30: combinedNetFlowPrevious,
+        safeToCombine: true,
+        caveat: 'Combined remediation counts are volume-only because assessment actions and RE recommendations use different status and urgency models.',
+      },
     };
-  }, [actions, assessments]);
+  }, [actions, assessments, reRecommendations]);
 
   return {
     assessments,
     actions,
     metrics,
-    loading: assessmentsLoading || actionsLoading,
+    loading: assessmentsLoading || actionsLoading || recommendationsLoading,
     assessmentsLoading,
     actionsLoading,
+    recommendationsLoading,
     assessmentsError,
     actionsError,
+    recommendationsError,
   };
 }

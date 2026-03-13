@@ -5,6 +5,38 @@ export interface PortfolioAiPayload {
     totalActions: number;
     openP1Actions: number;
     updatedLast30Days: number;
+    createdCurrent30Days: number;
+    createdPrevious30Days: number;
+    updatedCurrent30Days: number;
+    updatedPrevious30Days: number;
+    openReRecommendations: number;
+    openHighPriorityReRecommendations: number;
+  };
+  assessmentTrends: {
+    createdCurrent30Days: number;
+    createdPrevious30Days: number;
+    updatedCurrent30Days: number;
+    updatedPrevious30Days: number;
+  };
+  remediationTrends: {
+    bySource: Array<{
+      sourceType: 'assessment_action' | 're_recommendation';
+      sourceLabel: string;
+      discipline?: 'fra' | 'fsd' | 'dsear' | 'risk_engineering';
+      totalOpen: number;
+      openedCurrent30: number;
+      openedPrevious30: number;
+      closedCurrent30: number;
+      closedPrevious30: number;
+      urgentOpen?: number;
+    }>;
+    combined?: {
+      totalOpen: number;
+      netFlowCurrent30: number;
+      netFlowPrevious30: number;
+      safeToCombine: boolean;
+      caveat: string;
+    };
   };
   assessmentStatusDistribution: Array<{
     label: string;

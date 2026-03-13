@@ -9,8 +9,16 @@ import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../uti
 interface CardMetric {
   label: string;
   value: number;
+  trendValue?: number;
   to?: string;
   state?: Record<string, unknown>;
+}
+
+function TrendDelta({ value }: { value: number }) {
+  const prefix = value > 0 ? '+' : '';
+  const colour = value > 0 ? 'text-rose-700' : value < 0 ? 'text-emerald-700' : 'text-slate-500';
+
+  return <p className={`mt-2 text-xs font-medium ${colour}`}>{`${prefix}${value} vs previous 30 days`}</p>;
 }
 
 function InteractiveRow({
@@ -56,6 +64,7 @@ export default function PortfolioPage() {
     actionsLoading,
     assessmentsError,
     actionsError,
+    recommendationsError,
   } = usePortfolioMetrics();
 
   const [showInsightPanel, setShowInsightPanel] = useState(false);
@@ -97,6 +106,22 @@ export default function PortfolioPage() {
       totalActions: metrics.totalActions,
       openP1Actions: metrics.openHighPriorityActions,
       updatedLast30Days: metrics.updatedLast30Days,
+      createdCurrent30Days: metrics.createdCurrent30Days,
+      createdPrevious30Days: metrics.createdPrevious30Days,
+      updatedCurrent30Days: metrics.updatedCurrent30Days,
+      updatedPrevious30Days: metrics.updatedPrevious30Days,
+      openReRecommendations: metrics.openReRecommendations,
+      openHighPriorityReRecommendations: metrics.openHighPriorityReRecommendations,
+    },
+    assessmentTrends: {
+      createdCurrent30Days: metrics.createdCurrent30Days,
+      createdPrevious30Days: metrics.createdPrevious30Days,
+      updatedCurrent30Days: metrics.updatedCurrent30Days,
+      updatedPrevious30Days: metrics.updatedPrevious30Days,
+    },
+    remediationTrends: {
+      bySource: metrics.remediationTrends,
+      combined: metrics.combinedRemediation,
     },
     assessmentStatusDistribution: statusDistributionRows
       .slice(0, 6)
@@ -130,15 +155,54 @@ export default function PortfolioPage() {
     metrics.totalActions,
     metrics.totalAssessments,
     metrics.totalSites,
+    metrics.createdCurrent30Days,
+    metrics.createdPrevious30Days,
+    metrics.updatedCurrent30Days,
+    metrics.updatedPrevious30Days,
+    metrics.openReRecommendations,
+    metrics.openHighPriorityReRecommendations,
+    metrics.remediationTrends,
+    metrics.combinedRemediation,
     metrics.updatedLast30Days,
     statusDistributionRows,
   ]);
 
+  const assessmentActionTrend = useMemo(
+    () => metrics.remediationTrends.find((row) => row.sourceType === 'assessment_action' && !row.discipline),
+    [metrics.remediationTrends]
+  );
+
+  const reRecommendationTrend = useMemo(
+    () => metrics.remediationTrends.find((row) => row.sourceType === 're_recommendation' && row.discipline === 'risk_engineering'),
+    [metrics.remediationTrends]
+  );
+
   const summaryCards: CardMetric[] = [
     { label: 'Total Sites', value: metrics.totalSites, to: '/assessments' },
-    { label: 'Total Assessments', value: metrics.totalAssessments, to: '/assessments' },
-    { label: 'Open P1 Actions', value: metrics.openHighPriorityActions, to: '/dashboard/action-register?priority=P1' },
-    { label: 'Updated Last 30 Days', value: metrics.updatedLast30Days, to: '/assessments?updatedWithinDays=30' },
+    {
+      label: 'Total Assessments',
+      value: metrics.totalAssessments,
+      trendValue: metrics.createdCurrent30Days - metrics.createdPrevious30Days,
+      to: '/assessments',
+    },
+    {
+      label: 'Open Assessment Actions',
+      value: assessmentActionTrend?.totalOpen ?? 0,
+      trendValue: (assessmentActionTrend?.openedCurrent30 ?? 0) - (assessmentActionTrend?.openedPrevious30 ?? 0),
+      to: '/dashboard/action-register',
+    },
+    {
+      label: 'Open Risk Engineering Recommendations',
+      value: reRecommendationTrend?.totalOpen ?? 0,
+      trendValue: (reRecommendationTrend?.openedCurrent30 ?? 0) - (reRecommendationTrend?.openedPrevious30 ?? 0),
+      to: '/assessments?type=RE',
+    },
+    {
+      label: 'Updated Last 30 Days',
+      value: metrics.updatedLast30Days,
+      trendValue: metrics.updatedCurrent30Days - metrics.updatedPrevious30Days,
+      to: '/assessments?updatedWithinDays=30',
+    },
   ];
 
   if (loading) {
@@ -150,7 +214,7 @@ export default function PortfolioPage() {
     );
   }
 
-  const hasNoData = metrics.totalAssessments === 0 && metrics.totalActions === 0;
+  const hasNoData = metrics.totalAssessments === 0 && metrics.totalActions === 0 && metrics.totalReRecommendations === 0;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -181,10 +245,11 @@ export default function PortfolioPage() {
         />
       )}
 
-      {(assessmentsError || actionsError) && (
+      {(assessmentsError || actionsError || recommendationsError) && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
           {assessmentsError && <p>Assessment data could not be fully loaded: {assessmentsError}</p>}
           {actionsError && <p>Action data could not be fully loaded: {actionsError}</p>}
+          {recommendationsError && <p>Risk engineering recommendation data could not be fully loaded: {recommendationsError}</p>}
         </div>
       )}
 
@@ -211,7 +276,7 @@ export default function PortfolioPage() {
         <>
           <section className="space-y-4">
             <h2 className="text-xl font-semibold text-slate-900">Portfolio Summary</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {summaryCards.map((card) => {
                 const isClickable = Boolean(card.to);
                 return (
@@ -229,9 +294,43 @@ export default function PortfolioPage() {
                     <p className={`mt-2 text-3xl font-bold ${card.label === 'Open P1 Actions' ? 'text-rose-700' : 'text-slate-900'}`}>
                       {card.value}
                     </p>
+                    {typeof card.trendValue === 'number' && <TrendDelta value={card.trendValue} />}
                   </button>
                 );
               })}
+            </div>
+          </section>
+
+          <section className="bg-white rounded-lg border border-slate-200 p-6">
+            <h2 className="text-xl font-semibold text-slate-900">Remediation Trends</h2>
+            <p className="text-sm text-slate-600 mt-1">Source-aware trend view across assessment actions and risk engineering recommendations.</p>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold text-slate-800">Assessment Actions</h3>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  <p>Open total: <span className="font-semibold">{assessmentActionTrend?.totalOpen ?? 0}</span></p>
+                  <p>Opened (current / previous 30): <span className="font-semibold">{assessmentActionTrend?.openedCurrent30 ?? 0} / {assessmentActionTrend?.openedPrevious30 ?? 0}</span></p>
+                  <p>Closed (current / previous 30): <span className="font-semibold">{assessmentActionTrend?.closedCurrent30 ?? 0} / {assessmentActionTrend?.closedPrevious30 ?? 0}</span></p>
+                  <p>Urgent Assessment Actions (P1 open): <span className="font-semibold text-rose-700">{assessmentActionTrend?.urgentOpen ?? 0}</span></p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold text-slate-800">Risk Engineering Recommendations</h3>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  <p>Open total: <span className="font-semibold">{reRecommendationTrend?.totalOpen ?? 0}</span></p>
+                  <p>Opened (current / previous 30): <span className="font-semibold">{reRecommendationTrend?.openedCurrent30 ?? 0} / {reRecommendationTrend?.openedPrevious30 ?? 0}</span></p>
+                  <p>Completed updates (current / previous 30): <span className="font-semibold">{reRecommendationTrend?.closedCurrent30 ?? 0} / {reRecommendationTrend?.closedPrevious30 ?? 0}</span></p>
+                  <p>High-Priority RE Recommendations (open): <span className="font-semibold text-amber-700">{reRecommendationTrend?.urgentOpen ?? 0}</span></p>
+                </div>
+                <p className="mt-3 text-xs text-slate-500">RE closure trend uses Completed status updated timestamps because a dedicated RE closed_at field is not currently exposed.</p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg border border-slate-200 p-4 bg-slate-50">
+              <h3 className="text-sm font-semibold text-slate-800">Combined Remediation (explicitly caveated)</h3>
+              <p className="mt-2 text-sm text-slate-700">Open remediation total: <span className="font-semibold">{metrics.combinedRemediation.totalOpen}</span></p>
+              <p className="text-sm text-slate-700">Net flow current 30 days: <span className="font-semibold">{metrics.combinedRemediation.netFlowCurrent30 > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowCurrent30}</span></p>
+              <p className="text-sm text-slate-700">Net flow previous 30 days: <span className="font-semibold">{metrics.combinedRemediation.netFlowPrevious30 > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowPrevious30}</span></p>
+              <p className="mt-2 text-xs text-slate-500">Combined totals are shown for volume context only; source-specific cards remain authoritative because status and urgency models differ.</p>
             </div>
           </section>
 
