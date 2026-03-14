@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import OrganisationBranding from '../../components/OrganisationBranding';
+import AccountLifecyclePanel from '../../components/account/AccountLifecyclePanel';
 
-type AdminTab = 'organisation' | 'users' | 'assessment-settings' | 'recommendations' | 'document-control' | 'audit-log';
+type AdminTab = 'organisation' | 'users' | 'account-lifecycle' | 'assessment-settings' | 'recommendations' | 'document-control' | 'audit-log';
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export default function AdminPage() {
   const tabs = [
     { id: 'organisation' as AdminTab, label: 'Organisation' },
     { id: 'users' as AdminTab, label: 'Users & Roles' },
+    { id: 'account-lifecycle' as AdminTab, label: 'Account Lifecycle' },
     { id: 'assessment-settings' as AdminTab, label: 'Assessment Settings' },
     { id: 'recommendations' as AdminTab, label: 'Recommendations' },
     { id: 'document-control' as AdminTab, label: 'Document Control' },
@@ -100,6 +102,10 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {activeTab === 'account-lifecycle' && (
+            <AccountLifecyclePanel />
           )}
 
           {activeTab === 'assessment-settings' && (

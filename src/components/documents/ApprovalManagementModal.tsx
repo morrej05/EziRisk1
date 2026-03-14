@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/DesignSystem';
 import {
@@ -43,14 +43,14 @@ export default function ApprovalManagementModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [approvalRequiredInOrg, setApprovalRequiredInOrg] = useState(false);
 
-  useEffect(() => {
-    checkApprovalRequired();
-  }, [organisationId]);
-
-  const checkApprovalRequired = async () => {
+  const checkApprovalRequired = useCallback(async () => {
     const required = await isApprovalRequired(organisationId);
     setApprovalRequiredInOrg(required);
-  };
+  }, [organisationId]);
+
+  useEffect(() => {
+    void checkApprovalRequired();
+  }, [checkApprovalRequired]);
 
   const handleRequestApproval = async () => {
     setIsProcessing(true);
@@ -134,7 +134,7 @@ export default function ApprovalManagementModal({
   };
 
   const statusConfig = getApprovalStatusDisplay(currentApprovalStatus);
-  const canManageApproval = userRole === 'org_admin' || userRole === 'platform_admin';
+  const canManageApproval = userRole === 'owner' || userRole === 'admin';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -190,6 +190,11 @@ export default function ApprovalManagementModal({
               <p className="text-sm text-neutral-600 mb-1">
                 <span className="font-medium">Date:</span>{' '}
                 {new Date(approvalDate).toLocaleDateString('en-GB')}
+              </p>
+            )}
+            {approvedBy && (
+              <p className="text-sm text-neutral-600 mb-1">
+                <span className="font-medium">Approved by:</span> {approvedBy}
               </p>
             )}
             {approvalNotes && (
