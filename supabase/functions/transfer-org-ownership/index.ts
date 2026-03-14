@@ -7,9 +7,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-interface SelfDeletePayload {
-  transfer_organisation_id?: string;
-  transfer_to_user_id?: string;
+interface TransferPayload {
+  organisation_id: string;
+  to_user_id: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -42,11 +42,17 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const payload = (await req.json().catch(() => ({}))) as SelfDeletePayload;
+    const payload = (await req.json()) as TransferPayload;
+    if (!payload.organisation_id || !payload.to_user_id) {
+      return new Response(JSON.stringify({ error: 'organisation_id and to_user_id are required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    const { error: rpcError } = await userSupabase.rpc('self_delete_account_secure', {
-      p_transfer_organisation_id: payload.transfer_organisation_id ?? null,
-      p_transfer_to_user_id: payload.transfer_to_user_id ?? null,
+    const { data, error: rpcError } = await userSupabase.rpc('transfer_org_ownership_secure', {
+      p_organisation_id: payload.organisation_id,
+      p_to_user_id: payload.to_user_id,
     });
 
     if (rpcError) {
@@ -56,15 +62,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(user.id, true);
-    if (deleteError) {
-      return new Response(JSON.stringify({ error: `Account cleanup completed, but auth delete failed: ${deleteError.message}` }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, result: data }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
-import { requireAuthenticatedUser } from '../_shared/auth.ts';
+import { getBearerToken, requireAuthenticatedUser } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,9 +21,21 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const bearerToken = getBearerToken(req);
 
-    const { user, error: authErrorMessage } = await requireAuthenticatedUser(supabase, req);
+    if (!bearerToken) {
+      return new Response(JSON.stringify({ error: 'Missing or invalid authorization bearer token' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+    const userSupabase = createClient(supabaseUrl, supabaseServiceKey, {
+      global: { headers: { Authorization: `Bearer ${bearerToken}` } },
+    });
+
+    const { user, error: authErrorMessage } = await requireAuthenticatedUser(adminSupabase, req);
     if (authErrorMessage || !user) {
       return new Response(JSON.stringify({ error: authErrorMessage ?? 'Unauthorized' }), {
         status: 401,
@@ -39,7 +51,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { error: rpcError } = await supabase.rpc('remove_org_member_secure', {
+    const { data, error: rpcError } = await userSupabase.rpc('remove_org_member_secure', {
       p_organisation_id: payload.organisation_id,
       p_target_user_id: payload.target_user_id,
       p_transfer_to_user_id: payload.transfer_to_user_id ?? null,
@@ -52,7 +64,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({ success: true, result: data }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

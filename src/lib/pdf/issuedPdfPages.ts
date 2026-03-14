@@ -191,7 +191,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
       version_number: document.version_number,
       issue_date: document.issue_date,
       change_summary: isInitialVersion ? 'Initial issue' : 'Revision issued',
-      issued_by_name: document.assessor_name || null,
+      issued_by_name: document.issued_author_name_snapshot || document.author_name_snapshot || document.assessor_name || null,
     });
   }
 
@@ -207,7 +207,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
       issue_date: document.issue_date,
       issue_status: document.issue_status,
       assessor_name: document.assessor_name,
-      issued_by_name: document.assessor_name || null,
+      issued_by_name: document.issued_author_name_snapshot || document.author_name_snapshot || document.assessor_name || null,
     },
     organisation,
     client || null,
