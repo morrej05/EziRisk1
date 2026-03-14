@@ -23,6 +23,11 @@ interface OrganisationMemberRow {
   status: string;
 }
 
+interface UserProfileRow {
+  id: string;
+  name: string | null;
+}
+
 const ROLE_LABELS: Record<MemberRole, string> = {
   owner: 'Owner',
   admin: 'Admin',
@@ -101,7 +106,7 @@ export default function AccountLifecyclePanel() {
       }
 
       const memberRows = (orgMembers as OrganisationMemberRow[] | null) ?? [];
-      const userIds = memberRows.map((member) => member.user_id);
+      const userIds = [...new Set(memberRows.map((member) => member.user_id))];
 
       const { data: profiles, error: profilesError } = userIds.length
         ? await supabase.from('user_profiles').select('id, name').in('id', userIds)
@@ -111,7 +116,7 @@ export default function AccountLifecyclePanel() {
         throw profilesError;
       }
 
-      const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+      const profileMap = new Map(((profiles as UserProfileRow[] | null) ?? []).map((profile) => [profile.id, profile]));
       setMembers(
         memberRows.map((member) => ({
           ...member,
