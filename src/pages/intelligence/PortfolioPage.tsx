@@ -153,6 +153,19 @@ export default function PortfolioPage() {
     return q ? `${basePath}?${q}` : basePath;
   };
 
+  const appendScopeToRecommendationsPath = (path: string) => {
+    const next = new URLSearchParams();
+    const [basePath, existingQuery = ''] = path.split('?');
+    const existing = new URLSearchParams(existingQuery);
+    existing.forEach((v, k) => next.append(k, v));
+
+    if (scope.client) next.set('client', scope.client);
+    if (scope.siteQuery?.trim()) next.set('site', scope.siteQuery.trim());
+
+    const q = next.toString();
+    return q ? `${basePath}?${q}` : basePath;
+  };
+
   const statusDistributionRows = useMemo(
     () => Object.entries(metrics.assessmentStatusCounts)
       .map(([label, count]) => ({ label, count }))
@@ -290,7 +303,7 @@ export default function PortfolioPage() {
       label: 'Open Risk Engineering Recommendations',
       value: reRecommendationTrend?.totalOpen ?? 0,
       trendValue: (reRecommendationTrend?.openedCurrentWindow ?? 0) - (reRecommendationTrend?.openedPreviousWindow ?? 0),
-      to: appendScopeToPath('/assessments?type=RE'),
+      to: appendScopeToRecommendationsPath('/recommendations?status=Active'),
     },
     {
       label: `Updated Last ${selectedWindowDays} Days`,
@@ -486,14 +499,18 @@ export default function PortfolioPage() {
                   <InteractiveRow
                     label={`Opened (current / previous ${selectedWindowDays})`}
                     value={`${reRecommendationTrend?.openedCurrentWindow ?? 0} / ${reRecommendationTrend?.openedPreviousWindow ?? 0}`}
-                    onClick={() => navigate(appendScopeToPath(`/assessments?type=RE&createdWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToRecommendationsPath(`/recommendations?createdWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label={`Completed updates (current / previous ${selectedWindowDays})`}
                     value={`${reRecommendationTrend?.closedCurrentWindow ?? 0} / ${reRecommendationTrend?.closedPreviousWindow ?? 0}`}
-                    onClick={() => navigate(appendScopeToPath(`/assessments?type=RE&status=Issued&updatedWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToRecommendationsPath(`/recommendations?status=Completed&completedWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
-                  <p>High-Priority RE Recommendations (open): <span className="font-semibold text-amber-700">{reRecommendationTrend?.urgentOpen ?? 0}</span></p>
+                  <InteractiveRow
+                    label="High-Priority RE Recommendations (active)"
+                    value={String(reRecommendationTrend?.urgentOpen ?? 0)}
+                    onClick={() => navigate(appendScopeToRecommendationsPath('/recommendations?status=Active&priority=High'), { state: { source: 'portfolio' } })}
+                  />
                 </div>
                 <p className="mt-3 text-xs text-slate-500">RE closure trend uses Completed status updated timestamps because a dedicated RE closed_at field is not currently exposed.</p>
               </div>
