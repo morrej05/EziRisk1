@@ -9,6 +9,9 @@ type RemediationSourceType = 'assessment_action' | 're_recommendation';
 interface ReRecommendationEntry {
   id: string;
   document_id: string;
+  rec_number: string | null;
+  title: string | null;
+  source_module_key: string | null;
   status: 'Open' | 'In Progress' | 'Completed';
   priority: 'High' | 'Medium' | 'Low';
   created_at: string;
@@ -43,6 +46,21 @@ export interface RemediationVelocity {
   openedCurrentWindow: number;
   closedCurrentWindow: number;
   netChange: number;
+}
+
+export interface OldestUnresolvedRemediationRow {
+  sourceType: RemediationSourceType;
+  sourceLabel: 'Assessment Action' | 'RE Recommendation';
+  id: string;
+  clientLabel: string | null;
+  siteLabel: string | null;
+  itemLabel: string;
+  priorityLabel: string | null;
+  createdAt: string;
+  ageDays: number;
+  documentId: string | null;
+  documentLabel: string | null;
+  moduleOrTheme: string | null;
 }
 
 function getPortfolioWindowBounds(windowDays: 30 | 90) {
@@ -137,6 +155,10 @@ function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function calculateAgeDays(createdAt: Date, now: Date): number {
+  return Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / (24 * 60 * 60 * 1000)));
 }
 
 function isActionClosed(status: string | null | undefined): boolean {
@@ -251,6 +273,9 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
           .select(`
             id,
             document_id,
+            rec_number,
+            title,
+            source_module_key,
             status,
             priority,
             created_at,
@@ -833,6 +858,75 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
 
     const showClientHotspots = !selectedClient && clientHotspots.length > 1;
 
+    const oldestUnresolvedRemediation: OldestUnresolvedRemediationRow[] = [
+      ...scopedActions.reduce<OldestUnresolvedRemediationRow[]>((rows, action) => {
+        if (isActionClosed(action.status)) return rows;
+
+        const createdAt = parseDate(action.created_at);
+        if (!createdAt) return rows;
+
+        const linkedAssessment = assessmentById.get(action.document_id);
+        const siteLabel = linkedAssessment?.siteName || action.document_title || 'Unknown site';
+        const clientLabel = linkedAssessment?.clientName || 'Unassigned client';
+        const itemLabel = action.recommended_action?.trim()
+          || action.reference_number?.trim()
+          || 'Untitled item';
+
+        rows.push({
+          sourceType: 'assessment_action',
+          sourceLabel: 'Assessment Action',
+          id: action.id,
+          clientLabel,
+          siteLabel,
+          itemLabel,
+          priorityLabel: action.priority_band || null,
+          createdAt: action.created_at,
+          ageDays: calculateAgeDays(createdAt, now),
+          documentId: action.document_id || null,
+          documentLabel: action.document_title || null,
+          moduleOrTheme: action.module_key || null,
+        });
+
+        return rows;
+      }, []),
+      ...scopedReRecommendations.reduce<OldestUnresolvedRemediationRow[]>((rows, recommendation) => {
+        if (isReRecommendationCompleted(recommendation.status)) return rows;
+
+        const createdAt = parseDate(recommendation.created_at);
+        if (!createdAt) return rows;
+
+        const linkedAssessment = assessmentById.get(recommendation.document_id);
+        const siteLabel = linkedAssessment?.siteName || recommendation.documents?.title || 'Unknown site';
+        const clientLabel = linkedAssessment?.clientName || 'Unassigned client';
+
+        rows.push({
+          sourceType: 're_recommendation',
+          sourceLabel: 'RE Recommendation',
+          id: recommendation.id,
+          clientLabel,
+          siteLabel,
+          itemLabel: recommendation.title?.trim()
+            || recommendation.rec_number?.trim()
+            || 'Untitled item',
+          priorityLabel: recommendation.priority || null,
+          createdAt: recommendation.created_at,
+          ageDays: calculateAgeDays(createdAt, now),
+          documentId: recommendation.document_id || null,
+          documentLabel: recommendation.documents?.title || linkedAssessment?.siteName || null,
+          moduleOrTheme: recommendation.source_module_key || null,
+        });
+
+        return rows;
+      }, []),
+    ]
+      .sort((a, b) => {
+        if (b.ageDays !== a.ageDays) return b.ageDays - a.ageDays;
+        if (a.createdAt !== b.createdAt) return a.createdAt.localeCompare(b.createdAt);
+        if (a.sourceLabel !== b.sourceLabel) return a.sourceLabel.localeCompare(b.sourceLabel);
+        return a.id.localeCompare(b.id);
+      })
+      .slice(0, 10);
+
     return {
       totalSites: uniqueSites.size,
       totalAssessments: scopedAssessments.length,
@@ -875,6 +969,7 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
         safeToCombine: true,
         caveat: 'Combined remediation counts are volume-only because assessment actions and RE recommendations use different status and urgency models.',
       },
+      oldestUnresolvedRemediation,
     };
   }, [actions, assessments, reRecommendations, scope.client, scope.disciplineOrType, scope.siteQuery, scope.windowDays]);
 
