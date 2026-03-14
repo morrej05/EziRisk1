@@ -20,7 +20,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const bearerToken = getBearerToken(req);
 
     if (!bearerToken) {
@@ -30,12 +30,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-    const userSupabase = createClient(supabaseUrl, supabaseServiceKey, {
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${bearerToken}` } },
     });
 
-    const { user, error: authErrorMessage } = await requireAuthenticatedUser(adminSupabase, req);
+    const { user, error: authErrorMessage } = await requireAuthenticatedUser(userSupabase, req);
     if (authErrorMessage || !user) {
       return new Response(JSON.stringify({ error: authErrorMessage ?? 'Unauthorized' }), {
         status: 401,
