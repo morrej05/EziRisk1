@@ -190,7 +190,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Update user object with profile fields
       const resolvedRole = mapLegacyRole((membership?.role as string | null | undefined) ?? profile.role);
-      const resolvedOrganisationId = membership?.organisation_id ?? profile.organisation_id;
+      const resolvedOrganisationId = membership?.organisation_id ?? null;
+
+      if (!resolvedOrganisationId) {
+        console.warn('[AuthContext] ⛔ No active organisation membership found; failing closed for protected access');
+        setUser(createAppUser(authUser, {
+          ...profile,
+          role: null,
+          organisation_id: null,
+        }));
+        await fetchDisclaimerStatus(userId);
+        setRoleError('Active organisation membership required. Please contact your organisation admin.');
+        setUserRole(null);
+        setUserPlan(null);
+        setDisciplineType(null);
+        setBoltOns([]);
+        setMaxEditors(999);
+        setActiveEditors(1);
+        setIsPlatformAdmin(((authUser as AuthUserWithPlatform)?.platform === true) || profile.is_platform_admin || false);
+        setCanEdit(false);
+        setOrganisation(null);
+        return;
+      }
 
       let organisationRecord: OrganisationRecord | null = (profile.organisations as OrganisationRecord) ?? null;
       if (resolvedOrganisationId && (!organisationRecord || organisationRecord.id !== resolvedOrganisationId)) {
@@ -243,7 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(createAppUser(authUser, updatedProfile));
 
           // Use the updated profile
-          setUserRole(mapLegacyRole(updatedProfile.role));
+          setUserRole(mapLegacyRole(membership?.role as string | null | undefined));
           setUserPlan(updatedProfile.plan as SubscriptionPlan);
           setDisciplineType(updatedProfile.discipline_type as DisciplineType);
           setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);

@@ -124,14 +124,17 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(401, { error: "Unauthorized" });
     }
 
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
+    const { data: membership, error: membershipError } = await supabase
+      .from("organisation_members")
       .select("organisation_id")
-      .eq("id", user.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .limit(1)
       .maybeSingle();
 
-    if (profileError || !profile?.organisation_id) {
-      return jsonResponse(403, { error: "User organisation not found" });
+    if (membershipError || !membership?.organisation_id) {
+      return jsonResponse(403, { error: "Active organisation membership required" });
     }
 
     const { data: document, error: documentError } = await supabase
@@ -140,7 +143,7 @@ Deno.serve(async (req: Request) => {
         "id, organisation_id, document_type, issue_status, title, assessment_date, scope_description, limitations_assumptions, executive_summary_author"
       )
       .eq("id", parsedRequest.value.documentId)
-      .eq("organisation_id", profile.organisation_id)
+      .eq("organisation_id", membership.organisation_id)
       .maybeSingle<DocumentRow>();
 
     if (documentError) {
@@ -209,7 +212,7 @@ Deno.serve(async (req: Request) => {
         .from("documents")
         .update(updatePayload)
         .eq("id", document.id)
-        .eq("organisation_id", profile.organisation_id);
+        .eq("organisation_id", membership.organisation_id);
 
       if (updateError) {
         console.error("Failed to save executive summary", updateError);
