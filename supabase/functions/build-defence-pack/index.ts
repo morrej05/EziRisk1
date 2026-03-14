@@ -55,18 +55,52 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!supabaseUrl || !supabaseServiceKey) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
       throw new Error("Supabase configuration missing");
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "Missing authorization header" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: "Missing bearer token" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const {
+      data: { user },
+      error: authError,
+    } = await userSupabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
         {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -86,10 +120,57 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: existingPack } = await supabase
+    const { data: memberships, error: membershipError } = await userSupabase
+      .from("organisation_members")
+      .select("organisation_id")
+      .eq("user_id", user.id)
+      .eq("status", "active");
+
+    if (membershipError) {
+      return new Response(
+        JSON.stringify({ error: "Failed to verify organisation membership" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const allowedOrganisationIds = [...new Set((memberships || []).map((m) => m.organisation_id).filter(Boolean))];
+    if (allowedOrganisationIds.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Access denied" }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const { data: document, error: docError } = await adminSupabase
+      .from("documents")
+      .select("*")
+      .eq("id", document_id)
+      .in("organisation_id", allowedOrganisationIds)
+      .maybeSingle();
+
+    if (docError || !document) {
+      return new Response(
+        JSON.stringify({ error: "Document not found" }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const doc = document as Document;
+
+    const { data: existingPack } = await adminSupabase
       .from("document_defence_packs")
       .select("*")
       .eq("document_id", document_id)
+      .eq("organisation_id", doc.organisation_id)
       .maybeSingle();
 
     if (existingPack) {
@@ -105,24 +186,6 @@ Deno.serve(async (req: Request) => {
         }
       );
     }
-
-    const { data: document, error: docError } = await supabase
-      .from("documents")
-      .select("*")
-      .eq("id", document_id)
-      .maybeSingle();
-
-    if (docError || !document) {
-      return new Response(
-        JSON.stringify({ error: "Document not found" }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    const doc = document as Document;
 
     if (doc.issue_status !== "issued") {
       return new Response(
@@ -150,7 +213,7 @@ Deno.serve(async (req: Request) => {
 
     const zip = new JSZip();
 
-    const { data: pdfData, error: pdfError } = await supabase.storage
+    const { data: pdfData, error: pdfError } = await adminSupabase.storage
       .from("locked-pdfs")
       .download(doc.locked_pdf_path);
 
@@ -167,7 +230,7 @@ Deno.serve(async (req: Request) => {
     const pdfBytes = await pdfData.arrayBuffer();
     zip.file("issued_document.pdf", pdfBytes);
 
-    const { data: changeSummary } = await supabase
+    const { data: changeSummary } = await adminSupabase
       .from("document_change_summaries")
       .select("summary_markdown, summary_json")
       .eq("document_id", document_id)
@@ -185,7 +248,7 @@ Deno.serve(async (req: Request) => {
       zip.file("change_summary.txt", "Initial issue – no previous version.");
     }
 
-    const { data: actions } = await supabase
+    const { data: actions } = await adminSupabase
       .from("actions")
       .select(`
         id,
@@ -227,7 +290,7 @@ Deno.serve(async (req: Request) => {
     zip.file("actions_snapshot.csv", actionsCSV);
     zip.file("actions_snapshot.json", JSON.stringify(actionsList, null, 2));
 
-    const { data: evidenceList } = await supabase
+    const { data: evidenceList } = await adminSupabase
       .from("attachments")
       .select("filename, size_bytes, content_type, uploaded_at, notes")
       .eq("document_id", document_id)
@@ -279,7 +342,7 @@ Deno.serve(async (req: Request) => {
 
     const bundlePath = `org/${doc.organisation_id}/documents/${doc.id}/defence_pack_v${doc.version_number}.zip`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await adminSupabase.storage
       .from("defence-packs")
       .upload(bundlePath, zipBlob, {
         contentType: "application/zip",
@@ -299,25 +362,14 @@ Deno.serve(async (req: Request) => {
 
     const checksum = await generateChecksum(zipBlob);
 
-    const token = authHeader.replace("Bearer ", "");
-    const userSupabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
-    });
-
-    const { data: user } = await userSupabase.auth.getUser(token);
-
-    const { data: pack, error: packError } = await supabase
+    const { data: pack, error: packError } = await adminSupabase
       .from("document_defence_packs")
       .insert({
         organisation_id: doc.organisation_id,
         document_id: doc.id,
         base_document_id: doc.base_document_id,
         version_number: doc.version_number,
-        created_by: user?.user?.id || null,
+        created_by: user.id,
         bundle_path: bundlePath,
         checksum,
         size_bytes: zipBlob.length,

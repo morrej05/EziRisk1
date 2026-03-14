@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
 import LandingPage from './pages/LandingPage';
 import SignIn from './pages/SignIn';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import ActionsDashboard from './pages/dashboard/ActionsDashboard';
 import DocumentOverview from './pages/documents/DocumentOverview';
 import DocumentWorkspace from './pages/documents/DocumentWorkspace';
@@ -45,6 +46,7 @@ function App() {
             <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/external/:token" element={<ExternalSurvey />} />
           <Route path="/client/document/:token" element={<ClientDocumentView />} />
           <Route path="/public/documents" element={<PublicDocumentViewer />} />
