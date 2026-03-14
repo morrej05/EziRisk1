@@ -189,6 +189,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const resolvedRole = mapLegacyRole((membership?.role as string | null | undefined) ?? profile.role);
       const resolvedOrganisationId = membership?.organisation_id ?? profile.organisation_id;
 
+      let organisationRecord: OrganisationRecord | null = (profile.organisations as OrganisationRecord) ?? null;
+      if (resolvedOrganisationId && (!organisationRecord || organisationRecord.id !== resolvedOrganisationId)) {
+        const { data: membershipOrg, error: membershipOrgError } = await supabase
+          .from('organisations')
+          .select('*')
+          .eq('id', resolvedOrganisationId)
+          .maybeSingle();
+
+        if (!membershipOrgError && membershipOrg) {
+          organisationRecord = membershipOrg as OrganisationRecord;
+        }
+      }
+
       setUser(createAppUser(authUser, {
         ...profile,
         role: resolvedRole,
@@ -197,7 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await fetchDisclaimerStatus(userId);
 
       // Check if organisation is missing and auto-create
-      if (!profile.organisation_id || !profile.organisations) {
+      if (!resolvedOrganisationId || !organisationRecord) {
         console.log('[AuthContext] 🏥 Organisation missing - auto-healing...');
         try {
           const { data: newOrgId, error: rpcError } = await supabase.rpc('ensure_org_for_user', { user_id: userId });
@@ -277,7 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsPlatformAdmin(profile.is_platform_admin || false);
         setCanEdit(profile.can_edit || false);
 
-        const org = profile.organisations as OrganisationRecord;
+        const org = organisationRecord as OrganisationRecord;
         const orgData = {
           id: org.id,
           name: org.name,
