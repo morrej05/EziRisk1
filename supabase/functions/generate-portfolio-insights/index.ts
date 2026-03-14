@@ -88,6 +88,46 @@ interface PortfolioAiPayload {
     overdueActions: number;
     p1OpenActions: number;
   }>;
+  hotspots?: {
+    rankingModel: {
+      type: 'weighted_burden';
+      disclaimer: string;
+      weights: {
+        openP1AssessmentActions: number;
+        openHighReRecommendations: number;
+        ageing90PlusItems: number;
+        totalOpenItems: number;
+      };
+    };
+    topSiteHotspots: Array<{
+      siteName: string;
+      clientName: string;
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      hotspotScore: number;
+    }>;
+    topModuleHotspots: Array<{
+      moduleKey: string;
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      openAssessmentActions: number;
+      openReRecommendations: number;
+      moduleAlignmentNote: string;
+      hotspotScore: number;
+    }>;
+    topClientHotspots?: Array<{
+      clientName: string;
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      hotspotScore: number;
+    }>;
+  };
 }
 
 interface PortfolioInsightRequest {
@@ -133,6 +173,7 @@ Non-negotiable rules:
 - Treat assessment actions and risk engineering recommendations as distinct remediation source models unless payload explicitly says safeToCombine=true.
 - Do not infer or mention claims, premium, underwriting outcomes, loss ratios, compliance certification, or causes.
 - Do not invent risk scores, bands, trends, or confidence levels if not explicitly included.
+- If hotspot ranking is present, describe it only as a remediation burden prioritisation heuristic.
 - If discussing remediation trends, comment on each remediation source separately where possible.
 - Do not imply causal engineering outcomes from count movement alone.
 - Phrase outputs as decision support for review, not definitive conclusions.
@@ -156,6 +197,7 @@ Output requirements:
 8) Explicitly frame trend comparisons as current selectedWindowDays versus previous selectedWindowDays windows.
 9) Mention current scope (client/discipline/site) briefly when provided.
 10) If remediation ageing/velocity fields are present, comment on backlog build-up or reduction as count movement only (no causal, compliance, or underwriting claims).
+11) If hotspot data is present, highlight concentration areas (sites/modules/clients) but do not present hotspotScore as an engineering risk score.
 
 Portfolio aggregate payload:
 ${JSON.stringify(portfolio)}`;
