@@ -70,6 +70,46 @@ export interface SiteAttentionRow {
   latestAssessmentUpdate: Date | null;
 }
 
+export interface HotspotScoreBreakdown {
+  openP1AssessmentActions: number;
+  openHighReRecommendations: number;
+  ageing90PlusItems: number;
+  totalOpenItems: number;
+}
+
+export interface SiteHotspotRow {
+  documentId: string;
+  siteName: string;
+  clientName: string;
+  openP1AssessmentActions: number;
+  openHighReRecommendations: number;
+  ageing90PlusItems: number;
+  totalOpenItems: number;
+  hotspotScore: number;
+}
+
+export interface ModuleHotspotRow {
+  moduleKey: string;
+  openP1AssessmentActions: number;
+  openAssessmentActions: number;
+  ageing90PlusAssessmentActions: number;
+  openHighReRecommendations: number;
+  openReRecommendations: number;
+  ageing90PlusReRecommendations: number;
+  totalOpenItems: number;
+  ageing90PlusItems: number;
+  hotspotScore: number;
+}
+
+export interface ClientHotspotRow {
+  clientName: string;
+  openP1AssessmentActions: number;
+  openHighReRecommendations: number;
+  ageing90PlusItems: number;
+  totalOpenItems: number;
+  hotspotScore: number;
+}
+
 export interface PortfolioScope {
   client: string | null;
   disciplineOrType: string | null;
@@ -125,6 +165,24 @@ function calculateAgeingBuckets(items: Array<{ createdAt: Date | null }>, now: D
     bucket_61_90: 0,
     bucket_90_plus: 0,
   });
+}
+
+// This is a prioritisation heuristic for ranking remediation burden hotspots.
+// It is explicitly not a validated engineering risk score.
+const HOTSPOT_WEIGHTS = {
+  openP1AssessmentActions: 5,
+  openHighReRecommendations: 5,
+  ageing90PlusItems: 3,
+  totalOpenItems: 1,
+} as const;
+
+function calculateHotspotScore(values: HotspotScoreBreakdown): number {
+  return (
+    values.openP1AssessmentActions * HOTSPOT_WEIGHTS.openP1AssessmentActions
+    + values.openHighReRecommendations * HOTSPOT_WEIGHTS.openHighReRecommendations
+    + values.ageing90PlusItems * HOTSPOT_WEIGHTS.ageing90PlusItems
+    + values.totalOpenItems * HOTSPOT_WEIGHTS.totalOpenItems
+  );
 }
 
 export function usePortfolioMetrics(scope: PortfolioScope) {
@@ -548,6 +606,233 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       })
       .slice(0, 10);
 
+    type HotspotAccumulator = {
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      openAssessmentActions: number;
+      openReRecommendations: number;
+      ageing90PlusAssessmentActions: number;
+      ageing90PlusReRecommendations: number;
+    };
+
+    const makeHotspotAccumulator = (): HotspotAccumulator => ({
+      openP1AssessmentActions: 0,
+      openHighReRecommendations: 0,
+      ageing90PlusItems: 0,
+      totalOpenItems: 0,
+      openAssessmentActions: 0,
+      openReRecommendations: 0,
+      ageing90PlusAssessmentActions: 0,
+      ageing90PlusReRecommendations: 0,
+    });
+
+    const ensureSiteHotspotEntry = (
+      siteHotspotMap: Map<string, SiteHotspotRow>,
+      siteKey: string,
+      seed: { documentId: string; siteName: string; clientName: string }
+    ) => {
+      if (!siteHotspotMap.has(siteKey)) {
+        siteHotspotMap.set(siteKey, {
+          ...seed,
+          openP1AssessmentActions: 0,
+          openHighReRecommendations: 0,
+          ageing90PlusItems: 0,
+          totalOpenItems: 0,
+          hotspotScore: 0,
+        });
+      }
+      return siteHotspotMap.get(siteKey)!;
+    };
+
+    const siteHotspotMap = new Map<string, SiteHotspotRow>();
+    const clientHotspotMap = new Map<string, HotspotAccumulator>();
+    const moduleHotspotMap = new Map<string, HotspotAccumulator>();
+
+    scopedAssessments.forEach((assessment) => {
+      const siteName = assessment.siteName || 'Unknown site';
+      const clientName = assessment.clientName || 'Unassigned client';
+      ensureSiteHotspotEntry(siteHotspotMap, assessment.id, {
+        documentId: assessment.id,
+        siteName,
+        clientName,
+      });
+      if (!clientHotspotMap.has(clientName)) {
+        clientHotspotMap.set(clientName, makeHotspotAccumulator());
+      }
+    });
+
+    const registerActionAgeing = (createdAt: Date | null) => {
+      if (!createdAt) return false;
+      const ageInDays = Math.floor((now.getTime() - createdAt.getTime()) / (24 * 60 * 60 * 1000));
+      return ageInDays > 90;
+    };
+
+    const incrementClientValues = (clientName: string, updater: (values: HotspotAccumulator) => void) => {
+      const row = clientHotspotMap.get(clientName) || makeHotspotAccumulator();
+      updater(row);
+      clientHotspotMap.set(clientName, row);
+    };
+
+    const incrementModuleValues = (moduleKey: string, updater: (values: HotspotAccumulator) => void) => {
+      const row = moduleHotspotMap.get(moduleKey) || makeHotspotAccumulator();
+      updater(row);
+      moduleHotspotMap.set(moduleKey, row);
+    };
+
+    scopedActions.forEach((action) => {
+      const isOpen = !isActionClosed(action.status);
+      if (!isOpen) return;
+
+      const linkedAssessment = assessmentById.get(action.document_id);
+      const clientName = linkedAssessment?.clientName || 'Unassigned client';
+      const siteName = linkedAssessment?.siteName || action.document_title || 'Unknown site';
+      const site = ensureSiteHotspotEntry(siteHotspotMap, action.document_id, {
+        documentId: action.document_id,
+        siteName,
+        clientName,
+      });
+      const moduleKey = action.module_key || 'Unassigned module';
+      const createdAt = parseDate(action.created_at);
+      const isAgeing90Plus = registerActionAgeing(createdAt);
+      const isP1 = action.priority_band === 'P1';
+
+      site.totalOpenItems += 1;
+      if (isP1) site.openP1AssessmentActions += 1;
+      if (isAgeing90Plus) site.ageing90PlusItems += 1;
+
+      incrementClientValues(clientName, (values) => {
+        values.totalOpenItems += 1;
+        values.openAssessmentActions += 1;
+        if (isP1) values.openP1AssessmentActions += 1;
+        if (isAgeing90Plus) {
+          values.ageing90PlusItems += 1;
+          values.ageing90PlusAssessmentActions += 1;
+        }
+      });
+
+      incrementModuleValues(moduleKey, (values) => {
+        values.totalOpenItems += 1;
+        values.openAssessmentActions += 1;
+        if (isP1) values.openP1AssessmentActions += 1;
+        if (isAgeing90Plus) {
+          values.ageing90PlusItems += 1;
+          values.ageing90PlusAssessmentActions += 1;
+        }
+      });
+    });
+
+    scopedReRecommendations.forEach((recommendation) => {
+      const isOpen = !isReRecommendationCompleted(recommendation.status);
+      if (!isOpen) return;
+
+      const linkedAssessment = assessmentById.get(recommendation.document_id);
+      const clientName = linkedAssessment?.clientName || 'Unassigned client';
+      const siteName = linkedAssessment?.siteName || recommendation.documents?.title || 'Unknown site';
+      const site = ensureSiteHotspotEntry(siteHotspotMap, recommendation.document_id, {
+        documentId: recommendation.document_id,
+        siteName,
+        clientName,
+      });
+      const moduleKey = 'RE recommendations';
+      const createdAt = parseDate(recommendation.created_at);
+      const isAgeing90Plus = registerActionAgeing(createdAt);
+      const isHigh = recommendation.priority === 'High';
+
+      site.totalOpenItems += 1;
+      if (isHigh) site.openHighReRecommendations += 1;
+      if (isAgeing90Plus) site.ageing90PlusItems += 1;
+
+      incrementClientValues(clientName, (values) => {
+        values.totalOpenItems += 1;
+        values.openReRecommendations += 1;
+        if (isHigh) values.openHighReRecommendations += 1;
+        if (isAgeing90Plus) {
+          values.ageing90PlusItems += 1;
+          values.ageing90PlusReRecommendations += 1;
+        }
+      });
+
+      incrementModuleValues(moduleKey, (values) => {
+        values.totalOpenItems += 1;
+        values.openReRecommendations += 1;
+        if (isHigh) values.openHighReRecommendations += 1;
+        if (isAgeing90Plus) {
+          values.ageing90PlusItems += 1;
+          values.ageing90PlusReRecommendations += 1;
+        }
+      });
+    });
+
+    const siteHotspots = Array.from(siteHotspotMap.values())
+      .map((row) => ({
+        ...row,
+        hotspotScore: calculateHotspotScore({
+          openP1AssessmentActions: row.openP1AssessmentActions,
+          openHighReRecommendations: row.openHighReRecommendations,
+          ageing90PlusItems: row.ageing90PlusItems,
+          totalOpenItems: row.totalOpenItems,
+        }),
+      }))
+      .filter((row) => row.totalOpenItems > 0)
+      .sort((a, b) => {
+        if (b.hotspotScore !== a.hotspotScore) return b.hotspotScore - a.hotspotScore;
+        if (b.ageing90PlusItems !== a.ageing90PlusItems) return b.ageing90PlusItems - a.ageing90PlusItems;
+        return b.totalOpenItems - a.totalOpenItems;
+      })
+      .slice(0, 10);
+
+    const moduleHotspots = Array.from(moduleHotspotMap.entries())
+      .map(([moduleKey, row]): ModuleHotspotRow => ({
+        moduleKey,
+        openP1AssessmentActions: row.openP1AssessmentActions,
+        openAssessmentActions: row.openAssessmentActions,
+        ageing90PlusAssessmentActions: row.ageing90PlusAssessmentActions,
+        openHighReRecommendations: row.openHighReRecommendations,
+        openReRecommendations: row.openReRecommendations,
+        ageing90PlusReRecommendations: row.ageing90PlusReRecommendations,
+        totalOpenItems: row.totalOpenItems,
+        ageing90PlusItems: row.ageing90PlusItems,
+        hotspotScore: calculateHotspotScore({
+          openP1AssessmentActions: row.openP1AssessmentActions,
+          openHighReRecommendations: row.openHighReRecommendations,
+          ageing90PlusItems: row.ageing90PlusItems,
+          totalOpenItems: row.totalOpenItems,
+        }),
+      }))
+      .filter((row) => row.totalOpenItems > 0)
+      .sort((a, b) => {
+        if (b.hotspotScore !== a.hotspotScore) return b.hotspotScore - a.hotspotScore;
+        if (b.ageing90PlusItems !== a.ageing90PlusItems) return b.ageing90PlusItems - a.ageing90PlusItems;
+        return b.totalOpenItems - a.totalOpenItems;
+      })
+      .slice(0, 10);
+
+    const clientHotspots = Array.from(clientHotspotMap.entries())
+      .map(([clientName, row]): ClientHotspotRow => ({
+        clientName,
+        openP1AssessmentActions: row.openP1AssessmentActions,
+        openHighReRecommendations: row.openHighReRecommendations,
+        ageing90PlusItems: row.ageing90PlusItems,
+        totalOpenItems: row.totalOpenItems,
+        hotspotScore: calculateHotspotScore({
+          openP1AssessmentActions: row.openP1AssessmentActions,
+          openHighReRecommendations: row.openHighReRecommendations,
+          ageing90PlusItems: row.ageing90PlusItems,
+          totalOpenItems: row.totalOpenItems,
+        }),
+      }))
+      .filter((row) => row.totalOpenItems > 0)
+      .sort((a, b) => {
+        if (b.hotspotScore !== a.hotspotScore) return b.hotspotScore - a.hotspotScore;
+        if (b.ageing90PlusItems !== a.ageing90PlusItems) return b.ageing90PlusItems - a.ageing90PlusItems;
+        return b.totalOpenItems - a.totalOpenItems;
+      })
+      .slice(0, 10);
+
+    const showClientHotspots = !selectedClient && clientHotspots.length > 1;
+
     return {
       totalSites: uniqueSites.size,
       totalAssessments: scopedAssessments.length,
@@ -570,6 +855,14 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       statusCounts,
       commonActionGroups,
       topSites,
+      hotspotConfig: {
+        weights: HOTSPOT_WEIGHTS,
+        description: 'Hotspot ranking is a prioritisation heuristic using urgent items, 90+ day ageing backlog, and total open remediation volume. It is not a validated risk score.',
+      },
+      siteHotspots,
+      moduleHotspots,
+      clientHotspots,
+      showClientHotspots,
       remediationTrends,
       assessmentActionAgeing,
       reRecommendationAgeing,

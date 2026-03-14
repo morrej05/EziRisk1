@@ -276,11 +276,62 @@ export default function PortfolioPage() {
         overdueActions: site.overdueActions,
         p1OpenActions: site.p1OpenActions,
       })),
+    hotspots: {
+      rankingModel: {
+        type: 'weighted_burden',
+        disclaimer: metrics.hotspotConfig.description,
+        weights: metrics.hotspotConfig.weights,
+      },
+      topSiteHotspots: metrics.siteHotspots
+        .slice(0, 5)
+        .map((row) => ({
+          siteName: row.siteName,
+          clientName: row.clientName,
+          openP1AssessmentActions: row.openP1AssessmentActions,
+          openHighReRecommendations: row.openHighReRecommendations,
+          ageing90PlusItems: row.ageing90PlusItems,
+          totalOpenItems: row.totalOpenItems,
+          hotspotScore: row.hotspotScore,
+        })),
+      topModuleHotspots: metrics.moduleHotspots
+        .slice(0, 5)
+        .map((row) => ({
+          moduleKey: row.moduleKey,
+          openP1AssessmentActions: row.openP1AssessmentActions,
+          openHighReRecommendations: row.openHighReRecommendations,
+          ageing90PlusItems: row.ageing90PlusItems,
+          totalOpenItems: row.totalOpenItems,
+          openAssessmentActions: row.openAssessmentActions,
+          openReRecommendations: row.openReRecommendations,
+          moduleAlignmentNote: row.moduleKey === 'RE recommendations'
+            ? 'Source-specific RE grouping; no strict module-key alignment to assessment actions.'
+            : 'Assessment action module key grouping.',
+          hotspotScore: row.hotspotScore,
+        })),
+      topClientHotspots: metrics.showClientHotspots
+        ? metrics.clientHotspots
+          .slice(0, 5)
+          .map((row) => ({
+            clientName: row.clientName,
+            openP1AssessmentActions: row.openP1AssessmentActions,
+            openHighReRecommendations: row.openHighReRecommendations,
+            ageing90PlusItems: row.ageing90PlusItems,
+            totalOpenItems: row.totalOpenItems,
+            hotspotScore: row.hotspotScore,
+          }))
+        : undefined,
+    },
   }), [
     actionPriorityRows,
     actionStatusRows,
     metrics.commonActionGroups,
     metrics.openHighPriorityActions,
+    metrics.hotspotConfig.description,
+    metrics.hotspotConfig.weights,
+    metrics.siteHotspots,
+    metrics.moduleHotspots,
+    metrics.clientHotspots,
+    metrics.showClientHotspots,
     metrics.topSites,
     metrics.totalActions,
     metrics.totalAssessments,
@@ -698,50 +749,137 @@ export default function PortfolioPage() {
             </div>
           </section>
 
-          <section className="bg-white rounded-lg border border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900">Sites Requiring Attention</h2>
-            <p className="text-sm text-slate-600 mt-1">
-              Ranked by open P1 actions, then overdue actions, then total open actions.
-            </p>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Site</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Client</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Open P1</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Overdue</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Open Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {metrics.topSites.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-6 text-sm text-center text-slate-500">
-                        No sites with open actions found.
-                      </td>
-                    </tr>
-                  ) : (
-                    metrics.topSites.map((site) => (
-                      <tr
-                        key={`${site.clientName}-${site.siteName}`}
-                        className="hover:bg-slate-50 cursor-pointer transition-colors"
-                        onClick={() => {
-                          // Best-effort drill-through: document filter is exact, site/client included as context hint.
-                          navigate(appendScopeToPath(`/dashboard/action-register?document=${encodeURIComponent(site.documentId)}&site=${encodeURIComponent(site.siteName)}&client=${encodeURIComponent(site.clientName)}`));
-                        }}
-                      >
-                        <td className="px-4 py-3 text-sm font-medium text-slate-900">{site.siteName}</td>
-                        <td className="px-4 py-3 text-sm text-slate-700">{site.clientName}</td>
-                        <td className="px-4 py-3 text-sm text-right text-rose-700 font-semibold">{site.p1OpenActions}</td>
-                        <td className="px-4 py-3 text-sm text-right text-amber-700 font-semibold">{site.overdueActions}</td>
-                        <td className="px-4 py-3 text-sm text-right text-slate-700 font-semibold">{site.openActions}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-6">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Risk Hotspots</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Prioritisation aid for remediation burden. Weighted by open P1 assessment actions, open high-priority RE recommendations, 90+ day open backlog, and total open items.
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                This hotspot ranking is not a validated engineering risk score.
+              </p>
             </div>
+
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Top Sites Requiring Attention</h3>
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Site</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Client</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">P1 Actions</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">High RE Recs</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">90+ Day Backlog</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Total Open</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {metrics.siteHotspots.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-6 text-sm text-center text-slate-500">
+                          No site hotspots found in the current scope.
+                        </td>
+                      </tr>
+                    ) : (
+                      metrics.siteHotspots.map((site) => (
+                        <tr
+                          key={`${site.documentId}-${site.clientName}`}
+                          className="hover:bg-slate-50 cursor-pointer transition-colors"
+                          onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?document=${encodeURIComponent(site.documentId)}&status=open&status=in_progress&sourceType=assessment_action`))}
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{site.siteName}</td>
+                          <td className="px-4 py-3 text-sm text-slate-700">{site.clientName}</td>
+                          <td className="px-4 py-3 text-sm text-right text-rose-700 font-semibold">{site.openP1AssessmentActions}</td>
+                          <td className="px-4 py-3 text-sm text-right text-amber-700 font-semibold">{site.openHighReRecommendations}</td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-700">{site.ageing90PlusItems}</td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-900 font-semibold">{site.totalOpenItems}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Hotspot Modules</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Module hotspots use assessment action module keys plus a separate RE recommendations grouping where direct module alignment is not available.
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Module / Theme</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">P1 Actions</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">High RE Recs</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">90+ Day Backlog</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Total Open</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {metrics.moduleHotspots.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-sm text-center text-slate-500">
+                          No module hotspots found in the current scope.
+                        </td>
+                      </tr>
+                    ) : (
+                      metrics.moduleHotspots.map((row) => (
+                        <tr
+                          key={row.moduleKey}
+                          className={row.moduleKey === 'RE recommendations' ? 'bg-slate-50' : 'hover:bg-slate-50 cursor-pointer transition-colors'}
+                          onClick={row.moduleKey === 'RE recommendations'
+                            ? undefined
+                            : () => navigate(appendScopeToPath(`/dashboard/action-register?module=${encodeURIComponent(row.moduleKey)}&status=open&status=in_progress&sourceType=assessment_action`))}
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{formatPortfolioGroupLabel(row.moduleKey)}</td>
+                          <td className="px-4 py-3 text-sm text-right text-rose-700 font-semibold">{row.openP1AssessmentActions}</td>
+                          <td className="px-4 py-3 text-sm text-right text-amber-700 font-semibold">{row.openHighReRecommendations}</td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-700">{row.ageing90PlusItems}</td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-900 font-semibold">{row.totalOpenItems}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {metrics.showClientHotspots && (
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Client Hotspots</h3>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Client</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">P1 Actions</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">High RE Recs</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">90+ Day Backlog</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Total Open</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {metrics.clientHotspots.map((clientRow) => (
+                        <tr
+                          key={clientRow.clientName}
+                          className="hover:bg-slate-50 cursor-pointer transition-colors"
+                          onClick={() => setClient(clientRow.clientName)}
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">{clientRow.clientName}</td>
+                          <td className="px-4 py-3 text-sm text-right text-rose-700 font-semibold">{clientRow.openP1AssessmentActions}</td>
+                          <td className="px-4 py-3 text-sm text-right text-amber-700 font-semibold">{clientRow.openHighReRecommendations}</td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-700">{clientRow.ageing90PlusItems}</td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-900 font-semibold">{clientRow.totalOpenItems}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </section>
 
           {(assessmentsLoading || actionsLoading) && (

@@ -92,6 +92,46 @@ export interface PortfolioAiPayload {
     overdueActions: number;
     p1OpenActions: number;
   }>;
+  hotspots?: {
+    rankingModel: {
+      type: 'weighted_burden';
+      disclaimer: string;
+      weights: {
+        openP1AssessmentActions: number;
+        openHighReRecommendations: number;
+        ageing90PlusItems: number;
+        totalOpenItems: number;
+      };
+    };
+    topSiteHotspots: Array<{
+      siteName: string;
+      clientName: string;
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      hotspotScore: number;
+    }>;
+    topModuleHotspots: Array<{
+      moduleKey: string;
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      openAssessmentActions: number;
+      openReRecommendations: number;
+      moduleAlignmentNote: string;
+      hotspotScore: number;
+    }>;
+    topClientHotspots?: Array<{
+      clientName: string;
+      openP1AssessmentActions: number;
+      openHighReRecommendations: number;
+      ageing90PlusItems: number;
+      totalOpenItems: number;
+      hotspotScore: number;
+    }>;
+  };
 }
 
 export interface PortfolioAiInsights {
