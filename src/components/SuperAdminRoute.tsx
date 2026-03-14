@@ -24,7 +24,7 @@ export default function PlatformAdminRoute({ children }: PlatformAdminRouteProps
     return <Navigate to="/signin" replace />;
   }
 
-  if (userRole !== 'admin' || !isPlatformAdmin) {
+  if ((userRole !== 'admin' && userRole !== 'owner') || !isPlatformAdmin) {
     return <Navigate to="/dashboard" replace />;
   }
 

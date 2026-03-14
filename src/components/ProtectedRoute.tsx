@@ -4,10 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedRouteProps {
   children: ReactNode;
+  requireAcceptedDisclaimer?: boolean;
 }
 
-export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, authInitialized, loading } = useAuth();
+export default function ProtectedRoute({ children, requireAcceptedDisclaimer = true }: ProtectedRouteProps) {
+  const { user, authInitialized, loading, hasAcceptedCurrentDisclaimer } = useAuth();
 
   // Don't decide anything until auth bootstrap finished
   if (!authInitialized || loading) {
@@ -23,6 +24,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (!user) {
     return <Navigate to="/signin" replace />;
+  }
+
+  if (requireAcceptedDisclaimer && !hasAcceptedCurrentDisclaimer) {
+    return <Navigate to="/legal/disclaimer" replace />;
   }
 
   return <>{children}</>;

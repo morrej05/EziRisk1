@@ -34,6 +34,8 @@ import ReSurveyPdfFixturePage from "./pages/dev/ReSurveyPdfFixturePage";
 import PortfolioPage from './pages/intelligence/PortfolioPage';
 import RecommendationsRegisterPage from './pages/recommendations/RecommendationsRegisterPage';
 import RemediationPage from './pages/remediation/RemediationPage';
+import LegalDisclaimerPage from './pages/LegalDisclaimerPage';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
   return (
@@ -46,6 +48,14 @@ function App() {
           <Route path="/external/:token" element={<ExternalSurvey />} />
           <Route path="/client/document/:token" element={<ClientDocumentView />} />
           <Route path="/public/documents" element={<PublicDocumentViewer />} />
+          <Route
+            path="/legal/disclaimer"
+            element={
+              <ProtectedRoute requireAcceptedDisclaimer={false}>
+                <LegalDisclaimerPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={
@@ -114,8 +124,22 @@ function App() {
               </AuthedLayout>
             }
           />
-          <Route path="/documents/:id/re/buildings" element={<BuildingsPage />} />
-          <Route path="/documents/:id/re/fire-protection" element={<FireProtectionPage />} />
+          <Route
+            path="/documents/:id/re/buildings"
+            element={
+              <AuthedLayout>
+                <BuildingsPage />
+              </AuthedLayout>
+            }
+          />
+          <Route
+            path="/documents/:id/re/fire-protection"
+            element={
+              <AuthedLayout>
+                <FireProtectionPage />
+              </AuthedLayout>
+            }
+          />
           <Route
             path="/documents/:id/preview"
             element={
