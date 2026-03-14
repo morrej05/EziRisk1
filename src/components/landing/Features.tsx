@@ -19,7 +19,7 @@ const features = [
   {
     icon: Users,
     title: 'Role-Based Access',
-    description: 'Admin, surveyor, and viewer roles with platform admin capabilities for managing global settings.',
+    description: 'Owner, admin, consultant, and viewer roles with platform admin capabilities for managing global settings.',
   },
   {
     icon: FileText,

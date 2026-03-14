@@ -96,7 +96,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const mapLegacyRole = (role: string | null | undefined): UserRole | null => {
     if (!role) return null;
-    if (role === 'surveyor') return 'consultant';
     if (role === 'owner' || role === 'admin' || role === 'consultant' || role === 'viewer') {
       return role;
     }

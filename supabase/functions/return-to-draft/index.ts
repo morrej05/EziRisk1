@@ -61,18 +61,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check if user is org admin
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('organisation_id, role')
-      .eq('id', user.id)
-      .maybeSingle();
+    // Membership-first authorization: owner/admin only
+    const { data: memberships, error: membershipError } = await supabase
+      .from('organisation_members')
+      .select('organisation_id, role, status')
+      .eq('user_id', user.id)
+      .eq('status', 'active');
 
-    if (!userProfile || userProfile.role !== 'org_admin') {
+    if (membershipError) {
       return new Response(
-        JSON.stringify({ error: 'Only organization admins can return surveys to draft' }),
+        JSON.stringify({ error: 'Failed to load organisation membership' }),
         {
-          status: 403,
+          status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
@@ -95,8 +95,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Verify survey is in same org
-    if (survey.organisation_id !== userProfile.organisation_id) {
+    const canManageSurvey = (memberships || []).some((m) =>
+      m.organisation_id === survey.organisation_id && (m.role === 'owner' || m.role === 'admin')
+    );
+
+    if (!canManageSurvey) {
       return new Response(
         JSON.stringify({ error: 'Access denied' }),
         {
