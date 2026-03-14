@@ -185,7 +185,7 @@ BEGIN
     NEW.author_role_snapshot := COALESCE(NEW.author_role_snapshot, v_role, NEW.assessor_role);
   END IF;
 
-  IF NEW.status = 'issued' THEN
+  IF COALESCE(to_jsonb(NEW)->>'issue_status', to_jsonb(NEW)->>'status') = 'issued' THEN
     NEW.issued_author_name_snapshot := COALESCE(NEW.issued_author_name_snapshot, NEW.author_name_snapshot);
     NEW.issued_author_role_snapshot := COALESCE(NEW.issued_author_role_snapshot, NEW.author_role_snapshot);
   END IF;
@@ -302,7 +302,7 @@ WITH CHECK (
 CREATE POLICY "Users can delete org draft documents"
 ON public.documents FOR DELETE TO authenticated
 USING (
-  status = 'draft'
+  COALESCE(issue_status, 'draft') = 'draft'
   AND (
     EXISTS (
       SELECT 1 FROM public.organisation_members om
