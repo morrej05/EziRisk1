@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Shield } from 'lucide-react';
+import LegalLinks from '../legal/LegalLinks';
 
 export default function Footer() {
   const scrollToSection = (id: string) => {
@@ -56,14 +57,7 @@ export default function Footer() {
 
           <div>
             <h4 className="text-white font-semibold mb-4">Legal</h4>
-            <ul className="space-y-2">
-              <li>
-                <span className="text-neutral-400">Privacy Policy</span>
-              </li>
-              <li>
-                <span className="text-neutral-400">Terms of Service</span>
-              </li>
-            </ul>
+            <LegalLinks className="space-y-2" />
           </div>
         </div>
 

@@ -37,6 +37,10 @@ import RecommendationsRegisterPage from './pages/recommendations/Recommendations
 import RemediationPage from './pages/remediation/RemediationPage';
 import LegalDisclaimerPage from './pages/LegalDisclaimerPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import PrivacyPolicyPage from './pages/legal/PrivacyPolicyPage';
+import TermsOfUsePage from './pages/legal/TermsOfUsePage';
+import ProfessionalLiabilityDisclaimerPage from './pages/legal/ProfessionalLiabilityDisclaimerPage';
+import SecurityTrustPage from './pages/legal/SecurityTrustPage';
 
 function App() {
   return (
@@ -50,6 +54,10 @@ function App() {
           <Route path="/external/:token" element={<ExternalSurvey />} />
           <Route path="/client/document/:token" element={<ClientDocumentView />} />
           <Route path="/public/documents" element={<PublicDocumentViewer />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms" element={<TermsOfUsePage />} />
+          <Route path="/disclaimer" element={<ProfessionalLiabilityDisclaimerPage />} />
+          <Route path="/security" element={<SecurityTrustPage />} />
           <Route
             path="/legal/disclaimer"
             element={
