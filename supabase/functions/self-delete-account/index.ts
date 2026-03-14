@@ -10,6 +10,8 @@ const corsHeaders = {
 interface SelfDeletePayload {
   transfer_organisation_id?: string;
   transfer_to_user_id?: string;
+  workflow?: string;
+  confirmation_phrase?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -45,10 +47,16 @@ Deno.serve(async (req: Request) => {
 
     const payload = (await req.json().catch(() => ({}))) as SelfDeletePayload;
 
-    const { error: rpcError } = await userSupabase.rpc('self_delete_account_secure', {
-      p_transfer_organisation_id: payload.transfer_organisation_id ?? null,
-      p_transfer_to_user_id: payload.transfer_to_user_id ?? null,
-    });
+    const isSoloOwnerCloseOrgWorkflow = payload.workflow === 'solo_owner_close_org';
+
+    const { error: rpcError } = isSoloOwnerCloseOrgWorkflow
+      ? await userSupabase.rpc('self_delete_solo_owner_account_secure', {
+          p_confirmation_phrase: payload.confirmation_phrase ?? null,
+        })
+      : await userSupabase.rpc('self_delete_account_secure', {
+          p_transfer_organisation_id: payload.transfer_organisation_id ?? null,
+          p_transfer_to_user_id: payload.transfer_to_user_id ?? null,
+        });
 
     if (rpcError) {
       return new Response(JSON.stringify({ error: rpcError.message }), {
