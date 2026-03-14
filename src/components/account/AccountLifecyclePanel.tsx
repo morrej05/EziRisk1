@@ -35,10 +35,18 @@ export default function AccountLifecyclePanel() {
   const [selfDeleteTransferOrgId, setSelfDeleteTransferOrgId] = useState<string>('');
   const [selfDeleteTransferToUserId, setSelfDeleteTransferToUserId] = useState<string>('');
   const [working, setWorking] = useState(false);
+  const [soloFlowStarted, setSoloFlowStarted] = useState(false);
+  const [soloFlowAcknowledgedAccountDelete, setSoloFlowAcknowledgedAccountDelete] = useState(false);
+  const [soloFlowAcknowledgedOrgClose, setSoloFlowAcknowledgedOrgClose] = useState(false);
+  const [soloFlowPhrase, setSoloFlowPhrase] = useState('');
+  const [soloFlowPassword, setSoloFlowPassword] = useState('');
 
   const ownerCount = useMemo(() => members.filter((m) => m.role === 'owner').length, [members]);
+  const memberCount = members.length;
   const canManageMembers = currentRole === 'owner' || currentRole === 'admin';
   const isCurrentUserSoleOwner = currentRole === 'owner' && ownerCount <= 1;
+  const isCurrentUserSoloOwnerAndMember = currentRole === 'owner' && ownerCount === 1 && memberCount === 1;
+  const soloConfirmationPhrase = 'CLOSE ORGANISATION AND DELETE ACCOUNT';
 
   const loadMembers = useCallback(async () => {
     if (!user?.id) {
@@ -180,6 +188,51 @@ export default function AccountLifecyclePanel() {
   };
 
   const selfDeleteAccount = async () => {
+    if (isCurrentUserSoloOwnerAndMember) {
+      const isPhraseValid = soloFlowPhrase.trim() === soloConfirmationPhrase;
+      if (!soloFlowAcknowledgedAccountDelete || !soloFlowAcknowledgedOrgClose || !isPhraseValid) {
+        setError('Complete all acknowledgements and type the confirmation phrase exactly to continue.');
+        return;
+      }
+
+      if (!user?.email) {
+        setError('Unable to re-authenticate: signed-in user email is missing.');
+        return;
+      }
+
+      if (!soloFlowPassword) {
+        setError('Enter your password to confirm this destructive action.');
+        return;
+      }
+
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: soloFlowPassword,
+      });
+      if (reauthError) {
+        setError(`Re-authentication failed: ${reauthError.message}`);
+        return;
+      }
+
+      setWorking(true);
+      setError(null);
+      try {
+        await invokeLifecycleFunction('self-delete-account', {
+          transfer_organisation_id: null,
+          transfer_to_user_id: null,
+          workflow: 'solo_owner_close_org',
+          confirmation_phrase: soloFlowPhrase.trim(),
+        });
+        await supabase.auth.signOut();
+        window.location.assign('/signin');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to close organisation and delete account');
+      } finally {
+        setWorking(false);
+      }
+      return;
+    }
+
     const confirmation = window.prompt('Type DELETE to permanently delete your account.');
     if (confirmation !== 'DELETE') {
       setError('Account deletion cancelled. Type DELETE exactly to continue.');
@@ -197,6 +250,8 @@ export default function AccountLifecyclePanel() {
       await invokeLifecycleFunction('self-delete-account', {
         transfer_organisation_id: isCurrentUserSoleOwner ? selfDeleteTransferOrgId : null,
         transfer_to_user_id: isCurrentUserSoleOwner ? selfDeleteTransferToUserId : null,
+        workflow: null,
+        confirmation_phrase: null,
       });
       await supabase.auth.signOut();
       window.location.assign('/signin');
@@ -299,16 +354,25 @@ export default function AccountLifecyclePanel() {
 
       <section className="space-y-3 border border-red-200 bg-red-50 rounded-md p-4">
         <h3 className="text-base font-semibold text-red-900">Danger Zone</h3>
-        {isCurrentUserSoleOwner && (
+        {isCurrentUserSoloOwnerAndMember && (
+          <div className="rounded-md border border-red-300 bg-red-100 p-3 text-sm text-red-900 space-y-2">
+            <p className="font-semibold">You are the only active owner and only active member of this organisation.</p>
+            <p>Deleting your account will permanently close/deactivate this organisation in the same action.</p>
+          </div>
+        )}
+
+        {isCurrentUserSoleOwner && !isCurrentUserSoloOwnerAndMember && (
           <div className="flex items-start gap-2 text-sm text-red-900">
             <AlertTriangle className="w-4 h-4 mt-0.5" />
             <p>
-              You are the sole owner. Select a transfer target below before deleting your account.
+              {isCurrentUserSoloOwnerAndMember
+                ? 'You cannot use member-removal transfer here. Use the dedicated close-organisation + account-delete workflow below.'
+                : 'You are the sole owner. Select a transfer target below before deleting your account.'}
             </p>
           </div>
         )}
 
-        {isCurrentUserSoleOwner && (
+        {isCurrentUserSoleOwner && !isCurrentUserSoloOwnerAndMember && (
           <div className="flex flex-wrap items-center gap-3">
             <select
               value={selfDeleteTransferToUserId}
@@ -327,28 +391,100 @@ export default function AccountLifecyclePanel() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => void selfDeleteAccount()}
-            disabled={working}
-            className="px-3 py-2 rounded-md border border-red-400 text-red-700 hover:bg-red-100 text-sm disabled:opacity-60"
-          >
-            Delete my account
-          </button>
+        {isCurrentUserSoloOwnerAndMember ? (
+          <div className="space-y-3 rounded-md border border-red-300 bg-white p-3">
+            {!soloFlowStarted ? (
+              <button
+                onClick={() => setSoloFlowStarted(true)}
+                disabled={working}
+                className="px-3 py-2 rounded-md border border-red-400 text-red-700 hover:bg-red-100 text-sm disabled:opacity-60"
+              >
+                Start account closure flow
+              </button>
+            ) : (
+              <>
+                <label className="flex items-start gap-2 text-sm text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={soloFlowAcknowledgedAccountDelete}
+                    onChange={(e) => setSoloFlowAcknowledgedAccountDelete(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>I understand my account will be permanently deleted and cannot be recovered.</span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={soloFlowAcknowledgedOrgClose}
+                    onChange={(e) => setSoloFlowAcknowledgedOrgClose(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>I understand this action will close/deactivate my organisation and end access for this workspace.</span>
+                </label>
 
-          <button
-            disabled
-            title="Organisation cancellation backend endpoint is not yet enabled"
-            className="px-3 py-2 rounded-md border border-slate-300 text-slate-500 text-sm cursor-not-allowed"
-          >
-            Cancel / Deactivate organisation (coming soon)
-          </button>
-        </div>
-        <p className="text-xs text-slate-600">
-          Placeholder wired target: <code>/functions/v1/cancel-organisation</code> (enable backend endpoint before launch).
-        </p>
+                <div className="space-y-1">
+                  <label htmlFor="solo-delete-phrase" className="text-sm font-medium text-slate-800">
+                    Type <code>{soloConfirmationPhrase}</code> to confirm
+                  </label>
+                  <input
+                    id="solo-delete-phrase"
+                    type="text"
+                    value={soloFlowPhrase}
+                    onChange={(e) => setSoloFlowPhrase(e.target.value)}
+                    placeholder={soloConfirmationPhrase}
+                    className="w-full px-3 py-2 border border-red-300 rounded-md text-sm"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="solo-delete-password" className="text-sm font-medium text-slate-800">
+                    Confirm your password
+                  </label>
+                  <input
+                    id="solo-delete-password"
+                    type="password"
+                    value={soloFlowPassword}
+                    onChange={(e) => setSoloFlowPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full px-3 py-2 border border-red-300 rounded-md text-sm"
+                  />
+                </div>
+
+                <button
+                  onClick={() => void selfDeleteAccount()}
+                  disabled={working}
+                  className="px-3 py-2 rounded-md bg-red-700 text-white hover:bg-red-800 text-sm disabled:opacity-60"
+                >
+                  Close organisation and delete account
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => void selfDeleteAccount()}
+                disabled={working}
+                className="px-3 py-2 rounded-md border border-red-400 text-red-700 hover:bg-red-100 text-sm disabled:opacity-60"
+              >
+                Delete my account
+              </button>
+
+              <button
+                disabled
+                title="Organisation cancellation backend endpoint is not yet enabled"
+                className="px-3 py-2 rounded-md border border-slate-300 text-slate-500 text-sm cursor-not-allowed"
+              >
+                Cancel / Deactivate organisation (coming soon)
+              </button>
+            </div>
+            <p className="text-xs text-slate-600">
+              Placeholder wired target: <code>/functions/v1/cancel-organisation</code> (enable backend endpoint before launch).
+            </p>
+          </>
+        )}
       </section>
     </div>
   );
 }
-
