@@ -1,8 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LogOut } from 'lucide-react';
-import { canAccessAdmin, type User as EntitlementsUser } from '../utils/entitlements';
+import { canAccessAdmin, canAccessPlatformSettings, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
+
+type AuthUserWithPlatform = { platform?: boolean };
 
 export default function PrimaryNavigation() {
   const location = useLocation();
@@ -21,6 +23,7 @@ export default function PrimaryNavigation() {
         id: user.id,
         role: (user.role ?? 'viewer') as EntitlementsUser['role'],
         is_platform_admin: Boolean(user.is_platform_admin),
+        platform: Boolean((user as AuthUserWithPlatform).platform),
         can_edit: Boolean(user.can_edit),
         name: user.user_metadata?.name ?? null,
         organisation_id: user.organisation_id ?? null,
@@ -33,6 +36,7 @@ export default function PrimaryNavigation() {
     { label: 'Remediation', path: '/remediation', show: true },
     { label: 'Portfolio', path: '/portfolio', show: true },
     { label: 'Admin', path: '/admin', show: entitlementUser ? canAccessAdmin(entitlementUser) : false },
+    { label: 'Platform', path: '/platform', show: entitlementUser ? canAccessPlatformSettings(entitlementUser) : false },
   ];
 
   const handleSignOut = async () => {
@@ -69,7 +73,7 @@ export default function PrimaryNavigation() {
 
             {import.meta.env.DEV && user ? (
               <div className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700">
-                role: {String(user.role)} · platform: {String(user.is_platform_admin)}
+                role: {String(user.role)} · platform: {String((user as AuthUserWithPlatform).platform ?? user.is_platform_admin)}
               </div>
             ) : null}
 

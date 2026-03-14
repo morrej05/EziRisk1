@@ -5,10 +5,13 @@ import { UserRole, SubscriptionPlan, DisciplineType } from '../utils/permissions
 import { Organisation } from '../utils/entitlements';
 import { CURRENT_DISCLAIMER_VERSION } from '../config/legal';
 
+type AuthUserWithPlatform = User & { platform?: boolean };
+
 // Enriched user object that combines auth + profile data
 interface AppUser extends User {
   role?: UserRole;
   is_platform_admin?: boolean;
+  platform?: boolean;
   can_edit?: boolean;
   organisation_id?: string | null;
   name?: string | null;
@@ -88,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...authUser,
       role: profile?.role,
       is_platform_admin: profile?.is_platform_admin || false,
+      platform: (authUser as AuthUserWithPlatform)?.platform === true,
       can_edit: profile?.can_edit || false,
       organisation_id: profile?.organisation_id,
       name: profile?.name || null,
@@ -245,7 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);
           setMaxEditors(updatedProfile.max_editors || 999);
           setActiveEditors(updatedProfile.active_editors || 1);
-          setIsPlatformAdmin(updatedProfile.is_platform_admin || false);
+          setIsPlatformAdmin(((authUser as AuthUserWithPlatform)?.platform === true) || updatedProfile.is_platform_admin || false);
           setCanEdit(updatedProfile.can_edit || false);
 
           if (updatedProfile.organisations) {
@@ -286,7 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
         setMaxEditors(profile.max_editors || 999);
         setActiveEditors(profile.active_editors || 1);
-        setIsPlatformAdmin(profile.is_platform_admin || false);
+        setIsPlatformAdmin(((authUser as AuthUserWithPlatform)?.platform === true) || profile.is_platform_admin || false);
         setCanEdit(profile.can_edit || false);
 
         const org = organisationRecord as OrganisationRecord;

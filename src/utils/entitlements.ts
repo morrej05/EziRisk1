@@ -17,8 +17,8 @@
  * - Access global analytics and reporting
  * - Bypass all feature gates and subscription checks
  *
- * Note: Platform Admin is NOT a separate role, it's a flag on admin users.
- * A Platform Admin must have role === 'admin' AND is_platform_admin === true.
+ * Note: Platform Admin is NOT a separate role.
+ * Access is determined by the platform flag on the user state.
  */
 
 export type PlanType = 'free' | 'core' | 'professional' | 'enterprise';
@@ -50,6 +50,7 @@ export interface User {
   id: string;
   role: UserRole;
   is_platform_admin: boolean;
+  platform?: boolean;
   can_edit: boolean;
   name?: string | null;
   organisation_id?: string | null;
@@ -64,7 +65,7 @@ export function isOrgAdmin(user: User): boolean {
 }
 
 export function isPlatformAdmin(user: User): boolean {
-  return user.role === 'admin' && user.is_platform_admin === true;
+  return user.platform === true || user.is_platform_admin === true;
 }
 
 export function getPlanTier(org: Organisation): 'free' | 'solo' | 'core' | 'professional' | 'enterprise' {
