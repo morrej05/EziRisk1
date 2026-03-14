@@ -1,18 +1,20 @@
-export type UserRole = 'admin' | 'surveyor' | 'viewer';
+export type UserRole = 'owner' | 'admin' | 'consultant' | 'viewer';
 
 export type SubscriptionPlan = 'free' | 'core' | 'professional' | 'enterprise';
 
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
+  owner: 'Owner',
   admin: 'Admin',
-  surveyor: 'Surveyor',
+  consultant: 'Consultant',
   viewer: 'Viewer',
 };
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
+  owner: 'Highest in-org authority. Can manage billing, users, and governance actions',
   admin: 'Full access including user management, billing, and all survey operations',
-  surveyor: 'Can create, edit, and manage surveys within plan limits',
+  consultant: 'Can create, edit, and manage surveys within plan limits',
   viewer: 'Read-only access to surveys and reports',
 };
 
@@ -121,6 +123,7 @@ export const getRolePermissions = (role: UserRole | null): RolePermissions => {
   }
 
   switch (role) {
+    case 'owner':
     case 'admin':
       return {
         canViewSurveys: true,
@@ -142,7 +145,7 @@ export const getRolePermissions = (role: UserRole | null): RolePermissions => {
         canExportReports: true,
       };
 
-    case 'surveyor':
+    case 'consultant':
       return {
         canViewSurveys: true,
         canCreateSurveys: true,

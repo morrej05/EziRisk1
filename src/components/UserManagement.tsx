@@ -39,19 +39,10 @@ export default function UserManagement() {
 
       if (profilesError) throw profilesError;
 
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-
-      if (authError) {
-        console.warn('Admin API not accessible:', authError);
-      }
-
-      const usersWithEmails = (profilesData || []).map(profile => {
-        const authUser = authUsers?.users.find(u => u.id === profile.id);
-        return {
-          ...profile,
-          email: authUser?.email || 'Email unavailable',
-        };
-      });
+      const usersWithEmails = (profilesData || []).map(profile => ({
+        ...profile,
+        email: 'Managed in Supabase Auth',
+      }));
 
       setUsers(usersWithEmails);
     } catch (error) {
@@ -96,9 +87,10 @@ export default function UserManagement() {
       setNewUserName('');
       setNewUserRole('viewer');
       fetchUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error adding user:', error);
-      alert(error.message || 'Failed to add user. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to add user. Please try again.';
+      alert(message);
     } finally {
       setIsAddingUser(false);
     }
@@ -185,22 +177,14 @@ export default function UserManagement() {
       return;
     }
 
-    try {
-      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
-      if (authError) throw authError;
-
-      setUsers(users.filter(u => u.id !== userId));
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      alert('Failed to delete user. Please try again.');
-    }
+    alert('Direct account deletion from the frontend is disabled for security. Please use the secure admin backend flow.');
   };
 
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
       case 'admin':
         return 'bg-red-100 text-red-700 border-red-300';
-      case 'surveyor':
+      case 'consultant':
         return 'bg-blue-100 text-blue-700 border-blue-300';
       case 'viewer':
         return 'bg-slate-100 text-slate-700 border-slate-300';
@@ -300,7 +284,7 @@ export default function UserManagement() {
                         className="text-sm border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-slate-500"
                       >
                         <option value="viewer">Viewer</option>
-                        <option value="surveyor">Surveyor</option>
+                        <option value="consultant">Consultant</option>
                         <option value="admin">Admin</option>
                       </select>
                       <button
@@ -435,7 +419,7 @@ export default function UserManagement() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-900"
                 >
                   <option value="viewer">Viewer - Read-only access</option>
-                  <option value="surveyor">Surveyor - Can create and edit surveys</option>
+                  <option value="consultant">Consultant - Can create and edit surveys</option>
                   <option value="admin">Admin - Full access</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">

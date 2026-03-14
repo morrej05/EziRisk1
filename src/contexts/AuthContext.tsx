@@ -2,7 +2,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { UserRole, SubscriptionPlan, DisciplineType } from '../utils/permissions';
-import { Organisation, UserRole as EntitlementUserRole } from '../utils/entitlements';
+import { Organisation } from '../utils/entitlements';
+import { CURRENT_DISCLAIMER_VERSION } from '../config/legal';
 
 // Enriched user object that combines auth + profile data
 interface AppUser extends User {
@@ -10,7 +11,32 @@ interface AppUser extends User {
   is_platform_admin?: boolean;
   can_edit?: boolean;
   organisation_id?: string | null;
+  name?: string | null;
 }
+
+type ProfileRecord = {
+  role?: string | null;
+  is_platform_admin?: boolean | null;
+  can_edit?: boolean | null;
+  organisation_id?: string | null;
+  name?: string | null;
+};
+
+type OrganisationRecord = {
+  id: string;
+  name: string;
+  plan_type?: string | null;
+  plan_id?: string | null;
+  discipline_type: DisciplineType;
+  enabled_addons?: string[] | null;
+  max_editors?: number | null;
+  subscription_status?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  billing_cycle?: 'monthly' | 'annual' | null;
+  created_at?: string;
+  updated_at?: string;
+};
 
 interface AuthContextType {
   user: AppUser | null;
@@ -24,6 +50,8 @@ interface AuthContextType {
   canEdit: boolean;
   organisation: Organisation | null;
   roleError: string | null;
+  hasAcceptedCurrentDisclaimer: boolean;
+  disclaimerAcceptedAt: string | null;
   loading: boolean;
   authInitialized: boolean;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
@@ -47,11 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [canEdit, setCanEdit] = useState<boolean>(false);
   const [organisation, setOrganisation] = useState<Organisation | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
+  const [hasAcceptedCurrentDisclaimer, setHasAcceptedCurrentDisclaimer] = useState(false);
+  const [disclaimerAcceptedAt, setDisclaimerAcceptedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [authInitialized, setAuthInitialized] = useState(false);
 
   // Helper to create enriched user object with profile fields
-  const createAppUser = (authUser: User | null, profile: any): AppUser | null => {
+  const createAppUser = (authUser: User | null, profile: ProfileRecord | null): AppUser | null => {
     if (!authUser) return null;
 
     return {
@@ -60,7 +90,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       is_platform_admin: profile?.is_platform_admin || false,
       can_edit: profile?.can_edit || false,
       organisation_id: profile?.organisation_id,
+      name: profile?.name || null,
     };
+  };
+
+  const mapLegacyRole = (role: string | null | undefined): UserRole | null => {
+    if (!role) return null;
+    if (role === 'surveyor') return 'consultant';
+    if (role === 'owner' || role === 'admin' || role === 'consultant' || role === 'viewer') {
+      return role;
+    }
+    return null;
+  };
+
+  const fetchDisclaimerStatus = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('user_legal_acceptances')
+      .select('accepted_at')
+      .eq('user_id', userId)
+      .eq('legal_document_type', 'disclaimer')
+      .eq('version', CURRENT_DISCLAIMER_VERSION)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[AuthContext] Failed to fetch disclaimer status:', error.message);
+      setHasAcceptedCurrentDisclaimer(false);
+      setDisclaimerAcceptedAt(null);
+      return;
+    }
+
+    setHasAcceptedCurrentDisclaimer(Boolean(data?.accepted_at));
+    setDisclaimerAcceptedAt(data?.accepted_at ?? null);
   };
 
   const fetchUserRole = async (userId: string, userEmail: string, authUser: User) => {
@@ -68,9 +128,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRoleError(null);
       console.log('[AuthContext] 🔍 Fetching user profile for:', userId, userEmail);
 
+      const { data: membership, error: membershipError } = await supabase
+        .from('organisation_members')
+        .select('role, organisation_id, status')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (membershipError) {
+        console.warn('[AuthContext] Membership fetch warning:', membershipError.message);
+      }
+
       const { data: profile, error: fetchError } = await supabase
         .from('user_profiles')
-        .select('role, plan, discipline_type, bolt_ons, max_editors, active_editors, is_platform_admin, can_edit, organisation_id, organisations(*)')
+        .select('name, role, plan, discipline_type, bolt_ons, max_editors, active_editors, is_platform_admin, can_edit, organisation_id, organisations(*)')
         .eq('id', userId)
         .maybeSingle();
 
@@ -113,7 +186,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] ✅ Successfully fetched profile:', profile);
 
       // Update user object with profile fields
-      setUser(createAppUser(authUser, profile));
+      const resolvedRole = mapLegacyRole((membership?.role as string | null | undefined) ?? profile.role);
+      const resolvedOrganisationId = membership?.organisation_id ?? profile.organisation_id;
+
+      setUser(createAppUser(authUser, {
+        ...profile,
+        role: resolvedRole,
+        organisation_id: resolvedOrganisationId,
+      }));
+      await fetchDisclaimerStatus(userId);
 
       // Check if organisation is missing and auto-create
       if (!profile.organisation_id || !profile.organisations) {
@@ -146,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(createAppUser(authUser, updatedProfile));
 
           // Use the updated profile
-          setUserRole(updatedProfile.role as UserRole);
+          setUserRole(mapLegacyRole(updatedProfile.role));
           setUserPlan(updatedProfile.plan as SubscriptionPlan);
           setDisciplineType(updatedProfile.discipline_type as DisciplineType);
           setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);
@@ -156,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setCanEdit(updatedProfile.can_edit || false);
 
           if (updatedProfile.organisations) {
-            const org = updatedProfile.organisations as any;
+            const org = updatedProfile.organisations as OrganisationRecord;
             const orgData = {
               id: org.id,
               name: org.name,
@@ -187,7 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         // Organisation exists, use it
         // User object already updated above
-        setUserRole(profile.role as UserRole);
+        setUserRole(resolvedRole);
         setUserPlan(profile.plan as SubscriptionPlan);
         setDisciplineType(profile.discipline_type as DisciplineType);
         setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
@@ -196,7 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsPlatformAdmin(profile.is_platform_admin || false);
         setCanEdit(profile.can_edit || false);
 
-        const org = profile.organisations as any;
+        const org = profile.organisations as OrganisationRecord;
         const orgData = {
           id: org.id,
           name: org.name,
@@ -218,7 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           plan_id: orgData.plan_id,
           plan_type: orgData.plan_type
         });
-        setOrganisation(orgData);
+          setOrganisation(orgData);
       }
 
       setRoleError(null);
@@ -235,6 +316,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsPlatformAdmin(false);
       setCanEdit(false);
       setOrganisation(null);
+      setHasAcceptedCurrentDisclaimer(false);
+      setDisclaimerAcceptedAt(null);
     } finally {
       setLoading(false);
     }
@@ -329,6 +412,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setCanEdit(false);
           setOrganisation(null);
           setRoleError(null);
+          setHasAcceptedCurrentDisclaimer(false);
+          setDisclaimerAcceptedAt(null);
           setLoading(false);
         }
       })();
@@ -380,6 +465,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEdit,
       organisation,
       roleError,
+      hasAcceptedCurrentDisclaimer,
+      disclaimerAcceptedAt,
       loading,
       authInitialized,
       signIn,

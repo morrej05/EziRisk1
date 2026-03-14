@@ -100,7 +100,7 @@ export default function UserRoleManagement() {
     switch (role) {
       case 'admin':
         return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'surveyor':
+      case 'consultant':
         return 'bg-slate-100 text-slate-800 border-slate-200';
       case 'viewer':
         return 'bg-green-100 text-green-800 border-green-200';
@@ -113,8 +113,8 @@ export default function UserRoleManagement() {
     switch (role) {
       case 'admin':
         return 'Admin';
-      case 'surveyor':
-        return 'Surveyor';
+      case 'consultant':
+        return 'Consultant';
       case 'viewer':
         return 'Viewer';
       default:
@@ -214,7 +214,7 @@ export default function UserRoleManagement() {
                       className="text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="viewer">Viewer</option>
-                      <option value="surveyor">Surveyor</option>
+                      <option value="consultant">Consultant</option>
                       <option value="admin">Admin</option>
                     </select>
                   </td>

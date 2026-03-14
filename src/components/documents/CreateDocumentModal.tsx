@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { canAccessRiskEngineering } from '../../utils/entitlements';
-import { updateDocumentMeta } from '../../lib/documents/updateDocumentMeta';
 import { getStandardsOptions } from '../../lib/jurisdictions';
 
 interface CreateDocumentModalProps {
@@ -58,7 +57,7 @@ const MODULE_SKELETONS = {
 
 export default function CreateDocumentModal({ onClose, onDocumentCreated, allowedTypes }: CreateDocumentModalProps) {
   const navigate = useNavigate();
-  const { organisation } = useAuth();
+  const { organisation, user, userRole } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const canAccessEngineering = organisation ? canAccessRiskEngineering(organisation) : false;
@@ -74,8 +73,6 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
     enabledModules: [availableTypes[0]] as string[],
     title: '',
     assessmentDate: new Date().toISOString().split('T')[0],
-    assessorName: '',
-    assessorRole: '',
     responsiblePerson: '',
     scopeDescription: '',
     limitationsAssumptions: '',
@@ -153,6 +150,9 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         enabled_products: ['FRA', 'DSEAR'],
       } : {};
 
+      const resolvedAuthorName = user?.name || user?.email || null;
+      const resolvedAuthorRole = userRole || null;
+
       const documentData = {
         organisation_id: organisation.id,
         document_type: primaryDocumentType,
@@ -161,8 +161,12 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         status: 'draft',
         version: 1,
         assessment_date: formData.assessmentDate,
-        assessor_name: formData.assessorName.trim() || null,
-        assessor_role: formData.assessorRole.trim() || null,
+        assessor_name: resolvedAuthorName,
+        assessor_role: resolvedAuthorRole,
+        created_by_user_id: user?.id ?? null,
+        author_profile_id: user?.id ?? null,
+        author_name_snapshot: resolvedAuthorName,
+        author_role_snapshot: resolvedAuthorRole,
         responsible_person: formData.responsiblePerson.trim() || null,
         scope_description: formData.scopeDescription.trim() || null,
         limitations_assumptions: formData.limitationsAssumptions.trim() || null,
@@ -407,29 +411,17 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Assessor Name
-              </label>
-              <input
-                type="text"
-                value={formData.assessorName}
-                onChange={(e) => setFormData({ ...formData, assessorName: e.target.value })}
-                placeholder="John Smith"
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              />
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Report Author</label>
+              <div className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-700">
+                {user?.name || user?.email || 'Authenticated user'}
+              </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Assessor Role
-              </label>
-              <input
-                type="text"
-                value={formData.assessorRole}
-                onChange={(e) => setFormData({ ...formData, assessorRole: e.target.value })}
-                placeholder="Fire Safety Consultant"
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              />
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Author Role</label>
+              <div className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-700 capitalize">
+                {userRole || 'consultant'}
+              </div>
             </div>
           </div>
 

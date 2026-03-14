@@ -24,7 +24,7 @@
 export type PlanType = 'free' | 'core' | 'professional' | 'enterprise';
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'inactive';
-export type UserRole = 'admin' | 'surveyor' | 'viewer';
+export type UserRole = 'owner' | 'admin' | 'consultant' | 'viewer';
 
 export function isDev(): boolean {
   return import.meta.env.DEV === true;

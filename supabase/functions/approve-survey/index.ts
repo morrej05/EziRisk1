@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { requireAuthenticatedUser } from '../_shared/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,27 +21,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { user, error: authErrorMessage } = await requireAuthenticatedUser(supabase, req);
 
-    if (authError || !user) {
+    if (authErrorMessage || !user) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: authErrorMessage ?? 'Unauthorized' }),
         {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -61,16 +50,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check if user is org admin
     const { data: userProfile } = await supabase
       .from('user_profiles')
-      .select('organisation_id, role, name')
+      .select('organisation_id, name')
       .eq('id', user.id)
       .maybeSingle();
 
-    if (!userProfile || userProfile.role !== 'org_admin') {
+    const { data: activeMembership } = await supabase
+      .from('organisation_members')
+      .select('organisation_id, role, status')
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!activeMembership || !['owner', 'admin'].includes(activeMembership.role)) {
       return new Response(
-        JSON.stringify({ error: 'Only organization admins can approve surveys' }),
+        JSON.stringify({ error: 'Only organisation owners/admins can approve surveys' }),
         {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -96,7 +93,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verify survey is in same org
-    if (survey.organisation_id !== userProfile.organisation_id) {
+    if (survey.organisation_id !== activeMembership.organisation_id) {
       return new Response(
         JSON.stringify({ error: 'Access denied' }),
         {
