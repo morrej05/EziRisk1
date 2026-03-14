@@ -40,7 +40,6 @@ interface SavedPortfolioViewFilters {
   discipline: string | null;
   window: 30 | 90;
   site: string;
-  sector?: string | null;
 }
 
 interface SavedPortfolioView {
@@ -61,15 +60,6 @@ function decodeScopeValue(value: string | null): string | null {
   return decodeURIComponent(value);
 }
 
-function getCurrentScopeFilters(scope: PortfolioScope): SavedPortfolioViewFilters {
-  return {
-    client: scope.client,
-    discipline: scope.disciplineOrType,
-    window: scope.windowDays,
-    site: scope.siteQuery || '',
-  };
-}
-
 function sanitizeSavedScopeFilters(rawFilters: unknown): SavedPortfolioViewFilters | null {
   if (!rawFilters || typeof rawFilters !== 'object' || Array.isArray(rawFilters)) return null;
 
@@ -84,15 +74,26 @@ function sanitizeSavedScopeFilters(rawFilters: unknown): SavedPortfolioViewFilte
   };
 
   const site = typeof candidate.site === 'string' ? candidate.site : '';
-  const sector = toNullableString(candidate.sector);
 
   return {
     client: toNullableString(candidate.client),
     discipline: toNullableString(candidate.discipline),
     window: windowDays,
     site,
-    sector,
   };
+}
+
+function isMatchingSavedScope(scope: SavedPortfolioViewFilters, filters: SavedPortfolioViewFilters): boolean {
+  const normaliseNullable = (value: string | null | undefined): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed || null;
+  };
+
+  return normaliseNullable(scope.client) === normaliseNullable(filters.client)
+    && normaliseNullable(scope.discipline) === normaliseNullable(filters.discipline)
+    && scope.window === filters.window
+    && scope.site === filters.site;
 }
 
 function TrendDelta({ value, windowDays }: { value: number; windowDays: 30 | 90 }) {
@@ -153,6 +154,13 @@ export default function PortfolioPage() {
     siteQuery: siteParam,
   };
 
+  const currentScopeFilters = useMemo(() => ({
+    client: clientParam,
+    discipline: disciplineParam,
+    window: selectedWindowDays,
+    site: siteParam,
+  }), [clientParam, disciplineParam, selectedWindowDays, siteParam]);
+
   const {
     metrics,
     scopeOptions,
@@ -173,6 +181,7 @@ export default function PortfolioPage() {
   const [selectedSavedViewId, setSelectedSavedViewId] = useState('');
   const [savedViewsLoading, setSavedViewsLoading] = useState(false);
   const [savedViewsError, setSavedViewsError] = useState<string | null>(null);
+  const [savedViewsNotice, setSavedViewsNotice] = useState<string | null>(null);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -208,6 +217,7 @@ export default function PortfolioPage() {
     nextParams.delete('window');
     setSearchParams(nextParams, { replace: true });
     setSelectedSavedViewId('');
+    setSavedViewsNotice(null);
   };
 
   const loadSavedViews = useCallback(async () => {
@@ -264,9 +274,9 @@ export default function PortfolioPage() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    const filters = getCurrentScopeFilters(scope);
+    const filters = currentScopeFilters;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('saved_portfolio_views')
       .insert({
         organisation_id: organisation.id,
@@ -274,14 +284,20 @@ export default function PortfolioPage() {
         filters_json: filters,
         created_by: user.id,
         created_at: new Date().toISOString(),
-      });
+      })
+      .select('id')
+      .single();
 
     if (error) {
       setSavedViewsError('Unable to save this view right now.');
       return;
     }
 
+    setSavedViewsNotice(`Saved view "${trimmedName}".`);
     setSavedViewsError(null);
+    if (data?.id) {
+      setSelectedSavedViewId(data.id);
+    }
     await loadSavedViews();
   };
 
@@ -315,6 +331,7 @@ export default function PortfolioPage() {
     setSearchParams(nextParams, { replace: true });
     setSelectedSavedViewId(view.id);
     setSavedViewsError(null);
+    setSavedViewsNotice(`Loaded view "${view.name}".`);
   };
 
   const deleteSavedView = async () => {
@@ -343,10 +360,21 @@ export default function PortfolioPage() {
       return;
     }
 
-    setSelectedSavedViewId('');
+    setSelectedSavedViewId((currentId) => (currentId === selectedView.id ? '' : currentId));
     setSavedViewsError(null);
+    setSavedViewsNotice(`Deleted view "${selectedView.name}".`);
     await loadSavedViews();
   };
+
+  useEffect(() => {
+    if (!savedViews.length) {
+      setSelectedSavedViewId('');
+      return;
+    }
+
+    const matchingView = savedViews.find((view) => isMatchingSavedScope(currentScopeFilters, view.filters_json));
+    setSelectedSavedViewId(matchingView?.id || '');
+  }, [savedViews, currentScopeFilters]);
 
   const activeScopeCount = Number(Boolean(scope.client)) + Number(Boolean(scope.disciplineOrType)) + Number(Boolean(scope.siteQuery?.trim()));
 
@@ -712,6 +740,7 @@ export default function PortfolioPage() {
                 onChange={(event) => {
                   const nextId = event.target.value;
                   setSelectedSavedViewId(nextId);
+                  setSavedViewsNotice(null);
                   if (!nextId) return;
                   const nextView = savedViews.find((view) => view.id === nextId);
                   if (nextView) applySavedView(nextView);
@@ -738,11 +767,21 @@ export default function PortfolioPage() {
           <button
             type="button"
             onClick={() => void saveCurrentView()}
+            disabled={!organisation?.id}
             className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800"
           >
             Save View
           </button>
         </div>
+        {!organisation?.id && (
+          <p className="text-xs text-amber-700">Saved views are unavailable until an organisation is selected.</p>
+        )}
+        {!savedViewsLoading && !savedViewsError && savedViews.length === 0 && organisation?.id && (
+          <p className="text-xs text-slate-500">No saved views yet. Save your current scope to reuse it later.</p>
+        )}
+        {savedViewsNotice && !savedViewsError && (
+          <p className="text-xs text-emerald-700">{savedViewsNotice}</p>
+        )}
         {savedViewsError && (
           <p className="text-xs text-amber-700">{savedViewsError}</p>
         )}

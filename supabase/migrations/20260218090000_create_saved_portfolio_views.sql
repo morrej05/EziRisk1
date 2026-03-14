@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.saved_portfolio_views (
   name TEXT NOT NULL,
   filters_json JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_by UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_saved_portfolio_views_org_created_at
