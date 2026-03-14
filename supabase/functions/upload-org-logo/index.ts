@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBearerToken, requireAuthenticatedUser } from "../_shared/auth.ts";
+import { hasRequiredOrganisationRole } from "../_shared/orgAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,45 +19,9 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(payload), { status, headers: jsonHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-    console.log("[upload-org-logo] authHeader present:", Boolean(authHeader));
-    console.log("[upload-org-logo] token present:", Boolean(token));
-
-    if (!authHeader || !token) {
-      return respond(401, {
-        error: "Missing or malformed Authorization header",
-        details: {
-          authHeaderPresent: Boolean(authHeader),
-          tokenPresent: Boolean(token),
-          expectedFormat: "Authorization: Bearer <access_token>",
-        },
-      });
-    }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseAdmin.auth.getUser(token);
-
-    console.log("[upload-org-logo] getUser ok:", Boolean(user) && !userError);
-
-    if (userError || !user) {
-      console.error("[upload-org-logo] getUser failed:", userError);
-      return respond(401, {
-        error: "Invalid or expired access token",
-        details: {
-          message: userError?.message ?? "No user returned",
-          code: userError?.code ?? null,
-          status: userError?.status ?? null,
-        },
-      });
+    const token = getBearerToken(req);
+    if (!token) {
+      return respond(401, { error: "Missing or malformed Authorization header" });
     }
 
     const supabaseClient = createClient(
@@ -64,29 +30,9 @@ Deno.serve(async (req: Request) => {
       { global: { headers: { Authorization: `Bearer ${token}` } } }
     );
 
-    const { data: profile, error: profileError } = await supabaseClient
-      .from("user_profiles")
-      .select("organisation_id, role, is_platform_admin")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      return respond(403, {
-        error: "User profile not found",
-        details: {
-          message: profileError?.message ?? "No profile returned",
-          code: profileError?.code ?? null,
-        },
-      });
-    }
-
-    const isOrgAdmin = profile.role === "admin";
-    const isPlatformAdmin = profile.is_platform_admin === true;
-
-    if (!isOrgAdmin && !isPlatformAdmin) {
-      return respond(403, {
-        error: "Only organisation admins can upload logos",
-      });
+    const { user, error: authError } = await requireAuthenticatedUser(supabaseClient, req);
+    if (authError || !user) {
+      return respond(401, { error: authError ?? "Unauthorized" });
     }
 
     const formData = await req.formData();
@@ -103,8 +49,9 @@ Deno.serve(async (req: Request) => {
       return respond(400, { error: "No organisation_id provided" });
     }
 
-    if (profile.organisation_id !== orgId && !isPlatformAdmin) {
-      return respond(403, { error: "Cannot upload logo for different organisation" });
+    const canManageLogo = await hasRequiredOrganisationRole(supabaseClient, user.id, orgId, ["owner", "admin"]);
+    if (!canManageLogo) {
+      return respond(403, { error: "Only active organisation owner/admin members can upload logos" });
     }
 
     const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"];

@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBearerToken, requireAuthenticatedUser } from "../_shared/auth.ts";
+import { hasRequiredOrganisationRole } from "../_shared/orgAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,40 +14,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const token = getBearerToken(req);
+    if (!token) {
       throw new Error("Missing authorization header");
     }
 
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
+      { global: { headers: { Authorization: `Bearer ${token}` } } }
     );
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
-      throw new Error("Unauthorized");
-    }
-
-    const { data: profile, error: profileError } = await supabaseClient
-      .from("user_profiles")
-      .select("organisation_id, role, is_platform_admin")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileError || !profile) {
-      throw new Error("User profile not found");
-    }
-
-    const isOrgAdmin = profile.role === "admin";
-    const isPlatformAdmin = profile.is_platform_admin === true;
-
-    if (!isOrgAdmin && !isPlatformAdmin) {
-      throw new Error("Only organisation admins can delete logos");
+    const { user, error: authError } = await requireAuthenticatedUser(supabaseClient, req);
+    if (authError || !user) {
+      throw new Error(authError ?? "Unauthorized");
     }
 
     const { organisation_id } = await req.json();
@@ -54,8 +36,9 @@ Deno.serve(async (req: Request) => {
       throw new Error("No organisation_id provided");
     }
 
-    if (profile.organisation_id !== organisation_id && !isPlatformAdmin) {
-      throw new Error("Cannot delete logo for different organisation");
+    const canManageLogo = await hasRequiredOrganisationRole(supabaseClient, user.id, organisation_id, ["owner", "admin"]);
+    if (!canManageLogo) {
+      throw new Error("Only active organisation owner/admin members can delete logos");
     }
 
     const { data: org, error: orgError } = await supabaseClient

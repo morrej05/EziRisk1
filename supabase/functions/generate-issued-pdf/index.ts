@@ -109,14 +109,14 @@ Deno.serve(async (req: Request) => {
 
     const { data: survey } = await adminSupabase
       .from('survey_reports')
-      .select('id, locked_pdf_path, status, organisation_id, user_id')
+      .select('id, locked_pdf_path, status, organisation_id')
       .eq('id', targetId)
       .maybeSingle();
 
     if (survey) {
       const hasOrgAccess = survey.organisation_id
         ? await hasMembershipAccess(userSupabase, survey.organisation_id, user.id)
-        : survey.user_id === user.id;
+        : false;
 
       if (!hasOrgAccess) {
         return new Response(JSON.stringify({ error: 'Access denied' }), {
