@@ -33,6 +33,7 @@ import BuildingsPage from "./pages/re/BuildingsPage";
 import FireProtectionPage from "./pages/re/FireProtectionPage";
 import ReSurveyPdfFixturePage from "./pages/dev/ReSurveyPdfFixturePage";
 import PortfolioPage from './pages/intelligence/PortfolioPage';
+import RecommendationsRegisterPage from './pages/recommendations/RecommendationsRegisterPage';
 
 function App() {
   return (
@@ -144,6 +145,15 @@ function App() {
             }
           />
 
+
+          <Route
+            path="/recommendations"
+            element={
+              <AuthedLayout>
+                <RecommendationsRegisterPage />
+              </AuthedLayout>
+            }
+          />
           <Route
             path="/portfolio"
             element={
