@@ -6,6 +6,7 @@ import {
   createLockedSurveyResponse,
   createNotFoundResponse
 } from '../_shared/surveyGuards.ts';
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,34 +108,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check user permissions (must be in same org and have edit rights)
-    const { data: userProfile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('organisation_id, role, can_edit')
-      .eq('id', user.id)
-      .maybeSingle();
+    const canClose = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      survey.organisation_id,
+      ['owner', 'admin', 'consultant'],
+    );
 
-    if (profileError || !userProfile) {
-      return new Response(
-        JSON.stringify({ error: 'User profile not found' }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    if (userProfile.organisation_id !== survey.organisation_id) {
-      return new Response(
-        JSON.stringify({ error: 'Access denied' }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    if (userProfile.role === 'viewer' || !userProfile.can_edit) {
+    if (!canClose) {
       return new Response(
         JSON.stringify({ error: 'Insufficient permissions' }),
         {

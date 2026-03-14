@@ -148,7 +148,7 @@ Deno.serve(async (req: Request) => {
     console.log(`[get-locked-pdf-url] Creating signed URL for path: ${document.locked_pdf_path}`);
 
     const { data: signedUrlData, error: signedUrlError } = await adminSupabase.storage
-      .from("document-pdfs")
+      .from("locked-pdfs")
       .createSignedUrl(document.locked_pdf_path, 600);
 
     if (signedUrlError) {
