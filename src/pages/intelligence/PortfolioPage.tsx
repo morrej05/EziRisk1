@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Copy, Download, Sparkles } from 'lucide-react';
+import { Check, Copy, Download, Sparkles, Trash2 } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import {
   type PortfolioAiInsights,
   type PortfolioAiPayload,
@@ -33,6 +35,23 @@ const AGEING_BUCKETS: AgeingBucketConfig[] = [
 const ALL_CLIENTS_VALUE = '__all_clients__';
 const ALL_DISCIPLINES_VALUE = '__all_disciplines__';
 
+interface SavedPortfolioViewFilters {
+  client: string | null;
+  discipline: string | null;
+  window: 30 | 90;
+  site: string;
+  sector?: string | null;
+}
+
+interface SavedPortfolioView {
+  id: string;
+  organisation_id: string;
+  name: string;
+  filters_json: SavedPortfolioViewFilters;
+  created_by: string;
+  created_at: string;
+}
+
 function encodeScopeValue(value: string): string {
   return encodeURIComponent(value);
 }
@@ -40,6 +59,40 @@ function encodeScopeValue(value: string): string {
 function decodeScopeValue(value: string | null): string | null {
   if (!value) return null;
   return decodeURIComponent(value);
+}
+
+function getCurrentScopeFilters(scope: PortfolioScope): SavedPortfolioViewFilters {
+  return {
+    client: scope.client,
+    discipline: scope.disciplineOrType,
+    window: scope.windowDays,
+    site: scope.siteQuery || '',
+  };
+}
+
+function sanitizeSavedScopeFilters(rawFilters: unknown): SavedPortfolioViewFilters | null {
+  if (!rawFilters || typeof rawFilters !== 'object' || Array.isArray(rawFilters)) return null;
+
+  const candidate = rawFilters as Record<string, unknown>;
+  const rawWindow = candidate.window;
+  const windowDays: 30 | 90 = rawWindow === 90 || rawWindow === '90' ? 90 : 30;
+
+  const toNullableString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const site = typeof candidate.site === 'string' ? candidate.site : '';
+  const sector = toNullableString(candidate.sector);
+
+  return {
+    client: toNullableString(candidate.client),
+    discipline: toNullableString(candidate.discipline),
+    window: windowDays,
+    site,
+    sector,
+  };
 }
 
 function TrendDelta({ value, windowDays }: { value: number; windowDays: 30 | 90 }) {
@@ -85,6 +138,7 @@ function InteractiveRow({
 
 export default function PortfolioPage() {
   const navigate = useNavigate();
+  const { organisation, user, isPlatformAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const windowParam = searchParams.get('window');
   const clientParam = decodeScopeValue(searchParams.get('client'));
@@ -115,6 +169,10 @@ export default function PortfolioPage() {
   const [reportAiError, setReportAiError] = useState<string | null>(null);
   const [executiveReport, setExecutiveReport] = useState<PortfolioExecutiveReport | null>(null);
   const [copiedReport, setCopiedReport] = useState(false);
+  const [savedViews, setSavedViews] = useState<SavedPortfolioView[]>([]);
+  const [selectedSavedViewId, setSelectedSavedViewId] = useState('');
+  const [savedViewsLoading, setSavedViewsLoading] = useState(false);
+  const [savedViewsError, setSavedViewsError] = useState<string | null>(null);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -149,6 +207,145 @@ export default function PortfolioPage() {
     nextParams.delete('site');
     nextParams.delete('window');
     setSearchParams(nextParams, { replace: true });
+    setSelectedSavedViewId('');
+  };
+
+  const loadSavedViews = useCallback(async () => {
+    if (!organisation?.id) {
+      setSavedViews([]);
+      setSavedViewsLoading(false);
+      return;
+    }
+
+    setSavedViewsLoading(true);
+    setSavedViewsError(null);
+
+    const { data, error } = await supabase
+      .from('saved_portfolio_views')
+      .select('id, organisation_id, name, filters_json, created_by, created_at')
+      .eq('organisation_id', organisation.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      setSavedViewsError('Unable to load saved views right now.');
+      setSavedViews([]);
+      setSavedViewsLoading(false);
+      return;
+    }
+
+    const parsedViews = (data || []).flatMap((row) => {
+      const parsedFilters = sanitizeSavedScopeFilters(row.filters_json);
+      if (!parsedFilters) return [];
+
+      return [{
+        id: row.id,
+        organisation_id: row.organisation_id,
+        name: row.name,
+        filters_json: parsedFilters,
+        created_by: row.created_by,
+        created_at: row.created_at,
+      } satisfies SavedPortfolioView];
+    });
+
+    setSavedViews(parsedViews);
+    setSavedViewsLoading(false);
+  }, [organisation?.id]);
+
+  useEffect(() => {
+    void loadSavedViews();
+  }, [loadSavedViews]);
+
+  const saveCurrentView = async () => {
+    if (!organisation?.id || !user?.id) return;
+
+    const name = window.prompt('Name this saved view');
+    if (!name) return;
+
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    const filters = getCurrentScopeFilters(scope);
+
+    const { error } = await supabase
+      .from('saved_portfolio_views')
+      .insert({
+        organisation_id: organisation.id,
+        name: trimmedName,
+        filters_json: filters,
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      setSavedViewsError('Unable to save this view right now.');
+      return;
+    }
+
+    setSavedViewsError(null);
+    await loadSavedViews();
+  };
+
+  const applySavedView = (view: SavedPortfolioView) => {
+    const parsedFilters = sanitizeSavedScopeFilters(view.filters_json);
+    if (!parsedFilters) {
+      setSavedViewsError('This saved view contains invalid filters and could not be applied.');
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    if (parsedFilters.client) {
+      nextParams.set('client', encodeScopeValue(parsedFilters.client));
+    } else {
+      nextParams.delete('client');
+    }
+
+    if (parsedFilters.discipline) {
+      nextParams.set('discipline', encodeScopeValue(parsedFilters.discipline));
+    } else {
+      nextParams.delete('discipline');
+    }
+
+    if (parsedFilters.site.trim()) {
+      nextParams.set('site', parsedFilters.site);
+    } else {
+      nextParams.delete('site');
+    }
+
+    nextParams.set('window', String(parsedFilters.window));
+    setSearchParams(nextParams, { replace: true });
+    setSelectedSavedViewId(view.id);
+    setSavedViewsError(null);
+  };
+
+  const deleteSavedView = async () => {
+    if (!selectedSavedViewId || !user?.id) return;
+
+    const selectedView = savedViews.find((view) => view.id === selectedSavedViewId);
+    if (!selectedView) return;
+
+    const canDelete = selectedView.created_by === user.id || isPlatformAdmin;
+    if (!canDelete) {
+      setSavedViewsError('You can only delete views you created.');
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete saved view "${selectedView.name}"?`);
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from('saved_portfolio_views')
+      .delete()
+      .eq('id', selectedView.id)
+      .eq('organisation_id', organisation?.id || '');
+
+    if (error) {
+      setSavedViewsError('Unable to delete this saved view right now.');
+      return;
+    }
+
+    setSelectedSavedViewId('');
+    setSavedViewsError(null);
+    await loadSavedViews();
   };
 
   const activeScopeCount = Number(Boolean(scope.client)) + Number(Boolean(scope.disciplineOrType)) + Number(Boolean(scope.siteQuery?.trim()));
@@ -506,6 +703,49 @@ export default function PortfolioPage() {
       </div>
 
       <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <label className="text-sm text-slate-700 w-full md:min-w-72">
+              <span className="block mb-1 font-medium">Saved Views</span>
+              <select
+                value={selectedSavedViewId}
+                onChange={(event) => {
+                  const nextId = event.target.value;
+                  setSelectedSavedViewId(nextId);
+                  if (!nextId) return;
+                  const nextView = savedViews.find((view) => view.id === nextId);
+                  if (nextView) applySavedView(nextView);
+                }}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                disabled={savedViewsLoading || savedViews.length === 0}
+              >
+                <option value="">{savedViewsLoading ? 'Loading views...' : 'Select saved view'}</option>
+                {savedViews.map((view) => (
+                  <option key={view.id} value={view.id}>{view.name}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => void deleteSavedView()}
+              disabled={!selectedSavedViewId}
+              className="inline-flex mt-6 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveCurrentView()}
+            className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800"
+          >
+            Save View
+          </button>
+        </div>
+        {savedViewsError && (
+          <p className="text-xs text-amber-700">{savedViewsError}</p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <label className="text-sm text-slate-700">
             <span className="block mb-1 font-medium">Client</span>
