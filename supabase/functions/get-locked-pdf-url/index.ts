@@ -11,6 +11,18 @@ interface RequestBody {
   document_id: string;
 }
 
+async function hasMembershipAccess(userSupabase: ReturnType<typeof createClient>, organisationId: string, userId: string) {
+  const { data: membership, error: membershipError } = await userSupabase
+    .from("organisation_members")
+    .select("id")
+    .eq("organisation_id", organisationId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  return { hasAccess: Boolean(membership), membershipError };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -125,13 +137,17 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: membership, error: membershipError } = await userSupabase
-      .from("organisation_members")
-      .select("role, status")
-      .eq("organisation_id", document.organisation_id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle();
+    if (!document.organisation_id) {
+      return new Response(
+        JSON.stringify({ error: "Document is missing organisation context" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const { hasAccess, membershipError } = await hasMembershipAccess(userSupabase, document.organisation_id, user.id);
 
     if (membershipError) {
       console.error("[get-locked-pdf-url] Error checking membership:", membershipError);
@@ -144,10 +160,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!membership) {
+    if (!hasAccess) {
       console.log(`[get-locked-pdf-url] User ${user.id} not a member of organisation ${document.organisation_id}`);
       return new Response(
-        JSON.stringify({ error: "Access denied: not a member of this organisation" }),
+        JSON.stringify({ error: "Access denied" }),
         {
           status: 403,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
