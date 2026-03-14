@@ -29,6 +29,7 @@ export default function LegalDisclaimerPage() {
           accepted_at: new Date().toISOString(),
         }, {
           onConflict: 'user_id,legal_document_type,version',
+          ignoreDuplicates: true,
         });
 
       if (error) throw error;
