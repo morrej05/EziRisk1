@@ -28,18 +28,20 @@ export interface PortfolioReportInput {
 export interface PortfolioReport {
   title: string;
   generatedAtIso: string;
+  scopeSummary: string;
   scope: {
     client: string;
     discipline: string;
     window: string;
     site: string;
   };
-  executiveSummary: string[];
-  portfolioMetrics: string[];
-  trendAnalysis: string[];
-  remediationProfile: string[];
-  oldestRemediation: string[];
-  aiCommentary: string[];
+  overview: string[];
+  trends: string[];
+  remediation: string[];
+  hotspots: string[];
+  oldestUnresolved: string[];
+  commentary: string[];
+  safeguards: string[];
 }
 
 function formatScopeLabel(value: string | null | undefined, fallback: string): string {
@@ -68,24 +70,21 @@ export function generatePortfolioReport(input: PortfolioReportInput): PortfolioR
     site: input.portfolioScope.siteQuery?.trim() ? input.portfolioScope.siteQuery.trim() : 'All sites',
   };
 
+  const scopeSummary = `This report summarises the currently selected portfolio scope: ${scope.client}, ${scope.discipline}, ${scope.site}, last ${input.portfolioScope.windowDays} days.`;
+
   const combinedOpen = payload.remediationTrends.combined?.totalOpen ?? 0;
   const combinedFlow = payload.remediationTrends.combined?.netFlowCurrentWindow ?? 0;
 
-  const executiveSummary = withFallback([
-    `Scope includes ${payload.summary.totalSites} sites and ${payload.summary.totalAssessments} assessments.`,
-    `Open remediation in scope: ${combinedOpen} items across ${payload.summary.totalActions} assessment actions and ${payload.summary.openReRecommendations} RE recommendations.`,
-    `Assessment creation delta vs previous window: ${formatSignedValue(payload.summary.createdCurrentWindow - payload.summary.createdPreviousWindow)}.`,
-  ], 'No scoped portfolio data is currently available.');
-
-  const portfolioMetrics = withFallback([
+  const overview = withFallback([
     `Total sites: ${payload.summary.totalSites}`,
     `Total assessments: ${payload.summary.totalAssessments}`,
     `Assessment actions: ${payload.summary.totalActions}`,
     `Open RE recommendations: ${payload.summary.openReRecommendations}`,
+    `Combined open remediation volume: ${combinedOpen}`,
     `Updated in window: ${payload.summary.updatedWithinWindowDays}`,
   ], 'Portfolio metrics unavailable for current scope.');
 
-  const trendAnalysis = withFallback([
+  const trends = withFallback([
     `Assessments created this window: ${payload.assessmentTrends.createdCurrentWindow} (${formatSignedValue(payload.assessmentTrends.createdCurrentWindow - payload.assessmentTrends.createdPreviousWindow)} vs previous).`,
     `Assessments updated this window: ${payload.assessmentTrends.updatedCurrentWindow} (${formatSignedValue(payload.assessmentTrends.updatedCurrentWindow - payload.assessmentTrends.updatedPreviousWindow)} vs previous).`,
     `Assessment action net change this window: ${formatSignedValue(payload.assessmentActionVelocity.netChange)} (opened ${payload.assessmentActionVelocity.openedCurrentWindow}, closed ${payload.assessmentActionVelocity.closedCurrentWindow}).`,
@@ -93,20 +92,27 @@ export function generatePortfolioReport(input: PortfolioReportInput): PortfolioR
     `Combined remediation net flow this window: ${formatSignedValue(combinedFlow)}.`,
   ], 'Trend metrics are unavailable for the selected scope.');
 
-  const remediationProfile = withFallback([
+  const remediation = withFallback([
     `Assessment actions ageing: 0-30 (${payload.assessmentActionAgeing.bucket_0_30}), 31-60 (${payload.assessmentActionAgeing.bucket_31_60}), 61-90 (${payload.assessmentActionAgeing.bucket_61_90}), 90+ (${payload.assessmentActionAgeing.bucket_90_plus}).`,
     `RE recommendations ageing: 0-30 (${payload.reRecommendationAgeing.bucket_0_30}), 31-60 (${payload.reRecommendationAgeing.bucket_31_60}), 61-90 (${payload.reRecommendationAgeing.bucket_61_90}), 90+ (${payload.reRecommendationAgeing.bucket_90_plus}).`,
     payload.remediationTrends.combined?.caveat || '',
   ].filter(Boolean), 'No remediation profile data is available.');
 
-  const oldestRemediation = withFallback(
+  const hotspots = withFallback([
+    ...(payload.hotspots?.topSiteHotspots.slice(0, 3).map((row) => `Site hotspot: ${row.siteName} (${row.clientName}) with ${row.totalOpenItems} open items, ${row.ageing90PlusItems} aged 90+ days.`) || []),
+    ...(payload.hotspots?.topModuleHotspots.slice(0, 3).map((row) => `Module/theme hotspot: ${formatPortfolioGroupLabel(row.moduleKey)} with ${row.totalOpenItems} open items.`) || []),
+    ...(payload.hotspots?.topClientHotspots?.slice(0, 3).map((row) => `Client concentration: ${row.clientName} with ${row.totalOpenItems} open items.`) || []),
+    payload.hotspots?.rankingModel.disclaimer || '',
+  ].filter(Boolean), 'No hotspot concentrations are available for the current scope.');
+
+  const oldestUnresolved = withFallback(
     input.portfolioMetrics.oldestUnresolvedRemediation.slice(0, 5).map((row) => (
       `${row.sourceLabel}: ${row.itemLabel} (${row.siteLabel || 'Unknown site'} / ${row.clientLabel || 'Unassigned client'}) - ${row.ageDays} days open`
     )),
     'No unresolved remediation items in current scope.'
   );
 
-  const aiCommentary = withFallback([
+  const commentary = withFallback([
     portfolioInsights?.summary || '',
     portfolioInsights?.draftCommentary || '',
     ...(portfolioInsights?.priorities || []),
@@ -114,16 +120,25 @@ export function generatePortfolioReport(input: PortfolioReportInput): PortfolioR
     !portfolioInsights && !input.aiError ? 'AI commentary has not been generated for this scope.' : '',
   ].filter(Boolean), 'Engineering commentary unavailable.');
 
+  const safeguards = [
+    'This report reflects only the currently selected portfolio scope and selected window.',
+    'Hotspot outputs are prioritisation heuristics and are not validated engineering risk scores.',
+    'No underwriting, loss, premium, or compliance certification conclusions are made in this report.',
+    'AI commentary should be reviewed before external circulation.',
+  ];
+
   return {
     title: 'Portfolio Risk Report',
     generatedAtIso: generatedAt.toISOString(),
+    scopeSummary,
     scope,
-    executiveSummary,
-    portfolioMetrics,
-    trendAnalysis,
-    remediationProfile,
-    oldestRemediation,
-    aiCommentary,
+    overview,
+    trends,
+    remediation,
+    hotspots,
+    oldestUnresolved,
+    commentary,
+    safeguards,
   };
 }
 
@@ -137,29 +152,35 @@ export function generatePortfolioMarkdown(report: PortfolioReport): string {
     '',
     `Generated: ${report.generatedAtIso}`,
     '',
-    '## Scope',
+    '## Scope Summary',
+    report.scopeSummary,
+    '',
+    '## Scope Fields',
     `- Client: ${report.scope.client}`,
     `- Discipline: ${report.scope.discipline}`,
     `- Window: ${report.scope.window}`,
     `- Site Filter: ${report.scope.site}`,
     '',
-    '## Executive Summary',
-    ...markdownBulletList(report.executiveSummary),
+    '## Portfolio Overview',
+    ...markdownBulletList(report.overview),
     '',
-    '## Portfolio Summary',
-    ...markdownBulletList(report.portfolioMetrics),
+    '## Trend Summary',
+    ...markdownBulletList(report.trends),
     '',
-    '## Trend Analysis',
-    ...markdownBulletList(report.trendAnalysis),
+    '## Remediation Summary',
+    ...markdownBulletList(report.remediation),
     '',
-    '## Remediation Profile',
-    ...markdownBulletList(report.remediationProfile),
+    '## Risk Hotspots',
+    ...markdownBulletList(report.hotspots),
     '',
     '## Oldest Unresolved Remediation',
-    ...markdownBulletList(report.oldestRemediation),
+    ...markdownBulletList(report.oldestUnresolved),
     '',
     '## Engineering Commentary',
-    ...markdownBulletList(report.aiCommentary),
+    ...markdownBulletList(report.commentary),
+    '',
+    '## Notes and Safeguards',
+    ...markdownBulletList(report.safeguards),
     '',
   ].join('\n');
 }
@@ -206,18 +227,22 @@ export async function generatePortfolioPdf(report: PortfolioReport): Promise<Uin
   };
 
   drawHeading(report.title, 19);
-  drawSection('Scope', [
+  drawSection('Scope Summary', [
+    report.scopeSummary,
+  ]);
+  drawSection('Scope Fields', [
     `Client: ${report.scope.client}`,
     `Discipline: ${report.scope.discipline}`,
     `Window: ${report.scope.window}`,
     `Site Filter: ${report.scope.site}`,
   ]);
-  drawSection('Executive Summary', report.executiveSummary);
-  drawSection('Portfolio Summary', report.portfolioMetrics);
-  drawSection('Trend Analysis', report.trendAnalysis);
-  drawSection('Remediation Profile', report.remediationProfile);
-  drawSection('Oldest Unresolved Remediation', report.oldestRemediation);
-  drawSection('Engineering Commentary', report.aiCommentary);
+  drawSection('Portfolio Overview', report.overview);
+  drawSection('Trend Summary', report.trends);
+  drawSection('Remediation Summary', report.remediation);
+  drawSection('Risk Hotspots', report.hotspots);
+  drawSection('Oldest Unresolved Remediation', report.oldestUnresolved);
+  drawSection('Engineering Commentary', report.commentary);
+  drawSection('Notes and Safeguards', report.safeguards);
 
   totalPages.forEach((pdfPage, index) => {
     drawFooter(pdfPage, 'Portfolio Risk Report', index + 1, totalPages.length, font);

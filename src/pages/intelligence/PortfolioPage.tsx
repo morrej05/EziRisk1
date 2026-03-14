@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Download, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, Download, Sparkles, Trash2 } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
 import { useAuth } from '../../contexts/AuthContext';
@@ -185,6 +185,7 @@ export default function PortfolioPage() {
   const [savedViewsLoading, setSavedViewsLoading] = useState(false);
   const [savedViewsError, setSavedViewsError] = useState<string | null>(null);
   const [savedViewsNotice, setSavedViewsNotice] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -678,13 +679,27 @@ export default function PortfolioPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setExportNotice('Portfolio report markdown downloaded.');
+  };
+
+  const copyPortfolioMarkdown = async () => {
+    const report = buildScopedReport();
+    const markdown = generatePortfolioMarkdown(report);
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setExportNotice('Portfolio report markdown copied to clipboard.');
+    } catch {
+      setExportNotice('Unable to copy report text. Please use markdown download.');
+    }
   };
 
   const exportPortfolioPdf = async () => {
     const report = buildScopedReport();
     const pdfBytes = await generatePortfolioPdf(report);
 
-    const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' });
+    const pdfArrayBuffer = pdfBytes.slice().buffer as ArrayBuffer;
+    const blob = new Blob([pdfArrayBuffer], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -693,6 +708,7 @@ export default function PortfolioPage() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setExportNotice('Portfolio report PDF downloaded.');
   };
 
   if (loading) {
@@ -716,6 +732,12 @@ export default function PortfolioPage() {
           </p>
         </div>
 
+      {exportNotice && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          {exportNotice}
+        </div>
+      )}
+
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">Export Report</span>
@@ -736,6 +758,15 @@ export default function PortfolioPage() {
             >
               <Download className="w-4 h-4" />
               Export as Markdown
+            </button>
+            <button
+              type="button"
+              onClick={() => { void copyPortfolioMarkdown(); }}
+              disabled={hasNoData}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Copy className="w-4 h-4" />
+              Copy Markdown
             </button>
           </div>
           <button
