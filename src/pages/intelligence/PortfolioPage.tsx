@@ -196,6 +196,24 @@ export default function PortfolioPage() {
     return appendScopeToRecommendationsPath('/recommendations?status=Active&createdWithinDays=30');
   };
 
+
+  const getOldestUnresolvedDrillThrough = (row: (typeof metrics.oldestUnresolvedRemediation)[number]) => {
+    if (row.sourceType === 'assessment_action') {
+      const params = new URLSearchParams();
+      params.append('status', 'open');
+      params.append('status', 'in_progress');
+      params.set('sourceType', 'assessment_action');
+      if (row.documentId) params.set('document', row.documentId);
+      return appendScopeToPath(`/dashboard/action-register?${params.toString()}`);
+    }
+
+    const params = new URLSearchParams();
+    params.set('status', 'Active');
+    if (row.clientLabel) params.set('client', row.clientLabel);
+    if (row.siteLabel) params.set('site', row.siteLabel);
+    return `/recommendations?${params.toString()}`;
+  };
+
   const statusDistributionRows = useMemo(
     () => Object.entries(metrics.assessmentStatusCounts)
       .map(([label, count]) => ({ label, count }))
@@ -725,6 +743,59 @@ export default function PortfolioPage() {
               </div>
             </div>
             <p className="mt-3 text-xs text-slate-500">Drill-through is enabled where register filters can represent the bucket honestly.</p>
+          </section>
+
+
+          <section className="bg-white rounded-lg border border-slate-200 p-6">
+            <h2 className="text-xl font-semibold text-slate-900">Oldest Unresolved Remediation</h2>
+            <p className="text-sm text-slate-600 mt-1">Showing the 10 oldest unresolved items in the current scope.</p>
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Site / Property</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Item</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Source</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Priority</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Age</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {metrics.oldestUnresolvedRemediation.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-6 text-sm text-center text-slate-500">
+                        No unresolved remediation items found in the current scope.
+                      </td>
+                    </tr>
+                  ) : (
+                    metrics.oldestUnresolvedRemediation.map((row) => (
+                      <tr key={`${row.sourceType}:${row.id}`} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3 text-sm text-slate-700">{row.siteLabel || 'Unknown site'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-900 font-medium max-w-xs">
+                          <p className="truncate" title={row.itemLabel || 'Untitled item'}>{row.itemLabel || 'Untitled item'}</p>
+                          {scope.client ? null : (
+                            <p className="text-xs text-slate-500 mt-0.5">{row.clientLabel || 'Unassigned client'}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-700">{row.sourceLabel}</td>
+                        <td className="px-4 py-3 text-sm text-slate-700">{row.priorityLabel || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-right text-slate-700">{row.ageDays} days</td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          <button
+                            type="button"
+                            onClick={() => navigate(getOldestUnresolvedDrillThrough(row), { state: { source: 'portfolio' } })}
+                            className="inline-flex items-center rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Open
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section className="bg-white rounded-lg border border-slate-200 p-6">
