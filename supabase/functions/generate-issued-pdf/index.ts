@@ -27,6 +27,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const bearerToken = getBearerToken(req);
 
@@ -37,8 +38,11 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${bearerToken}` } },
+    });
     const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { user, error: authErrorMessage } = await requireAuthenticatedUser(adminSupabase, req);
+    const { user, error: authErrorMessage } = await requireAuthenticatedUser(userSupabase, req);
 
     if (authErrorMessage || !user) {
       return new Response(JSON.stringify({ error: authErrorMessage ?? 'Unauthorized' }), {
@@ -65,7 +69,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (document) {
-      if (!(await hasMembershipAccess(adminSupabase, document.organisation_id, user.id))) {
+      if (!document.organisation_id || !(await hasMembershipAccess(userSupabase, document.organisation_id, user.id))) {
         return new Response(JSON.stringify({ error: 'Access denied' }), {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -111,7 +115,7 @@ Deno.serve(async (req: Request) => {
 
     if (survey) {
       const hasOrgAccess = survey.organisation_id
-        ? await hasMembershipAccess(adminSupabase, survey.organisation_id, user.id)
+        ? await hasMembershipAccess(userSupabase, survey.organisation_id, user.id)
         : survey.user_id === user.id;
 
       if (!hasOrgAccess) {

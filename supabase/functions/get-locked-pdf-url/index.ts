@@ -21,9 +21,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!supabaseUrl || !supabaseServiceKey) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
       throw new Error("Missing environment variables");
     }
 
@@ -39,16 +40,17 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: { Authorization: authHeader },
       },
     });
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser(token);
+    } = await userSupabase.auth.getUser(token);
 
     if (authError || !user) {
       console.error("[get-locked-pdf-url] Auth error:", authError);
@@ -76,7 +78,7 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[get-locked-pdf-url] User ${user.id} requesting PDF for document ${document_id}`);
 
-    const { data: document, error: docError } = await supabase
+    const { data: document, error: docError } = await adminSupabase
       .from("documents")
       .select("organisation_id, locked_pdf_path, issue_status")
       .eq("id", document_id)
@@ -113,11 +115,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { data: membership, error: membershipError } = await supabase
+    const { data: membership, error: membershipError } = await userSupabase
       .from("organisation_members")
-      .select("role")
+      .select("role, status")
       .eq("organisation_id", document.organisation_id)
       .eq("user_id", user.id)
+      .eq("status", "active")
       .maybeSingle();
 
     if (membershipError) {
@@ -144,7 +147,7 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[get-locked-pdf-url] Creating signed URL for path: ${document.locked_pdf_path}`);
 
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    const { data: signedUrlData, error: signedUrlError } = await adminSupabase.storage
       .from("document-pdfs")
       .createSignedUrl(document.locked_pdf_path, 600);
 
