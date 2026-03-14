@@ -1,4 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { getBearerToken } from "../_shared/auth.ts";
+import { enforceAiEndpointProtection } from "../_shared/aiProtection.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +40,40 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const token = getBearerToken(req);
+    if (!token) {
+      return new Response(JSON.stringify({ error: "Missing or invalid authorization bearer token" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: `Bearer ${token}` } } }
+    );
+
+    const protection = await enforceAiEndpointProtection(
+      supabase,
+      req,
+      "survey-summary",
+      12,
+      60_000,
+    );
+
+    if (!protection.ok) {
+      const payload = await protection.response.text();
+      const retryAfter = protection.response.headers.get("Retry-After");
+      return new Response(payload, {
+        status: protection.response.status,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+          ...(retryAfter ? { "Retry-After": retryAfter } : {}),
+        },
+      });
+    }
     const { surveyData }: SummaryRequest = await req.json();
 
     if (!surveyData || !surveyData.propertyName) {

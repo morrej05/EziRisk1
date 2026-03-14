@@ -60,3 +60,46 @@ SELECT
 FROM public.user_profiles up
 WHERE up.role = 'surveyor'
 ORDER BY up.email;
+
+-- 5) Legacy user_profiles-based RLS policies on organisations/re_recommendations (must be zero rows)
+SELECT
+  schemaname,
+  tablename,
+  policyname
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename IN ('organisations', 're_recommendations')
+  AND policyname IN (
+    'Users can read own organisation',
+    'Organisation admins can update',
+    'Platform admins can read all organisations',
+    'Platform admins can update all organisations',
+    'Users can view recommendations for accessible documents',
+    'Users can create recommendations for accessible documents',
+    'Users can update recommendations for accessible documents',
+    'Users can delete recommendations for accessible documents'
+  )
+ORDER BY tablename, policyname;
+
+-- 6) re_recommendations with missing documents/org linkage (must be zero)
+SELECT
+  rr.id AS re_recommendation_id,
+  rr.document_id,
+  d.organisation_id
+FROM public.re_recommendations rr
+LEFT JOIN public.documents d ON d.id = rr.document_id
+WHERE d.id IS NULL
+   OR d.organisation_id IS NULL
+ORDER BY rr.created_at DESC;
+
+-- 7) Issued surveys lacking organisation_id (must be zero before strict membership-only signed URL issuance)
+SELECT
+  sr.id AS survey_report_id,
+  sr.status,
+  sr.organisation_id,
+  sr.user_id,
+  sr.updated_at
+FROM public.survey_reports sr
+WHERE sr.status = 'issued'
+  AND sr.organisation_id IS NULL
+ORDER BY sr.updated_at DESC;
