@@ -105,6 +105,16 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    if (document.issue_status !== "issued") {
+      return new Response(
+        JSON.stringify({ error: "Document must be issued before accessing locked PDF", current_status: document.issue_status }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     if (!document.locked_pdf_path) {
       return new Response(
         JSON.stringify({ error: "No locked PDF available for this document" }),
@@ -148,7 +158,7 @@ Deno.serve(async (req: Request) => {
     console.log(`[get-locked-pdf-url] Creating signed URL for path: ${document.locked_pdf_path}`);
 
     const { data: signedUrlData, error: signedUrlError } = await adminSupabase.storage
-      .from("locked-pdfs")
+      .from("document-pdfs")
       .createSignedUrl(document.locked_pdf_path, 600);
 
     if (signedUrlError) {

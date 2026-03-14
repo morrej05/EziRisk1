@@ -10,10 +10,17 @@ interface OrgMember {
   organisation_id: string;
   role: MemberRole;
   status: string;
-  user_profiles: {
+  user_profile: {
     id: string;
     name: string | null;
   } | null;
+}
+
+interface OrganisationMemberRow {
+  user_id: string;
+  organisation_id: string;
+  role: MemberRole;
+  status: string;
 }
 
 const ROLE_LABELS: Record<MemberRole, string> = {
@@ -84,7 +91,7 @@ export default function AccountLifecyclePanel() {
 
       const { data: orgMembers, error: membersError } = await supabase
         .from('organisation_members')
-        .select('user_id, organisation_id, role, status, user_profiles!organisation_members_user_id_fkey(id, name)')
+        .select('user_id, organisation_id, role, status')
         .eq('organisation_id', selfMembership.organisation_id)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
@@ -93,7 +100,24 @@ export default function AccountLifecyclePanel() {
         throw membersError;
       }
 
-      setMembers((orgMembers as OrgMember[]) ?? []);
+      const memberRows = (orgMembers as OrganisationMemberRow[] | null) ?? [];
+      const userIds = memberRows.map((member) => member.user_id);
+
+      const { data: profiles, error: profilesError } = userIds.length
+        ? await supabase.from('user_profiles').select('id, name').in('id', userIds)
+        : { data: [], error: null };
+
+      if (profilesError) {
+        throw profilesError;
+      }
+
+      const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile]));
+      setMembers(
+        memberRows.map((member) => ({
+          ...member,
+          user_profile: profileMap.get(member.user_id) ?? null,
+        }))
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load organisation members');
     } finally {
@@ -297,7 +321,7 @@ export default function AccountLifecyclePanel() {
                   return (
                     <tr key={member.user_id} className="border-b border-slate-100 last:border-0">
                       <td className="px-3 py-2 text-slate-900">
-                        {member.user_profiles?.name || 'Unnamed user'}
+                        {member.user_profile?.name || 'Unnamed user'}
                         {isSelf ? <span className="ml-2 text-xs text-slate-500">(You)</span> : null}
                       </td>
                       <td className="px-3 py-2 text-slate-700">{ROLE_LABELS[member.role]}</td>
@@ -337,7 +361,7 @@ export default function AccountLifecyclePanel() {
               .filter((m) => m.user_id !== user?.id)
               .map((member) => (
                 <option key={member.user_id} value={member.user_id}>
-                  {(member.user_profiles?.name || member.user_id).slice(0, 60)} ({ROLE_LABELS[member.role]})
+                  {(member.user_profile?.name || member.user_id).slice(0, 60)} ({ROLE_LABELS[member.role]})
                 </option>
               ))}
           </select>
@@ -384,7 +408,7 @@ export default function AccountLifecyclePanel() {
                 .filter((m) => m.user_id !== user?.id)
                 .map((member) => (
                   <option key={member.user_id} value={member.user_id}>
-                    {(member.user_profiles?.name || member.user_id).slice(0, 60)}
+                    {(member.user_profile?.name || member.user_id).slice(0, 60)}
                   </option>
                 ))}
             </select>
