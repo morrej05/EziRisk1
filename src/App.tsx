@@ -3,7 +3,6 @@ import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
 import LandingPage from './pages/LandingPage';
 import SignIn from './pages/SignIn';
 import ActionsDashboard from './pages/dashboard/ActionsDashboard';
-import ActionRegisterPage from './pages/dashboard/ActionRegisterPage';
 import DocumentOverview from './pages/documents/DocumentOverview';
 import DocumentWorkspace from './pages/documents/DocumentWorkspace';
 import DocumentEvidence from './pages/documents/DocumentEvidenceV2';
@@ -34,6 +33,7 @@ import FireProtectionPage from "./pages/re/FireProtectionPage";
 import ReSurveyPdfFixturePage from "./pages/dev/ReSurveyPdfFixturePage";
 import PortfolioPage from './pages/intelligence/PortfolioPage';
 import RecommendationsRegisterPage from './pages/recommendations/RecommendationsRegisterPage';
+import RemediationPage from './pages/remediation/RemediationPage';
 
 function App() {
   return (
@@ -71,20 +71,24 @@ function App() {
             element={<Navigate to="/dashboard" replace />}
           />
           <Route
-            path="/dashboard/action-register"
+            path="/remediation"
             element={
               <AuthedLayout>
-                <ActionRegisterPage />
+                <RemediationPage />
               </AuthedLayout>
             }
+          >
+            <Route index element={<Navigate to="actions" replace />} />
+            <Route path="actions" element={<ActionsDashboard />} />
+            <Route path="recommendations" element={<RecommendationsRegisterPage />} />
+          </Route>
+          <Route
+            path="/dashboard/action-register"
+            element={<Navigate to="/remediation/actions" replace />}
           />
           <Route
             path="/dashboard/actions"
-            element={
-              <AuthedLayout>
-                <ActionsDashboard />
-              </AuthedLayout>
-            }
+            element={<Navigate to="/remediation/actions" replace />}
           />
           <Route
             path="/documents/:id"
@@ -148,11 +152,7 @@ function App() {
 
           <Route
             path="/recommendations"
-            element={
-              <AuthedLayout>
-                <RecommendationsRegisterPage />
-              </AuthedLayout>
-            }
+            element={<Navigate to="/remediation/recommendations" replace />}
           />
           <Route
             path="/portfolio"

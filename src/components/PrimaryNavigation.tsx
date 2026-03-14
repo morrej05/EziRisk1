@@ -1,8 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LogOut } from 'lucide-react';
-import { isFeatureEnabled } from '../utils/featureFlags';
-import { canAccessAdmin, canAccessPlatformSettings, type User as EntitlementsUser } from '../utils/entitlements';
+import { canAccessAdmin, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
 
 export default function PrimaryNavigation() {
@@ -29,14 +28,11 @@ export default function PrimaryNavigation() {
     : null;
 
   const navItems = [
-    { label: 'Dashboard', path: '/dashboard', show: true },
+    { label: 'Home', path: '/dashboard', show: true },
     { label: 'Assessments', path: '/assessments', show: true },
+    { label: 'Remediation', path: '/remediation', show: true },
     { label: 'Portfolio', path: '/portfolio', show: true },
-    { label: 'Reports', path: '/reports', show: true },
-    { label: 'Impairments', path: '/impairments', show: isFeatureEnabled('IMPAIRMENTS_ENABLED') },
-    { label: 'Library', path: '/library', show: true },
     { label: 'Admin', path: '/admin', show: entitlementUser ? canAccessAdmin(entitlementUser) : false },
-    { label: 'Platform', path: '/platform', show: entitlementUser ? canAccessPlatformSettings(entitlementUser) : false },
   ];
 
   const handleSignOut = async () => {
