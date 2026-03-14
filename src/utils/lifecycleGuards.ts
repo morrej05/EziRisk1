@@ -219,7 +219,7 @@ export function getStatusLockMessage(issueStatus: string): string {
 
 export function canReopenAction(status: string, userRole: string): boolean {
   if (status !== 'closed') return true;
-  return userRole === 'org_admin' || userRole === 'platform_admin';
+  return userRole === 'owner' || userRole === 'admin';
 }
 
 export function getActionReopenMessage(status: string, userRole: string): string {

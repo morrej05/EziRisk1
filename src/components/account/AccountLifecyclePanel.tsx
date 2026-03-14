@@ -199,7 +199,7 @@ export default function AccountLifecyclePanel() {
         transfer_to_user_id: isCurrentUserSoleOwner ? selfDeleteTransferToUserId : null,
       });
       await supabase.auth.signOut();
-      window.location.assign('/login');
+      window.location.assign('/signin');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete account');
     } finally {

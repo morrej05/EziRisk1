@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,18 +33,14 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      {
-        global: {
-          headers: { Authorization: authHeader },
-        },
-      }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    const token = authHeader.replace('Bearer ', '');
     const {
       data: { user },
       error: userError,
-    } = await supabase.auth.getUser();
+    } = await supabase.auth.getUser(token);
 
     if (userError || !user) {
       return new Response(
@@ -121,14 +118,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Verify user has permission (must be in same org)
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('organisation_id, role')
-      .eq('id', user.id)
-      .maybeSingle();
+    if (!document.organisation_id) {
+      return new Response(
+        JSON.stringify({ error: 'Document organisation is missing' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
-    if (!userProfile || userProfile.organisation_id !== document.organisation_id) {
+    const canDelete = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      document.organisation_id,
+      ['owner', 'admin'],
+    );
+
+    if (!canDelete) {
       return new Response(
         JSON.stringify({ error: 'Permission denied' }),
         {

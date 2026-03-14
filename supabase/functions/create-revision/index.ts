@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,11 +66,38 @@ Deno.serve(async (req: Request) => {
     const { data: survey, error: surveyError } = await supabase
       .from('survey_reports')
       .select('*')
-      .eq('id', survey_id)
-      .eq('user_id', user.id)
+.eq('id', survey_id)
       .single();
 
     if (surveyError || !survey) {
+      return new Response(
+        JSON.stringify({ error: 'Survey not found or access denied' }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+
+    if (!survey.organisation_id) {
+      return new Response(
+        JSON.stringify({ error: 'Survey organisation is missing' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const canCreateRevision = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      survey.organisation_id,
+      ['owner', 'admin', 'consultant'],
+    );
+
+    if (!canCreateRevision) {
       return new Response(
         JSON.stringify({ error: 'Survey not found or access denied' }),
         {

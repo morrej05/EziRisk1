@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { requireAuthenticatedUser } from '../_shared/auth.ts';
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,25 +69,24 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 2. Permission check: User must have view access to source survey
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('organisation_id, role')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (!userProfile) {
+    if (!sourceSurvey.organisation_id) {
       return new Response(
-        JSON.stringify({ error: 'User profile not found' }),
+        JSON.stringify({ error: 'Source survey organisation is missing' }),
         {
-          status: 404,
+          status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
     }
 
-    // Check access: User must be in same org as source survey
-    if (sourceSurvey.organisation_id && sourceSurvey.organisation_id !== userProfile.organisation_id) {
+    const canClone = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      sourceSurvey.organisation_id,
+      ['owner', 'admin', 'consultant', 'viewer'],
+    );
+
+    if (!canClone) {
       return new Response(
         JSON.stringify({ error: 'Access denied to source survey' }),
         {

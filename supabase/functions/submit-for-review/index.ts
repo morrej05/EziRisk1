@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,24 +78,31 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Verify user has access (owns survey or is in same org)
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('organisation_id')
-      .eq('id', user.id)
-      .maybeSingle();
+    if (!survey.organisation_id) {
+      return new Response(
+        JSON.stringify({ error: 'Survey organisation is missing' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
-    if (survey.user_id !== user.id && userProfile) {
-      // Check if survey user is in same org
-      if (!survey.organisation_id || survey.organisation_id !== userProfile.organisation_id) {
-        return new Response(
-          JSON.stringify({ error: 'Access denied' }),
-          {
-            status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
+    const canSubmit = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      survey.organisation_id,
+      ['owner', 'admin', 'consultant'],
+    );
+
+    if (!canSubmit) {
+      return new Response(
+        JSON.stringify({ error: 'Access denied' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     // Check current status is 'draft'
@@ -135,7 +143,7 @@ Deno.serve(async (req: Request) => {
     const { error: auditError } = await supabase
       .from('audit_log')
       .insert({
-        organisation_id: survey.organisation_id || userProfile?.organisation_id,
+        organisation_id: survey.organisation_id,
         survey_id: survey.id,
         actor_id: user.id,
         event_type: 'submitted_for_review',

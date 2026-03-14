@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@14";
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -66,18 +67,15 @@ Deno.serve(async (req: Request) => {
       throw new Error("Organisation not found");
     }
 
-    const { data: userProfile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("role, organisation_id")
-      .eq("id", user.id)
-      .single();
+    const canManageCheckout = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      organisationId,
+      ['owner', 'admin'],
+    );
 
-    if (profileError || !userProfile) {
-      throw new Error("User profile not found");
-    }
-
-    if (userProfile.organisation_id !== organisationId || userProfile.role !== "admin") {
-      throw new Error("Only organisation admins can create checkout sessions");
+    if (!canManageCheckout) {
+      throw new Error("Only organisation owners/admins can create checkout sessions");
     }
 
     let stripeCustomerId = organisation.stripe_customer_id;
