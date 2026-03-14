@@ -11,6 +11,9 @@ interface PortfolioInsightPanelProps {
   onClose: () => void;
   payload: PortfolioAiPayload;
   canGenerate: boolean;
+  initialInsights?: PortfolioAiInsights | null;
+  onInsightsGenerated?: (insights: PortfolioAiInsights) => void;
+  onGenerationError?: (message: string) => void;
 }
 
 type PanelState = 'idle' | 'loading' | 'success' | 'error';
@@ -20,10 +23,13 @@ export default function PortfolioInsightPanel({
   onClose,
   payload,
   canGenerate,
+  initialInsights,
+  onInsightsGenerated,
+  onGenerationError,
 }: PortfolioInsightPanelProps) {
   const [panelState, setPanelState] = useState<PanelState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [insights, setInsights] = useState<PortfolioAiInsights | null>(null);
+  const [insights, setInsights] = useState<PortfolioAiInsights | null>(initialInsights || null);
   const [copied, setCopied] = useState(false);
 
   const payloadSignature = useMemo(() => JSON.stringify(payload), [payload]);
@@ -37,10 +43,13 @@ export default function PortfolioInsightPanel({
     try {
       const result = await generatePortfolioInsights(payload);
       setInsights(result);
+      onInsightsGenerated?.(result);
       setPanelState('success');
     } catch (error) {
       setPanelState('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to generate portfolio insights right now.');
+      const message = error instanceof Error ? error.message : 'Unable to generate portfolio insights right now.';
+      setErrorMessage(message);
+      onGenerationError?.(message);
     }
   };
 
@@ -50,13 +59,19 @@ export default function PortfolioInsightPanel({
     if (!canGenerate) {
       setPanelState('idle');
       setErrorMessage(null);
-      setInsights(null);
+      setInsights(initialInsights || null);
+      return;
+    }
+
+    if (initialInsights) {
+      setInsights(initialInsights);
+      setPanelState('success');
       return;
     }
 
     void runGeneration();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, canGenerate, payloadSignature]);
+  }, [isOpen, canGenerate, payloadSignature, initialInsights]);
 
   if (!isOpen) return null;
 

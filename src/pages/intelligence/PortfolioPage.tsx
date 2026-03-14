@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { Check, Copy, Download, Sparkles } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
-import { type PortfolioAiPayload } from '../../lib/ai/generatePortfolioInsights';
+import {
+  type PortfolioAiInsights,
+  type PortfolioAiPayload,
+} from '../../lib/ai/generatePortfolioInsights';
+import { generatePortfolioExecutiveReport, type PortfolioExecutiveReport } from '../../lib/reports/generatePortfolioExecutiveReport';
 import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
 
 interface CardMetric {
@@ -107,6 +111,10 @@ export default function PortfolioPage() {
   } = usePortfolioMetrics(scope);
 
   const [showInsightPanel, setShowInsightPanel] = useState(false);
+  const [latestAiInsights, setLatestAiInsights] = useState<PortfolioAiInsights | null>(null);
+  const [reportAiError, setReportAiError] = useState<string | null>(null);
+  const [executiveReport, setExecutiveReport] = useState<PortfolioExecutiveReport | null>(null);
+  const [copiedReport, setCopiedReport] = useState(false);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -356,6 +364,15 @@ export default function PortfolioPage() {
     scope.siteQuery,
   ]);
 
+  const payloadSignature = useMemo(() => JSON.stringify(portfolioAiPayload), [portfolioAiPayload]);
+
+  useEffect(() => {
+    setExecutiveReport(null);
+    setCopiedReport(false);
+    setReportAiError(null);
+    setLatestAiInsights(null);
+  }, [payloadSignature]);
+
   const assessmentActionTrend = useMemo(
     () => metrics.remediationTrends.find((row) => row.sourceType === 'assessment_action' && !row.discipline),
     [metrics.remediationTrends]
@@ -394,6 +411,41 @@ export default function PortfolioPage() {
     },
   ];
 
+  const generateExecutiveReport = () => {
+    const report = generatePortfolioExecutiveReport({
+      payload: portfolioAiPayload,
+      aiInsights: latestAiInsights,
+      aiError: reportAiError,
+    });
+    setExecutiveReport(report);
+  };
+
+  const copyExecutiveReport = async () => {
+    if (!executiveReport) return;
+
+    try {
+      await navigator.clipboard.writeText(executiveReport.markdown);
+      setCopiedReport(true);
+      window.setTimeout(() => setCopiedReport(false), 1500);
+    } catch {
+      setCopiedReport(false);
+    }
+  };
+
+  const downloadExecutiveReport = () => {
+    if (!executiveReport) return;
+
+    const blob = new Blob([executiveReport.markdown], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `portfolio-executive-report-${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -415,14 +467,24 @@ export default function PortfolioPage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowInsightPanel((current) => !current)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors"
-        >
-          <Sparkles className="w-4 h-4" />
-          Analyse Portfolio
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={generateExecutiveReport}
+            disabled={hasNoData}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white text-sm font-medium rounded-md hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Generate Executive Report
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowInsightPanel((current) => !current)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors"
+          >
+            <Sparkles className="w-4 h-4" />
+            Analyse Portfolio
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-3">
@@ -489,7 +551,84 @@ export default function PortfolioPage() {
           onClose={() => setShowInsightPanel(false)}
           payload={portfolioAiPayload}
           canGenerate={!hasNoData}
+          initialInsights={latestAiInsights}
+          onInsightsGenerated={(insights) => {
+            setLatestAiInsights(insights);
+            setReportAiError(null);
+          }}
+          onGenerationError={(message) => {
+            setReportAiError(message);
+          }}
         />
+      )}
+
+      {executiveReport && (
+        <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Portfolio Executive Report (Draft)</h2>
+              <p className="text-sm text-slate-600 mt-1">Generated for the current visible scope. Review before external sharing.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void copyExecutiveReport()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                {copiedReport ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedReport ? 'Copied' : 'Copy report'}
+              </button>
+              <button
+                type="button"
+                onClick={downloadExecutiveReport}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md bg-slate-900 text-white hover:bg-slate-800"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download .md
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            {executiveReport.scopeSummary}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-md border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Portfolio Overview</h3>
+              <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {executiveReport.sections.portfolioOverview.map((item) => (<li key={item}>{item}</li>))}
+              </ul>
+            </div>
+            <div className="rounded-md border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Key Risk Themes</h3>
+              <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {executiveReport.sections.keyRiskThemes.map((item) => (<li key={item}>{item}</li>))}
+              </ul>
+            </div>
+            <div className="rounded-md border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Remediation Status</h3>
+              <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {executiveReport.sections.remediationStatus.map((item) => (<li key={item}>{item}</li>))}
+              </ul>
+            </div>
+            <div className="rounded-md border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold text-slate-900 mb-2">Major Risk Hotspots</h3>
+              <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {executiveReport.sections.majorRiskHotspots.map((item) => (<li key={item}>{item}</li>))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-200 p-4">
+            <h3 className="text-sm font-semibold text-slate-900 mb-2">Engineering Commentary</h3>
+            <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+              {executiveReport.sections.engineeringCommentary.map((item) => (<li key={item}>{item}</li>))}
+            </ul>
+          </div>
+
+          <p className="text-xs text-slate-500">{executiveReport.limitations.join(' ')}</p>
+        </section>
       )}
 
       {(assessmentsError || actionsError || recommendationsError) && (
