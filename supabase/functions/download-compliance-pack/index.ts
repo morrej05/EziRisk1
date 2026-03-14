@@ -62,11 +62,20 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: authError } = await userSupabase.auth.getUser(token);
 
     if (authError || !user) {
       return new Response(
@@ -91,8 +100,54 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const { data: memberships, error: membershipError } = await userSupabase
+      .from('organisation_members')
+      .select('organisation_id')
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+
+    if (membershipError) {
+      console.error('Error checking memberships:', membershipError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify membership' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const allowedOrganisationIds = [...new Set((memberships || []).map((m) => m.organisation_id).filter(Boolean))];
+    if (allowedOrganisationIds.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Access denied' }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // Check survey access via active organisation membership only
+    const { data: survey, error: surveyError } = await adminSupabase
+      .from('survey_reports')
+      .select('id, organisation_id')
+      .eq('id', survey_id)
+      .in('organisation_id', allowedOrganisationIds)
+      .maybeSingle();
+
+    if (surveyError || !survey) {
+      return new Response(
+        JSON.stringify({ error: 'Survey not found or access denied' }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     // Load the revision
-    const { data: revision, error: revisionError } = await supabase
+    const { data: revision, error: revisionError } = await adminSupabase
       .from('survey_revisions')
       .select('id, survey_id, revision_number, status, snapshot, pdf_path, issued_at, issued_by')
       .eq('survey_id', survey_id)
@@ -131,56 +186,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check user has access to this survey
-    const { data: survey, error: surveyError } = await supabase
-      .from('survey_reports')
-      .select('id, user_id')
-      .eq('id', survey_id)
-      .maybeSingle();
-
-    if (surveyError || !survey) {
-      return new Response(
-        JSON.stringify({ error: 'Survey not found or access denied' }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    // Verify user has access (owns survey or is in same org)
-    const { data: userProfile } = await supabase
-      .from('user_profiles')
-      .select('organisation_id')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (survey.user_id !== user.id && userProfile) {
-      // Check if survey user is in same org
-      const { data: surveyUserProfile } = await supabase
-        .from('user_profiles')
-        .select('organisation_id')
-        .eq('id', survey.user_id)
-        .maybeSingle();
-
-      if (!surveyUserProfile || surveyUserProfile.organisation_id !== userProfile.organisation_id) {
-        return new Response(
-          JSON.stringify({ error: 'Access denied' }),
-          {
-            status: 403,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-    }
-
     // Create ZIP
     const zip = new JSZip();
 
     // 1. Add the issued PDF
     if (revision.pdf_path) {
       try {
-        const { data: pdfData, error: pdfError } = await supabase.storage
+        const { data: pdfData, error: pdfError } = await adminSupabase.storage
           .from('survey-pdfs')
           .download(revision.pdf_path);
 
@@ -203,7 +215,7 @@ Deno.serve(async (req: Request) => {
       actions = revision.snapshot.actions;
     } else {
       // Fallback: query actions table
-      const { data: actionsData } = await supabase
+      const { data: actionsData } = await adminSupabase
         .from('survey_recommendations')
         .select('*')
         .eq('survey_id', survey_id)
@@ -218,7 +230,7 @@ Deno.serve(async (req: Request) => {
     zip.file(`actions-register-v${revision_number}.csv`, actionsCsv);
 
     // 3. Generate Audit Trail CSV
-    const { data: auditEntries } = await supabase
+    const { data: auditEntries } = await adminSupabase
       .from('audit_log')
       .select(`
         created_at,
@@ -232,7 +244,7 @@ Deno.serve(async (req: Request) => {
 
     // Fetch actor names for audit trail
     const actorIds = [...new Set((auditEntries || []).map(e => e.actor_id).filter(Boolean))];
-    const { data: profiles } = await supabase
+    const { data: profiles } = await adminSupabase
       .from('user_profiles')
       .select('id, name')
       .in('id', actorIds);
@@ -253,7 +265,7 @@ Deno.serve(async (req: Request) => {
     // Store ZIP in Supabase Storage
     const zipPath = `compliance/${survey_id}/rev-${revision_number}/compliance-pack.zip`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await adminSupabase.storage
       .from('survey-pdfs')
       .upload(zipPath, zipBlob, {
         contentType: 'application/zip',
@@ -274,7 +286,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Generate signed URL (expires in 10 minutes)
-    const { data: signedUrlData, error: urlError } = await supabase.storage
+    const { data: signedUrlData, error: urlError } = await adminSupabase.storage
       .from('survey-pdfs')
       .createSignedUrl(zipPath, 600);
 
