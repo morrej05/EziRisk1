@@ -53,6 +53,28 @@ interface PortfolioAiPayload {
       caveat: string;
     };
   };
+  assessmentActionAgeing: {
+    bucket_0_30: number;
+    bucket_31_60: number;
+    bucket_61_90: number;
+    bucket_90_plus: number;
+  };
+  reRecommendationAgeing: {
+    bucket_0_30: number;
+    bucket_31_60: number;
+    bucket_61_90: number;
+    bucket_90_plus: number;
+  };
+  assessmentActionVelocity: {
+    openedCurrentWindow: number;
+    closedCurrentWindow: number;
+    netChange: number;
+  };
+  reRecommendationVelocity: {
+    openedCurrentWindow: number;
+    closedCurrentWindow: number;
+    netChange: number;
+  };
   assessmentStatusDistribution: Array<{ label: string; count: number }>;
   commonActionModules: Array<{ label: string; count: number }>;
   actionProfile: {
@@ -133,6 +155,7 @@ Output requirements:
 7) Refer to a combined remediation view only when remediationTrends.combined.safeToCombine is true.
 8) Explicitly frame trend comparisons as current selectedWindowDays versus previous selectedWindowDays windows.
 9) Mention current scope (client/discipline/site) briefly when provided.
+10) If remediation ageing/velocity fields are present, comment on backlog build-up or reduction as count movement only (no causal, compliance, or underwriting claims).
 
 Portfolio aggregate payload:
 ${JSON.stringify(portfolio)}`;

@@ -45,6 +45,28 @@ export interface PortfolioAiPayload {
       caveat: string;
     };
   };
+  assessmentActionAgeing: {
+    bucket_0_30: number;
+    bucket_31_60: number;
+    bucket_61_90: number;
+    bucket_90_plus: number;
+  };
+  reRecommendationAgeing: {
+    bucket_0_30: number;
+    bucket_31_60: number;
+    bucket_61_90: number;
+    bucket_90_plus: number;
+  };
+  assessmentActionVelocity: {
+    openedCurrentWindow: number;
+    closedCurrentWindow: number;
+    netChange: number;
+  };
+  reRecommendationVelocity: {
+    openedCurrentWindow: number;
+    closedCurrentWindow: number;
+    netChange: number;
+  };
   assessmentStatusDistribution: Array<{
     label: string;
     count: number;

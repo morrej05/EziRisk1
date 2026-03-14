@@ -14,6 +14,18 @@ interface CardMetric {
   state?: Record<string, unknown>;
 }
 
+interface AgeingBucketConfig {
+  key: 'bucket_0_30' | 'bucket_31_60' | 'bucket_61_90' | 'bucket_90_plus';
+  label: string;
+}
+
+const AGEING_BUCKETS: AgeingBucketConfig[] = [
+  { key: 'bucket_0_30', label: '0–30 days' },
+  { key: 'bucket_31_60', label: '31–60 days' },
+  { key: 'bucket_61_90', label: '61–90 days' },
+  { key: 'bucket_90_plus', label: '90+ days' },
+];
+
 const ALL_CLIENTS_VALUE = '__all_clients__';
 const ALL_DISCIPLINES_VALUE = '__all_disciplines__';
 
@@ -166,6 +178,16 @@ export default function PortfolioPage() {
     return q ? `${basePath}?${q}` : basePath;
   };
 
+  const getActionAgeingDrillThrough = (bucketKey: AgeingBucketConfig['key']): string | null => {
+    if (bucketKey !== 'bucket_0_30') return null;
+    return appendScopeToPath('/dashboard/action-register?status=open&status=in_progress&sourceType=assessment_action&openedWithinDays=30');
+  };
+
+  const getReAgeingDrillThrough = (bucketKey: AgeingBucketConfig['key']): string | null => {
+    if (bucketKey !== 'bucket_0_30') return null;
+    return appendScopeToRecommendationsPath('/recommendations?status=Active&createdWithinDays=30');
+  };
+
   const statusDistributionRows = useMemo(
     () => Object.entries(metrics.assessmentStatusCounts)
       .map(([label, count]) => ({ label, count }))
@@ -227,6 +249,10 @@ export default function PortfolioPage() {
       bySource: metrics.remediationTrends,
       combined: metrics.combinedRemediation,
     },
+    assessmentActionAgeing: metrics.assessmentActionAgeing,
+    reRecommendationAgeing: metrics.reRecommendationAgeing,
+    assessmentActionVelocity: metrics.assessmentActionVelocity,
+    reRecommendationVelocity: metrics.reRecommendationVelocity,
     assessmentStatusDistribution: statusDistributionRows
       .slice(0, 6)
       .map((row) => ({ label: row.label, count: row.count })),
@@ -267,6 +293,10 @@ export default function PortfolioPage() {
     metrics.openHighPriorityReRecommendations,
     metrics.remediationTrends,
     metrics.combinedRemediation,
+    metrics.assessmentActionAgeing,
+    metrics.reRecommendationAgeing,
+    metrics.assessmentActionVelocity,
+    metrics.reRecommendationVelocity,
     metrics.updatedWithinWindowDays,
     selectedWindowDays,
     statusDistributionRows,
@@ -468,59 +498,88 @@ export default function PortfolioPage() {
           </section>
 
           <section className="bg-white rounded-lg border border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900">Remediation Trends</h2>
-            <p className="text-sm text-slate-600 mt-1">Source-aware trend view across assessment actions and risk engineering recommendations.</p>
+            <h2 className="text-xl font-semibold text-slate-900">Remediation Ageing</h2>
+            <p className="text-sm text-slate-600 mt-1">Open-item ageing based on created date for each remediation source.</p>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold text-slate-800">Assessment Actions Ageing</h3>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  {AGEING_BUCKETS.map((bucket) => {
+                    const to = getActionAgeingDrillThrough(bucket.key);
+                    return (
+                      <InteractiveRow
+                        key={bucket.key}
+                        label={bucket.label}
+                        value={String(metrics.assessmentActionAgeing[bucket.key])}
+                        onClick={to ? () => navigate(to, { state: { source: 'portfolio' } }) : undefined}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-4">
+                <h3 className="text-sm font-semibold text-slate-800">Risk Engineering Recommendations Ageing</h3>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  {AGEING_BUCKETS.map((bucket) => {
+                    const to = getReAgeingDrillThrough(bucket.key);
+                    return (
+                      <InteractiveRow
+                        key={bucket.key}
+                        label={bucket.label}
+                        value={String(metrics.reRecommendationAgeing[bucket.key])}
+                        onClick={to ? () => navigate(to, { state: { source: 'portfolio' } }) : undefined}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">Drill-through is enabled where register filters can represent the bucket honestly.</p>
+          </section>
+
+          <section className="bg-white rounded-lg border border-slate-200 p-6">
+            <h2 className="text-xl font-semibold text-slate-900">Remediation Velocity</h2>
+            <p className="text-sm text-slate-600 mt-1">Opened versus closed/completed movement in the selected window.</p>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-slate-200 p-4">
                 <h3 className="text-sm font-semibold text-slate-800">Assessment Actions</h3>
                 <div className="mt-3 space-y-2 text-sm text-slate-700">
-                  <p>Open total: <span className="font-semibold">{assessmentActionTrend?.totalOpen ?? 0}</span></p>
                   <InteractiveRow
-                    label={`Opened (current / previous ${selectedWindowDays})`}
-                    value={`${assessmentActionTrend?.openedCurrentWindow ?? 0} / ${assessmentActionTrend?.openedPreviousWindow ?? 0}`}
+                    label={`Opened (${selectedWindowDays}D)`}
+                    value={String(metrics.assessmentActionVelocity.openedCurrentWindow)}
                     onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=open&status=in_progress&openedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
-                    label={`Closed (current / previous ${selectedWindowDays})`}
-                    value={`${assessmentActionTrend?.closedCurrentWindow ?? 0} / ${assessmentActionTrend?.closedPreviousWindow ?? 0}`}
+                    label={`Closed (${selectedWindowDays}D)`}
+                    value={String(metrics.assessmentActionVelocity.closedCurrentWindow)}
                     onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=closed&closedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
-                    label="Urgent Assessment Actions (P1 open)"
-                    value={String(assessmentActionTrend?.urgentOpen ?? 0)}
-                    onClick={() => navigate(appendScopeToPath('/dashboard/action-register?status=open&status=in_progress&priority=P1&sourceType=assessment_action'), { state: { source: 'portfolio' } })}
+                    label="Net backlog change"
+                    value={`${metrics.assessmentActionVelocity.netChange > 0 ? '+' : ''}${metrics.assessmentActionVelocity.netChange}`}
                   />
                 </div>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <h3 className="text-sm font-semibold text-slate-800">Risk Engineering Recommendations</h3>
                 <div className="mt-3 space-y-2 text-sm text-slate-700">
-                  <p>Open total: <span className="font-semibold">{reRecommendationTrend?.totalOpen ?? 0}</span></p>
                   <InteractiveRow
-                    label={`Opened (current / previous ${selectedWindowDays})`}
-                    value={`${reRecommendationTrend?.openedCurrentWindow ?? 0} / ${reRecommendationTrend?.openedPreviousWindow ?? 0}`}
+                    label={`Opened (${selectedWindowDays}D)`}
+                    value={String(metrics.reRecommendationVelocity.openedCurrentWindow)}
                     onClick={() => navigate(appendScopeToRecommendationsPath(`/recommendations?createdWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
-                    label={`Completed updates (current / previous ${selectedWindowDays})`}
-                    value={`${reRecommendationTrend?.closedCurrentWindow ?? 0} / ${reRecommendationTrend?.closedPreviousWindow ?? 0}`}
+                    label={`Completed (${selectedWindowDays}D)`}
+                    value={String(metrics.reRecommendationVelocity.closedCurrentWindow)}
                     onClick={() => navigate(appendScopeToRecommendationsPath(`/recommendations?status=Completed&completedWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
-                    label="High-Priority RE Recommendations (active)"
-                    value={String(reRecommendationTrend?.urgentOpen ?? 0)}
-                    onClick={() => navigate(appendScopeToRecommendationsPath('/recommendations?status=Active&priority=High'), { state: { source: 'portfolio' } })}
+                    label="Net backlog change"
+                    value={`${metrics.reRecommendationVelocity.netChange > 0 ? '+' : ''}${metrics.reRecommendationVelocity.netChange}`}
                   />
                 </div>
-                <p className="mt-3 text-xs text-slate-500">RE closure trend uses Completed status updated timestamps because a dedicated RE closed_at field is not currently exposed.</p>
+                <p className="mt-3 text-xs text-slate-500">Completed movement uses Completed status with updated_at timestamps because a dedicated RE completion timestamp is not currently exposed.</p>
               </div>
-            </div>
-            <div className="mt-4 rounded-lg border border-slate-200 p-4 bg-slate-50">
-              <h3 className="text-sm font-semibold text-slate-800">Combined Remediation (explicitly caveated)</h3>
-              <p className="mt-2 text-sm text-slate-700">Open remediation total: <span className="font-semibold">{metrics.combinedRemediation.totalOpen}</span></p>
-              <p className="text-sm text-slate-700">Net flow current window: <span className="font-semibold">{metrics.combinedRemediation.netFlowCurrentWindow > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowCurrentWindow}</span></p>
-              <p className="text-sm text-slate-700">Net flow previous window: <span className="font-semibold">{metrics.combinedRemediation.netFlowPreviousWindow > 0 ? '+' : ''}{metrics.combinedRemediation.netFlowPreviousWindow}</span></p>
-              <p className="mt-2 text-xs text-slate-500">Combined totals are shown for volume context only; source-specific cards remain authoritative because status and urgency models differ.</p>
             </div>
           </section>
 

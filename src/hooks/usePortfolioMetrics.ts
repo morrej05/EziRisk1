@@ -32,6 +32,19 @@ export interface RemediationTrendRow {
   urgentOpen?: number;
 }
 
+export interface RemediationAgeingBuckets {
+  bucket_0_30: number;
+  bucket_31_60: number;
+  bucket_61_90: number;
+  bucket_90_plus: number;
+}
+
+export interface RemediationVelocity {
+  openedCurrentWindow: number;
+  closedCurrentWindow: number;
+  netChange: number;
+}
+
 function getPortfolioWindowBounds(windowDays: 30 | 90) {
   const now = new Date();
   const currentWindowStart = new Date(now);
@@ -78,6 +91,40 @@ function toAssessmentTypeToken(rawType: string): string {
   const token = normaliseDisciplineOrType(rawType);
   if (token === 'FIRE_STRATEGY') return 'FSD';
   return token;
+}
+
+function parseDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isActionClosed(status: string | null | undefined): boolean {
+  return (status || '').trim().toLowerCase() === 'closed';
+}
+
+function isReRecommendationCompleted(status: string | null | undefined): boolean {
+  return (status || '').trim().toLowerCase() === 'completed';
+}
+
+function calculateAgeingBuckets(items: Array<{ createdAt: Date | null }>, now: Date): RemediationAgeingBuckets {
+  return items.reduce<RemediationAgeingBuckets>((acc, item) => {
+    if (!item.createdAt) return acc;
+
+    const ageInDays = Math.floor((now.getTime() - item.createdAt.getTime()) / (24 * 60 * 60 * 1000));
+
+    if (ageInDays <= 30) acc.bucket_0_30 += 1;
+    else if (ageInDays <= 60) acc.bucket_31_60 += 1;
+    else if (ageInDays <= 90) acc.bucket_61_90 += 1;
+    else acc.bucket_90_plus += 1;
+
+    return acc;
+  }, {
+    bucket_0_30: 0,
+    bucket_31_60: 0,
+    bucket_61_90: 0,
+    bucket_90_plus: 0,
+  });
 }
 
 export function usePortfolioMetrics(scope: PortfolioScope) {
@@ -304,17 +351,11 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    const openActions = scopedActions.filter((action) => action.status !== 'closed');
+    const openActions = scopedActions.filter((action) => !isActionClosed(action.status));
     const openHighPriorityActions = openActions.filter((action) => action.priority_band === 'P1').length;
 
-    const openReRecommendations = scopedReRecommendations.filter((rec) => rec.status !== 'Completed');
+    const openReRecommendations = scopedReRecommendations.filter((rec) => !isReRecommendationCompleted(rec.status));
     const openHighPriorityReRecommendations = openReRecommendations.filter((rec) => rec.priority === 'High').length;
-
-    const parseDate = (value: string | null | undefined) => {
-      if (!value) return null;
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    };
 
     const actionTrendRowsByDiscipline: RemediationTrendRow[] = [
       { sourceType: 'assessment_action', sourceLabel: 'Assessment Actions', discipline: 'fra' },
@@ -335,7 +376,7 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
     scopedActions.forEach((action) => {
       const createdAt = parseDate(action.created_at);
       const closedAt = parseDate(action.closed_at);
-      const isOpen = action.status !== 'closed';
+      const isOpen = !isActionClosed(action.status);
 
       const index = disciplineIndex[action.document_type];
       if (index === undefined) return;
@@ -384,17 +425,43 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
     scopedReRecommendations.forEach((rec) => {
       const createdAt = parseDate(rec.created_at);
       const updatedAt = parseDate(rec.updated_at);
-      const isOpen = rec.status !== 'Completed';
+      const isOpen = !isReRecommendationCompleted(rec.status);
 
       if (isOpen) reRecommendationTrend.totalOpen += 1;
       if (isWithinRange(createdAt, currentWindowStart, now)) reRecommendationTrend.openedCurrentWindow += 1;
       if (isWithinRange(createdAt, previousWindowStart, currentWindowStart)) reRecommendationTrend.openedPreviousWindow += 1;
       // RE recommendations do not currently expose a dedicated closed_at field.
       // We count "Completed" recommendations updated within the period as closure movement.
-      if (rec.status === 'Completed' && isWithinRange(updatedAt, currentWindowStart, now)) reRecommendationTrend.closedCurrentWindow += 1;
-      if (rec.status === 'Completed' && isWithinRange(updatedAt, previousWindowStart, currentWindowStart)) reRecommendationTrend.closedPreviousWindow += 1;
+      if (isReRecommendationCompleted(rec.status) && isWithinRange(updatedAt, currentWindowStart, now)) reRecommendationTrend.closedCurrentWindow += 1;
+      if (isReRecommendationCompleted(rec.status) && isWithinRange(updatedAt, previousWindowStart, currentWindowStart)) reRecommendationTrend.closedPreviousWindow += 1;
       if (isOpen && rec.priority === 'High') reRecommendationTrend.urgentOpen = (reRecommendationTrend.urgentOpen || 0) + 1;
     });
+
+    const assessmentActionAgeing = calculateAgeingBuckets(
+      scopedActions
+        .filter((action) => !isActionClosed(action.status))
+        .map((action) => ({ createdAt: parseDate(action.created_at) })),
+      now,
+    );
+
+    const reRecommendationAgeing = calculateAgeingBuckets(
+      scopedReRecommendations
+        .filter((recommendation) => !isReRecommendationCompleted(recommendation.status))
+        .map((recommendation) => ({ createdAt: parseDate(recommendation.created_at) })),
+      now,
+    );
+
+    const assessmentActionVelocity: RemediationVelocity = {
+      openedCurrentWindow: assessmentActionTrend.openedCurrentWindow,
+      closedCurrentWindow: assessmentActionTrend.closedCurrentWindow,
+      netChange: assessmentActionTrend.openedCurrentWindow - assessmentActionTrend.closedCurrentWindow,
+    };
+
+    const reRecommendationVelocity: RemediationVelocity = {
+      openedCurrentWindow: reRecommendationTrend.openedCurrentWindow,
+      closedCurrentWindow: reRecommendationTrend.closedCurrentWindow,
+      netChange: reRecommendationTrend.openedCurrentWindow - reRecommendationTrend.closedCurrentWindow,
+    };
 
     const remediationTrends: RemediationTrendRow[] = [
       assessmentActionTrend,
@@ -460,7 +527,7 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
         latestAssessmentUpdate: null,
       };
 
-      const isOpen = action.status !== 'closed';
+      const isOpen = !isActionClosed(action.status);
       const isOverdue = action.tracking_status === 'overdue' && isOpen;
       const isP1Open = isOpen && action.priority_band === 'P1';
 
@@ -504,6 +571,10 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       commonActionGroups,
       topSites,
       remediationTrends,
+      assessmentActionAgeing,
+      reRecommendationAgeing,
+      assessmentActionVelocity,
+      reRecommendationVelocity,
       combinedRemediation: {
         totalOpen: combinedOpenRemediation,
         netFlowCurrentWindow: combinedNetFlowCurrent,
