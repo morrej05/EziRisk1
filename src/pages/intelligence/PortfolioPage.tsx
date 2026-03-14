@@ -417,12 +417,12 @@ export default function PortfolioPage() {
 
   const getActionAgeingDrillThrough = (bucketKey: AgeingBucketConfig['key']): string | null => {
     if (bucketKey !== 'bucket_0_30') return null;
-    return appendScopeToPath('/dashboard/action-register?status=open&status=in_progress&sourceType=assessment_action&openedWithinDays=30');
+    return appendScopeToPath('/remediation/actions?status=open&status=in_progress&sourceType=assessment_action&openedWithinDays=30');
   };
 
   const getReAgeingDrillThrough = (bucketKey: AgeingBucketConfig['key']): string | null => {
     if (bucketKey !== 'bucket_0_30') return null;
-    return appendScopeToRecommendationsPath('/recommendations?status=Active&createdWithinDays=30');
+    return appendScopeToRecommendationsPath('/remediation/recommendations?status=Active&createdWithinDays=30');
   };
 
 
@@ -433,14 +433,14 @@ export default function PortfolioPage() {
       params.append('status', 'in_progress');
       params.set('sourceType', 'assessment_action');
       if (row.documentId) params.set('document', row.documentId);
-      return appendScopeToPath(`/dashboard/action-register?${params.toString()}`);
+      return appendScopeToPath(`/remediation/actions?${params.toString()}`);
     }
 
     const params = new URLSearchParams();
     params.set('status', 'Active');
     if (row.clientLabel) params.set('client', row.clientLabel);
     if (row.siteLabel) params.set('site', row.siteLabel);
-    return `/recommendations?${params.toString()}`;
+    return `/remediation/recommendations?${params.toString()}`;
   };
 
   const statusDistributionRows = useMemo(
@@ -640,13 +640,13 @@ export default function PortfolioPage() {
       label: 'Open Assessment Actions',
       value: assessmentActionTrend?.totalOpen ?? 0,
       trendValue: (assessmentActionTrend?.openedCurrentWindow ?? 0) - (assessmentActionTrend?.openedPreviousWindow ?? 0),
-      to: appendScopeToPath(`/dashboard/action-register?status=open&status=in_progress&sourceType=assessment_action`),
+      to: appendScopeToPath(`/remediation/actions?status=open&status=in_progress&sourceType=assessment_action`),
     },
     {
       label: 'Open Risk Engineering Recommendations',
       value: reRecommendationTrend?.totalOpen ?? 0,
       trendValue: (reRecommendationTrend?.openedCurrentWindow ?? 0) - (reRecommendationTrend?.openedPreviousWindow ?? 0),
-      to: appendScopeToRecommendationsPath('/recommendations?status=Active'),
+      to: appendScopeToRecommendationsPath('/remediation/recommendations?status=Active'),
     },
     {
       label: `Updated Last ${selectedWindowDays} Days`,
@@ -1068,12 +1068,12 @@ export default function PortfolioPage() {
                   <InteractiveRow
                     label={`Opened (${selectedWindowDays}D)`}
                     value={String(metrics.assessmentActionVelocity.openedCurrentWindow)}
-                    onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=open&status=in_progress&openedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath(`/remediation/actions?status=open&status=in_progress&openedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label={`Closed (${selectedWindowDays}D)`}
                     value={String(metrics.assessmentActionVelocity.closedCurrentWindow)}
-                    onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=closed&closedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToPath(`/remediation/actions?status=closed&closedWithinDays=${selectedWindowDays}&sourceType=assessment_action`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label="Net backlog change"
@@ -1087,12 +1087,12 @@ export default function PortfolioPage() {
                   <InteractiveRow
                     label={`Opened (${selectedWindowDays}D)`}
                     value={String(metrics.reRecommendationVelocity.openedCurrentWindow)}
-                    onClick={() => navigate(appendScopeToRecommendationsPath(`/recommendations?createdWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToRecommendationsPath(`/remediation/recommendations?createdWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label={`Completed (${selectedWindowDays}D)`}
                     value={String(metrics.reRecommendationVelocity.closedCurrentWindow)}
-                    onClick={() => navigate(appendScopeToRecommendationsPath(`/recommendations?status=Completed&completedWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
+                    onClick={() => navigate(appendScopeToRecommendationsPath(`/remediation/recommendations?status=Completed&completedWithinDays=${selectedWindowDays}`), { state: { source: 'portfolio' } })}
                   />
                   <InteractiveRow
                     label="Net backlog change"
@@ -1164,7 +1164,7 @@ export default function PortfolioPage() {
                     metrics.commonActionGroups.map((row, index) => (
                       <tr
                         key={row.label}
-                        onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?module=${encodeURIComponent(row.label)}`))}
+                        onClick={() => navigate(appendScopeToPath(`/remediation/actions?module=${encodeURIComponent(row.label)}`))}
                         className="hover:bg-slate-50 cursor-pointer transition-colors"
                       >
                         <td className="px-4 py-3 text-sm text-slate-600">#{index + 1}</td>
@@ -1193,7 +1193,7 @@ export default function PortfolioPage() {
                         key={row.label}
                         label={row.label}
                         value={String(row.count)}
-                        onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?priority=${encodeURIComponent(row.label)}`))}
+                        onClick={() => navigate(appendScopeToPath(`/remediation/actions?priority=${encodeURIComponent(row.label)}`))}
                       />
                     ))
                   )}
@@ -1210,7 +1210,7 @@ export default function PortfolioPage() {
                         key={row.label}
                         label={formatPortfolioStatusLabel(row.label)}
                         value={String(row.count)}
-                        onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?status=${encodeURIComponent(row.label)}`))}
+                        onClick={() => navigate(appendScopeToPath(`/remediation/actions?status=${encodeURIComponent(row.label)}`))}
                       />
                     ))
                   )}
@@ -1256,7 +1256,7 @@ export default function PortfolioPage() {
                         <tr
                           key={`${site.documentId}-${site.clientName}`}
                           className="hover:bg-slate-50 cursor-pointer transition-colors"
-                          onClick={() => navigate(appendScopeToPath(`/dashboard/action-register?document=${encodeURIComponent(site.documentId)}&status=open&status=in_progress&sourceType=assessment_action`))}
+                          onClick={() => navigate(appendScopeToPath(`/remediation/actions?document=${encodeURIComponent(site.documentId)}&status=open&status=in_progress&sourceType=assessment_action`))}
                         >
                           <td className="px-4 py-3 text-sm font-medium text-slate-900">{site.siteName}</td>
                           <td className="px-4 py-3 text-sm text-slate-700">{site.clientName}</td>
@@ -1302,7 +1302,7 @@ export default function PortfolioPage() {
                           className={row.moduleKey === 'RE recommendations' ? 'bg-slate-50' : 'hover:bg-slate-50 cursor-pointer transition-colors'}
                           onClick={row.moduleKey === 'RE recommendations'
                             ? undefined
-                            : () => navigate(appendScopeToPath(`/dashboard/action-register?module=${encodeURIComponent(row.moduleKey)}&status=open&status=in_progress&sourceType=assessment_action`))}
+                            : () => navigate(appendScopeToPath(`/remediation/actions?module=${encodeURIComponent(row.moduleKey)}&status=open&status=in_progress&sourceType=assessment_action`))}
                         >
                           <td className="px-4 py-3 text-sm font-medium text-slate-900">{formatPortfolioGroupLabel(row.moduleKey)}</td>
                           <td className="px-4 py-3 text-sm text-right text-rose-700 font-semibold">{row.openP1AssessmentActions}</td>
