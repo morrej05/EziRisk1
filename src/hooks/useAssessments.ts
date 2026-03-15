@@ -31,6 +31,19 @@ export interface AssessmentViewModel {
   createdAt: Date;
 }
 
+function getClientDisplayName(document: Document): string {
+  const rawOrgName = document.organisations?.name?.trim();
+  const looksLikeSignupPlaceholder = !!rawOrgName && /@.+organisation$/i.test(rawOrgName);
+
+  // V1: organisation names are account-level and may be email-derived placeholders,
+  // so don't use them as the runtime client label in assessment tables.
+  if (!rawOrgName || looksLikeSignupPlaceholder) {
+    return 'Client not set';
+  }
+
+  return rawOrgName;
+}
+
 function mapDocumentToViewModel(document: Document): AssessmentViewModel {
   const typeMap: Record<string, { display: string; discipline: string }> = {
     FRA: { display: 'FRA', discipline: 'Fire' },
@@ -42,8 +55,8 @@ function mapDocumentToViewModel(document: Document): AssessmentViewModel {
 
   return {
     id: document.id,
-    clientName: document.organisations?.name || 'Unassigned',
-    siteName: document.title,
+    clientName: getClientDisplayName(document),
+    siteName: document.title || 'Site not set',
     discipline: typeInfo.discipline,
     type: typeInfo.display,
     status: document.status.charAt(0).toUpperCase() + document.status.slice(1),
