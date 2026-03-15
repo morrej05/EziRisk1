@@ -101,22 +101,55 @@ export default function RE01DocumentControlForm({
       try {
         const { data: instances, error } = await supabase
           .from('module_instances')
-          .select('id, data')
+          .select('id, module_key, data')
           .eq('document_id', moduleInstance.document_id)
-          .eq('module_key', 'RISK_ENGINEERING')
-          .maybeSingle();
+          .in('module_key', ['RISK_ENGINEERING', 'RE_01_DOC_CONTROL', 'RE_01_DOCUMENT_CONTROL']);
 
         if (error) throw error;
 
-        if (instances) {
-          setRiskEngInstanceId(instances.id);
-          setIndustryKey(resolveIndustryKey(instances.data));
+        const riskEngInstance = instances?.find((instance) => instance.module_key === 'RISK_ENGINEERING') || null;
+        const legacyRe01Instance = instances?.find(
+          (instance) => instance.module_key === 'RE_01_DOC_CONTROL' || instance.module_key === 'RE_01_DOCUMENT_CONTROL'
+        ) || null;
+
+        const fallbackIndustryKey = resolveIndustryKey(legacyRe01Instance?.data);
+
+        if (riskEngInstance) {
+          setRiskEngInstanceId(riskEngInstance.id);
+          setIndustryKey(resolveIndustryKey(riskEngInstance.data) || fallbackIndustryKey);
           setRiskEngModuleNotFound(false);
-        } else {
-          setRiskEngInstanceId(null);
-          setIndustryKey(null);
-          setRiskEngModuleNotFound(true);
+          return;
         }
+
+        const ensured = ensureRatingsObject({
+          industry_key: fallbackIndustryKey,
+          ratings: undefined,
+        });
+
+        const { data: created, error: createError } = await supabase
+          .from('module_instances')
+          .upsert(
+            {
+              document_id: moduleInstance.document_id,
+              module_key: 'RISK_ENGINEERING',
+              module_scope: 'document',
+              outcome: null,
+              assessor_notes: '',
+              data: {
+                ...ensured,
+                industry_key: fallbackIndustryKey,
+              },
+            },
+            { onConflict: 'document_id,module_key' }
+          )
+          .select('id, data')
+          .single();
+
+        if (createError) throw createError;
+
+        setRiskEngInstanceId(created.id);
+        setIndustryKey(resolveIndustryKey(created.data) || fallbackIndustryKey);
+        setRiskEngModuleNotFound(false);
       } catch (err) {
         console.error('Error loading RISK_ENGINEERING module:', err);
         setRiskEngModuleNotFound(true);
