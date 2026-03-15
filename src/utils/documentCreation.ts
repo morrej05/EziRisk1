@@ -66,7 +66,7 @@ export async function createDocument({
       hint: docError.hint,
       full: docError,
     });
-    throw docError;
+    throw new Error(formatSupabaseError(docError));
   }
 
   if (!document?.id) {
@@ -113,13 +113,26 @@ export async function createDocument({
 
     if (modulesError) {
       console.error('[documentCreation.createDocument] Module instances upsert failed:', modulesError);
-      throw modulesError;
+      throw new Error(formatSupabaseError(modulesError));
     }
 
     console.log('[documentCreation.createDocument] Created/ensured', moduleInstances.length, 'module instances');
   }
 
   return document.id;
+}
+
+function formatSupabaseError(error: unknown): string {
+  if (!error) return 'Unknown Supabase error';
+  if (error instanceof Error) return error.message;
+
+  const maybeError = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+  const message = typeof maybeError.message === 'string' ? maybeError.message : '';
+  const details = typeof maybeError.details === 'string' ? maybeError.details : '';
+  const hint = typeof maybeError.hint === 'string' ? maybeError.hint : '';
+  const code = typeof maybeError.code === 'string' ? maybeError.code : '';
+
+  return [message, details, hint, code ? `(code: ${code})` : ''].filter(Boolean).join(' | ') || JSON.stringify(error);
 }
 
 function isEmptyPlainObject(value: unknown): boolean {

@@ -312,23 +312,84 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!resolvedOrganisationId) {
-        console.warn('[AuthContext] ⛔ No organisation context found from membership or profile');
+        console.warn('[AuthContext] ⛔ No organisation context found from membership or profile - attempting full heal...');
+        const { data: healedOrgId, error: healOrgError } = await supabase.rpc('ensure_org_for_user', { user_id: userId });
+
+        if (healOrgError || !healedOrgId) {
+          console.error('[AuthContext] ❌ Full org heal failed:', healOrgError);
+          setUser(createAppUser(authUser, {
+            ...profile,
+            role: resolvedRole,
+            organisation_id: null,
+          }));
+          await fetchDisclaimerStatus(userId);
+          setRoleError(`Organisation context is missing and auto-heal failed: ${healOrgError?.message || 'unknown error'}`);
+          setUserRole(resolvedRole);
+          setUserPlan(profile.plan as SubscriptionPlan);
+          setDisciplineType(profile.discipline_type as DisciplineType);
+          setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
+          setMaxEditors(profile.max_editors || 999);
+          setActiveEditors(profile.active_editors || 1);
+          setIsPlatformAdmin(resolvePlatformAdmin(profile));
+          setCanEdit(profile.can_edit || false);
+          setOrganisation(null);
+          return;
+        }
+
+        const [{ data: healedProfile }, { data: healedMemberships }, { data: healedOrganisation }] = await Promise.all([
+          supabase
+            .from('user_profiles')
+            .select('name, role, plan, discipline_type, bolt_ons, max_editors, active_editors, is_platform_admin, can_edit, organisation_id')
+            .eq('id', userId)
+            .maybeSingle(),
+          supabase
+            .from('organisation_members')
+            .select('role, organisation_id, status, created_at')
+            .eq('user_id', userId)
+            .eq('status', 'active')
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('organisations')
+            .select('*')
+            .eq('id', healedOrgId)
+            .maybeSingle(),
+        ]);
+
+        const healedMembership = resolveCurrentMembership((healedMemberships ?? []) as MembershipRecord[], healedOrgId);
+        const healedRole = normalizeRole((healedMembership?.role as string | null | undefined) ?? healedProfile?.role ?? resolvedRole);
+        const healedOrg = (healedOrganisation as OrganisationRecord | null) ?? buildFallbackOrganisation(healedOrgId, profile, healedRole);
+
         setUser(createAppUser(authUser, {
           ...profile,
-          role: resolvedRole,
-          organisation_id: null,
+          ...healedProfile,
+          role: healedRole,
+          organisation_id: healedOrgId,
         }));
         await fetchDisclaimerStatus(userId);
-        setRoleError('Organisation context is missing. Please contact support.');
-        setUserRole(resolvedRole);
-        setUserPlan(profile.plan as SubscriptionPlan);
-        setDisciplineType(profile.discipline_type as DisciplineType);
-        setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
-        setMaxEditors(profile.max_editors || 999);
-        setActiveEditors(profile.active_editors || 1);
-        setIsPlatformAdmin(resolvePlatformAdmin(profile));
-        setCanEdit(profile.can_edit || false);
-        setOrganisation(null);
+        setUserRole(healedRole);
+        setUserPlan((healedProfile?.plan ?? profile.plan) as SubscriptionPlan);
+        setDisciplineType((healedProfile?.discipline_type ?? profile.discipline_type) as DisciplineType);
+        setBoltOns(Array.isArray(healedProfile?.bolt_ons) ? healedProfile.bolt_ons : Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
+        setMaxEditors(healedProfile?.max_editors || profile.max_editors || 999);
+        setActiveEditors(healedProfile?.active_editors || profile.active_editors || 1);
+        setIsPlatformAdmin(resolvePlatformAdmin(healedProfile ?? profile));
+        setCanEdit(healedProfile?.can_edit || profile.can_edit || false);
+        setOrganisation({
+          id: healedOrg.id,
+          name: healedOrg.name,
+          plan_type: healedOrg.plan_type || healedOrg.plan_id || 'free',
+          plan_id: healedOrg.plan_id || healedOrg.plan_type || 'free',
+          discipline_type: healedOrg.discipline_type,
+          enabled_addons: Array.isArray(healedOrg.enabled_addons) ? healedOrg.enabled_addons : [],
+          max_editors: healedOrg.max_editors || 0,
+          subscription_status: healedOrg.subscription_status || 'active',
+          stripe_customer_id: healedOrg.stripe_customer_id,
+          stripe_subscription_id: healedOrg.stripe_subscription_id,
+          billing_cycle: healedOrg.billing_cycle,
+          created_at: healedOrg.created_at,
+          updated_at: healedOrg.updated_at,
+        });
+        setRoleError(null);
         return;
       }
 
@@ -352,76 +413,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
       await fetchDisclaimerStatus(userId);
 
-      // Auto-create organisation only when there is no organisation id context at all.
-      if (!resolvedOrganisationId) {
-        console.log('[AuthContext] 🏥 Organisation missing - auto-healing...');
-        try {
-          const { data: newOrgId, error: rpcError } = await supabase.rpc('ensure_org_for_user', { user_id: userId });
-
-          if (rpcError) {
-            console.error('[AuthContext] ❌ Failed to create organisation:', rpcError);
-            throw rpcError;
-          }
-
-          console.log('[AuthContext] ✅ Organisation created:', newOrgId);
-
-          // Re-fetch profile with new organisation
-          const { data: updatedProfile, error: refetchError } = await supabase
-            .from('user_profiles')
-            .select('role, plan, discipline_type, bolt_ons, max_editors, active_editors, is_platform_admin, can_edit, organisation_id, organisations(*)')
-            .eq('id', userId)
-            .maybeSingle();
-
-          if (refetchError || !updatedProfile) {
-            console.error('[AuthContext] ❌ Failed to refetch profile:', refetchError);
-            throw new Error('Failed to load organisation after creation');
-          }
-
-          console.log('[AuthContext] ✅ Profile refetched with organisation:', updatedProfile);
-
-          // Update user object with profile fields
-          setUser(createAppUser(authUser, updatedProfile));
-
-          // Use the updated profile
-          setUserRole(normalizeRole((resolvedMembership?.role as string | null | undefined) ?? updatedProfile.role));
-          setUserPlan(updatedProfile.plan as SubscriptionPlan);
-          setDisciplineType(updatedProfile.discipline_type as DisciplineType);
-          setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);
-          setMaxEditors(updatedProfile.max_editors || 999);
-          setActiveEditors(updatedProfile.active_editors || 1);
-          setIsPlatformAdmin(resolvePlatformAdmin(updatedProfile));
-          setCanEdit(updatedProfile.can_edit || false);
-
-          if (updatedProfile.organisations) {
-            const org = updatedProfile.organisations as OrganisationRecord;
-            const orgData = {
-              id: org.id,
-              name: org.name,
-              plan_type: org.plan_type || org.plan_id || 'free',
-              plan_id: org.plan_id || org.plan_type || 'free',
-              discipline_type: org.discipline_type,
-              enabled_addons: Array.isArray(org.enabled_addons) ? org.enabled_addons : [],
-              max_editors: org.max_editors || 0,
-              subscription_status: org.subscription_status || 'active',
-              stripe_customer_id: org.stripe_customer_id,
-              stripe_subscription_id: org.stripe_subscription_id,
-              billing_cycle: org.billing_cycle,
-              created_at: org.created_at,
-              updated_at: org.updated_at,
-            };
-            console.log('[AuthContext] 🏢 Organisation loaded:', {
-              id: orgData.id,
-              name: orgData.name,
-              plan_id: orgData.plan_id,
-              plan_type: orgData.plan_type
-            });
-            setOrganisation(orgData);
-          }
-        } catch (autoHealError) {
-          console.error('[AuthContext] ❌ Auto-heal failed:', autoHealError);
-          setRoleError('Failed to create organisation. Please contact support.');
-        }
-      } else if (!organisationRecord) {
+      if (!organisationRecord) {
         console.warn('[AuthContext] ⚠️ Organisation record unavailable, using profile fallback context');
         setOrganisation(buildFallbackOrganisation(resolvedOrganisationId, profile, resolvedRole));
       } else {
