@@ -13,10 +13,11 @@ export interface LegalDocumentContent {
 
 export const privacyPolicyContent: LegalDocumentContent = {
   title: 'Privacy Policy',
-  lastUpdated: 'Last updated: [Month Day, Year]',
+  lastUpdated: 'Last updated: 18 March 2026',
   intro: [
     'This Privacy Policy explains how EziRisk (the “platform”) collects, uses, stores, and protects personal data when people use EziRisk.',
     'EziRisk is operated by the operator of EziRisk. Where this policy refers to “we”, “us”, or “our”, it means EziRisk and the operator of EziRisk.',
+    'EziRisk is currently operated as an unincorporated business.',
   ],
   sections: [
     {
@@ -73,10 +74,15 @@ export const privacyPolicyContent: LegalDocumentContent = {
       ],
     },
     {
-      heading: '8. Your rights and contact',
+      heading: '8. Your rights',
       paragraphs: [
         'Depending on your jurisdiction, you may have rights to access, correct, export, or erase your personal data, and to object to or restrict certain processing.',
-        'For privacy requests, contact the operator of EziRisk through the platform support channel.',
+      ],
+    },
+    {
+      heading: '9. Contact',
+      paragraphs: [
+        'For privacy requests and enquiries, contact: privacy@ezirisk.com',
       ],
     },
   ],
@@ -84,9 +90,10 @@ export const privacyPolicyContent: LegalDocumentContent = {
 
 export const termsOfUseContent: LegalDocumentContent = {
   title: 'Terms of Use',
-  lastUpdated: 'Last updated: [Month Day, Year]',
+  lastUpdated: 'Last updated: 18 March 2026',
   intro: [
     'These Terms of Use govern access to and use of EziRisk.',
+    'EziRisk is currently operated as an unincorporated business.',
     'By accessing or using EziRisk, you agree to these terms on behalf of yourself and, where applicable, your organisation.',
   ],
   sections: [
@@ -146,7 +153,7 @@ export const termsOfUseContent: LegalDocumentContent = {
 
 export const professionalLiabilityDisclaimerContent: LegalDocumentContent = {
   title: 'Professional Liability Disclaimer',
-  lastUpdated: 'Last updated: [Month Day, Year]',
+  lastUpdated: 'Last updated: 18 March 2026',
   intro: [
     'EziRisk provides report generation support tools. It does not replace professional expertise, legal duties, or site-specific judgement.',
   ],
@@ -171,7 +178,7 @@ export const professionalLiabilityDisclaimerContent: LegalDocumentContent = {
 
 export const securityTrustContent: LegalDocumentContent = {
   title: 'Security & Trust',
-  lastUpdated: 'Last updated: [Month Day, Year]',
+  lastUpdated: 'Last updated: 18 March 2026',
   intro: [
     'EziRisk is designed with practical safeguards to help organisations and consultants use the platform with confidence.',
   ],
@@ -204,6 +211,12 @@ export const securityTrustContent: LegalDocumentContent = {
       heading: '4. Continuous improvement',
       paragraphs: [
         'Security and trust controls are reviewed and improved over time as EziRisk evolves and operational requirements mature.',
+      ],
+    },
+    {
+      heading: '5. Contact',
+      paragraphs: [
+        'For security enquiries and responsible disclosure, contact: security@ezirisk.com',
       ],
     },
   ],
