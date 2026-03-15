@@ -95,38 +95,6 @@ export default function RE01DocumentControlForm({
 
     return matchedKey || null;
   };
-
-   const typed = data as {
-      industry_key?: string | null;
-      industryKey?: string | null;
-      industry_classification?: string | null;
-      industryClassification?: string | null;
-    };
-
-    const rawIndustry =
-      typed.industry_key ||
-      typed.industryKey ||
-      typed.industry_classification ||
-      typed.industryClassification ||
-      null;
-
-    if (!rawIndustry) return null;
-
-        if (HRG_MASTER_MAP.industries[rawIndustry]) {
-      return rawIndustry;
-    }
-
-    const matchedKey = Object.keys(HRG_MASTER_MAP.industries).find(
-      (key) => humanizeIndustryKey(key) === rawIndustry
-    );
-
-    if (matchedKey) {
-      return matchedKey;
-    }
-
-    const typed = data as { industry_key?: string | null; industryKey?: string | null };
-    return typed.industry_key || typed.industryKey || null;
-  };
   
   useEffect(() => {
     async function loadRiskEngModule() {
@@ -597,6 +565,7 @@ export default function RE01DocumentControlForm({
           </div>
         </div>
       </div>
+    </div>
       
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
     </>
