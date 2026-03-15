@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 type MemberRole = 'owner' | 'admin' | 'consultant' | 'viewer';
 
@@ -296,7 +297,7 @@ export default function AccountLifecyclePanel() {
       <div>
         <h2 className="text-lg font-semibold text-slate-900">Account & Organisation Lifecycle</h2>
         <p className="text-sm text-slate-600 mt-1">
-          Destructive actions are guarded by membership-first backend checks and require explicit confirmation.
+          Destructive actions are protected by membership-aware backend checks and explicit confirmation steps.
         </p>
       </div>
 
@@ -505,11 +506,15 @@ export default function AccountLifecyclePanel() {
                 title="Organisation cancellation backend endpoint is not yet enabled"
                 className="px-3 py-2 rounded-md border border-slate-300 text-slate-500 text-sm cursor-not-allowed"
               >
-                Cancel / Deactivate organisation (coming soon)
+                Cancel / Deactivate organisation
               </button>
             </div>
             <p className="text-xs text-slate-600">
-              Placeholder wired target: <code>/functions/v1/cancel-organisation</code> (enable backend endpoint before launch).
+              Organisation cancellation is currently handled by support during pilot. Contact{' '}
+              <a href={getSupportMailto()} className="underline text-slate-900 hover:text-slate-700">
+                {SUPPORT_CONFIG.email}
+              </a>
+              .
             </p>
           </>
         )}

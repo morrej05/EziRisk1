@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut } from 'lucide-react';
+import { LogOut, Shield } from 'lucide-react';
 import { canAccessAdmin, canAccessPlatformSettings, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
 
@@ -47,7 +47,7 @@ export default function PrimaryNavigation() {
     <nav className="bg-white border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-6">
             <Link
               to="/dashboard"
               className="flex items-center transition-opacity hover:opacity-80"
@@ -71,11 +71,20 @@ export default function PrimaryNavigation() {
               )}
             </Link>
 
-            {import.meta.env.DEV && user ? (
-              <div className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700">
-                role: {String(user.role)} · platform: {String((user as AuthUserWithPlatform).platform ?? user.is_platform_admin)}
-              </div>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {entitlementUser && canAccessAdmin(entitlementUser) && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 text-xs font-medium">
+                  <Shield className="h-3 w-3" />
+                  Admin
+                </span>
+              )}
+              {entitlementUser && canAccessPlatformSettings(entitlementUser) && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 text-white border border-slate-900 px-2.5 py-1 text-xs font-medium">
+                  <Shield className="h-3 w-3" />
+                  Platform Admin
+                </span>
+              )}
+            </div>
 
             <div className="flex items-center gap-1">
               {navItems.filter(item => item.show).map((item) => (

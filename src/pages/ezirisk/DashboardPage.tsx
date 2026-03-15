@@ -6,6 +6,8 @@ import { useAssessments } from '../../hooks/useAssessments';
 import type { AssessmentViewModel } from '../../hooks/useAssessments';
 import { useAuth } from '../../contexts/AuthContext';
 import AiInsightPanel from '../../components/ai/AiInsightPanel';
+import { getPlanDisplayName, getSubscriptionStatusDisplayName } from '../../utils/entitlements';
+import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -86,8 +88,17 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-600">Track assessments, reports, and pilot workspace activity.</p>
+        </div>
+        <a
+          href={getSupportMailto()}
+          className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          {SUPPORT_CONFIG.linkLabel}
+        </a>
       </div>
 
       <div className="mb-8 flex items-center gap-4 flex-wrap">
@@ -116,7 +127,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
           <p className="text-sm text-slate-500">Plan</p>
           <p className="text-base font-semibold text-slate-900 mt-1">
-            {organisation?.plan_id || 'N/A'} / {organisation?.subscription_status || 'inactive'}
+            {organisation ? `${getPlanDisplayName(organisation.plan_type)} / ${getSubscriptionStatusDisplayName(organisation.subscription_status)}` : 'N/A'}
           </p>
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 const legalLinks = [
   { to: '/privacy', label: 'Privacy Policy' },
@@ -15,15 +16,22 @@ interface LegalLinksProps {
 }
 
 export default function LegalLinks({ className, itemClassName }: LegalLinksProps) {
+  const linkClasses = itemClassName ?? 'text-neutral-400 hover:text-white transition-colors';
+
   return (
     <ul className={className ?? 'space-y-2'}>
       {legalLinks.map((link) => (
         <li key={link.to}>
-          <Link to={link.to} className={itemClassName ?? 'text-neutral-400 hover:text-white transition-colors'}>
+          <Link to={link.to} className={linkClasses}>
             {link.label}
           </Link>
         </li>
       ))}
+      <li>
+        <a href={getSupportMailto()} className={linkClasses}>
+          {SUPPORT_CONFIG.linkLabel}
+        </a>
+      </li>
     </ul>
   );
 }

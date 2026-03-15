@@ -6,7 +6,6 @@ import { supabase } from '../lib/supabase';
 import UserManagement from '../components/UserManagement';
 import PlanUsageWidget from '../components/PlanUsageWidget';
 import { INDUSTRY_SECTORS } from '../utils/industrySectors';
-import { getPlanDisplayName, getSubscriptionStatusDisplayName } from '../utils/entitlements';
 
 interface Survey {
   id: string;
@@ -360,11 +359,6 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </div>
-                {userRole === 'admin' && organisation && (
-                  <div className="text-xs text-slate-500 font-mono">
-                    Role: {userRole} | Platform Admin: {isPlatformAdmin ? 'true' : 'false'} | Plan: {getPlanDisplayName(organisation.plan_type)} | Sub: {getSubscriptionStatusDisplayName(organisation.subscription_status)}
-                  </div>
-                )}
               </div>
               {isPlatformAdmin && (
                 <button
