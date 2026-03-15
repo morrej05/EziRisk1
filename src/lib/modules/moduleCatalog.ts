@@ -486,6 +486,7 @@ export function normalizeOutcome(
 
 // Legacy RE keys that should normalize to canonical MODULE_CATALOG keys
 export const RE_MODULE_KEY_MAP: Record<string, string> = {
+  RE_01_DOCUMENT_CONTROL: 'RE_01_DOC_CONTROL',
   RE_10_PROCESS_RISK: 'RE_10_SITE_PHOTOS',
 };
 
