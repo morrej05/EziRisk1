@@ -61,7 +61,7 @@ export interface UserWithOrg extends User {
 }
 
 export function isOrgAdmin(user: User): boolean {
-  return user.role === 'admin';
+  return user.role === 'owner' || user.role === 'admin';
 }
 
 export function isPlatformAdmin(user: User): boolean {
