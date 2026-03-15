@@ -66,8 +66,31 @@ export default function RE01DocumentControlForm({
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [riskEngModuleNotFound, setRiskEngModuleNotFound] = useState(false);
 
-  const resolveIndustryKey = (data: unknown): string | null => {
-    if (!data || typeof data !== 'object') return null;
+   const typed = data as {
+      industry_key?: string | null;
+      industryKey?: string | null;
+      industry_classification?: string | null;
+      industryClassification?: string | null;
+    };
+
+    const rawIndustry =
+      typed.industry_key ||
+      typed.industryKey ||
+      typed.industry_classification ||
+      typed.industryClassification ||
+      null;
+
+    if (!rawIndustry) return null;
+
+    if (HRG_MASTER_MAP.industries[rawIndustry]) {
+      return rawIndustry;
+    }
+
+    const matchedKey = Object.keys(HRG_MASTER_MAP.industries).find(
+      (key) => humanizeIndustryKey(key) === rawIndustry
+    );
+
+    return matchedKey || null;
 
     const typed = data as { industry_key?: string | null; industryKey?: string | null };
     return typed.industry_key || typed.industryKey || null;
@@ -108,6 +131,9 @@ export default function RE01DocumentControlForm({
       return;
     }
 
+    const previousIndustryKey = industryKey;
+    setIndustryKey(newIndustryKey || null);
+    
     try {
       const { data: current, error: fetchError } = await supabase
         .from('module_instances')
@@ -136,8 +162,8 @@ export default function RE01DocumentControlForm({
 
       if (updateError) throw updateError;
 
-      setIndustryKey(newIndustryKey);
     } catch (err) {
+      setIndustryKey(previousIndustryKey);
       console.error('Error updating industry key:', err);
       alert('Failed to update industry classification');
     }
