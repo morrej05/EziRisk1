@@ -58,7 +58,7 @@ BEGIN
   ) VALUES (
     COALESCE(user_name || '''s Organisation', 'My Organisation'),
     'solo',
-    'fire_risk_engineering',
+    'both',
     0
   ) RETURNING id INTO new_org_id;
 
@@ -94,7 +94,7 @@ BEGIN
   ) VALUES (
     user_display_name || '''s Organisation',
     'solo',
-    'fire_risk_engineering',
+    'both',
     0
   ) RETURNING id INTO new_org_id;
 
