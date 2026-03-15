@@ -221,3 +221,174 @@ export const securityTrustContent: LegalDocumentContent = {
     },
   ],
 };
+
+export const acceptableUsePolicyContent: LegalDocumentContent = {
+  title: 'Acceptable Use Policy',
+  lastUpdated: 'Last updated: 18 March 2026',
+  intro: [
+    'EziRisk Acceptable Use Policy',
+  ],
+  sections: [
+    {
+      heading: '1. Purpose',
+      paragraphs: [
+        'This Acceptable Use Policy explains the rules for using the EziRisk platform.',
+        'EziRisk is provided to support legitimate professional activities relating to risk engineering, fire risk assessment, DSEAR, fire safety, and related risk management work.',
+        'By using the platform, you agree to use it lawfully, responsibly, and in accordance with this policy.',
+      ],
+    },
+    {
+      heading: '2. Permitted use',
+      paragraphs: [
+        'You may use EziRisk only for legitimate business and professional purposes, including:',
+      ],
+      bullets: [
+        'recording assessment information',
+        'managing actions and recommendations',
+        'generating professional documentation',
+        'administering authorised organisation accounts',
+      ],
+    },
+    {
+      heading: '3. Prohibited use',
+      paragraphs: [
+        'You must not use EziRisk to:',
+      ],
+      bullets: [
+        'break any applicable law or regulation',
+        'upload or distribute unlawful, harmful, defamatory, or fraudulent material',
+        'generate misleading, false, or deliberately manipulated reports',
+        'impersonate another user or share login credentials',
+        'attempt to gain unauthorised access to accounts, systems, or data',
+        'interfere with the operation, availability, or security of the platform',
+        'upload malicious code, malware, or harmful scripts',
+        'use the platform to harass, abuse, or threaten others',
+        'copy, scrape, reverse engineer, or exploit the platform beyond permitted use',
+      ],
+    },
+    {
+      heading: '4. Professional integrity',
+      paragraphs: [
+        'EziRisk is intended to support competent professionals.',
+        'Users must not use the platform to:',
+      ],
+      bullets: [
+        'misrepresent qualifications or competence',
+        'issue reports that have not been properly reviewed',
+        'conceal material findings',
+        'manipulate outputs in a way that could mislead clients, insurers, regulators, or other third parties',
+      ],
+    },
+    {
+      heading: '5. Account security',
+      paragraphs: [
+        'Each user must maintain their own account credentials.',
+        'Users must not:',
+      ],
+      bullets: [
+        'share accounts',
+        'allow unauthorised persons to access the platform',
+        'attempt to bypass role or organisation-based access controls',
+      ],
+    },
+    {
+      heading: '6. Data and content',
+      paragraphs: [
+        'You must only upload or enter data where you have the right to do so.',
+        'You remain responsible for the legality, accuracy, and appropriateness of any information, documents, or images entered into EziRisk.',
+      ],
+    },
+    {
+      heading: '7. Enforcement',
+      paragraphs: [
+        'The operator of EziRisk may suspend, restrict, or terminate access to the platform where this policy is breached or where misuse is suspected.',
+        'Serious cases may be reported to relevant authorities where appropriate.',
+      ],
+    },
+    {
+      heading: '8. Changes to this policy',
+      paragraphs: [
+        'This Acceptable Use Policy may be updated from time to time.',
+        'Continued use of the platform constitutes acceptance of the updated policy.',
+      ],
+    },
+  ],
+};
+
+export const subProcessorsInfrastructureContent: LegalDocumentContent = {
+  title: 'Sub-processors / Infrastructure',
+  lastUpdated: 'Last updated: 18 March 2026',
+  intro: [
+    'EziRisk Sub-processors / Infrastructure',
+  ],
+  sections: [
+    {
+      heading: '1. Purpose',
+      paragraphs: [
+        'This page explains the main third-party providers used to operate EziRisk.',
+        'EziRisk uses carefully selected service providers to support hosting, authentication, data storage, and related platform functionality.',
+      ],
+    },
+    {
+      heading: '2. Core infrastructure providers',
+      paragraphs: [
+        'EziRisk may use third-party providers for services including:',
+      ],
+      bullets: [
+        'cloud hosting infrastructure',
+        'authentication',
+        'database hosting',
+        'file storage',
+        'payment processing',
+        'analytics and error monitoring',
+        'email delivery',
+      ],
+    },
+    {
+      heading: '3. Current platform stack',
+      paragraphs: [
+        'The EziRisk platform currently relies on infrastructure and service providers including:',
+      ],
+      bullets: [
+        'Supabase – authentication, database, storage, backend services',
+        'Netlify – hosting and deployment',
+        'Stripe – subscription and payment processing, where applicable',
+      ],
+    },
+    {
+      heading: '4. How sub-processors are used',
+      paragraphs: [
+        'These providers are used only to the extent necessary to operate and improve the platform.',
+        'Typical processing activities may include:',
+      ],
+      bullets: [
+        'storing account and organisation data',
+        'authenticating users',
+        'storing generated files and documents',
+        'processing subscription payments',
+        'hosting application infrastructure',
+      ],
+    },
+    {
+      heading: '5. Data protection',
+      paragraphs: [
+        'Where third-party providers process personal data on behalf of EziRisk or customer organisations, appropriate contractual and technical safeguards are used.',
+        'Where required, international transfers are protected using appropriate legal mechanisms.',
+      ],
+    },
+    {
+      heading: '6. Changes to providers',
+      paragraphs: [
+        'EziRisk may update or replace infrastructure providers from time to time in order to operate, secure, or improve the platform.',
+        'This page may be updated to reflect material changes.',
+      ],
+    },
+    {
+      heading: '7. Contact',
+      paragraphs: [
+        'If you have questions about EziRisk infrastructure or data processing providers, please contact:',
+        'privacy@ezirisk.com',
+      ],
+    },
+  ],
+};
