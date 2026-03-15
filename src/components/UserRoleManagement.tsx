@@ -100,7 +100,7 @@ export default function UserRoleManagement() {
     switch (role) {
       case 'admin':
         return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'consultant':
+      case 'surveyor':
         return 'bg-slate-100 text-slate-800 border-slate-200';
       case 'viewer':
         return 'bg-green-100 text-green-800 border-green-200';
@@ -113,8 +113,8 @@ export default function UserRoleManagement() {
     switch (role) {
       case 'admin':
         return 'Admin';
-      case 'consultant':
-        return 'Consultant';
+      case 'surveyor':
+        return 'Surveyor';
       case 'viewer':
         return 'Viewer';
       default:
@@ -172,8 +172,8 @@ export default function UserRoleManagement() {
             <div className="text-sm text-blue-900">
               <p className="font-medium mb-1">Role Hierarchy</p>
               <ul className="space-y-1 text-blue-800">
-                <li><strong>Super Admin:</strong> Full platform access, can manage all settings and users</li>
-                <li><strong>Org Admin:</strong> Can manage users and surveys within organization</li>
+                <li><strong>Platform Admin:</strong> Full platform access, can manage all settings and users</li>
+                <li><strong>Admin:</strong> Can manage users and surveys within organization</li>
                 <li><strong>Surveyor:</strong> Can create and edit their own surveys</li>
               </ul>
             </div>
@@ -214,7 +214,7 @@ export default function UserRoleManagement() {
                       className="text-sm border border-slate-300 rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <option value="viewer">Viewer</option>
-                      <option value="consultant">Consultant</option>
+                      <option value="surveyor">Surveyor</option>
                       <option value="admin">Admin</option>
                     </select>
                   </td>

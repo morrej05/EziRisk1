@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
-type MemberRole = 'owner' | 'admin' | 'consultant' | 'viewer';
+type MemberRole = 'admin' | 'surveyor' | 'viewer';
 
 interface OrgMember {
   user_id: string;
@@ -30,9 +30,8 @@ interface UserProfileRow {
 }
 
 const ROLE_LABELS: Record<MemberRole, string> = {
-  owner: 'Owner',
   admin: 'Admin',
-  consultant: 'Consultant',
+  surveyor: 'Surveyor',
   viewer: 'Viewer',
 };
 
@@ -54,11 +53,11 @@ export default function AccountLifecyclePanel() {
   const [soloFlowPhrase, setSoloFlowPhrase] = useState('');
   const [soloFlowPassword, setSoloFlowPassword] = useState('');
 
-  const ownerCount = useMemo(() => members.filter((m) => m.role === 'owner').length, [members]);
+  const adminCount = useMemo(() => members.filter((m) => m.role === 'admin').length, [members]);
   const memberCount = members.length;
-  const canManageMembers = currentRole === 'owner' || currentRole === 'admin';
-  const isCurrentUserSoleOwner = currentRole === 'owner' && ownerCount <= 1;
-  const isCurrentUserSoloOwnerAndMember = currentRole === 'owner' && ownerCount === 1 && memberCount === 1;
+  const canManageMembers = currentRole === 'admin';
+  const isCurrentUserSoleOwner = currentRole === 'admin' && adminCount <= 1;
+  const isCurrentUserSoloOwnerAndMember = currentRole === 'admin' && adminCount === 1 && memberCount === 1;
   const soloConfirmationPhrase = 'CLOSE ORGANISATION AND DELETE ACCOUNT';
 
   const loadMembers = useCallback(async () => {
@@ -162,9 +161,9 @@ export default function AccountLifecyclePanel() {
   const removeMember = async (targetUserId: string, targetRole: MemberRole) => {
     if (!organisationId) return;
 
-    const isSoleOwnerRemoval = targetRole === 'owner' && ownerCount <= 1;
+    const isSoleOwnerRemoval = targetRole === 'admin' && adminCount <= 1;
     if (isSoleOwnerRemoval && !transferTargetId) {
-      setError('Ownership transfer is required before removing the sole owner.');
+      setError('At least one admin must remain before removing this user.');
       return;
     }
 
@@ -193,11 +192,11 @@ export default function AccountLifecyclePanel() {
 
   const transferOwnership = async () => {
     if (!organisationId || !transferTargetId) {
-      setError('Select a member before transferring ownership.');
+      setError('Select a member before transferring adminship.');
       return;
     }
 
-    if (!window.confirm('Transfer ownership to the selected member?')) {
+    if (!window.confirm('Transfer admin role to the selected member?')) {
       return;
     }
 
@@ -211,7 +210,7 @@ export default function AccountLifecyclePanel() {
       setTransferTargetId('');
       await loadMembers();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to transfer ownership');
+      setError(err instanceof Error ? err.message : 'Failed to transfer adminship');
     } finally {
       setWorking(false);
     }
@@ -250,7 +249,7 @@ export default function AccountLifecyclePanel() {
         await invokeLifecycleFunction('self-delete-account', {
           transfer_organisation_id: null,
           transfer_to_user_id: null,
-          workflow: 'solo_owner_close_org',
+          workflow: 'solo_admin_close_org',
           confirmation_phrase: soloFlowPhrase.trim(),
         });
         await supabase.auth.signOut();
@@ -270,7 +269,7 @@ export default function AccountLifecyclePanel() {
     }
 
     if (isCurrentUserSoleOwner && (!selfDeleteTransferOrgId || !selfDeleteTransferToUserId)) {
-      setError('Sole owner must transfer ownership before self-delete.');
+      setError('Sole admin must transfer adminship before self-delete.');
       return;
     }
 
@@ -355,7 +354,7 @@ export default function AccountLifecyclePanel() {
 
       <section className="space-y-3">
         <h3 className="text-base font-semibold text-slate-900">Ownership Transfer</h3>
-        <p className="text-sm text-slate-600">Required before removing or deleting a sole owner account.</p>
+        <p className="text-sm text-slate-600">Required before removing or deleting a sole admin account.</p>
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={transferTargetId}
@@ -373,12 +372,12 @@ export default function AccountLifecyclePanel() {
           </select>
           <button
             onClick={() => void transferOwnership()}
-            disabled={working || currentRole !== 'owner'}
+            disabled={working || currentRole !== 'admin'}
             className="px-3 py-2 rounded-md bg-slate-900 text-white text-sm disabled:opacity-60"
           >
-            Transfer ownership
+            Transfer adminship
           </button>
-          {currentRole !== 'owner' && <span className="text-xs text-slate-500">Only owners can transfer ownership.</span>}
+          {currentRole !== 'admin' && <span className="text-xs text-slate-500">Only admins can transfer adminship.</span>}
         </div>
       </section>
 
@@ -386,7 +385,7 @@ export default function AccountLifecyclePanel() {
         <h3 className="text-base font-semibold text-red-900">Danger Zone</h3>
         {isCurrentUserSoloOwnerAndMember && (
           <div className="rounded-md border border-red-300 bg-red-100 p-3 text-sm text-red-900 space-y-2">
-            <p className="font-semibold">You are the only active owner and only active member of this organisation.</p>
+            <p className="font-semibold">You are the only active admin and only active member of this organisation.</p>
             <p>Deleting your account will permanently close/deactivate this organisation in the same action.</p>
           </div>
         )}
@@ -397,7 +396,7 @@ export default function AccountLifecyclePanel() {
             <p>
               {isCurrentUserSoloOwnerAndMember
                 ? 'You cannot use member-removal transfer here. Use the dedicated close-organisation + account-delete workflow below.'
-                : 'You are the sole owner. Select a transfer target below before deleting your account.'}
+                : 'You are the sole admin. Select a transfer target below before deleting your account.'}
             </p>
           </div>
         )}
@@ -409,7 +408,7 @@ export default function AccountLifecyclePanel() {
               onChange={(e) => setSelfDeleteTransferToUserId(e.target.value)}
               className="px-3 py-2 border border-red-300 rounded-md text-sm"
             >
-              <option value="">Select new owner before self-delete</option>
+              <option value="">Select new admin before self-delete</option>
               {members
                 .filter((m) => m.user_id !== user?.id)
                 .map((member) => (

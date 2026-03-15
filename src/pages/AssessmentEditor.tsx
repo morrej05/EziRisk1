@@ -32,7 +32,7 @@ interface Response {
 export default function AssessmentEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, userProfile, organisation } = useAuth();
+  const { user, organisation } = useAuth();
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [responses, setResponses] = useState<Record<string, Response>>({});

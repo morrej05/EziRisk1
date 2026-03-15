@@ -127,12 +127,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return activeMemberships[0] ?? null;
   };
 
-  const mapLegacyRole = (role: string | null | undefined): UserRole | null => {
+  const normalizeRole = (role: string | null | undefined): UserRole | null => {
     if (!role) return null;
-    if (role === 'owner' || role === 'admin' || role === 'consultant' || role === 'viewer') {
-      return role;
+
+    switch (role) {
+      case 'admin':
+      case 'surveyor':
+      case 'viewer':
+        return role;
+      case 'owner':
+      case 'org_admin':
+      case 'super_admin':
+        return 'admin';
+      case 'consultant':
+      case 'user':
+        return 'surveyor';
+      default:
+        return null;
     }
-    return null;
   };
 
   const fetchDisclaimerStatus = async (userId: string) => {
@@ -224,8 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const resolvedMembership = resolveCurrentMembership(activeMemberships, profileOrganisationId);
 
       // Update user object with profile fields
-      const resolvedRole = mapLegacyRole((resolvedMembership?.role as string | null | undefined) ?? profile.role);
-      const resolvedOrganisationId = resolvedMembership?.organisation_id ?? null;
+      const resolvedRole = normalizeRole((resolvedMembership?.role as string | null | undefined) ?? profile.role);
+      const resolvedOrganisationId = resolvedMembership?.organisation_id ?? profileOrganisationId ?? null;
 
       console.log('[AuthContext] 🧭 Organisation resolution:', {
         profileOrganisationId,
@@ -236,22 +248,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!resolvedOrganisationId) {
-        console.warn('[AuthContext] ⛔ No active organisation membership found; failing closed for protected access');
+        console.warn('[AuthContext] ⛔ No organisation context found from membership or profile');
         setUser(createAppUser(authUser, {
           ...profile,
-          role: null,
+          role: resolvedRole,
           organisation_id: null,
         }));
         await fetchDisclaimerStatus(userId);
-        setRoleError('Active organisation membership required. Please contact your organisation admin.');
-        setUserRole(null);
-        setUserPlan(null);
-        setDisciplineType(null);
-        setBoltOns([]);
-        setMaxEditors(999);
-        setActiveEditors(1);
+        setRoleError('Organisation context is missing. Please contact support.');
+        setUserRole(resolvedRole);
+        setUserPlan(profile.plan as SubscriptionPlan);
+        setDisciplineType(profile.discipline_type as DisciplineType);
+        setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
+        setMaxEditors(profile.max_editors || 999);
+        setActiveEditors(profile.active_editors || 1);
         setIsPlatformAdmin(resolvePlatformAdmin(profile));
-        setCanEdit(false);
+        setCanEdit(profile.can_edit || false);
         setOrganisation(null);
         return;
       }
@@ -307,7 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(createAppUser(authUser, updatedProfile));
 
           // Use the updated profile
-          setUserRole(mapLegacyRole(resolvedMembership?.role as string | null | undefined));
+          setUserRole(normalizeRole((resolvedMembership?.role as string | null | undefined) ?? updatedProfile.role));
           setUserPlan(updatedProfile.plan as SubscriptionPlan);
           setDisciplineType(updatedProfile.discipline_type as DisciplineType);
           setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);
@@ -321,8 +333,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const orgData = {
               id: org.id,
               name: org.name,
-              plan_type: org.plan_type || org.plan_id || 'solo',
-              plan_id: org.plan_id || org.plan_type || 'solo',
+              plan_type: org.plan_type || org.plan_id || 'free',
+              plan_id: org.plan_id || org.plan_type || 'free',
               discipline_type: org.discipline_type,
               enabled_addons: Array.isArray(org.enabled_addons) ? org.enabled_addons : [],
               max_editors: org.max_editors || 0,
@@ -361,8 +373,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const orgData = {
           id: org.id,
           name: org.name,
-          plan_type: org.plan_type || org.plan_id || 'solo',
-          plan_id: org.plan_id || org.plan_type || 'solo',
+          plan_type: org.plan_type || org.plan_id || 'free',
+          plan_id: org.plan_id || org.plan_type || 'free',
           discipline_type: org.discipline_type,
           enabled_addons: Array.isArray(org.enabled_addons) ? org.enabled_addons : [],
           max_editors: org.max_editors || 0,

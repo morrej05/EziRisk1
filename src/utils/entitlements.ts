@@ -24,7 +24,7 @@
 export type PlanType = 'free' | 'core' | 'professional' | 'enterprise';
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'inactive';
-export type UserRole = 'owner' | 'admin' | 'consultant' | 'viewer';
+export type UserRole = 'admin' | 'surveyor' | 'viewer';
 
 export function isDev(): boolean {
   return import.meta.env.DEV === true;
@@ -61,7 +61,7 @@ export interface UserWithOrg extends User {
 }
 
 export function isOrgAdmin(user: User): boolean {
-  return user.role === 'owner' || user.role === 'admin';
+  return user.role === 'admin';
 }
 
 export function isPlatformAdmin(user: User): boolean {

@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../hooks/useTenant';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, Loader2, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { PLAN_FEATURES, getPlanDisplayName } from '../utils/entitlements';
+import { PLAN_FEATURES, canAccessAdmin, getPlanDisplayName, type User as EntitlementsUser } from '../utils/entitlements';
 import { PRICING, getDefaultRegion, formatPrice } from '../config/pricing';
 import { toggleDevForcePro } from '../utils/devFlags';
 
 export default function UpgradeSubscription() {
-  const { user, userRole, organisation, refreshUserRole } = useAuth();
+  const { user, organisation, refreshUserRole } = useAuth();
   const { tenant, refetch: refetchTenant } = useTenant();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -17,7 +17,21 @@ export default function UpgradeSubscription() {
   const region = getDefaultRegion();
   const pricing = PRICING[region];
 
-  if (userRole !== 'admin') {
+  const entitlementUser: EntitlementsUser | null = useMemo(() => (
+    user
+      ? {
+          id: user.id,
+          role: (user.role ?? 'viewer') as EntitlementsUser['role'],
+          is_platform_admin: Boolean(user.is_platform_admin),
+          platform: Boolean(user.platform),
+          can_edit: Boolean(user.can_edit),
+          name: user.user_metadata?.name ?? null,
+          organisation_id: user.organisation_id ?? null,
+        }
+      : null
+  ), [user]);
+
+  if (!entitlementUser || !canAccessAdmin(entitlementUser)) {
     navigate('/dashboard');
     return null;
   }
