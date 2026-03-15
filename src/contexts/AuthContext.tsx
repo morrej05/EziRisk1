@@ -16,11 +16,17 @@ interface AppUser extends User {
 }
 
 type ProfileRecord = {
+  plan?: string | null;
+  discipline_type?: DisciplineType | null;
+  bolt_ons?: string[] | null;
+  max_editors?: number | null;
+  active_editors?: number | null;
   role?: string | null;
   is_platform_admin?: boolean | null;
   can_edit?: boolean | null;
   organisation_id?: string | null;
   name?: string | null;
+  organisations?: OrganisationRecord | null;
 };
 
 type MembershipRecord = {
@@ -107,6 +113,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resolvePlatformAdmin = (profile: ProfileRecord | null): boolean => {
     return profile?.is_platform_admin === true;
+  };
+
+  const buildFallbackOrganisation = (
+    organisationId: string,
+    profile: ProfileRecord,
+    userRoleValue: UserRole | null
+  ): Organisation => {
+    const isAdmin = userRoleValue === 'admin' || resolvePlatformAdmin(profile);
+
+    return {
+      id: organisationId,
+      name: 'Your Organisation',
+      plan_type: profile.plan || 'free',
+      plan_id: profile.plan || 'free',
+      discipline_type: (profile.discipline_type as DisciplineType) || 'FIRE',
+      enabled_addons: Array.isArray(profile.bolt_ons) ? profile.bolt_ons : [],
+      max_editors: profile.max_editors || 0,
+      subscription_status: 'active',
+      permissions: {
+        can_manage_users: isAdmin,
+        can_edit_all_assessments: isAdmin,
+        can_access_billing: isAdmin,
+      },
+      settings: {
+        default_assessment_types: ['FRA'],
+        custom_risk_matrix: false,
+      },
+    };
   };
 
   const resolveCurrentMembership = (
@@ -288,8 +322,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }));
       await fetchDisclaimerStatus(userId);
 
-      // Check if organisation is missing and auto-create
-      if (!resolvedOrganisationId || !organisationRecord) {
+      // Auto-create organisation only when there is no organisation id context at all.
+      if (!resolvedOrganisationId) {
         console.log('[AuthContext] 🏥 Organisation missing - auto-healing...');
         try {
           const { data: newOrgId, error: rpcError } = await supabase.rpc('ensure_org_for_user', { user_id: userId });
@@ -357,6 +391,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('[AuthContext] ❌ Auto-heal failed:', autoHealError);
           setRoleError('Failed to create organisation. Please contact support.');
         }
+      } else if (!organisationRecord) {
+        console.warn('[AuthContext] ⚠️ Organisation record unavailable, using profile fallback context');
+        setOrganisation(buildFallbackOrganisation(resolvedOrganisationId, profile, resolvedRole));
       } else {
         // Organisation exists, use it
         // User object already updated above
