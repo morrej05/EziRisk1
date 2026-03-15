@@ -113,7 +113,7 @@ export default function NewAssessmentPage() {
         const payload = {
           organisationId: organisation.id,
           documentType: 'FRA' as const,
-          title: 'New Fire Risk Assessment',
+          title: 'Untitled FRA Site',
         };
         console.log('[NewAssessment] Creating FRA with payload:', payload);
         const documentId = await createDocument(payload);
@@ -126,7 +126,7 @@ export default function NewAssessmentPage() {
         const payload = {
           organisationId: organisation.id,
           documentType: 'FRA' as const,
-          title: 'New Fire + Explosion Assessment',
+          title: 'Untitled Fire + Explosion Site',
           enabledModules: ['FRA', 'DSEAR'],
         };
         console.log('[NewAssessment] Creating Fire + Explosion with payload:', payload);
@@ -140,7 +140,7 @@ export default function NewAssessmentPage() {
         const payload = {
           organisationId: organisation.id,
           documentType: 'FSD' as const,
-          title: 'New Fire Strategy',
+          title: 'Untitled Fire Strategy Site',
         };
         console.log('[NewAssessment] Creating FSD with payload:', payload);
         const documentId = await createDocument(payload);
@@ -153,7 +153,7 @@ export default function NewAssessmentPage() {
         const payload = {
           organisationId: organisation.id,
           documentType: 'DSEAR' as const,
-          title: 'New Explosive Atmospheres Assessment',
+          title: 'Untitled DSEAR Site',
         };
         console.log('[NewAssessment] Creating DSEAR with payload:', payload);
         const documentId = await createDocument(payload);
@@ -166,7 +166,7 @@ export default function NewAssessmentPage() {
         const payload = {
           organisationId: organisation.id,
           documentType: 'RE' as const,
-          title: 'New Risk Engineering Assessment',
+          title: 'Untitled Risk Engineering Site',
         };
         console.log('[NewAssessment] Creating RE with payload:', payload);
         const documentId = await createDocument(payload);

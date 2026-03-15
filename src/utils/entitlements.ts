@@ -312,19 +312,14 @@ export function canAccessPillarB(user: User, org?: Organisation | null): boolean
 }
 
 export function getPlanDisplayName(plan: PlanType | string): string {
-  const planStr = plan.toString().toLowerCase();
+  const planStr = plan.toString().trim().toLowerCase();
 
-  if (planStr === 'solo' || planStr === 'free') {
-    return 'Solo';
-  }
-  if (planStr === 'team' || planStr === 'professional' || planStr === 'pro' || planStr === 'core') {
-    return 'Team';
-  }
-  if (planStr === 'consultancy' || planStr === 'enterprise') {
-    return 'Consultancy';
-  }
+  if (planStr === 'solo' || planStr === 'free') return 'Free';
+  if (planStr === 'core') return 'Core';
+  if (planStr === 'team' || planStr === 'professional' || planStr === 'pro') return 'Professional';
+  if (planStr === 'consultancy' || planStr === 'enterprise') return 'Enterprise';
 
-  return 'Solo';
+  return 'Free';
 }
 
 export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): string {
@@ -338,7 +333,7 @@ export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): st
     case 'canceled':
       return 'Canceled';
     case 'inactive':
-      return 'Inactive';
+      return 'No active subscription';
     default:
       return 'Unknown';
   }
