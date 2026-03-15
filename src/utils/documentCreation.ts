@@ -54,7 +54,7 @@ export async function createDocument({
   const { data: document, error: docError } = await supabase
     .from('documents')
     .insert([documentData])
-    .select()
+    .select('id, organisation_id')
     .single();
 
   if (docError) {
@@ -73,6 +73,14 @@ export async function createDocument({
     console.error('[documentCreation.createDocument] Document creation failed - missing document/id:', document);
     throw new Error('Document creation failed - no ID generated');
   }
+
+  const resolvedOrganisationId = document.organisation_id || organisationId;
+
+  console.log('[documentCreation.createDocument] Resolved organisation context:', {
+    requestedOrganisationId: organisationId,
+    documentOrganisationId: document.organisation_id,
+    moduleInstancesOrganisationId: resolvedOrganisationId,
+  });
 
   console.log('[documentCreation.createDocument] Created document:', document.id, 'type:', documentType);
 
@@ -93,7 +101,7 @@ export async function createDocument({
   }
 
   const moduleInstances = moduleKeys.map((moduleKey) => ({
-    organisation_id: organisationId,
+    organisation_id: resolvedOrganisationId,
     document_id: document.id,
     module_key: moduleKey,
     module_scope: 'document',
