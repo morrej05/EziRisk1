@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 import OrganisationBranding from '../../components/OrganisationBranding';
 import AccountLifecyclePanel from '../../components/account/AccountLifecyclePanel';
 
@@ -32,14 +33,22 @@ export default function AdminPage() {
               Back to Dashboard
             </button>
             <div className="h-6 w-px bg-slate-300" />
-            <h1 className="text-3xl font-bold text-slate-900">Admin</h1>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">Admin</h1>
+              <p className="text-sm text-slate-600">Manage organisation settings, users, and lifecycle controls.</p>
+            </div>
           </div>
-          <button
-            onClick={() => navigate('/assessments')}
-            className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
-          >
-            Assessments
-          </button>
+          <div className="flex items-center gap-4">
+            <a href={getSupportMailto()} className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
+              {SUPPORT_CONFIG.linkLabel}
+            </a>
+            <button
+              onClick={() => navigate('/assessments')}
+              className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              Assessments
+            </button>
+          </div>
         </div>
 
         <div className="mb-6 border-b border-slate-200">
@@ -63,7 +72,7 @@ export default function AdminPage() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200">
           <div className="px-8 py-4 border-b border-slate-200 bg-slate-50">
             <p className="text-sm text-slate-600">
-              Platform API credentials and provider URLs are managed via environment variables and are not editable in-app.
+              Core platform credentials remain centrally managed. For pilot support requests, contact support via the link above.
             </p>
           </div>
 

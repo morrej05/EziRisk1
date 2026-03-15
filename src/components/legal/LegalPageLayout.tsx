@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { LegalDocumentContent } from '../../content/legalContent';
+import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 interface LegalPageLayoutProps {
   content: LegalDocumentContent;
@@ -41,9 +42,20 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
             ))}
           </div>
 
-          <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-600">
+          <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-600 space-y-2">
             <p>
               Return to <Link to="/" className="text-slate-900 underline hover:text-slate-700">EziRisk home</Link>.
+            </p>
+            <p>
+              Need help? Contact us at{' '}
+              <a href={getSupportMailto()} className="text-slate-900 underline hover:text-slate-700">
+                {SUPPORT_CONFIG.email}
+              </a>
+              {' '}or{' '}
+              <a href={getSupportMailto(SUPPORT_CONFIG.legalEmail)} className="text-slate-900 underline hover:text-slate-700">
+                {SUPPORT_CONFIG.legalEmail}
+              </a>
+              .
             </p>
           </div>
         </div>
