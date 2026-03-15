@@ -261,11 +261,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log('[AuthContext] ✅ Successfully fetched profile:', profile);
 
-      const activeMemberships = (memberships ?? []) as MembershipRecord[];
-      const profileOrganisationId = profile.organisation_id ?? null;
-      const profileMembership = profileOrganisationId
+      let activeMemberships = (memberships ?? []) as MembershipRecord[];
+      let profileOrganisationId = profile.organisation_id ?? null;
+      let profileMembership = profileOrganisationId
         ? activeMemberships.find((item) => item.organisation_id === profileOrganisationId)
         : undefined;
+
+      if (!profileMembership) {
+        console.log('[AuthContext] 🏥 Missing active membership for profile org, attempting auto-heal...');
+        const { error: healError } = await supabase.rpc('ensure_org_for_user', { user_id: userId });
+
+        if (healError) {
+          console.warn('[AuthContext] Membership auto-heal warning:', healError.message);
+        } else {
+          const [{ data: healedMemberships }, { data: healedProfile }] = await Promise.all([
+            supabase
+              .from('organisation_members')
+              .select('role, organisation_id, status, created_at')
+              .eq('user_id', userId)
+              .eq('status', 'active')
+              .order('created_at', { ascending: true }),
+            supabase
+              .from('user_profiles')
+              .select('organisation_id')
+              .eq('id', userId)
+              .maybeSingle(),
+          ]);
+
+          activeMemberships = (healedMemberships ?? []) as MembershipRecord[];
+          profileOrganisationId = healedProfile?.organisation_id ?? profileOrganisationId;
+          profileMembership = profileOrganisationId
+            ? activeMemberships.find((item) => item.organisation_id === profileOrganisationId)
+            : undefined;
+        }
+      }
+
       const fallbackMembership = activeMemberships[0];
       const resolvedMembership = resolveCurrentMembership(activeMemberships, profileOrganisationId);
 
