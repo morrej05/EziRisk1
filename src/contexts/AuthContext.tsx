@@ -5,8 +5,6 @@ import { UserRole, SubscriptionPlan, DisciplineType } from '../utils/permissions
 import { Organisation } from '../utils/entitlements';
 import { CURRENT_DISCLAIMER_VERSION } from '../config/legal';
 
-type AuthUserWithPlatform = User & { platform?: boolean };
-
 // Enriched user object that combines auth + profile data
 interface AppUser extends User {
   role?: UserRole;
@@ -94,19 +92,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const createAppUser = (authUser: User | null, profile: ProfileRecord | null): AppUser | null => {
     if (!authUser) return null;
 
+    const platformAdmin = profile?.is_platform_admin === true;
+
     return {
       ...authUser,
       role: profile?.role,
-      is_platform_admin: profile?.is_platform_admin || false,
-      platform: ((authUser as AuthUserWithPlatform)?.platform === true) || profile?.is_platform_admin === true,
+      is_platform_admin: platformAdmin,
+      platform: platformAdmin,
       can_edit: profile?.can_edit || false,
       organisation_id: profile?.organisation_id,
       name: profile?.name || null,
     };
   };
 
-  const resolvePlatformAdmin = (authUser: User, profile: ProfileRecord | null): boolean => {
-    return ((authUser as AuthUserWithPlatform)?.platform === true) || profile?.is_platform_admin === true;
+  const resolvePlatformAdmin = (profile: ProfileRecord | null): boolean => {
+    return profile?.is_platform_admin === true;
+  };
+
+  const resolveCurrentMembership = (
+    activeMemberships: MembershipRecord[],
+    profileOrganisationId: string | null
+  ): MembershipRecord | null => {
+    if (!activeMemberships.length) {
+      return null;
+    }
+
+    if (profileOrganisationId) {
+      const profileMatchedMembership = activeMemberships.find((item) => item.organisation_id === profileOrganisationId);
+      if (profileMatchedMembership) {
+        return profileMatchedMembership;
+      }
+    }
+
+    return activeMemberships[0] ?? null;
   };
 
   const mapLegacyRole = (role: string | null | undefined): UserRole | null => {
@@ -203,7 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ? activeMemberships.find((item) => item.organisation_id === profileOrganisationId)
         : undefined;
       const fallbackMembership = activeMemberships[0];
-      const resolvedMembership = profileMembership ?? fallbackMembership ?? null;
+      const resolvedMembership = resolveCurrentMembership(activeMemberships, profileOrganisationId);
 
       // Update user object with profile fields
       const resolvedRole = mapLegacyRole((resolvedMembership?.role as string | null | undefined) ?? profile.role);
@@ -232,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBoltOns([]);
         setMaxEditors(999);
         setActiveEditors(1);
-        setIsPlatformAdmin(resolvePlatformAdmin(authUser, profile));
+        setIsPlatformAdmin(resolvePlatformAdmin(profile));
         setCanEdit(false);
         setOrganisation(null);
         return;
@@ -295,7 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);
           setMaxEditors(updatedProfile.max_editors || 999);
           setActiveEditors(updatedProfile.active_editors || 1);
-          setIsPlatformAdmin(resolvePlatformAdmin(authUser, updatedProfile));
+          setIsPlatformAdmin(resolvePlatformAdmin(updatedProfile));
           setCanEdit(updatedProfile.can_edit || false);
 
           if (updatedProfile.organisations) {
@@ -336,7 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
         setMaxEditors(profile.max_editors || 999);
         setActiveEditors(profile.active_editors || 1);
-        setIsPlatformAdmin(resolvePlatformAdmin(authUser, profile));
+        setIsPlatformAdmin(resolvePlatformAdmin(profile));
         setCanEdit(profile.can_edit || false);
 
         const org = organisationRecord as OrganisationRecord;
