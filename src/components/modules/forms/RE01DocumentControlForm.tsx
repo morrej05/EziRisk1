@@ -82,7 +82,7 @@ export default function RE01DocumentControlForm({
 
     if (!rawIndustry) return null;
 
-    if (HRG_MASTER_MAP.industries[rawIndustry]) {
+        if (HRG_MASTER_MAP.industries[rawIndustry]) {
       return rawIndustry;
     }
 
@@ -90,7 +90,9 @@ export default function RE01DocumentControlForm({
       (key) => humanizeIndustryKey(key) === rawIndustry
     );
 
-    return matchedKey || null;
+    if (matchedKey) {
+      return matchedKey;
+    }
 
     const typed = data as { industry_key?: string | null; industryKey?: string | null };
     return typed.industry_key || typed.industryKey || null;
