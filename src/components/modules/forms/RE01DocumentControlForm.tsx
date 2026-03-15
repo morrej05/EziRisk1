@@ -66,6 +66,13 @@ export default function RE01DocumentControlForm({
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [riskEngModuleNotFound, setRiskEngModuleNotFound] = useState(false);
 
+  const resolveIndustryKey = (data: unknown): string | null => {
+    if (!data || typeof data !== 'object') return null;
+
+    const typed = data as { industry_key?: string | null; industryKey?: string | null };
+    return typed.industry_key || typed.industryKey || null;
+  };
+  
   useEffect(() => {
     async function loadRiskEngModule() {
       try {
@@ -80,7 +87,7 @@ export default function RE01DocumentControlForm({
 
         if (instances) {
           setRiskEngInstanceId(instances.id);
-          setIndustryKey(instances.data?.industry_key || null);
+          setIndustryKey(resolveIndustryKey(instances.data));
           setRiskEngModuleNotFound(false);
         } else {
           setRiskEngInstanceId(null);
@@ -110,11 +117,21 @@ export default function RE01DocumentControlForm({
 
       if (fetchError) throw fetchError;
 
-      const ensured = ensureRatingsObject({ ...current?.data, industry_key: newIndustryKey });
+      const currentData = current?.data ?? {};
+      const ensured = ensureRatingsObject({
+        industry_key: newIndustryKey,
+        ratings: currentData.ratings,
+      });
+
+      const updatedData = {
+        ...currentData,
+        ...ensured,
+        industry_key: newIndustryKey,
+      };
 
       const { error: updateError } = await supabase
         .from('module_instances')
-        .update({ data: ensured })
+        .update({ data: updatedData })
         .eq('id', riskEngInstanceId);
 
       if (updateError) throw updateError;
