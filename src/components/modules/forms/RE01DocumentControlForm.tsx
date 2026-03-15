@@ -15,6 +15,7 @@ interface Document {
 interface ModuleInstance {
   id: string;
   document_id: string;
+  organisation_id?: string;
   outcome: string | null;
   assessor_notes: string;
   data: Record<string, any>;
@@ -118,13 +119,13 @@ export default function RE01DocumentControlForm({
           setRiskEngInstanceId(riskEngInstance.id);
           setIndustryKey(resolveIndustryKey(riskEngInstance.data) || fallbackIndustryKey);
           setRiskEngModuleNotFound(false);
+           return;
         }
-      } catch (err) {
-        console.error('Error loading RISK_ENGINEERING module:', err);
-        setRiskEngModuleNotFound(true);
-         return;
-      }
-      
+
+        if (!organisationId) {
+          throw new Error('Cannot create RISK_ENGINEERING module without organisation_id');
+        }
+        
         const ensured = ensureRatingsObject({
           industry_key: fallbackIndustryKey,
           ratings: undefined,
@@ -161,7 +162,7 @@ export default function RE01DocumentControlForm({
     }
 
     loadRiskEngModule();
-  }, [moduleInstance.document_id]);
+  }, [moduleInstance.document_id, moduleInstance.organisation_id]);
 
   const handleIndustryChange = async (newIndustryKey: string) => {
     if (!riskEngInstanceId) {
