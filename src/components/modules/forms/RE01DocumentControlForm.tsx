@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { HRG_MASTER_MAP, humanizeIndustryKey } from '../../../lib/re/reference/hrgMasterMap';
@@ -63,9 +63,15 @@ export default function RE01DocumentControlForm({
     reference_documents_reviewed: d.reference_documents_reviewed || [],
   });
 
-    const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
+  const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [riskEngModuleNotFound, setRiskEngModuleNotFound] = useState(false);
+  const previousIndustryKeyRef = useRef<string | null>(null);
+  const organisationId = moduleInstance.organisation_id || null;
+
+  const logIndustryDebug = (message: string, details?: Record<string, unknown>) => {
+    console.info('[RE01 industry selector]', message, details || {});
+  };
 
   const resolveIndustryKey = (data: unknown): string | null => {
     if (!data || typeof data !== 'object') return null;
@@ -116,6 +122,11 @@ export default function RE01DocumentControlForm({
         const fallbackIndustryKey = resolveIndustryKey(legacyRe01Instance?.data);
 
         if (riskEngInstance) {
+          logIndustryDebug('Loaded canonical RISK_ENGINEERING instance', {
+            riskEngInstanceId: riskEngInstance.id,
+            currentRowData: riskEngInstance.data,
+            fallbackIndustryKey,
+          });
           setRiskEngInstanceId(riskEngInstance.id);
           setIndustryKey(resolveIndustryKey(riskEngInstance.data) || fallbackIndustryKey);
           setRiskEngModuleNotFound(false);
@@ -164,8 +175,32 @@ export default function RE01DocumentControlForm({
     loadRiskEngModule();
   }, [moduleInstance.document_id, moduleInstance.organisation_id]);
 
+  useEffect(() => {
+    const previous = previousIndustryKeyRef.current;
+    logIndustryDebug('industryKey state changed', {
+      previousIndustryKey: previous,
+      nextIndustryKey: industryKey,
+    });
+
+    if (previous && !industryKey) {
+      logIndustryDebug('industryKey was reset to null/empty', {
+        previousIndustryKey: previous,
+        nextIndustryKey: industryKey,
+      });
+    }
+
+    previousIndustryKeyRef.current = industryKey;
+  }, [industryKey]);
+
   const handleIndustryChange = async (newIndustryKey: string) => {
+    logIndustryDebug('handleIndustryChange fired', {
+      newIndustryKey,
+      riskEngInstanceId,
+      previousIndustryKey: industryKey,
+    });
+
     if (!riskEngInstanceId) {
+      logIndustryDebug('Industry change ignored because no RISK_ENGINEERING instance id is present');
       return;
     }
 
@@ -175,13 +210,25 @@ export default function RE01DocumentControlForm({
     try {
       const { data: current, error: fetchError } = await supabase
         .from('module_instances')
-        .select('data')
-        .eq('id', riskEngInstanceId)
+        .select('id, data')
+        .eq('document_id', moduleInstance.document_id)
+        .eq('module_key', 'RISK_ENGINEERING')
         .maybeSingle();
 
       if (fetchError) throw fetchError;
 
+      if (!current?.id) {
+        throw new Error('Could not locate canonical RISK_ENGINEERING row before update');
+      }
+
       const currentData = current?.data ?? {};
+      setRiskEngInstanceId(current.id);
+
+      logIndustryDebug('Fetched current RISK_ENGINEERING row before update', {
+        riskEngInstanceId: current.id,
+        currentRowData: currentData,
+      });
+
       const ensured = ensureRatingsObject({
         industry_key: newIndustryKey,
         ratings: currentData.ratings,
@@ -193,12 +240,37 @@ export default function RE01DocumentControlForm({
         industry_key: newIndustryKey,
       };
 
-      const { error: updateError } = await supabase
+      logIndustryDebug('Prepared updatedData payload for Supabase', { updatedData });
+
+      const { data: updatedRows, error: updateError } = await supabase
         .from('module_instances')
         .update({ data: updatedData })
-        .eq('id', riskEngInstanceId);
+        .eq('document_id', moduleInstance.document_id)
+        .eq('module_key', 'RISK_ENGINEERING')
+        .select('id, data');
 
       if (updateError) throw updateError;
+
+      logIndustryDebug('Supabase update result', {
+        updatedRows,
+      });
+
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error('RISK_ENGINEERING update did not affect any rows');
+      }
+
+      const { data: persistedRow, error: persistedReadError } = await supabase
+        .from('module_instances')
+        .select('id, data')
+        .eq('document_id', moduleInstance.document_id)
+        .eq('module_key', 'RISK_ENGINEERING')
+        .maybeSingle();
+
+      if (persistedReadError) throw persistedReadError;
+
+      logIndustryDebug('Post-update re-read of canonical RISK_ENGINEERING row', {
+        persistedRow,
+      });
 
     } catch (err) {
       setIndustryKey(previousIndustryKey);
