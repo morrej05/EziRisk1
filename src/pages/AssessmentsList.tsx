@@ -19,7 +19,7 @@ interface Assessment {
 }
 
 export default function AssessmentsList() {
-  const { user, userProfile, organisation } = useAuth();
+  const { user, organisation } = useAuth();
   const navigate = useNavigate();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [isLoading, setIsLoading] = useState(true);

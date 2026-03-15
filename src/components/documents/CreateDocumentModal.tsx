@@ -423,7 +423,7 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">Author Role</label>
               <div className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-700 capitalize">
-                {userRole || 'consultant'}
+                {userRole || 'surveyor'}
               </div>
             </div>
           </div>

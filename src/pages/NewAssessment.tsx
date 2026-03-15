@@ -9,7 +9,7 @@ import { getAssessmentDisplayName } from '../utils/displayNames';
 import { getAvailableJurisdictions, normalizeJurisdiction } from '../lib/jurisdictions';
 
 export default function NewAssessment() {
-  const { user, userProfile, organisation } = useAuth();
+  const { user, organisation } = useAuth();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -19,7 +19,7 @@ export default function NewAssessment() {
     site_address: '',
     client_name: '',
     client_address: '',
-    assessor_name: userProfile?.name || '',
+    assessor_name: user?.user_metadata?.name || user?.email || '',
     assessor_company: '',
     assessment_date: new Date().toISOString().split('T')[0],
   });

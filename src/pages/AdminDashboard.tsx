@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Eye, Edit, Trash2, RefreshCw, Lock, Filter, Download, Shield, Users, ArrowLeft, CreditCard } from 'lucide-react';
@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import UserManagement from '../components/UserManagement';
 import PlanUsageWidget from '../components/PlanUsageWidget';
 import { INDUSTRY_SECTORS } from '../utils/industrySectors';
+import { canAccessAdmin, type User as EntitlementsUser } from '../utils/entitlements';
 
 interface Survey {
   id: string;
@@ -26,7 +27,7 @@ interface Survey {
 }
 
 export default function AdminDashboard() {
-  const { signOut, user, userRole, isPlatformAdmin, organisation, refreshUserRole } = useAuth();
+  const { signOut, user, isPlatformAdmin, refreshUserRole } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'users' | 'surveys'>('surveys');
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -35,6 +36,21 @@ export default function AdminDashboard() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string | null>(null);
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
+
+  const entitlementUser: EntitlementsUser | null = useMemo(() => (
+    user
+      ? {
+          id: user.id,
+          role: (user.role ?? 'viewer') as EntitlementsUser['role'],
+          is_platform_admin: Boolean(user.is_platform_admin),
+          platform: Boolean(user.platform),
+          can_edit: Boolean(user.can_edit),
+          name: user.user_metadata?.name ?? null,
+          organisation_id: user.organisation_id ?? null,
+        }
+      : null
+  ), [user]);
+
 
   // Filter states
   const [companyFilter, setCompanyFilter] = useState('');
@@ -56,12 +72,12 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (userRole !== 'admin') {
+    if (!entitlementUser || !canAccessAdmin(entitlementUser)) {
       navigate('/dashboard');
       return;
     }
     fetchSurveys();
-  }, [userRole, navigate]);
+  }, [entitlementUser, navigate]);
 
   useEffect(() => {
     applyFiltersAndSort();
@@ -315,7 +331,7 @@ export default function AdminDashboard() {
     });
   };
 
-  if (userRole !== 'admin') {
+  if (!entitlementUser || !canAccessAdmin(entitlementUser)) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-lg shadow-lg border border-slate-200 p-8 max-w-md w-full text-center">

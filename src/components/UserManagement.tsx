@@ -184,7 +184,7 @@ export default function UserManagement() {
     switch (role) {
       case 'admin':
         return 'bg-red-100 text-red-700 border-red-300';
-      case 'consultant':
+      case 'surveyor':
         return 'bg-blue-100 text-blue-700 border-blue-300';
       case 'viewer':
         return 'bg-slate-100 text-slate-700 border-slate-300';
@@ -284,7 +284,7 @@ export default function UserManagement() {
                         className="text-sm border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-slate-500"
                       >
                         <option value="viewer">Viewer</option>
-                        <option value="consultant">Consultant</option>
+                        <option value="surveyor">Surveyor</option>
                         <option value="admin">Admin</option>
                       </select>
                       <button
@@ -419,7 +419,7 @@ export default function UserManagement() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-900"
                 >
                   <option value="viewer">Viewer - Read-only access</option>
-                  <option value="consultant">Consultant - Can create and edit surveys</option>
+                  <option value="surveyor">Surveyor - Can create and edit surveys</option>
                   <option value="admin">Admin - Full access</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">

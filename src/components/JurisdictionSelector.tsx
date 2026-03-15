@@ -25,13 +25,13 @@ export function JurisdictionSelector({
   onUpdate,
   className = '',
 }: JurisdictionSelectorProps) {
-  const { userProfile } = useAuth();
+  const { userRole } = useAuth();
   const isDsearContext = product === 'DSEAR';
 
   const [jurisdiction, setJurisdiction] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'org_admin';
+  const isAdmin = userRole === 'admin';
 
   const isDisabled =
     status === 'issued' ||
@@ -74,7 +74,7 @@ export function JurisdictionSelector({
 
     setSaving(true);
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
   .from('documents')
   .update({ jurisdiction: newJurisdiction })
   .eq('id', documentId)
