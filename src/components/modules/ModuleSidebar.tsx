@@ -8,6 +8,7 @@ import {
   type ModuleInstance,
 } from '../../lib/modules/moduleDisplay';
 import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
+import { isModuleCompleteForUi } from '../../utils/moduleCompletion';
 
 interface ModuleSidebarProps {
   modules: ModuleInstance[];
@@ -126,6 +127,7 @@ export default function ModuleSidebar({
   const ModuleNavItem = ({ module, productTag }: { module: ModuleInstance; productTag?: 'fire' | 'explosion' | null }) => {
     const isDerived = isDerivedModule(module.module_key);
     const storedOutcome = module.data?.section_assessment_outcome ?? module.outcome ?? '';
+    const isCompleted = isModuleCompleteForUi(module);
 
     return (
     <button
@@ -139,9 +141,9 @@ export default function ModuleSidebar({
     >
       <div className="flex items-start gap-2.5 md:flex-col md:items-center md:gap-1 lg:flex-row lg:items-start lg:gap-2.5">
         <div className="flex-shrink-0 mt-0.5 md:mt-0">
-          {!isDerived && storedOutcome && storedOutcome !== 'info_gap' ? (
+          {!isDerived && isCompleted && storedOutcome !== 'info_gap' ? (
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          ) : !isDerived && storedOutcome === 'info_gap' ? (
+          ) : !isDerived && isCompleted && storedOutcome === 'info_gap' ? (
             <AlertCircle className="w-4 h-4 text-blue-600" />
           ) : !isDerived ? (
             <Circle className="w-4 h-4 text-neutral-300" />

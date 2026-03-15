@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { withResolvedSectionAssessment } from '../../utils/moduleAssessment';
+import { isModuleCompleteForUi } from '../../utils/moduleCompletion';
 import {
   sortModulesByOrder,
   getModuleKeysForDocType,
@@ -272,7 +273,7 @@ export default function DocumentWorkspace() {
         localStorage.setItem(`ezirisk:lastModule:${id}`, requestedModule.id);
       }
     } else {
-      const firstIncomplete = modules.find((m) => !m.completed_at);
+      const firstIncomplete = modules.find((m) => !isModuleCompleteForUi(m));
       const targetModule = firstIncomplete ?? modules[0];
 
       if (selectedModuleId !== targetModule.id) setSelectedModuleId(targetModule.id);

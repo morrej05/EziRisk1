@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ArrowLeft, FileText, Calendar, User, CheckCircle, AlertCircle, Clock, FileDown, Edit3, AlertTriangle, Image, List, FileCheck, Shield, Package, Trash2, PlayCircle, Circle, Filter } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { withResolvedSectionAssessment } from '../../utils/moduleAssessment';
+import { isModuleCompleteForUi } from '../../utils/moduleCompletion';
 import { getModuleName, getModuleNavigationPath as getModulePath, getReModulesForDocument } from '../../lib/modules/moduleCatalog';
 import { buildModuleSections, getModuleCode, getModuleDisplayName, isDerivedModule } from '../../lib/modules/moduleDisplay';
 import { buildFraPdf } from '../../lib/pdf/buildFraPdf';
@@ -497,7 +498,7 @@ const handleDownloadDefencePack = async () => {
     if (!id) return;
 
     // Find first incomplete REQUIRED module
-    const firstIncomplete = modules.find(m => !m.completed_at);
+    const firstIncomplete = modules.find((m) => !isModuleCompleteForUi(m));
 
     if (firstIncomplete) {
       // Don't save to localStorage - let workspace save it when loaded
@@ -745,10 +746,10 @@ try {
     }
   };
 
-  const completedModules = modules.filter((m) => m.outcome !== null || m.completed_at !== null).length;
+  const completedModules = modules.filter((m) => isModuleCompleteForUi(m)).length;
   const totalModules = modules.length;
   const completionPercentage = totalModules > 0 ? Math.round((completedModules / totalModules) * 100) : 0;
-  const firstIncomplete = modules.find(m => !m.completed_at);
+  const firstIncomplete = modules.find((m) => !isModuleCompleteForUi(m));
 
   if (documentNotFound) {
     return (
@@ -1482,9 +1483,9 @@ try {
                             {/* Left: Icon + Name */}
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <div className="flex-shrink-0">
-                                {!isDerived && module.outcome && module.outcome !== 'info_gap' ? (
+                                {!isDerived && isModuleCompleteForUi(module) && module.outcome !== 'info_gap' ? (
                                   <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                ) : !isDerived && module.outcome === 'info_gap' ? (
+                                ) : !isDerived && isModuleCompleteForUi(module) && module.outcome === 'info_gap' ? (
                                   <AlertCircle className="w-5 h-5 text-blue-600" />
                                 ) : !isDerived ? (
                                   <Circle className="w-5 h-5 text-neutral-300" />
