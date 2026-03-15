@@ -5,6 +5,8 @@ const legalLinks = [
   { to: '/terms', label: 'Terms of Use' },
   { to: '/disclaimer', label: 'Professional Liability Disclaimer' },
   { to: '/security', label: 'Security & Trust' },
+  { to: '/acceptable-use', label: 'Acceptable Use Policy' },
+  { to: '/subprocessors', label: 'Sub-processors / Infrastructure' },
 ];
 
 interface LegalLinksProps {

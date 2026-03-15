@@ -41,6 +41,8 @@ import PrivacyPolicyPage from './pages/legal/PrivacyPolicyPage';
 import TermsOfUsePage from './pages/legal/TermsOfUsePage';
 import ProfessionalLiabilityDisclaimerPage from './pages/legal/ProfessionalLiabilityDisclaimerPage';
 import SecurityTrustPage from './pages/legal/SecurityTrustPage';
+import AcceptableUsePolicyPage from './pages/legal/AcceptableUsePolicyPage';
+import SubProcessorsInfrastructurePage from './pages/legal/SubProcessorsInfrastructurePage';
 
 function App() {
   return (
@@ -58,6 +60,8 @@ function App() {
           <Route path="/terms" element={<TermsOfUsePage />} />
           <Route path="/disclaimer" element={<ProfessionalLiabilityDisclaimerPage />} />
           <Route path="/security" element={<SecurityTrustPage />} />
+          <Route path="/acceptable-use" element={<AcceptableUsePolicyPage />} />
+          <Route path="/subprocessors" element={<SubProcessorsInfrastructurePage />} />
           <Route
             path="/legal/disclaimer"
             element={
