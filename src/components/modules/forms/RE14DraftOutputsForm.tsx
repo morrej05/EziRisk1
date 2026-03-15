@@ -125,11 +125,12 @@ export default function RE14DraftOutputsForm({
           .from('module_instances')
           .select('module_key, data')
           .eq('document_id', moduleInstance.document_id)
-          .in('module_key', ['RE_01_DOCUMENT_CONTROL', 'RISK_ENGINEERING', 'RE_13_RECOMMENDATIONS']);
+          .in('module_key', ['RE_01_DOC_CONTROL', 'RE_01_DOCUMENT_CONTROL', 'RISK_ENGINEERING', 'RE_13_RECOMMENDATIONS']);
 
         if (error) throw error;
 
-        const re01 = modules.find(m => m.module_key === 'RE_01_DOCUMENT_CONTROL');
+        const re01 = modules.find(m => m.module_key === 'RE_01_DOC_CONTROL')
+          ?? modules.find(m => m.module_key === 'RE_01_DOCUMENT_CONTROL');
         const riskEng = modules.find(m => m.module_key === 'RISK_ENGINEERING');
         const recommendations = modules.find(m => m.module_key === 'RE_13_RECOMMENDATIONS');
 
