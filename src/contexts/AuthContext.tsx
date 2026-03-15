@@ -25,6 +25,13 @@ type ProfileRecord = {
   name?: string | null;
 };
 
+type MembershipRecord = {
+  role?: string | null;
+  organisation_id: string;
+  status: string;
+  created_at?: string;
+};
+
 type OrganisationRecord = {
   id: string;
   name: string;
@@ -91,11 +98,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...authUser,
       role: profile?.role,
       is_platform_admin: profile?.is_platform_admin || false,
-      platform: (authUser as AuthUserWithPlatform)?.platform === true,
+      platform: ((authUser as AuthUserWithPlatform)?.platform === true) || profile?.is_platform_admin === true,
       can_edit: profile?.can_edit || false,
       organisation_id: profile?.organisation_id,
       name: profile?.name || null,
     };
+  };
+
+  const resolvePlatformAdmin = (authUser: User, profile: ProfileRecord | null): boolean => {
+    return ((authUser as AuthUserWithPlatform)?.platform === true) || profile?.is_platform_admin === true;
   };
 
   const mapLegacyRole = (role: string | null | undefined): UserRole | null => {
@@ -131,14 +142,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRoleError(null);
       console.log('[AuthContext] 🔍 Fetching user profile for:', userId, userEmail);
 
-      const { data: membership, error: membershipError } = await supabase
+      const { data: memberships, error: membershipError } = await supabase
         .from('organisation_members')
-        .select('role, organisation_id, status')
+        .select('role, organisation_id, status, created_at')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: true });
 
       if (membershipError) {
         console.warn('[AuthContext] Membership fetch warning:', membershipError.message);
@@ -188,9 +197,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log('[AuthContext] ✅ Successfully fetched profile:', profile);
 
+      const activeMemberships = (memberships ?? []) as MembershipRecord[];
+      const profileOrganisationId = profile.organisation_id ?? null;
+      const profileMembership = profileOrganisationId
+        ? activeMemberships.find((item) => item.organisation_id === profileOrganisationId)
+        : undefined;
+      const fallbackMembership = activeMemberships[0];
+      const resolvedMembership = profileMembership ?? fallbackMembership ?? null;
+
       // Update user object with profile fields
-      const resolvedRole = mapLegacyRole((membership?.role as string | null | undefined) ?? profile.role);
-      const resolvedOrganisationId = membership?.organisation_id ?? null;
+      const resolvedRole = mapLegacyRole((resolvedMembership?.role as string | null | undefined) ?? profile.role);
+      const resolvedOrganisationId = resolvedMembership?.organisation_id ?? null;
+
+      console.log('[AuthContext] 🧭 Organisation resolution:', {
+        profileOrganisationId,
+        activeMembershipCount: activeMemberships.length,
+        usedProfileOrganisationMembership: Boolean(profileMembership),
+        fallbackMembershipOrganisationId: fallbackMembership?.organisation_id ?? null,
+        resolvedOrganisationId,
+      });
 
       if (!resolvedOrganisationId) {
         console.warn('[AuthContext] ⛔ No active organisation membership found; failing closed for protected access');
@@ -207,7 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBoltOns([]);
         setMaxEditors(999);
         setActiveEditors(1);
-        setIsPlatformAdmin(((authUser as AuthUserWithPlatform)?.platform === true) || profile.is_platform_admin || false);
+        setIsPlatformAdmin(resolvePlatformAdmin(authUser, profile));
         setCanEdit(false);
         setOrganisation(null);
         return;
@@ -264,13 +289,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(createAppUser(authUser, updatedProfile));
 
           // Use the updated profile
-          setUserRole(mapLegacyRole(membership?.role as string | null | undefined));
+          setUserRole(mapLegacyRole(resolvedMembership?.role as string | null | undefined));
           setUserPlan(updatedProfile.plan as SubscriptionPlan);
           setDisciplineType(updatedProfile.discipline_type as DisciplineType);
           setBoltOns(Array.isArray(updatedProfile.bolt_ons) ? updatedProfile.bolt_ons : []);
           setMaxEditors(updatedProfile.max_editors || 999);
           setActiveEditors(updatedProfile.active_editors || 1);
-          setIsPlatformAdmin(((authUser as AuthUserWithPlatform)?.platform === true) || updatedProfile.is_platform_admin || false);
+          setIsPlatformAdmin(resolvePlatformAdmin(authUser, updatedProfile));
           setCanEdit(updatedProfile.can_edit || false);
 
           if (updatedProfile.organisations) {
@@ -311,7 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setBoltOns(Array.isArray(profile.bolt_ons) ? profile.bolt_ons : []);
         setMaxEditors(profile.max_editors || 999);
         setActiveEditors(profile.active_editors || 1);
-        setIsPlatformAdmin(((authUser as AuthUserWithPlatform)?.platform === true) || profile.is_platform_admin || false);
+        setIsPlatformAdmin(resolvePlatformAdmin(authUser, profile));
         setCanEdit(profile.can_edit || false);
 
         const org = organisationRecord as OrganisationRecord;
