@@ -567,8 +567,7 @@ export default function RE01DocumentControlForm({
           </div>
         </div>
       </div>
-      </div>
-
+      
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
     </>
   );
