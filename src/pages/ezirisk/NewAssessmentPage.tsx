@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAccessRiskEngineering, canAccessExplosionSafety } from '../../utils/entitlements';
-import { createDocument, createPropertySurvey } from '../../utils/documentCreation';
+import { createDocument } from '../../utils/documentCreation';
 
 interface AssessmentType {
   id: string;

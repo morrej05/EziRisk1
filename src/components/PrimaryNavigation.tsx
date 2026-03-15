@@ -35,7 +35,11 @@ export default function PrimaryNavigation() {
     { label: 'Assessments', path: '/assessments', show: true },
     { label: 'Remediation', path: '/remediation', show: true },
     { label: 'Portfolio', path: '/portfolio', show: true },
-    { label: 'Admin', path: '/admin', show: entitlementUser ? canAccessAdmin(entitlementUser) : false },
+    {
+      label: 'Admin',
+      path: '/admin',
+      show: entitlementUser ? canAccessAdmin(entitlementUser) && !location.pathname.startsWith('/admin') : false,
+    },
     { label: 'Platform', path: '/platform', show: entitlementUser ? canAccessPlatformSettings(entitlementUser) : false },
   ];
 
