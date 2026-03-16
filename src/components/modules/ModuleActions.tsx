@@ -123,13 +123,32 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
       if (isReModule) {
         const { data: recs, error: recError } = await supabase
           .from('re_recommendations')
-          .select('id, title, status, priority, target_date, updated_at')
+          .select('id, title, status, priority, target_date, updated_at, module_instance_id, source_module_key')
           .eq('document_id', documentId)
-          .eq('module_instance_id', moduleInstanceId)
           .eq('is_suppressed', false)
           .order('created_at', { ascending: false });
 
         if (recError) throw recError;
+
+        type ReRecommendationRow = {
+          id: string;
+          title: string;
+          status: string;
+          priority: string;
+          target_date: string | null;
+          updated_at: string;
+          module_instance_id: string | null;
+          source_module_key: string | null;
+        };
+
+        const moduleScopedRecs = (recs || []).filter((rec: ReRecommendationRow) => {
+          if (rec.module_instance_id === moduleInstanceId) {
+            return true;
+          }
+
+          // Backward compatibility: historic rows may not have module_instance_id.
+          return !rec.module_instance_id && rec.source_module_key === sourceModuleKey;
+        });
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
         const statusMap: Record<string, string> = {
@@ -139,7 +158,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
         };
 
         setActions(
-          (recs || []).map((rec: any) => ({
+          moduleScopedRecs.map((rec: ReRecommendationRow) => ({
             id: rec.id,
             recommended_action: rec.title,
             status: statusMap[rec.status] || 'open',
