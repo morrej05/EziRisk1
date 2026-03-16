@@ -9,6 +9,7 @@ import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
 interface Document {
   id: string;
@@ -55,6 +56,7 @@ export default function RE10ProcessRiskForm({
   const [riskEngData, setRiskEngData] = useState<any>({});
   const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
   const [industryKey, setIndustryKey] = useState<string | null>(null);
+  const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
   useEffect(() => {
     async function loadRiskEngModule() {
@@ -96,7 +98,7 @@ export default function RE10ProcessRiskForm({
 
       setRiskEngData(updatedRiskEngData);
 
-      await syncAutoRecToRegister({
+      const lifecycleState = await syncAutoRecToRegister({
         documentId: moduleInstance.document_id,
         moduleKey: 'RE_10_PROCESS_RISK',
         canonicalKey,
@@ -104,6 +106,7 @@ export default function RE10ProcessRiskForm({
         rating_1_5: newRating,
         industryKey,
       });
+      setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
 
       const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
       if (updatedFormData !== formData) {
@@ -168,6 +171,7 @@ export default function RE10ProcessRiskForm({
               onChangeRating={(newRating) => handleRatingChange(canonicalKey, newRating)}
               helpText={hrgConfig.helpText}
               weight={hrgConfig.weight}
+              autoRecommendationState={autoRecStates[canonicalKey] || 'none'}
             />
           );
         })}

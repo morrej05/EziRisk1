@@ -10,6 +10,7 @@ import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHel
 import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import { Plus, X, AlertCircle, BookOpen } from 'lucide-react';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
 interface Document {
   id: string;
@@ -89,6 +90,7 @@ export default function RE03OccupancyForm({
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [selectedHazardToAdd, setSelectedHazardToAdd] = useState('');
   const [pendingRecommendationKeys, setPendingRecommendationKeys] = useState<Set<string>>(new Set());
+  const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -149,7 +151,7 @@ export default function RE03OccupancyForm({
 
       setRiskEngData(updatedRiskEngData);
 
-      await syncAutoRecToRegister({
+      const lifecycleState = await syncAutoRecToRegister({
         documentId: moduleInstance.document_id,
         moduleKey: 'RE_03_OCCUPANCY',
         canonicalKey,
@@ -157,6 +159,7 @@ export default function RE03OccupancyForm({
         rating_1_5: newRating,
         industryKey,
       });
+      setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
 
       const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
       if (updatedFormData !== formData) {
@@ -443,6 +446,7 @@ export default function RE03OccupancyForm({
                 onChangeRating={(newRating) => handleRatingChange(canonicalKey, newRating)}
                 helpText={hrgConfig.helpText}
                 weight={hrgConfig.weight}
+                autoRecommendationState={autoRecStates[canonicalKey] || 'none'}
               />
             );
           })}
