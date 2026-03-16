@@ -53,9 +53,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
-  const [documentType, setDocumentType] = useState<string | null>(null);
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
-  const [moduleKey, setModuleKey] = useState<string | null>(null);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
 
   const [feedback, setFeedback] = useState<{
@@ -90,7 +88,6 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     }
     fetchActions();
     fetchDocumentStatus();
-    fetchModuleKey();
   }, [moduleInstanceId, documentId, actionsVersion]);
 
   const fetchActions = async () => {
@@ -126,7 +123,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
       if (error) throw error;
 
       const actionIds = (data || []).map((a) => a.id);
-      let attachmentCounts: Record<string, number> = {};
+      const attachmentCounts: Record<string, number> = {};
 
       if (actionIds.length > 0) {
         const { data: attachmentData } = await supabase
@@ -169,34 +166,9 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
         .maybeSingle();
 
       if (error) throw error;
-      if (data) {
-        setDocumentStatus(data.status);
-        setDocumentType(data.document_type);
-      }
+      if (data) setDocumentStatus(data.status);
     } catch (error) {
       console.error('Error fetching document status:', error);
-    }
-  };
-
-  const fetchModuleKey = async () => {
-    if (!isValidUUID(moduleInstanceId)) {
-      console.error('ModuleActions.fetchModuleKey: Invalid moduleInstanceId:', moduleInstanceId);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('module_instances')
-        .select('module_key')
-        .eq('id', moduleInstanceId)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) {
-        setModuleKey(data.module_key);
-      }
-    } catch (error) {
-      console.error('Error fetching module key:', error);
     }
   };
 
@@ -326,17 +298,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     );
   }
 
-  // RE documents: only RE-9 Recommendations (RE_13_RECOMMENDATIONS) shows actions
-  if (documentType === 'RE') {
-    if (moduleKey === 'RE_13_RECOMMENDATIONS') {
-      // RE-9 Recommendations: show full actions UI
-    } else {
-      // All other RE modules: no footer at all
-      return null;
-    }
-  }
-
-  // Non-RE documents (FRA, FSD, DSEAR): show actions UI
+  // All document types (including RE modules) show actions UI for the active module instance
   return (
     <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
       <div className="flex items-center justify-between mb-4">

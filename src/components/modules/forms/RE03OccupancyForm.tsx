@@ -19,6 +19,7 @@ interface Document {
 interface ModuleInstance {
   id: string;
   document_id: string;
+  module_key?: string;
   outcome: string | null;
   assessor_notes: string;
   data: Record<string, any>;
@@ -87,6 +88,7 @@ export default function RE03OccupancyForm({
   const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [selectedHazardToAdd, setSelectedHazardToAdd] = useState('');
+  const [pendingRecommendationKeys, setPendingRecommendationKeys] = useState<Set<string>>(new Set());
 
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -213,6 +215,17 @@ export default function RE03OccupancyForm({
   };
 
   const addRecommendation = async (title: string, detail: string, relatedSection: string = 'Hazards') => {
+    const dedupeKey = `${title.trim().toLowerCase()}::${detail.trim().toLowerCase()}::${relatedSection}`;
+    if (pendingRecommendationKeys.has(dedupeKey)) {
+      return;
+    }
+
+    setPendingRecommendationKeys((prev) => {
+      const next = new Set(prev);
+      next.add(dedupeKey);
+      return next;
+    });
+
     setIsAddingRecommendation(true);
     try {
       const { data: reModule, error: fetchError } = await supabase
@@ -240,6 +253,23 @@ export default function RE03OccupancyForm({
 
       if (reModule) {
         const existingRecs = Array.isArray(reModule.data?.recommendations) ? reModule.data.recommendations : [];
+        const duplicateExists = existingRecs.some((rec: any) =>
+          String(rec?.title ?? '').trim().toLowerCase() === title.trim().toLowerCase()
+          && String(rec?.detail ?? '').trim().toLowerCase() === detail.trim().toLowerCase()
+          && String(rec?.related_section ?? '').trim().toLowerCase() === relatedSection.trim().toLowerCase()
+        );
+
+        if (duplicateExists) {
+          setFeedback({
+            isOpen: true,
+            type: 'warning',
+            title: 'Recommendation already exists',
+            message: 'A matching recommendation is already present for this module.',
+            autoClose: true,
+          });
+          return;
+        }
+
         const updatedRecs = [...existingRecs, newRecommendation];
         const sanitized = sanitizeModuleInstancePayload({ data: { recommendations: updatedRecs } });
 
@@ -281,6 +311,11 @@ export default function RE03OccupancyForm({
       });
     } finally {
       setIsAddingRecommendation(false);
+      setPendingRecommendationKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(dedupeKey);
+        return next;
+      });
     }
   };
 
@@ -404,7 +439,7 @@ export default function RE03OccupancyForm({
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" />
-            Add Recommendation to RE-9
+            Add Recommendation to {moduleInstance.module_key || 'this module'}
           </button>
         </div>
       </div>
@@ -538,7 +573,7 @@ export default function RE03OccupancyForm({
                   className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
-                  Add Recommendation to RE-9
+                  Add Recommendation to {moduleInstance.module_key || 'this module'}
                 </button>
               </div>
             </div>
