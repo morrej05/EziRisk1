@@ -6,6 +6,7 @@ import AddActionModal from '../actions/AddActionModal';
 import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
 import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
 
 interface Action {
   id: string;
@@ -109,7 +110,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     }
     fetchActions();
     fetchDocumentStatus();
-  }, [moduleInstanceId, documentId, actionsVersion, isReModule]);
+  }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey]);
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -141,9 +142,11 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
           source_module_key: string | null;
         };
 
-        const moduleScopedRecs = (recs || []).filter((rec: ReRecommendationRow) => (
-          rec.module_instance_id === moduleInstanceId
-        ));
+        const moduleScopedRecs = filterReRecommendationsByScope((recs || []) as ReRecommendationRow[], {
+          scope: 'module',
+          moduleInstanceId,
+          isRegisterModule: isReRecommendationsRegisterModule(sourceModuleKey),
+        });
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
         const statusMap: Record<string, string> = {
