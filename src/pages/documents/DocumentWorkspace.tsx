@@ -243,7 +243,7 @@ export default function DocumentWorkspace() {
     if (actionScope === 'module' && !selectedModuleId) return;
     fetchActions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, selectedModuleId, actionScope, actionsVersion]);
+  }, [id, selectedModuleId, actionScope, actionsVersion, modules]);
 
   useEffect(() => {
     if (searchParams.get('openAction')) return;
@@ -402,6 +402,50 @@ export default function DocumentWorkspace() {
 
     setIsLoadingActions(true);
     try {
+      const selectedModule = modules.find((m) => m.id === selectedModuleId);
+      const isSelectedReModule = Boolean(selectedModule?.module_key?.startsWith('RE_'));
+
+      if (isSelectedReModule) {
+        let recQuery = supabase
+          .from('re_recommendations')
+          .select('id, title, status, priority, target_date, module_instance_id, created_at')
+          .eq('document_id', id)
+          .eq('is_suppressed', false)
+          .order('created_at', { ascending: false });
+
+        if (actionScope === 'module' && selectedModuleId) {
+          recQuery = recQuery.eq('module_instance_id', selectedModuleId);
+        }
+
+        const { data: recs, error: recError } = await recQuery;
+        if (recError) throw recError;
+
+        const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
+        const statusMap: Record<string, string> = {
+          Open: 'open',
+          'In Progress': 'in_progress',
+          Completed: 'closed',
+        };
+
+        const transformedRecs = (recs || []).map((rec: any) => ({
+          id: rec.id,
+          document_id: id,
+          module_instance_id: rec.module_instance_id,
+          recommended_action: rec.title,
+          status: statusMap[rec.status] || 'open',
+          priority_band: priorityMap[rec.priority] || 'P3',
+          target_date: rec.target_date,
+          owner_user_id: null,
+          owner: null,
+          attachment_count: 0,
+          source: 're_recommendations',
+          updated_at: rec.created_at,
+        }));
+
+        setActions(transformedRecs as Action[]);
+        return;
+      }
+
       let query = supabase
         .from('actions')
         .select(

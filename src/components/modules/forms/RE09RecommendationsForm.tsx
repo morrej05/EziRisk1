@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../contexts/AuthContext';
 import FloatingSaveBar from './FloatingSaveBar';
@@ -6,6 +6,7 @@ import FeedbackModal from '../../FeedbackModal';
 import ConfirmDialog from '../../ConfirmDialog';
 import AddFromLibraryModal from '../../AddFromLibraryModal';
 import { Plus, X, Upload, Image as ImageIcon, AlertTriangle, Filter, Table2, FileText, Library, BookmarkPlus } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 
 interface Document {
   id: string;
@@ -106,6 +107,8 @@ export default function RE09RecommendationsForm({
   onSaved,
 }: RE09RecommendationsFormProps) {
   const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const hasHandledOpenAddRec = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [uploadingPhotoForRec, setUploadingPhotoForRec] = useState<string | null>(null);
@@ -142,6 +145,30 @@ export default function RE09RecommendationsForm({
     message: '',
     onConfirm: () => {},
   });
+
+  useEffect(() => {
+    if (hasHandledOpenAddRec.current) return;
+    if (searchParams.get('openAddRec') !== 'true') return;
+
+    const sourceModuleInstanceId = searchParams.get('sourceModuleInstanceId') || moduleInstance.id;
+    const sourceModuleKey = searchParams.get('sourceModuleKey') || moduleInstance.module_key;
+
+    setRecommendations((prev) => [
+      ...prev,
+      {
+        ...createEmptyRecommendation(document.id),
+        module_instance_id: sourceModuleInstanceId,
+        source_module_key: sourceModuleKey,
+      },
+    ]);
+
+    hasHandledOpenAddRec.current = true;
+    const next = new URLSearchParams(searchParams);
+    next.delete('openAddRec');
+    next.delete('sourceModuleInstanceId');
+    next.delete('sourceModuleKey');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, document.id, moduleInstance.id, moduleInstance.module_key]);
 
   // Load recommendations from database
   useEffect(() => {
@@ -502,7 +529,7 @@ export default function RE09RecommendationsForm({
         const recData = {
           id: rec.id,
           document_id: document.id,
-          module_instance_id: moduleInstance.id,
+          module_instance_id: rec.module_instance_id || moduleInstance.id,
           rec_number: rec.rec_number || undefined,
           source_type: rec.source_type,
           library_id: rec.library_id || null,

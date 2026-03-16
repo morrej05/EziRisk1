@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, ChevronRight, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import AddActionModal from '../actions/AddActionModal';
 import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
@@ -47,8 +48,11 @@ const isValidUUID = (id: string | undefined | null): boolean => {
 };
 
 export default function ModuleActions({ documentId, moduleInstanceId, buttonLabel = 'Add Action' }: ModuleActionsProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
+  const [isReModule, setIsReModule] = useState(false);
+  const [sourceModuleKey, setSourceModuleKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
@@ -76,6 +80,21 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
   }, []);
 
   useEffect(() => {
+    const loadModuleType = async () => {
+      const { data } = await supabase
+        .from('module_instances')
+        .select('module_key')
+        .eq('id', moduleInstanceId)
+        .maybeSingle();
+
+      setSourceModuleKey(data?.module_key || null);
+      setIsReModule(Boolean(data?.module_key?.startsWith('RE_')));
+    };
+
+    loadModuleType();
+  }, [moduleInstanceId]);
+
+  useEffect(() => {
     if (!isValidUUID(documentId)) {
       console.warn('ModuleActions: Invalid documentId provided:', documentId);
       setIsLoading(false);
@@ -88,7 +107,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     }
     fetchActions();
     fetchDocumentStatus();
-  }, [moduleInstanceId, documentId, actionsVersion]);
+  }, [moduleInstanceId, documentId, actionsVersion, isReModule]);
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -99,6 +118,44 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
 
     setIsLoading(true);
     try {
+      if (isReModule) {
+        const { data: recs, error: recError } = await supabase
+          .from('re_recommendations')
+          .select('id, title, status, priority, target_date, updated_at')
+          .eq('document_id', documentId)
+          .eq('module_instance_id', moduleInstanceId)
+          .eq('is_suppressed', false)
+          .order('created_at', { ascending: false });
+
+        if (recError) throw recError;
+
+        const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
+        const statusMap: Record<string, string> = {
+          Open: 'open',
+          'In Progress': 'in_progress',
+          Completed: 'closed',
+        };
+
+        setActions(
+          (recs || []).map((rec: any) => ({
+            id: rec.id,
+            recommended_action: rec.title,
+            status: statusMap[rec.status] || 'open',
+            priority_band: priorityMap[rec.priority] || 'P3',
+            target_date: rec.target_date,
+            updated_at: rec.updated_at,
+            source: 're_recommendations',
+            owner_user_id: null,
+            reference_number: undefined,
+            document: null,
+            module_instance: null,
+            owner: null,
+            attachment_count: 0,
+          }))
+        );
+        return;
+      }
+
       const { data, error } = await supabase
         .from('actions')
         .select(`
@@ -302,13 +359,29 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
   return (
     <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-neutral-900">Actions from this Module</h3>
+        <h3 className="text-lg font-bold text-neutral-900">{isReModule ? 'Recommendations from this Module' : 'Actions from this Module'}</h3>
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={async () => {
+            if (!isReModule) {
+              setShowAddModal(true);
+              return;
+            }
+
+            const { data: reRegister } = await supabase
+              .from('module_instances')
+              .select('id')
+              .eq('document_id', documentId)
+              .eq('module_key', 'RE_13_RECOMMENDATIONS')
+              .maybeSingle();
+
+            if (reRegister?.id) {
+              navigate(`/documents/${documentId}/workspace?m=${reRegister.id}&openAddRec=true&sourceModuleInstanceId=${moduleInstanceId}&sourceModuleKey=${sourceModuleKey || ''}`);
+            }
+          }}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
         >
           <Plus className="w-4 h-4" />
-          {buttonLabel}
+          {isReModule ? 'Add Recommendation' : buttonLabel}
         </button>
       </div>
 
@@ -479,7 +552,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
         </div>
       )}
 
-      {showAddModal && (
+      {!isReModule && showAddModal && (
         <AddActionModal
           documentId={documentId}
           moduleInstanceId={moduleInstanceId}
@@ -491,7 +564,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
         />
       )}
 
-      {selectedAction && (
+      {!isReModule && selectedAction && (
         <ActionDetailModal
           action={selectedAction}
           onClose={() => setSelectedAction(null)}
@@ -501,7 +574,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
         />
       )}
 
-      {actionToDelete && (
+      {!isReModule && actionToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <h3 className="text-lg font-bold text-neutral-900 mb-3">Delete Action?</h3>

@@ -228,70 +228,48 @@ export default function RE03OccupancyForm({
 
     setIsAddingRecommendation(true);
     try {
-      const { data: reModule, error: fetchError } = await supabase
-        .from('module_instances')
-        .select('id, data')
+      const { data: existingRec, error: duplicateError } = await supabase
+        .from('re_recommendations')
+        .select('id')
         .eq('document_id', moduleInstance.document_id)
-        .eq('module_key', 'RE_13_RECOMMENDATIONS')
+        .eq('module_instance_id', moduleInstance.id)
+        .eq('source_module_key', 'RE_03_OCCUPANCY')
+        .eq('title', title)
+        .eq('observation_text', detail)
+        .eq('is_suppressed', false)
         .maybeSingle();
 
-      if (fetchError) throw fetchError;
+      if (duplicateError) throw duplicateError;
 
-      const newRecommendation = {
-        id: crypto.randomUUID(),
-        title,
-        detail,
-        priority: 'Medium',
-        target_date: '',
-        owner: '',
-        status: 'Open',
-        related_section: relatedSection,
-        photos: [],
-        is_auto_generated: false,
-        source_module: 'RE_03_OCCUPANCY',
-      };
-
-      if (reModule) {
-        const existingRecs = Array.isArray(reModule.data?.recommendations) ? reModule.data.recommendations : [];
-        const duplicateExists = existingRecs.some((rec: any) =>
-          String(rec?.title ?? '').trim().toLowerCase() === title.trim().toLowerCase()
-          && String(rec?.detail ?? '').trim().toLowerCase() === detail.trim().toLowerCase()
-          && String(rec?.related_section ?? '').trim().toLowerCase() === relatedSection.trim().toLowerCase()
-        );
-
-        if (duplicateExists) {
-          setFeedback({
-            isOpen: true,
-            type: 'warning',
-            title: 'Recommendation already exists',
-            message: 'A matching recommendation is already present for this module.',
-            autoClose: true,
-          });
-          return;
-        }
-
-        const updatedRecs = [...existingRecs, newRecommendation];
-        const sanitized = sanitizeModuleInstancePayload({ data: { recommendations: updatedRecs } });
-
-        const { error: updateError } = await supabase
-          .from('module_instances')
-          .update({ data: sanitized.data })
-          .eq('id', reModule.id);
-
-        if (updateError) throw updateError;
-      } else {
-        const sanitized = sanitizeModuleInstancePayload({ data: { recommendations: [newRecommendation] } });
-
-        const { error: insertError } = await supabase
-          .from('module_instances')
-          .insert({
-            document_id: moduleInstance.document_id,
-            module_key: 'RE_13_RECOMMENDATIONS',
-            data: sanitized.data,
-          });
-
-        if (insertError) throw insertError;
+      if (existingRec) {
+        setFeedback({
+          isOpen: true,
+          type: 'warning',
+          title: 'Recommendation already exists',
+          message: 'A matching recommendation is already present for this module.',
+          autoClose: true,
+        });
+        return;
       }
+
+      const { error: insertError } = await supabase
+        .from('re_recommendations')
+        .insert({
+          document_id: moduleInstance.document_id,
+          module_instance_id: moduleInstance.id,
+          source_type: 'manual',
+          source_module_key: 'RE_03_OCCUPANCY',
+          source_factor_key: relatedSection,
+          title,
+          observation_text: detail,
+          action_required_text: 'Review and implement appropriate controls.',
+          hazard_text: detail,
+          status: 'Open',
+          priority: 'Medium',
+          photos: [],
+        });
+
+      if (insertError) throw insertError;
 
       setFeedback({
         isOpen: true,
