@@ -572,7 +572,8 @@ export default function DocumentWorkspace() {
   document.enabled_modules?.some((m) => m.startsWith('DSEAR_')) ||
   modules.some((m) => m.module_key?.startsWith('DSEAR_'));
 
-const product = isDsearDoc ? 'DSEAR' : 'GENERIC';
+const isReDoc = document.document_type === 'RE' || document.enabled_modules?.includes('RE');
+const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
@@ -656,18 +657,19 @@ const product = isDsearDoc ? 'DSEAR' : 'GENERIC';
             product={product}
           />
 
-          {/* Keep your hide logic if you want, but this is the simplest “always show” version */}
-          <JurisdictionSelector
-            documentId={document.id}
-            currentJurisdiction={document.jurisdiction}
-            product={product}
-            status={document.status as 'draft' | 'in_review' | 'approved' | 'issued'}
-            onUpdate={(newJurisdiction) => {
-              setDocument((prev) =>
-                prev ? { ...prev, jurisdiction: String(newJurisdiction) } : prev
-              );
+          {!isReDoc && (
+            <JurisdictionSelector
+              documentId={document.id}
+              currentJurisdiction={document.jurisdiction}
+              product={product}
+              status={document.status as 'draft' | 'in_review' | 'approved' | 'issued'}
+              onUpdate={(newJurisdiction) => {
+                setDocument((prev) =>
+                  prev ? { ...prev, jurisdiction: String(newJurisdiction) } : prev
+                );
               }}
-          />
+            />
+          )}
         </div>
       </div>
 

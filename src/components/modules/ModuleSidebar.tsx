@@ -137,7 +137,7 @@ export default function ModuleSidebar({
           ? 'bg-neutral-900/5 border-neutral-200 shadow-sm'
           : 'border-transparent hover:bg-neutral-900/[0.02] hover:border-neutral-200/70'
       }`}
-      title={getModuleDisplayName(module.module_key)}
+      title={`${getModuleCode(module.module_key)} • ${getModuleDisplayName(module.module_key)}`}
     >
       <div className="flex items-start gap-2.5 md:flex-col md:items-center md:gap-1 lg:flex-row lg:items-start lg:gap-2.5">
         <div className="flex-shrink-0 mt-0.5 md:mt-0">
@@ -195,6 +195,11 @@ export default function ModuleSidebar({
               {getOutcomeLabel(storedOutcome, module.module_key)}
             </span>
           )}
+        </div>
+        {/* Compact label for collapsed tablet nav */}
+        <div className="hidden md:flex lg:hidden flex-col items-center gap-1">
+          <span className="text-[10px] font-semibold text-neutral-600">{getModuleCode(module.module_key)}</span>
+          {isModuleActive(module) && <span className="w-1 h-1 rounded-full bg-neutral-900" />}
         </div>
         {/* Icon-only badge for tablet view */}
         <div className="hidden md:block lg:hidden">
