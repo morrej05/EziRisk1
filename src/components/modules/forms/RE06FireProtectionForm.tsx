@@ -16,6 +16,7 @@ import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommend
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
 import { focusRingClass } from '../../../theme/semanticClasses';
+import { updateSectionGrade } from '../../../utils/sectionGrades';
 
 interface Document {
   id: string;
@@ -591,6 +592,16 @@ export default function RE06FireProtectionForm({
 
       setLastSavedAt(new Date());
       onSaved();
+
+      const supplementaryOverall = payload.supplementary_assessment?.overall_score;
+      if (supplementaryOverall !== null && supplementaryOverall !== undefined) {
+        void updateSectionGrade(moduleInstance.document_id, 'fire_protection', supplementaryOverall)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[RE06FireProtection] Failed to persist fire_protection section grade:', error);
+            }
+          });
+      }
     } catch (error) {
       console.error('Failed to save fire protection data:', error);
       setSaveError('Save failed');
