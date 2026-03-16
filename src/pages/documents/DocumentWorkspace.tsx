@@ -406,19 +406,40 @@ export default function DocumentWorkspace() {
       const isSelectedReModule = Boolean(selectedModule?.module_key?.startsWith('RE_'));
 
       if (isSelectedReModule) {
-        let recQuery = supabase
+        const selectedModuleKey = selectedModule?.module_key || null;
+        const recQuery = supabase
           .from('re_recommendations')
-          .select('id, title, status, priority, target_date, module_instance_id, created_at')
+          .select('id, title, status, priority, target_date, module_instance_id, source_module_key, created_at')
           .eq('document_id', id)
           .eq('is_suppressed', false)
           .order('created_at', { ascending: false });
 
-        if (actionScope === 'module' && selectedModuleId) {
-          recQuery = recQuery.eq('module_instance_id', selectedModuleId);
-        }
-
         const { data: recs, error: recError } = await recQuery;
         if (recError) throw recError;
+
+        type ReRecommendationRow = {
+          id: string;
+          title: string;
+          status: string;
+          priority: string;
+          target_date: string | null;
+          module_instance_id: string | null;
+          source_module_key: string | null;
+          created_at: string;
+        };
+
+        const filteredRecs = (recs || []).filter((rec: ReRecommendationRow) => {
+          if (actionScope !== 'module' || !selectedModuleId) {
+            return true;
+          }
+
+          if (rec.module_instance_id === selectedModuleId) {
+            return true;
+          }
+
+          // Backward compatibility for legacy rows without module_instance_id.
+          return !rec.module_instance_id && Boolean(selectedModuleKey) && rec.source_module_key === selectedModuleKey;
+        });
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
         const statusMap: Record<string, string> = {
@@ -427,7 +448,7 @@ export default function DocumentWorkspace() {
           Completed: 'closed',
         };
 
-        const transformedRecs = (recs || []).map((rec: any) => ({
+        const transformedRecs = filteredRecs.map((rec: ReRecommendationRow) => ({
           id: rec.id,
           document_id: id,
           module_instance_id: rec.module_instance_id,
