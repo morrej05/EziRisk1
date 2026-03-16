@@ -109,6 +109,10 @@ const RE_SECTION_CONFIG: Record<string, { title: string; key: string }> = {
 
 function getRatingFromModule(module?: ModuleInstance | null): number | null {
   if (!module?.data) return null;
+  if (module.module_key === 'RE_06_FIRE_PROTECTION') {
+    const supplementaryOverall = Number((module.data as any)?.fire_protection?.supplementary_assessment?.overall_score);
+    if (Number.isFinite(supplementaryOverall) && supplementaryOverall >= 1) return supplementaryOverall;
+  }
   const direct = Number(module.data?.ratings?.site_rating_1_5);
   if (Number.isFinite(direct) && direct >= 1) return direct;
   return null;
@@ -312,19 +316,28 @@ function drawSimpleTable(
   return { page, yPosition: yPosition - 8 };
 }
 
-function getSectionTableRows(module: ModuleInstance): Row[] {
+function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Breakdown; linkedRecommendationCount?: number } = {}): Row[] {
   const d = module.data || {};
   if (module.module_key === 'RE_06_FIRE_PROTECTION') {
     const fp = (d as any).fire_protection || {};
     const buildings = Object.values((fp.buildings || {}) as Record<string, any>);
     const required = buildings.reduce((sum: number, b: any) => sum + Number(b?.sprinklerData?.sprinkler_coverage_required_pct || 0), 0);
     const installed = buildings.reduce((sum: number, b: any) => sum + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct || 0), 0);
+    const supplementary = fp.supplementary_assessment || {};
+    const scoredQuestions = Array.isArray(supplementary.questions)
+      ? supplementary.questions.filter((q: any) => Number.isFinite(Number(q?.score_1_5)))
+      : [];
+    const pillar = options.breakdown?.globalPillars.find((p) => p.key === 'fire_protection');
     const count = buildings.length || 1;
     return [
       ['Buildings assessed', formatValue(buildings.length || '')],
       ['Avg sprinkler required coverage', `${Math.round((required / count) * 10) / 10}%`],
       ['Avg sprinkler installed coverage', `${Math.round((installed / count) * 10) / 10}%`],
       ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
+      ['Supplementary assessment (questions rated)', `${scoredQuestions.length}`],
+      ['Supplementary engineering overall score', `${formatValue(supplementary.overall_score)}/5`],
+      ['Fire protection weighted contribution', pillar ? `${pillar.score.toFixed(1)} of ${pillar.maxScore.toFixed(1)}` : 'Not stated'],
+      ['Linked recommendations', `${options.linkedRecommendationCount ?? 0}`],
     ];
   }
   if (module.module_key === 'RE_08_UTILITIES') {
@@ -676,7 +689,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       fonts: { regular: font, bold: fontBold },
     });
 
-    const tableRows = getSectionTableRows(module);
+    const linkedRecommendationCount = actions.filter((action) => action.module_instance_id === module.id).length;
+    const tableRows = getSectionTableRows(module, { breakdown, linkedRecommendationCount });
     if (tableRows.length > 0) {
       ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawParagraph(page, yPosition, 'Section Snapshot', fontBold);

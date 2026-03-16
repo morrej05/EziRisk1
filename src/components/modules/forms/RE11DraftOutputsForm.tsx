@@ -182,6 +182,10 @@ export default function RE11DraftOutputsForm({
     const fp = data?.fire_protection;
     if (!fp) return 'No fire protection data available.';
 
+    const supplementary = fp.supplementary_assessment || {};
+    const supplementaryQuestions = Array.isArray(supplementary.questions) ? supplementary.questions : [];
+    const ratedSupplementaryQuestions = supplementaryQuestions.filter((q: any) => q?.score_1_5 !== null && q?.score_1_5 !== undefined);
+
     let content = '';
 
     if (fp.systems?.sprinklers?.present) {
@@ -204,12 +208,13 @@ export default function RE11DraftOutputsForm({
       content += `Primary source: ${fp.systems.water_supply.primary_source || 'not specified'}.\n`;
     }
 
-    content += `\nFire protection site rating: ${fp.site_rating_1_to_5}/5.\n`;
-
-    if (fp.credible_to_reduce_nle?.credible) {
-      content += `\nFire protection is considered credible to materially reduce NLE. ${fp.credible_to_reduce_nle.basis || ''}`;
+    if (supplementary.overall_score !== null && supplementary.overall_score !== undefined) {
+      content += `\nSupplementary engineering fire protection score: ${supplementary.overall_score}/5.`;
+      content += ` Adequacy: ${supplementary.adequacy_subscore ?? 'Not rated'}/5.`;
+      content += ` Reliability: ${supplementary.reliability_subscore ?? 'Not rated'}/5.`;
+      content += ` (${ratedSupplementaryQuestions.length} supporting factor(s) rated)\n`;
     } else {
-      content += `\nFire protection is not considered credible to materially reduce NLE. ${fp.credible_to_reduce_nle?.basis || ''}`;
+      content += '\nSupplementary engineering fire protection score: Not rated.\n';
     }
 
     return content;
