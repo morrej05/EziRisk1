@@ -35,6 +35,7 @@ import DocumentStatusBadge from '../../components/documents/DocumentStatusBadge'
 import OverallGradeWidget from '../../components/re/OverallGradeWidget';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
 import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
 
 interface Document {
   id: string;
@@ -428,17 +429,10 @@ export default function DocumentWorkspace() {
           created_at: string;
         };
 
-        const filteredRecs = (recs || []).filter((rec: ReRecommendationRow) => {
-          if (actionScope !== 'module' || !selectedModuleId) {
-            return true;
-          }
-
-          if (rec.module_instance_id === selectedModuleId) {
-            return true;
-          }
-
-          // Backward compatibility for legacy rows without module_instance_id.
-          return !rec.module_instance_id && Boolean(selectedModuleKey) && rec.source_module_key === selectedModuleKey;
+        const filteredRecs = filterReRecommendationsByScope((recs || []) as ReRecommendationRow[], {
+          scope: actionScope,
+          moduleInstanceId: selectedModuleId,
+          isRegisterModule: isReRecommendationsRegisterModule(selectedModuleKey),
         });
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
