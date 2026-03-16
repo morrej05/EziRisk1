@@ -12,6 +12,7 @@ import {
   generateAutoFlags,
   calculateWaterScore,
 } from '../../../lib/re/fireProtectionModel';
+import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
 import { focusRingClass } from '../../../theme/semanticClasses';
@@ -136,6 +137,134 @@ interface FireProtectionModuleData {
     water: SiteWaterData;
     water_score_1_5?: number | null; // null = not rated
     comments?: string;
+  };
+  supplementary_assessment?: SupplementaryAssessmentData;
+}
+
+type SupplementaryQuestionGroup = 'adequacy' | 'reliability';
+
+interface SupplementaryQuestionResponse {
+  factor_key: string;
+  group: SupplementaryQuestionGroup;
+  prompt: string;
+  score_1_5: number | null;
+  notes: string;
+}
+
+interface SupplementaryAssessmentData {
+  questions: SupplementaryQuestionResponse[];
+  adequacy_subscore: number | null;
+  reliability_subscore: number | null;
+  overall_score: number | null;
+}
+
+const SUPPLEMENTARY_FIRE_QUESTIONS: Array<Pick<SupplementaryQuestionResponse, 'factor_key' | 'group' | 'prompt'>> = [
+  {
+    factor_key: 're06_fp_adequacy_sprinkler_coverage',
+    group: 'adequacy',
+    prompt: 'Are sprinkler systems (where required) adequately matched to hazard, storage, and occupancy profile?',
+  },
+  {
+    factor_key: 're06_fp_adequacy_hydrants_fire_main',
+    group: 'adequacy',
+    prompt: 'Are hydrants / ring main / hose reels sufficient in number, reach, and layout for firefighting access?',
+  },
+  {
+    factor_key: 're06_fp_adequacy_water_capacity',
+    group: 'adequacy',
+    prompt: 'Is firewater supply capacity and duration adequate for expected design fire demand?',
+  },
+  {
+    factor_key: 're06_fp_adequacy_detection_alarm',
+    group: 'adequacy',
+    prompt: 'Is detection and alarm coverage adequate for early warning across occupied and high-risk areas?',
+  },
+  {
+    factor_key: 're06_fp_adequacy_passive_protection',
+    group: 'adequacy',
+    prompt: 'Is passive fire protection (compartmentation, fire stopping, structural protection) adequate for containment?',
+  },
+  {
+    factor_key: 're06_fp_reliability_water_supply',
+    group: 'reliability',
+    prompt: 'How reliable is the primary and backup water supply under likely incident and utility-loss conditions?',
+  },
+  {
+    factor_key: 're06_fp_reliability_pumps_power',
+    group: 'reliability',
+    prompt: 'How reliable are pumps, controls, and power resilience arrangements for sustained firefighting support?',
+  },
+  {
+    factor_key: 're06_fp_reliability_system_condition',
+    group: 'reliability',
+    prompt: 'How reliable is current system condition based on maintenance, impairment control, and defect history?',
+  },
+  {
+    factor_key: 're06_fp_reliability_testing',
+    group: 'reliability',
+    prompt: 'How reliable is performance evidence from routine inspection, testing, and flow / functional verification?',
+  },
+  {
+    factor_key: 're06_fp_reliability_localised_special_protection',
+    group: 'reliability',
+    prompt: 'How adequate and reliable is localised/special protection (e.g., fryer suppression, water mist, process-specific systems)?',
+  },
+];
+
+function createDefaultSupplementaryAssessment(): SupplementaryAssessmentData {
+  return {
+    questions: SUPPLEMENTARY_FIRE_QUESTIONS.map((question) => ({
+      ...question,
+      score_1_5: null,
+      notes: '',
+    })),
+    adequacy_subscore: null,
+    reliability_subscore: null,
+    overall_score: null,
+  };
+}
+
+function normalizeSupplementaryAssessment(
+  assessment?: SupplementaryAssessmentData
+): SupplementaryAssessmentData {
+  const defaultAssessment = createDefaultSupplementaryAssessment();
+  const existingByFactor = new Map((assessment?.questions || []).map((q) => [q.factor_key, q]));
+
+  return {
+    ...defaultAssessment,
+    ...assessment,
+    questions: SUPPLEMENTARY_FIRE_QUESTIONS.map((question) => {
+      const existing = existingByFactor.get(question.factor_key);
+      return {
+        ...question,
+        score_1_5: existing?.score_1_5 ?? null,
+        notes: existing?.notes || '',
+      };
+    }),
+  };
+}
+
+function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
+  const byGroup = {
+    adequacy: questions.filter((q) => q.group === 'adequacy' && q.score_1_5 !== null),
+    reliability: questions.filter((q) => q.group === 'reliability' && q.score_1_5 !== null),
+  };
+
+  const average = (items: SupplementaryQuestionResponse[]) => {
+    if (items.length === 0) return null;
+    const sum = items.reduce((acc, item) => acc + Number(item.score_1_5), 0);
+    return Math.round((sum / items.length) * 10) / 10;
+  };
+
+  const adequacy_subscore = average(byGroup.adequacy);
+  const reliability_subscore = average(byGroup.reliability);
+  const ratedQuestions = questions.filter((q) => q.score_1_5 !== null);
+  const overall_score = average(ratedQuestions);
+
+  return {
+    adequacy_subscore,
+    reliability_subscore,
+    overall_score,
   };
 }
 
@@ -299,12 +428,15 @@ export default function RE06FireProtectionForm({
       water_score_1_5: null, // Start as "Not rated"
       comments: '',
     },
+    supplementary_assessment: createDefaultSupplementaryAssessment(),
   };
 
   // Data migration: Map sentinel value 0 or undefined to null for "Not rated"
   if (initialData.site.water_score_1_5 === 0 || initialData.site.water_score_1_5 === undefined) {
     initialData.site.water_score_1_5 = null;
   }
+
+  initialData.supplementary_assessment = normalizeSupplementaryAssessment(initialData.supplementary_assessment);
 
   const [fireProtectionData, setFireProtectionData] = useState<FireProtectionModuleData>(initialData);
 
@@ -341,6 +473,8 @@ export default function RE06FireProtectionForm({
   const effectiveWaterScore = assessorWaterScore ?? suggestedWaterScore;
   const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, effectiveWaterScore);
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
+  const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
+  const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions);
 
   const derivedRecommendations = useMemo(() => {
     const buildingsForRecs: Record<string, any> = {};
@@ -415,12 +549,45 @@ export default function RE06FireProtectionForm({
     setSaving(true);
     setSaveError(null);
     try {
+      const supplementaryToSave = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
+      const supplementaryScoresToSave = deriveSupplementaryScores(supplementaryToSave.questions);
+      const payload: FireProtectionModuleData = {
+        ...fireProtectionData,
+        supplementary_assessment: {
+          ...supplementaryToSave,
+          ...supplementaryScoresToSave,
+        },
+      };
+
       await supabase
         .from('module_instances')
         .update({
-          data: { fire_protection: fireProtectionData },
+          data: { fire_protection: payload },
         })
         .eq('id', moduleInstance.id);
+
+      const { data: riskEngInstance } = await supabase
+        .from('module_instances')
+        .select('data')
+        .eq('document_id', moduleInstance.document_id)
+        .eq('module_key', 'RISK_ENGINEERING')
+        .maybeSingle();
+
+      const industryKey = (riskEngInstance?.data as any)?.industry || null;
+      const scoredQuestions = payload.supplementary_assessment?.questions?.filter((q) => q.score_1_5 !== null) || [];
+
+      void Promise.allSettled(
+        scoredQuestions.map((question) =>
+          syncAutoRecToRegister({
+            documentId: moduleInstance.document_id,
+            moduleKey: 'RE_06_FIRE_PROTECTION',
+            canonicalKey: question.factor_key,
+            moduleInstanceId: moduleInstance.id,
+            rating_1_5: Number(question.score_1_5),
+            industryKey,
+          })
+        )
+      );
 
       setLastSavedAt(new Date());
       onSaved();
@@ -430,7 +597,7 @@ export default function RE06FireProtectionForm({
     } finally {
       setSaving(false);
     }
-  }, [saving, fireProtectionData, moduleInstance.id, onSaved]);
+  }, [saving, fireProtectionData, moduleInstance.id, moduleInstance.document_id, onSaved]);
 
 
   const updateSiteWater = (field: keyof SiteWaterData, value: any) => {
@@ -519,6 +686,28 @@ export default function RE06FireProtectionForm({
         },
       },
     }));
+  };
+
+  const updateSupplementaryQuestion = (
+    factorKey: string,
+    field: 'score_1_5' | 'notes',
+    value: number | null | string
+  ) => {
+    setFireProtectionData((prev) => {
+      const current = normalizeSupplementaryAssessment(prev.supplementary_assessment);
+      const questions = current.questions.map((question) =>
+        question.factor_key === factorKey ? { ...question, [field]: value } : question
+      );
+
+      return {
+        ...prev,
+        supplementary_assessment: {
+          ...current,
+          ...deriveSupplementaryScores(questions),
+          questions,
+        },
+      };
+    });
   };
 
   const handleBuildingSelect = (buildingId: string) => {
@@ -1474,6 +1663,77 @@ export default function RE06FireProtectionForm({
               </div>
             </>
           )}
+        </div>
+      </div>
+
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-slate-900">Supplementary Engineering Assessment (10 Questions)</h3>
+            <p className="text-sm text-slate-600">Adds judgement scoring while preserving factual table capture above</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Adequacy Subscore</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Reliability Subscore</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Overall Supplementary Score</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.overall_score ?? 'Not rated'}</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {(['adequacy', 'reliability'] as const).map((group) => (
+            <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
+              <h4 className="font-semibold text-slate-900 capitalize">{group}</h4>
+              {supplementaryAssessment.questions
+                .filter((question) => question.group === group)
+                .map((question) => (
+                  <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <select
+                        value={question.score_1_5 === null ? '' : question.score_1_5}
+                        onChange={(e) =>
+                          updateSupplementaryQuestion(
+                            question.factor_key,
+                            'score_1_5',
+                            e.target.value === '' ? null : Number(e.target.value)
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                      >
+                        <option value="">Not rated</option>
+                        <option value="1">1 – Very poor</option>
+                        <option value="2">2 – Poor</option>
+                        <option value="3">3 – Fair</option>
+                        <option value="4">4 – Good</option>
+                        <option value="5">5 – Excellent</option>
+                      </select>
+                      <div className="md:col-span-2">
+                        <textarea
+                          rows={2}
+                          value={question.notes}
+                          onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
+                          placeholder="Optional assessor notes"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ))}
         </div>
       </div>
 
