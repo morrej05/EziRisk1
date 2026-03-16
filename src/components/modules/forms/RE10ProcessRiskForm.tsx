@@ -100,6 +100,7 @@ export default function RE10ProcessRiskForm({
         documentId: moduleInstance.document_id,
         moduleKey: 'RE_10_PROCESS_RISK',
         canonicalKey,
+        moduleInstanceId: moduleInstance.id,
         rating_1_5: newRating,
         industryKey,
       });

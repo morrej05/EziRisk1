@@ -258,6 +258,7 @@ export default function RE09ManagementForm({
                 documentId: moduleInstance.document_id,
                 moduleKey: 'RE_09_MANAGEMENT',
                 canonicalKey: CANONICAL_KEY,
+                moduleInstanceId: moduleInstance.id,
                 rating_1_5: overallRating,
                 industryKey,
               }),

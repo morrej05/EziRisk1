@@ -182,6 +182,7 @@ export default function RE08UtilitiesForm({
         documentId: moduleInstance.document_id,
         moduleKey: 'RE_08_UTILITIES',
         canonicalKey,
+        moduleInstanceId: moduleInstance.id,
         rating_1_5: newRating,
         industryKey,
       });

@@ -176,6 +176,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
           documentId,
           moduleKey: 'RE_07_NATURAL_HAZARDS',
           canonicalKey: item.canonicalKey,
+          moduleInstanceId: moduleInstance.id,
           rating_1_5: item.rating,
           industryKey: null,
         });

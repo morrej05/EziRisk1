@@ -141,14 +141,9 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
           source_module_key: string | null;
         };
 
-        const moduleScopedRecs = (recs || []).filter((rec: ReRecommendationRow) => {
-          if (rec.module_instance_id === moduleInstanceId) {
-            return true;
-          }
-
-          // Backward compatibility: historic rows may not have module_instance_id.
-          return !rec.module_instance_id && rec.source_module_key === sourceModuleKey;
-        });
+        const moduleScopedRecs = (recs || []).filter((rec: ReRecommendationRow) => (
+          rec.module_instance_id === moduleInstanceId
+        ));
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
         const statusMap: Record<string, string> = {
