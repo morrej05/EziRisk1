@@ -151,21 +151,23 @@ function getLossValuesSummary(data: Record<string, unknown> | undefined): LossVa
   const propertySums = (d.property_sums_insured as Record<string, unknown>) || {};
   const bi = (sums.business_interruption as Record<string, unknown>) || (d.business_interruption as Record<string, unknown>) || {};
 
-  const buildings = numericOrZero(sums.buildings ?? propertySums.buildings ?? d.buildings);
+  const propertyDamage = (sums.property_damage as Record<string, unknown>) || {};
+  const buildings = numericOrZero(sums.buildings ?? propertySums.buildings ?? propertyDamage.buildings_improvements ?? d.buildings);
   const plantMachinery = numericOrZero(
     sums.plant_machinery ??
     sums.plantAndMachinery ??
     propertySums.plant_machinery ??
     propertySums.plantAndMachinery ??
+    propertyDamage.plant_machinery_contents ??
     d.plant_machinery
   );
-  const stock = numericOrZero(sums.stock ?? propertySums.stock ?? d.stock);
+  const stock = numericOrZero(sums.stock ?? propertySums.stock ?? propertyDamage.stock_wip ?? d.stock);
 
   const explicitPropertyTotal = numericOrZero(sums.total ?? sums.total_sum_insured ?? propertySums.total ?? propertySums.total_sum_insured);
   const derivedPropertyTotal = buildings + plantMachinery + stock;
   const effectivePropertyTotal = explicitPropertyTotal > 0 ? explicitPropertyTotal : derivedPropertyTotal;
 
-  const grossProfitAnnual = numericOrZero(bi.gross_profit_annual ?? bi.gross_profit ?? d.gross_profit_annual ?? d.gross_profit);
+  const grossProfitAnnual = numericOrZero(bi.gross_profit_annual ?? bi.gross_profit ?? (sums.business_interruption as any)?.gross_profit_annual ?? d.gross_profit_annual ?? d.gross_profit);
   const indemnityMonths = numericOrZero(bi.indemnity_period_months ?? d.indemnity_period_months);
 
   return {
@@ -313,20 +315,26 @@ function drawSimpleTable(
 function getSectionTableRows(module: ModuleInstance): Row[] {
   const d = module.data || {};
   if (module.module_key === 'RE_06_FIRE_PROTECTION') {
+    const fp = (d as any).fire_protection || {};
+    const buildings = Object.values((fp.buildings || {}) as Record<string, any>);
+    const required = buildings.reduce((sum: number, b: any) => sum + Number(b?.sprinklerData?.sprinkler_coverage_required_pct || 0), 0);
+    const installed = buildings.reduce((sum: number, b: any) => sum + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct || 0), 0);
+    const count = buildings.length || 1;
     return [
-      ['Automatic sprinkler protection', formatValue((d as any).fire_protection?.sprinklers_present ?? (d as any).sprinklers_present)],
-      ['Automatic fire detection', formatValue((d as any).fire_protection?.automatic_detection ?? (d as any).automatic_detection)],
-      ['Hydrant / water supplies', formatValue((d as any).fire_protection?.hydrants ?? (d as any).hydrants)],
-      ['Impairment management process', formatValue((d as any).management?.impairment_management ?? (d as any).impairment_management)],
+      ['Buildings assessed', formatValue(buildings.length || '')],
+      ['Avg sprinkler required coverage', `${Math.round((required / count) * 10) / 10}%`],
+      ['Avg sprinkler installed coverage', `${Math.round((installed / count) * 10) / 10}%`],
+      ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
     ];
   }
   if (module.module_key === 'RE_08_UTILITIES') {
-    const spof = Array.isArray((d as any).single_points_of_failure) ? (d as any).single_points_of_failure.length : 0;
+    const services = Array.isArray((d as any).critical_services) ? (d as any).critical_services : [];
+    const equipment = Array.isArray((d as any).critical_equipment) ? (d as any).critical_equipment : [];
     return [
-      ['Primary power resilience', formatValue((d as any).power?.resilience_level ?? (d as any).power_resilience_level)],
-      ['Backup generation', formatValue((d as any).power?.backup_generation ?? (d as any).backup_generation)],
-      ['Critical utility dependencies', formatValue((d as any).critical_dependencies ?? (d as any).critical_utility_dependencies)],
-      ['Single points of failure', String(spof)],
+      ['Backup power present', formatValue((d as any).power_resilience?.backup_power_present)],
+      ['Generator / capacity notes', formatValue((d as any).power_resilience?.generator_capacity_notes)],
+      ['Critical services logged', formatValue(services.length || '')],
+      ['Critical equipment logged', formatValue(equipment.length || '')],
     ];
   }
   if (module.module_key === 'RE_12_LOSS_VALUES') {
@@ -342,10 +350,11 @@ function getSectionTableRows(module: ModuleInstance): Row[] {
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
     const construction = (d as any).construction || d;
+    const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
     return [
+      ['Buildings recorded', formatValue(buildings.length || '')],
+      ['Site notes', formatValue(construction.site_notes)],
       ['Primary construction type', formatValue(construction.primary_construction_type ?? construction.construction_type)],
-      ['Wall construction', formatValue(construction.wall_construction)],
-      ['Roof construction', formatValue(construction.roof_construction)],
       ['Compartmentation quality', formatValue(construction.compartmentation_quality)],
     ];
   }
@@ -353,32 +362,36 @@ function getSectionTableRows(module: ModuleInstance): Row[] {
   if (module.module_key === 'RE_03_OCCUPANCY') {
     const occupancy = (d as any).occupancy || d;
     return [
-      ['Occupancy type', formatValue(occupancy.occupancy_type ?? occupancy.primary_occupancy)],
-      ['Process / use description', formatValue(occupancy.process_description ?? occupancy.operations_description)],
-      ['Shift pattern', formatValue(occupancy.shift_pattern)],
-      ['Combustible loading', formatValue(occupancy.combustible_loading ?? occupancy.fire_load_level)],
+      ['Process / use overview', formatValue(occupancy.process_overview ?? occupancy.process_description ?? occupancy.operations_description)],
+      ['Industry hazard notes', formatValue(occupancy.industry_special_hazards_notes)],
+      ['Generic hazards logged', formatValue(Array.isArray(occupancy.hazards) ? occupancy.hazards.length : '')],
+      ['Additional hazards notes', formatValue(occupancy.hazards_free_text)],
     ];
   }
 
   if (module.module_key === 'RE_07_NATURAL_HAZARDS') {
     const exposures = (d as any).exposures || d;
+    const perils = exposures.environmental?.perils || {};
     return [
-      ['Flood exposure', formatValue(exposures.flood_exposure_level ?? exposures.flood_risk)],
-      ['Windstorm exposure', formatValue(exposures.windstorm_exposure_level ?? exposures.windstorm_risk)],
-      ['Wildfire exposure', formatValue(exposures.wildfire_exposure_level ?? exposures.wildfire_risk)],
-      ['Neighbouring hazards', formatValue(exposures.adjoining_risk ?? exposures.neighbouring_hazards)],
+      ['Flood exposure rating', formatValue(perils.flood?.rating)],
+      ['Windstorm exposure rating', formatValue(perils.wind?.rating)],
+      ['Wildfire exposure rating', formatValue(perils.wildfire?.rating)],
+      ['Human exposure rating', formatValue(exposures.human_exposure?.rating)],
     ];
   }
 
   if (module.module_key === 'RE_09_MANAGEMENT') {
     const management = (d as any).management || d;
+    const categories = Array.isArray(management.categories) ? management.categories : [];
+    const lowRated = categories.filter((c: any) => Number(c?.rating_1_5) <= 2).length;
     return [
-      ['Formal risk management system', formatValue(management.formal_risk_management_system ?? management.risk_management_system)],
-      ['Hot work permit process', formatValue(management.hot_work_permit_process ?? management.hot_work_permits)],
-      ['Housekeeping standards', formatValue(management.housekeeping_standard ?? management.housekeeping)],
-      ['Emergency response planning', formatValue(management.emergency_response_plan ?? management.emergency_plan)],
+      ['Management categories rated', formatValue(categories.length || '')],
+      ['Low-rated categories (1-2)', formatValue(lowRated || '')],
+      ['Hot work notes', formatValue(categories.find((c: any) => c?.key === 'hot_work')?.notes)],
+      ['Impairment management notes', formatValue(categories.find((c: any) => c?.key === 'impairment_management')?.notes)],
     ];
   }
+
   if (module.module_key === 'RE_14_DRAFT_OUTPUTS') {
     return [
       ['Site plans / layout available', formatValue((d as any).site_plans_available)],
@@ -387,6 +400,7 @@ function getSectionTableRows(module: ModuleInstance): Row[] {
       ['Photos / records attached', formatValue((d as any).evidence_pack_attached)],
     ];
   }
+
   return [];
 }
 

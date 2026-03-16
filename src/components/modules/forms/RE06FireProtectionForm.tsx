@@ -180,9 +180,7 @@ function calculateSiteRollup(
     const buildingFP = fireProtectionData.buildings[building.id];
     if (!buildingFP?.sprinklerData) continue;
 
-    // Include if sprinklers_installed != "No" AND coverage_required_pct > 0
-    if (buildingFP.sprinklerData.sprinklers_installed === 'No') continue;
-
+    // Include any building where sprinkler coverage is required, even if currently not installed
     const requiredPct = buildingFP.sprinklerData.sprinkler_coverage_required_pct ?? 0;
     if (requiredPct <= 0) continue;
 
@@ -448,23 +446,15 @@ export default function RE06FireProtectionForm({
         .eq('id', moduleInstance.id);
 
       setLastSavedAt(new Date());
-      // Autosave only - do not trigger parent refresh (onSaved)
-      // Parent will be notified only on explicit manual save or module navigation
+      onSaved();
     } catch (error) {
       console.error('Failed to save fire protection data:', error);
       setSaveError('Save failed');
     } finally {
       setSaving(false);
     }
-  }, [saving, fireProtectionData, moduleInstance.id]);
+  }, [saving, fireProtectionData, moduleInstance.id, onSaved]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      saveData();
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [siteWaterData, assessorWaterScore, siteWaterComments, selectedSprinklerData, selectedSprinklerScore, selectedFinalScore, selectedComments]);
 
   const updateSiteWater = (field: keyof SiteWaterData, value: any) => {
     setFireProtectionData((prev) => ({
@@ -968,6 +958,17 @@ export default function RE06FireProtectionForm({
                     )}
                   </div>
                 </div>
+                <div className="flex items-center gap-2 ml-4">
+                  <button
+                    type="button"
+                    onClick={() => void saveData()}
+                    disabled={saving}
+                    className="px-3 py-1.5 rounded-md text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+
                 <div className="text-right">
                   <div className="text-sm text-slate-600 flex items-center gap-1 justify-end">
                     Final Active Score
