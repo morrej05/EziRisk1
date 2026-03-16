@@ -8,6 +8,7 @@ import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import { getSuggestedEquipment, STANDARD_EQUIPMENT_OPTIONS, isHeavyOccupancy } from '../../../lib/re/reference/occupancyCriticalEquipment';
 import { Plus, X, Trash2 } from 'lucide-react';
 
@@ -131,6 +132,7 @@ export default function RE08UtilitiesForm({
   const [riskEngData, setRiskEngData] = useState<any>({});
   const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
   const [industryKey, setIndustryKey] = useState<string | null>(null);
+  const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
   useEffect(() => {
     async function loadRiskEngModule() {
@@ -178,7 +180,7 @@ export default function RE08UtilitiesForm({
 
       setRiskEngData(updatedRiskEngData);
 
-      await syncAutoRecToRegister({
+      const lifecycleState = await syncAutoRecToRegister({
         documentId: moduleInstance.document_id,
         moduleKey: 'RE_08_UTILITIES',
         canonicalKey,
@@ -186,6 +188,7 @@ export default function RE08UtilitiesForm({
         rating_1_5: newRating,
         industryKey,
       });
+      setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
 
       const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
       if (updatedFormData !== formData) {
@@ -338,6 +341,7 @@ export default function RE08UtilitiesForm({
             onChangeRating={(r) => handleRatingChange(ELECTRICAL_KEY, r)}
             helpText={electricalHrgConfig.helpText}
             weight={electricalHrgConfig.weight}
+            autoRecommendationState={autoRecStates[ELECTRICAL_KEY] || 'none'}
           />
         </div>
 
@@ -349,6 +353,7 @@ export default function RE08UtilitiesForm({
             onChangeRating={(r) => handleRatingChange(EQUIPMENT_KEY, r)}
             helpText={equipmentHrgConfig.helpText}
             weight={equipmentHrgConfig.weight}
+            autoRecommendationState={autoRecStates[EQUIPMENT_KEY] || 'none'}
           />
         </div>
 

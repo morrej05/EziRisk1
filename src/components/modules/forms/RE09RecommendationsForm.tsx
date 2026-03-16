@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { resolveEvidencePhotoUrl } from '../../../lib/re/recommendations/photoUrls';
 import { useAuth } from '../../../contexts/AuthContext';
 import FloatingSaveBar from './FloatingSaveBar';
 import FeedbackModal from '../../FeedbackModal';
@@ -233,22 +234,9 @@ export default function RE09RecommendationsForm({
 
       for (const rec of recommendations) {
         for (const photo of rec.photos) {
-        // Try to get public URL from storage
         try {
-          const { data } = supabase.storage
-            .from('evidence')
-            .getPublicUrl(photo.path);
-
-          if (data?.publicUrl) {
-            urls[photo.path] = data.publicUrl;
-          } else {
-            const { data: signedData } = await supabase.storage
-              .from('evidence')
-              .createSignedUrl(photo.path, 3600);
-            if (signedData?.signedUrl) {
-              urls[photo.path] = signedData.signedUrl;
-            }
-          }
+          const resolvedUrl = await resolveEvidencePhotoUrl(photo.path);
+          if (resolvedUrl) urls[photo.path] = resolvedUrl;
         } catch (error) {
           console.error(`Failed to get URL for photo ${photo.path}:`, error);
         }
@@ -471,13 +459,10 @@ export default function RE09RecommendationsForm({
       // Show instant local preview then replace it with storage URL
       setPhotoUrls((prev) => ({ ...prev, [filePath]: previewUrl }));
 
-      const { data: publicData } = supabase.storage
-        .from('evidence')
-        .getPublicUrl(filePath);
-
-      if (publicData?.publicUrl) {
+      const resolvedUrl = await resolveEvidencePhotoUrl(filePath);
+      if (resolvedUrl) {
         URL.revokeObjectURL(previewUrl);
-        setPhotoUrls((prev) => ({ ...prev, [filePath]: publicData.publicUrl }));
+        setPhotoUrls((prev) => ({ ...prev, [filePath]: resolvedUrl }));
       }
 
       setFeedback({
@@ -504,6 +489,17 @@ export default function RE09RecommendationsForm({
   const removePhoto = (recId: string, photoPath: string) => {
     const rec = recommendations.find((r) => r.id === recId);
     if (!rec) return;
+
+    const currentUrl = photoUrls[photoPath];
+    if (currentUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(currentUrl);
+    }
+
+    setPhotoUrls((prev) => {
+      const next = { ...prev };
+      delete next[photoPath];
+      return next;
+    });
 
     updateRecommendation(recId, {
       photos: rec.photos.filter((p) => p.path !== photoPath),

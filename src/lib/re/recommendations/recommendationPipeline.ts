@@ -9,6 +9,13 @@ interface RecommendationFromRatingParams {
   industryKey: string | null;
 }
 
+export type AutoRecommendationLifecycleState =
+  | 'none'
+  | 'created'
+  | 'updated'
+  | 'restored'
+  | 'suppressed';
+
 interface FallbackContent {
   title: string;
   observation_text: string;
@@ -66,33 +73,100 @@ interface LibraryRecommendation {
  */
 export async function ensureRecommendationFromRating(
   params: RecommendationFromRatingParams
-): Promise<string | null> {
+): Promise<AutoRecommendationLifecycleState> {
   const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5, industryKey } = params;
 
-  // Only create recommendations for ratings <= 2
-  if (rating_1_5 > 2) {
-    // Leave existing recommendations as-is (engineer may have customized them)
-    return null;
-  }
-
-  const priority = rating_1_5 === 1 ? 'High' : 'Medium';
-
-  // Check if auto recommendation already exists for this factor (idempotent)
-  const { data: existing } = await supabase
+  // Find all historical rows for this auto recommendation identity.
+  const { data: allRows, error: readError } = await supabase
     .from('re_recommendations')
-    .select('id')
+    .select('id, is_suppressed, created_at')
     .eq('document_id', documentId)
     .eq('source_type', 'auto')
     .eq('source_module_key', sourceModuleKey)
     .eq('source_factor_key', sourceFactorKey || null)
     .eq('module_instance_id', moduleInstanceId || null)
-    .eq('is_suppressed', false)
-    .maybeSingle();
+    .order('created_at', { ascending: false });
 
-  if (existing) {
-    // Already exists, return its ID (idempotent)
-    return existing.id;
+  if (readError) {
+    console.error('Error loading auto recommendation rows:', readError);
+    return 'none';
   }
+
+  const existingRows = allRows || [];
+  const primaryRow = existingRows[0] || null;
+
+  if (existingRows.length > 1) {
+    const duplicateIds = existingRows.slice(1).map((row) => row.id);
+    if (duplicateIds.length > 0) {
+      await supabase
+        .from('re_recommendations')
+        .update({ is_suppressed: true })
+        .in('id', duplicateIds);
+    }
+  }
+
+  if (rating_1_5 > 2) {
+    if (!primaryRow || primaryRow.is_suppressed) {
+      return 'none';
+    }
+
+    const { error: suppressError } = await supabase
+      .from('re_recommendations')
+      .update({ is_suppressed: true })
+      .eq('id', primaryRow.id);
+
+    if (suppressError) {
+      console.error('Error suppressing auto recommendation:', suppressError);
+      return 'none';
+    }
+
+    return 'suppressed';
+  }
+
+  const recommendationPayload = await buildRecommendationPayload({
+    sourceModuleKey,
+    sourceFactorKey,
+    moduleInstanceId,
+    rating_1_5,
+    industryKey,
+  });
+
+  if (primaryRow) {
+    const { error: updateError } = await supabase
+      .from('re_recommendations')
+      .update({
+        ...recommendationPayload,
+        is_suppressed: false,
+      })
+      .eq('id', primaryRow.id);
+
+    if (updateError) {
+      console.error('Error updating auto recommendation:', updateError);
+      return 'none';
+    }
+
+    return primaryRow.is_suppressed ? 'restored' : 'updated';
+  }
+
+  const created = await createAutoRecommendation({
+    documentId,
+    moduleInstanceId,
+    sourceModuleKey,
+    sourceFactorKey,
+    recommendationPayload,
+  });
+
+  return created ? 'created' : 'none';
+}
+
+async function buildRecommendationPayload(params: {
+  sourceModuleKey: string;
+  sourceFactorKey?: string;
+  moduleInstanceId?: string;
+  rating_1_5: number;
+  industryKey: string | null;
+}) {
+  const { sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5, industryKey } = params;
 
   // Try to find matching library recommendation
   const libraryTemplate = await findMatchingLibraryRecommendation({
@@ -103,26 +177,36 @@ export async function ensureRecommendationFromRating(
     industryKey,
   });
 
+  const fallback = buildFallbackContent(sourceFactorKey || sourceModuleKey);
+  const priority = rating_1_5 === 1 ? 'High' : 'Medium';
+
   if (libraryTemplate) {
-    // Create from library template (with fallback hazard if needed)
-    return await createRecommendationFromLibrary({
-      documentId,
-      sourceModuleKey,
-      sourceFactorKey,
-      moduleInstanceId,
-      rating_1_5,
-      libraryTemplate,
-    });
+    return {
+      library_id: libraryTemplate.id,
+      source_module_key: sourceModuleKey,
+      source_factor_key: sourceFactorKey || null,
+      title: libraryTemplate.title || fallback.title,
+      observation_text: libraryTemplate.observation_text || fallback.observation_text,
+      action_required_text: libraryTemplate.action_required_text || fallback.action_required_text,
+      hazard_text: libraryTemplate.hazard_text || fallback.hazard_text,
+      priority,
+      status: 'Open',
+      photos: [],
+    };
   }
 
-  // No library template, create with fallback content
-  return await createBasicRecommendation({
-    documentId,
-    sourceModuleKey,
-    sourceFactorKey,
-    moduleInstanceId,
-    rating_1_5,
-  });
+  return {
+    library_id: null,
+    source_module_key: sourceModuleKey,
+    source_factor_key: sourceFactorKey || null,
+    title: fallback.title,
+    observation_text: fallback.observation_text,
+    action_required_text: fallback.action_required_text,
+    hazard_text: fallback.hazard_text,
+    priority,
+    status: 'Open',
+    photos: [],
+  };
 }
 
 /**
@@ -155,7 +239,8 @@ async function findMatchingLibraryRecommendation(params: {
     }
 
     // Find best matching template based on relevance rules
-    const matchingTemplate = templates.find((template: any) => {
+    const typedTemplates = templates as LibraryRecommendation[];
+    const matchingTemplate = typedTemplates.find((template) => {
       const rules = template.relevance_rules || {};
 
       // Check module match
@@ -200,89 +285,34 @@ async function findMatchingLibraryRecommendation(params: {
 /**
  * Create a recommendation from a library template
  */
-async function createRecommendationFromLibrary(params: {
+async function createAutoRecommendation(params: {
   documentId: string;
+  moduleInstanceId?: string;
   sourceModuleKey: string;
   sourceFactorKey?: string;
-  moduleInstanceId?: string;
-  rating_1_5: number;
-  libraryTemplate: LibraryRecommendation;
-}): Promise<string | null> {
-  const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5, libraryTemplate } = params;
+  recommendationPayload: Awaited<ReturnType<typeof buildRecommendationPayload>>;
+}): Promise<boolean> {
+  const { documentId, moduleInstanceId, sourceModuleKey, sourceFactorKey, recommendationPayload } = params;
 
-  const priority = rating_1_5 === 1 ? 'High' : 'Medium';
-  const fallback = buildFallbackContent(sourceFactorKey || sourceModuleKey);
-
-  // Use library content, but fallback for any blank fields
   const { data, error } = await supabase
     .from('re_recommendations')
     .insert({
       document_id: documentId,
       module_instance_id: moduleInstanceId || null,
       source_type: 'auto',
-      library_id: libraryTemplate.id,
       source_module_key: sourceModuleKey,
       source_factor_key: sourceFactorKey || null,
-      title: libraryTemplate.title || fallback.title,
-      observation_text: libraryTemplate.observation_text || fallback.observation_text,
-      action_required_text: libraryTemplate.action_required_text || fallback.action_required_text,
-      hazard_text: libraryTemplate.hazard_text || fallback.hazard_text,
-      priority: priority,
-      status: 'Open',
-      photos: [],
+      ...recommendationPayload,
     })
     .select('id')
     .single();
 
   if (error) {
     console.error('Error creating recommendation from library:', error);
-    return null;
+    return false;
   }
 
-  return data.id;
-}
-
-/**
- * Create a basic recommendation when no library template exists
- */
-async function createBasicRecommendation(params: {
-  documentId: string;
-  sourceModuleKey: string;
-  sourceFactorKey?: string;
-  moduleInstanceId?: string;
-  rating_1_5: number;
-}): Promise<string | null> {
-  const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5 } = params;
-
-  const priority = rating_1_5 === 1 ? 'High' : 'Medium';
-  const content = buildFallbackContent(sourceFactorKey || sourceModuleKey);
-
-  const { data, error } = await supabase
-    .from('re_recommendations')
-    .insert({
-      document_id: documentId,
-      module_instance_id: moduleInstanceId || null,
-      source_type: 'auto',
-      library_id: null,
-      source_module_key: sourceModuleKey,
-      source_factor_key: sourceFactorKey || null,
-      title: content.title,
-      observation_text: content.observation_text,
-      action_required_text: content.action_required_text,
-      hazard_text: content.hazard_text,
-      priority: priority,
-      status: 'Open',
-      photos: [],
-    })
-    .select('id')
-    .single();
-
-  if (error) {
-    console.error('Error creating basic recommendation:', error);
-    return null;
-  }
-
-  return data.id;
+  return !!data?.id;
 }
 
 /**
@@ -318,10 +348,10 @@ export async function syncAutoRecToRegister(params: {
   moduleInstanceId?: string;
   rating_1_5: number;
   industryKey: string | null;
-}): Promise<void> {
+}): Promise<AutoRecommendationLifecycleState> {
   const { documentId, moduleKey, canonicalKey, moduleInstanceId, rating_1_5, industryKey } = params;
 
-  await ensureRecommendationFromRating({
+  return ensureRecommendationFromRating({
     documentId,
     sourceModuleKey: moduleKey,          // ✅ correct
     sourceFactorKey: canonicalKey,       // ✅ correct
@@ -330,4 +360,3 @@ export async function syncAutoRecToRegister(params: {
     industryKey,
   });
 }
-

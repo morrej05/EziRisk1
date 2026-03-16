@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, ChevronRight, Trash2 } from 'lucide-react';
-import CanonicalReRecommendationModal from '../re/CanonicalReRecommendationModal';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import AddActionModal from '../actions/AddActionModal';
@@ -8,6 +7,7 @@ import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
 import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
 import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
+import { useNavigate } from 'react-router-dom';
 
 interface Action {
   id: string;
@@ -49,13 +49,13 @@ const isValidUUID = (id: string | undefined | null): boolean => {
 };
 
 export default function ModuleActions({ documentId, moduleInstanceId, buttonLabel = 'Add Action' }: ModuleActionsProps) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
   const [isReModule, setIsReModule] = useState(false);
   const [sourceModuleKey, setSourceModuleKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showAddReModal, setShowAddReModal] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
@@ -385,7 +385,12 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
               return;
             }
 
-            setShowAddReModal(true);
+            const params = new URLSearchParams({
+              openAddRec: 'true',
+              sourceModuleInstanceId: moduleInstanceId,
+              sourceModuleKey: sourceModuleKey || 'OTHER',
+            });
+            navigate(`/documents/${documentId}/workspace?${params.toString()}`);
           }}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
         >
@@ -570,29 +575,6 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
             setShowAddModal(false);
             fetchActions();
           }}
-        />
-      )}
-
-
-      {isReModule && showAddReModal && (
-        <CanonicalReRecommendationModal
-          isOpen={showAddReModal}
-          onClose={() => setShowAddReModal(false)}
-          onSaved={async () => {
-            bumpActionsVersion();
-            await fetchActions();
-            setFeedback({
-              isOpen: true,
-              type: 'success',
-              title: 'Recommendation added',
-              message: 'The recommendation has been saved to this module and RE-09 register.',
-              autoClose: true,
-            });
-          }}
-          documentId={documentId}
-          moduleInstanceId={moduleInstanceId}
-          sourceModuleKey={sourceModuleKey || 'OTHER'}
-          createdBy={user?.id || null}
         />
       )}
 

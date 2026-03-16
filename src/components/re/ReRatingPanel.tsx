@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { humanizeCanonicalKey } from '../../lib/re/reference/hrgMasterMap';
 import { calculateScore } from '../../lib/re/scoring/riskEngineeringHelpers';
+import type { AutoRecommendationLifecycleState } from '../../lib/re/recommendations/recommendationPipeline';
 
 interface ReRatingPanelProps {
   canonicalKey: string;
@@ -12,6 +13,7 @@ interface ReRatingPanelProps {
   weight: number;
   defaultCollapsed?: boolean;
   hasAutoRecommendation?: boolean;
+  autoRecommendationState?: AutoRecommendationLifecycleState;
 }
 
 const RATING_LABELS: Record<number, string> = {
@@ -39,18 +41,26 @@ function getRatingButtonStyles(value: number, isSelected: boolean): string {
 
 export default function ReRatingPanel({
   canonicalKey,
-  industryKey,
+  industryKey: _industryKey,
   rating,
   onChangeRating,
   helpText,
   weight,
   defaultCollapsed = false,
   hasAutoRecommendation = false,
+  autoRecommendationState = 'none',
 }: ReRatingPanelProps) {
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
   const score = calculateScore(rating, weight);
   const label = humanizeCanonicalKey(canonicalKey);
   const showAutoRecIndicator = hasAutoRecommendation;
+  const autoStateLabel: Record<AutoRecommendationLifecycleState, string> = {
+    none: 'No recommendation created',
+    created: 'Auto recommendation created',
+    updated: 'Auto recommendation updated',
+    restored: 'Auto recommendation restored',
+    suppressed: 'Auto recommendation suppressed after reassessment',
+  };
 
   return (
     <div className="bg-white rounded-lg border border-slate-200">
@@ -93,6 +103,10 @@ export default function ReRatingPanel({
                 Auto-rec
               </div>
             )}
+
+            <div className="text-xs text-slate-500 max-w-[200px] text-right">
+              {autoStateLabel[autoRecommendationState]}
+            </div>
           </div>
         </div>
       </button>

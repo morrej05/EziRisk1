@@ -169,18 +169,16 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
       { canonicalKey: 'exposures_human_malicious', rating: humanExposureRating },
     ];
 
-    // Rating 1 & 2 only
+    // Always sync so existing auto-recommendations can be suppressed when ratings improve.
     for (const item of items) {
-      if (item.rating <= 2) {
-        await syncAutoRecToRegister({
-          documentId,
-          moduleKey: 'RE_07_NATURAL_HAZARDS',
-          canonicalKey: item.canonicalKey,
-          moduleInstanceId: moduleInstance.id,
-          rating_1_5: item.rating,
-          industryKey: null,
-        });
-      }
+      await syncAutoRecToRegister({
+        documentId,
+        moduleKey: 'RE_07_NATURAL_HAZARDS',
+        canonicalKey: item.canonicalKey,
+        moduleInstanceId: moduleInstance.id,
+        rating_1_5: item.rating,
+        industryKey: null,
+      });
     }
   };
 
