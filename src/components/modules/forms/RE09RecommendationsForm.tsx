@@ -29,7 +29,6 @@ interface Photo {
   size_bytes: number;
   mime_type: string;
   uploaded_at: string;
-  previewUrl?: string; // For newly uploaded files (object URL)
 }
 
 interface Recommendation {
@@ -203,7 +202,18 @@ export default function RE09RecommendationsForm({
 
       if (error) throw error;
 
-      setRecommendations((data || []) as Recommendation[]);
+      const sanitizedRecommendations = ((data || []) as Recommendation[]).map((rec) => ({
+        ...rec,
+        photos: (rec.photos || []).map((photo) => ({
+          path: photo.path,
+          file_name: photo.file_name,
+          size_bytes: photo.size_bytes,
+          mime_type: photo.mime_type,
+          uploaded_at: photo.uploaded_at,
+        })),
+      }));
+
+      setRecommendations(sanitizedRecommendations);
     } catch (error) {
       console.error('Error loading recommendations:', error);
       setFeedback({
@@ -223,12 +233,6 @@ export default function RE09RecommendationsForm({
 
       for (const rec of recommendations) {
         for (const photo of rec.photos) {
-        // Skip if already have a preview URL (object URL from recent upload)
-        if (photo.previewUrl) {
-          urls[photo.path] = photo.previewUrl;
-          continue;
-        }
-
         // Try to get public URL from storage
         try {
           const { data } = supabase.storage
@@ -458,15 +462,23 @@ export default function RE09RecommendationsForm({
         size_bytes: file.size,
         mime_type: file.type,
         uploaded_at: new Date().toISOString(),
-        previewUrl, // Include preview URL for immediate display
       };
 
       updateRecommendation(recId, {
         photos: [...rec.photos, photo],
       });
 
-      // Update photoUrls state for immediate display
+      // Show instant local preview then replace it with storage URL
       setPhotoUrls((prev) => ({ ...prev, [filePath]: previewUrl }));
+
+      const { data: publicData } = supabase.storage
+        .from('evidence')
+        .getPublicUrl(filePath);
+
+      if (publicData?.publicUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPhotoUrls((prev) => ({ ...prev, [filePath]: publicData.publicUrl }));
+      }
 
       setFeedback({
         isOpen: true,
@@ -544,7 +556,13 @@ export default function RE09RecommendationsForm({
           priority: rec.priority,
           target_date: rec.target_date || null,
           owner: rec.owner || null,
-          photos: rec.photos,
+          photos: (rec.photos || []).map((photo) => ({
+            path: photo.path,
+            file_name: photo.file_name,
+            size_bytes: photo.size_bytes,
+            mime_type: photo.mime_type,
+            uploaded_at: photo.uploaded_at,
+          })),
           is_suppressed: rec.is_suppressed || false,
           created_by: (await supabase.auth.getUser()).data.user?.id,
         };
