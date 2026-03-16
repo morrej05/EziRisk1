@@ -153,6 +153,7 @@ export default function RE03OccupancyForm({
         documentId: moduleInstance.document_id,
         moduleKey: 'RE_03_OCCUPANCY',
         canonicalKey,
+        moduleInstanceId: moduleInstance.id,
         rating_1_5: newRating,
         industryKey,
       });

@@ -4,6 +4,7 @@ interface RecommendationFromRatingParams {
   documentId: string;
   sourceModuleKey: string;
   sourceFactorKey?: string;
+  moduleInstanceId?: string;
   rating_1_5: number;
   industryKey: string | null;
 }
@@ -66,7 +67,7 @@ interface LibraryRecommendation {
 export async function ensureRecommendationFromRating(
   params: RecommendationFromRatingParams
 ): Promise<string | null> {
-  const { documentId, sourceModuleKey, sourceFactorKey, rating_1_5, industryKey } = params;
+  const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5, industryKey } = params;
 
   // Only create recommendations for ratings <= 2
   if (rating_1_5 > 2) {
@@ -84,6 +85,7 @@ export async function ensureRecommendationFromRating(
     .eq('source_type', 'auto')
     .eq('source_module_key', sourceModuleKey)
     .eq('source_factor_key', sourceFactorKey || null)
+    .eq('module_instance_id', moduleInstanceId || null)
     .eq('is_suppressed', false)
     .maybeSingle();
 
@@ -96,6 +98,7 @@ export async function ensureRecommendationFromRating(
   const libraryTemplate = await findMatchingLibraryRecommendation({
     sourceModuleKey,
     sourceFactorKey,
+    moduleInstanceId,
     rating_1_5,
     industryKey,
   });
@@ -106,6 +109,7 @@ export async function ensureRecommendationFromRating(
       documentId,
       sourceModuleKey,
       sourceFactorKey,
+      moduleInstanceId,
       rating_1_5,
       libraryTemplate,
     });
@@ -116,6 +120,7 @@ export async function ensureRecommendationFromRating(
     documentId,
     sourceModuleKey,
     sourceFactorKey,
+    moduleInstanceId,
     rating_1_5,
   });
 }
@@ -126,6 +131,7 @@ export async function ensureRecommendationFromRating(
 async function findMatchingLibraryRecommendation(params: {
   sourceModuleKey: string;
   sourceFactorKey?: string;
+  moduleInstanceId?: string;
   rating_1_5: number;
   industryKey: string | null;
 }): Promise<LibraryRecommendation | null> {
@@ -198,10 +204,11 @@ async function createRecommendationFromLibrary(params: {
   documentId: string;
   sourceModuleKey: string;
   sourceFactorKey?: string;
+  moduleInstanceId?: string;
   rating_1_5: number;
   libraryTemplate: LibraryRecommendation;
 }): Promise<string | null> {
-  const { documentId, sourceModuleKey, sourceFactorKey, rating_1_5, libraryTemplate } = params;
+  const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5, libraryTemplate } = params;
 
   const priority = rating_1_5 === 1 ? 'High' : 'Medium';
   const fallback = buildFallbackContent(sourceFactorKey || sourceModuleKey);
@@ -211,6 +218,7 @@ async function createRecommendationFromLibrary(params: {
     .from('re_recommendations')
     .insert({
       document_id: documentId,
+      module_instance_id: moduleInstanceId || null,
       source_type: 'auto',
       library_id: libraryTemplate.id,
       source_module_key: sourceModuleKey,
@@ -241,9 +249,10 @@ async function createBasicRecommendation(params: {
   documentId: string;
   sourceModuleKey: string;
   sourceFactorKey?: string;
+  moduleInstanceId?: string;
   rating_1_5: number;
 }): Promise<string | null> {
-  const { documentId, sourceModuleKey, sourceFactorKey, rating_1_5 } = params;
+  const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5 } = params;
 
   const priority = rating_1_5 === 1 ? 'High' : 'Medium';
   const content = buildFallbackContent(sourceFactorKey || sourceModuleKey);
@@ -252,6 +261,7 @@ async function createBasicRecommendation(params: {
     .from('re_recommendations')
     .insert({
       document_id: documentId,
+      module_instance_id: moduleInstanceId || null,
       source_type: 'auto',
       library_id: null,
       source_module_key: sourceModuleKey,
@@ -305,15 +315,17 @@ export async function syncAutoRecToRegister(params: {
   documentId: string;
   moduleKey: string;
   canonicalKey: string;
+  moduleInstanceId?: string;
   rating_1_5: number;
   industryKey: string | null;
 }): Promise<void> {
-  const { documentId, moduleKey, canonicalKey, rating_1_5, industryKey } = params;
+  const { documentId, moduleKey, canonicalKey, moduleInstanceId, rating_1_5, industryKey } = params;
 
   await ensureRecommendationFromRating({
     documentId,
     sourceModuleKey: moduleKey,          // ✅ correct
     sourceFactorKey: canonicalKey,       // ✅ correct
+    moduleInstanceId,
     rating_1_5,
     industryKey,
   });

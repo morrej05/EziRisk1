@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, ChevronRight, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import AddActionModal from '../actions/AddActionModal';
 import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
@@ -48,13 +47,16 @@ const isValidUUID = (id: string | undefined | null): boolean => {
 };
 
 export default function ModuleActions({ documentId, moduleInstanceId, buttonLabel = 'Add Action' }: ModuleActionsProps) {
-  const navigate = useNavigate();
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
   const [isReModule, setIsReModule] = useState(false);
   const [sourceModuleKey, setSourceModuleKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAddReModal, setShowAddReModal] = useState(false);
+  const [reTitle, setReTitle] = useState('');
+  const [reObservation, setReObservation] = useState('');
+  const [savingRecommendation, setSavingRecommendation] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
@@ -287,6 +289,62 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     }
   };
 
+
+  const handleCreateRecommendation = async () => {
+    if (!reTitle.trim() || savingRecommendation) {
+      return;
+    }
+
+    setSavingRecommendation(true);
+    try {
+      const observation = reObservation.trim();
+      const { error } = await supabase
+        .from('re_recommendations')
+        .insert({
+          document_id: documentId,
+          module_instance_id: moduleInstanceId,
+          source_type: 'manual',
+          source_module_key: sourceModuleKey || 'OTHER',
+          source_factor_key: null,
+          title: reTitle.trim(),
+          observation_text: observation,
+          action_required_text: observation || 'Review and implement appropriate controls.',
+          hazard_text: observation || 'See recommendation details.',
+          status: 'Open',
+          priority: 'Medium',
+          photos: [],
+          created_by: user?.id || null,
+        });
+
+      if (error) throw error;
+
+      setShowAddReModal(false);
+      setReTitle('');
+      setReObservation('');
+      bumpActionsVersion();
+      await fetchActions();
+
+      setFeedback({
+        isOpen: true,
+        type: 'success',
+        title: 'Recommendation added',
+        message: 'The recommendation has been saved to this module and RE-09 register.',
+        autoClose: true,
+      });
+    } catch (error) {
+      console.error('Error creating recommendation:', error);
+      setFeedback({
+        isOpen: true,
+        type: 'error',
+        title: 'Save failed',
+        message: 'Unable to save the recommendation. Please try again.',
+        autoClose: false,
+      });
+    } finally {
+      setSavingRecommendation(false);
+    }
+  };
+
   const getPriorityColor = (priority: string | null) => {
     switch (priority) {
       case 'P1':
@@ -361,22 +419,13 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-neutral-900">{isReModule ? 'Recommendations from this Module' : 'Actions from this Module'}</h3>
         <button
-          onClick={async () => {
+          onClick={() => {
             if (!isReModule) {
               setShowAddModal(true);
               return;
             }
 
-            const { data: reRegister } = await supabase
-              .from('module_instances')
-              .select('id')
-              .eq('document_id', documentId)
-              .eq('module_key', 'RE_13_RECOMMENDATIONS')
-              .maybeSingle();
-
-            if (reRegister?.id) {
-              navigate(`/documents/${documentId}/workspace?m=${reRegister.id}&openAddRec=true&sourceModuleInstanceId=${moduleInstanceId}&sourceModuleKey=${sourceModuleKey || ''}`);
-            }
+            setShowAddReModal(true);
           }}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
         >
@@ -562,6 +611,56 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
             fetchActions();
           }}
         />
+      )}
+
+
+      {isReModule && showAddReModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
+            <h3 className="text-lg font-bold text-neutral-900 mb-4">Add Recommendation</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Title</label>
+                <input
+                  value={reTitle}
+                  onChange={(e) => setReTitle(e.target.value)}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  placeholder="Enter recommendation title"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">Observation (optional)</label>
+                <textarea
+                  value={reObservation}
+                  onChange={(e) => setReObservation(e.target.value)}
+                  rows={5}
+                  className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  placeholder="Enter observation details"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAddReModal(false)}
+                className="px-4 py-2 text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!reTitle.trim() || savingRecommendation}
+                onClick={handleCreateRecommendation}
+                className="px-4 py-2 bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors font-medium disabled:opacity-50"
+              >
+                {savingRecommendation ? 'Saving…' : 'Save Recommendation'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {!isReModule && selectedAction && (
