@@ -17,6 +17,7 @@ import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommend
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
 import RatingButtons from '../../re/RatingButtons';
+import FloatingSaveBar from './FloatingSaveBar';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
 
 interface Document {
@@ -155,6 +156,8 @@ const AUTO_REC_STATE_LABELS: Record<AutoRecommendationLifecycleState, string> = 
   suppressed: 'Recommendation suppressed',
 };
 
+const focusRingClass = 'focus:ring-blue-500';
+
 function getAutoRecStateStyles(state: AutoRecommendationLifecycleState): string {
   if (state === 'suppressed') return 'bg-slate-100 text-slate-700 border-slate-200';
   if (state === 'none') return 'bg-slate-50 text-slate-600 border-slate-200';
@@ -284,11 +287,17 @@ function normalizeSupplementaryAssessment(
   };
 }
 
-function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
+function deriveSupplementaryScores(
+  questions: SupplementaryQuestionResponse[],
+  options?: { includeLocalisedGroup?: boolean }
+) {
+  const includeLocalisedGroup = options?.includeLocalisedGroup ?? true;
   const byGroup = {
     adequacy: questions.filter((q) => q.group === 'adequacy' && q.score_1_5 !== null),
     reliability: questions.filter((q) => q.group === 'reliability' && q.score_1_5 !== null),
-    localised_special: questions.filter((q) => q.group === 'localised_special' && q.score_1_5 !== null),
+    localised_special: includeLocalisedGroup
+      ? questions.filter((q) => q.group === 'localised_special' && q.score_1_5 !== null)
+      : [],
   };
 
   const average = (items: SupplementaryQuestionResponse[]) => {
@@ -299,7 +308,9 @@ function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
 
   const adequacy_subscore = average(byGroup.adequacy);
   const reliability_subscore = average(byGroup.reliability);
-  const ratedQuestions = questions.filter((q) => q.score_1_5 !== null);
+  const ratedQuestions = questions.filter(
+    (q) => q.score_1_5 !== null && (includeLocalisedGroup || q.group !== 'localised_special')
+  );
   const localised_special_subscore = average(byGroup.localised_special);
   const overall_score = average(ratedQuestions);
 
@@ -504,8 +515,10 @@ export default function RE06FireProtectionForm({
   const selectedComments = selectedBuildingId
     ? fireProtectionData.buildings[selectedBuildingId]?.comments || ''
     : '';
-  const showLocalisedDetailedAssessment =
-    selectedSprinklerData.localised_required === 'Yes' && selectedSprinklerData.localised_present === 'Yes';
+  const isLocalisedRequired = selectedSprinklerData.localised_required === 'Yes';
+  const isLocalisedInstalled = selectedSprinklerData.localised_present === 'Yes';
+  const isLocalisedKnockoutFailed = isLocalisedRequired && selectedSprinklerData.localised_present === 'No';
+  const showLocalisedDetailedAssessment = isLocalisedRequired && isLocalisedInstalled;
 
   // Suggested score from inputs (always calculated, never null)
   const suggestedWaterScore = useMemo(() => {
@@ -531,7 +544,9 @@ export default function RE06FireProtectionForm({
   const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, effectiveWaterScore);
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
   const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
-  const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions);
+  const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions, {
+    includeLocalisedGroup: showLocalisedDetailedAssessment || isLocalisedKnockoutFailed,
+  });
   const [supplementaryAutoRecStates, setSupplementaryAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>(
     () => initializeAutoRecStates(supplementaryAssessment.questions)
   );
@@ -636,7 +651,15 @@ export default function RE06FireProtectionForm({
     setSaveError(null);
     try {
       const supplementaryToSave = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
-      const supplementaryScoresToSave = deriveSupplementaryScores(supplementaryToSave.questions);
+      const includeLocalisedGroupForSave =
+        showLocalisedDetailedAssessment ||
+        Object.values(fireProtectionData.buildings || {}).some((buildingData) => {
+          const sprinklerData = buildingData?.sprinklerData;
+          return sprinklerData?.localised_required === 'Yes' && sprinklerData?.localised_present === 'No';
+        });
+      const supplementaryScoresToSave = deriveSupplementaryScores(supplementaryToSave.questions, {
+        includeLocalisedGroup: includeLocalisedGroupForSave,
+      });
       const payload: FireProtectionModuleData = {
         ...fireProtectionData,
         supplementary_assessment: {
@@ -914,25 +937,8 @@ export default function RE06FireProtectionForm({
   }
 
   return (
+    <>
     <div className="pb-24">
-      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-sm text-slate-600">
-            {saving && 'Saving fire protection assessment…'}
-            {!saving && lastSavedAt && `Last saved at ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
-            {!saving && !lastSavedAt && 'Save to persist RE-04 fire protection updates and recommendation lifecycle changes.'}
-          </div>
-          <button
-            type="button"
-            onClick={() => void saveData()}
-            disabled={saving}
-            className="px-4 py-2 rounded-md text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-        </div>
-        {saveError && <p className="text-xs text-risk-high-fg mt-2">{saveError}</p>}
-      </div>
 
       <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
         <div className="flex items-center gap-3 mb-4">
@@ -1056,7 +1062,7 @@ export default function RE06FireProtectionForm({
                 )}
               </div>
             )}
-            {selectedSprinklerData.localised_required === 'Yes' && selectedSprinklerData.localised_present === 'No' && (
+            {isLocalisedKnockoutFailed && (
               <p className="mt-3 text-sm text-risk-high-fg">
                 Knockout failed. This automatically forces a low localised/special protection factor rating and triggers a factor-linked recommendation.
               </p>
@@ -1497,17 +1503,6 @@ export default function RE06FireProtectionForm({
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    type="button"
-                    onClick={() => void saveData()}
-                    disabled={saving}
-                    className="px-3 py-1.5 rounded-md text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {saving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-
                 <div className="text-right">
                   <div className="text-sm text-slate-600 flex items-center gap-1 justify-end">
                     Final Active Score
@@ -2171,16 +2166,19 @@ export default function RE06FireProtectionForm({
       {document?.id && moduleInstance?.id && (
         <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} buttonLabel="Add Recommendation" />
       )}
-
-
-      {saving && (
-        <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 border border-slate-200">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-            Saving...
-          </div>
-        </div>
-      )}
     </div>
+
+      <FloatingSaveBar
+        onSave={() => void saveData()}
+        isSaving={saving}
+        statusText={
+          saving
+            ? 'Saving fire protection assessment…'
+            : lastSavedAt
+            ? `Last saved at ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+            : 'Save to persist RE-04 fire protection updates and recommendation lifecycle changes.'
+        }
+      />
+    </>
   );
 }
