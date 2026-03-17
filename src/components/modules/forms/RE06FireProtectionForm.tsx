@@ -168,74 +168,69 @@ interface SupplementaryAssessmentData {
 
 const SUPPLEMENTARY_FIRE_QUESTIONS: Array<Pick<SupplementaryQuestionResponse, 'factor_key' | 'group' | 'prompt'>> = [
   {
+    factor_key: 're06_fp_adequacy_sprinkler_design_hazard',
+    group: 'adequacy',
+    prompt: 'Is the sprinkler system designed for the current hazard and storage configuration?',
+  },
+  {
     factor_key: 're06_fp_adequacy_sprinkler_coverage',
     group: 'adequacy',
-    prompt: 'Are sprinkler systems (where required) adequately matched to hazard, storage, and occupancy profile?',
+    prompt: 'Does the sprinkler system provide adequate coverage for all areas requiring protection?',
   },
   {
-    factor_key: 're06_fp_adequacy_hydrants_fire_main',
+    factor_key: 're06_fp_adequacy_water_hydraulic_demand',
     group: 'adequacy',
-    prompt: 'Are hydrants / ring main / hose reels sufficient in number, reach, and layout for firefighting access?',
+    prompt: 'Is the water supply capable of meeting the hydraulic demand of the sprinkler system?',
   },
   {
-    factor_key: 're06_fp_adequacy_water_capacity',
+    factor_key: 're06_fp_adequacy_water_duration',
     group: 'adequacy',
-    prompt: 'Is firewater supply capacity and duration adequate for expected design fire demand?',
+    prompt: 'Can the water supply sustain sprinkler discharge for the required duration?',
   },
   {
-    factor_key: 're06_fp_adequacy_detection_alarm',
+    factor_key: 're06_fp_adequacy_impairment_conditions',
     group: 'adequacy',
-    prompt: 'Is detection and alarm coverage adequate for early warning across occupied and high-risk areas?',
-  },
-  {
-    factor_key: 're06_fp_adequacy_passive_protection',
-    group: 'adequacy',
-    prompt: 'Is passive fire protection (compartmentation, fire stopping, structural protection) adequate for containment?',
-  },
-  {
-    factor_key: 're06_fp_reliability_water_supply',
-    group: 'reliability',
-    prompt: 'How reliable is the primary and backup water supply under likely incident and utility-loss conditions?',
+    prompt: 'Are there installation or operational conditions that could impair sprinkler performance?',
   },
   {
     factor_key: 're06_fp_reliability_pumps_power',
     group: 'reliability',
-    prompt: 'How reliable are pumps, controls, and power resilience arrangements for sustained firefighting support?',
+    prompt: 'How reliable is the fire pump arrangement supplying the sprinkler system?',
   },
   {
-    factor_key: 're06_fp_reliability_system_condition',
+    factor_key: 're06_fp_reliability_water_supply',
     group: 'reliability',
-    prompt: 'How reliable is current system condition based on maintenance, impairment control, and defect history?',
+    prompt: 'How reliable is the primary water source supplying the system?',
   },
   {
-    factor_key: 're06_fp_reliability_testing',
+    factor_key: 're06_fp_reliability_itm_programme',
     group: 'reliability',
-    prompt: 'How reliable is performance evidence from routine inspection, testing, and flow / functional verification?',
+    prompt: 'Is the sprinkler system subject to a structured ITM programme?',
   },
   {
-    factor_key: 're06_fp_localised_systems_provided',
-    group: 'localised_special',
-    prompt: 'Are local application or process-specific suppression systems provided where needed?',
+    factor_key: 're06_fp_reliability_third_party_inspection',
+    group: 'reliability',
+    prompt: 'Is the system periodically inspected by a third party?',
+  },
+  {
+    factor_key: 're06_fp_reliability_impairment_management',
+    group: 'reliability',
+    prompt: 'How effectively are sprinkler impairments controlled and managed?',
   },
   {
     factor_key: 're06_fp_localised_hazard_match',
     group: 'localised_special',
-    prompt: 'Is the protection matched to the actual hazard/process?',
-  },
-  {
-    factor_key: 're06_fp_localised_coverage_positioning',
-    group: 'localised_special',
-    prompt: 'Is coverage/positioning adequate to protect the hazard effectively?',
-  },
-  {
-    factor_key: 're06_fp_localised_itm_reliability',
-    group: 'localised_special',
-    prompt: 'Is inspection, testing, and maintenance of localised systems reliable?',
+    prompt: 'Suitability of protection — Is the localised protection appropriate for the specific hazard and process conditions?',
   },
   {
     factor_key: 're06_fp_localised_shutdown_response',
     group: 'localised_special',
-    prompt: 'Are shutdown, isolation, and operator response arrangements adequate for these protected hazards?',
+    prompt: 'System integration and shutdown functions — Does activation of the local protection system initiate appropriate shutdown actions?',
+  },
+  {
+    factor_key: 're06_fp_localised_itm_reliability',
+    group: 'localised_special',
+    prompt: 'Maintenance and reliability of local protection — Is the local protection system inspected, tested, and maintained as part of a structured maintenance programme?',
   },
 ];
 
@@ -1013,7 +1008,8 @@ export default function RE06FireProtectionForm({
                         industryKey={null}
                         rating={question.score_1_5 ?? 3}
                         onChangeRating={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                        helpText={question.prompt}
+                        title={question.prompt}
+                        helpText="Rate this fire-protection engineering factor using the 1–5 shared RE scale."
                         weight={1}
                         autoRecommendationState={autoRecState}
                       />
@@ -1049,7 +1045,7 @@ export default function RE06FireProtectionForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Is localised/special protection required for the hazards/processes present?
+                    Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?
                   </label>
                   <select
                     value={selectedSprinklerData.localised_required || 'Unknown'}
@@ -1064,7 +1060,7 @@ export default function RE06FireProtectionForm({
 
                 {selectedSprinklerData.localised_required === 'Yes' && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">If required, is it installed?</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">If yes, is localised fire protection installed?</label>
                     <select
                       value={selectedSprinklerData.localised_present || 'Unknown'}
                       onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
@@ -1085,14 +1081,14 @@ export default function RE06FireProtectionForm({
             )}
             {!showLocalisedDetailedAssessment && (
               <p className="mt-3 text-sm text-risk-info-fg">
-                Detailed localised/special protection assessment questions are only shown when protection is required and installed.
+                Detailed localised/special protection assessment questions (Q11–Q13) are only shown when localised protection is required and installed.
               </p>
             )}
           </div>
 
           {showLocalisedDetailedAssessment && (
             <div className="xl:col-span-3 border border-slate-200 rounded-lg p-4 space-y-4">
-              <h4 className="font-semibold text-slate-900">Localised / Special Protection Assessment</h4>
+              <h4 className="font-semibold text-slate-900">Localised / Special Protection Assessment (Q11–Q13)</h4>
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
                 {supplementaryAssessment.questions
                   .filter((question) => question.group === 'localised_special')
@@ -1105,7 +1101,8 @@ export default function RE06FireProtectionForm({
                           industryKey={null}
                           rating={question.score_1_5 ?? 3}
                           onChangeRating={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                          helpText={question.prompt}
+                          title={question.prompt}
+                        helpText="Rate this fire-protection engineering factor using the 1–5 shared RE scale."
                           weight={1}
                           autoRecommendationState={autoRecState}
                         />
@@ -1746,7 +1743,7 @@ export default function RE06FireProtectionForm({
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Is localised/special protection required for the hazards/processes present?
+                        Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?
                       </label>
                       <select
                         value={selectedSprinklerData.localised_required || 'Unknown'}
@@ -1763,7 +1760,7 @@ export default function RE06FireProtectionForm({
                       <>
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
-                            If required, is it installed?
+                            If yes, is localised fire protection installed?
                           </label>
                           <select
                             value={selectedSprinklerData.localised_present || 'Unknown'}
@@ -2166,7 +2163,7 @@ export default function RE06FireProtectionForm({
 
 
       {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} buttonLabel="Add Recommendation" />
+        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} buttonLabel="Add Recommendation" useInPlaceReRecommendationModal />
       )}
     </div>
 

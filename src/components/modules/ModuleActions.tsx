@@ -7,7 +7,7 @@ import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
 import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
 import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
-import { useNavigate } from 'react-router-dom';
+import CanonicalReRecommendationModal from '../re/CanonicalReRecommendationModal';
 
 interface Action {
   id: string;
@@ -40,6 +40,7 @@ interface ModuleActionsProps {
   documentId: string;
   moduleInstanceId: string;
   buttonLabel?: string;
+  useInPlaceReRecommendationModal?: boolean;
 }
 
 const isValidUUID = (id: string | undefined | null): boolean => {
@@ -48,14 +49,19 @@ const isValidUUID = (id: string | undefined | null): boolean => {
   return uuidRegex.test(id);
 };
 
-export default function ModuleActions({ documentId, moduleInstanceId, buttonLabel = 'Add Action' }: ModuleActionsProps) {
-  const navigate = useNavigate();
+export default function ModuleActions({
+  documentId,
+  moduleInstanceId,
+  buttonLabel = 'Add Action',
+  useInPlaceReRecommendationModal = false,
+}: ModuleActionsProps) {
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
   const [isReModule, setIsReModule] = useState(false);
   const [sourceModuleKey, setSourceModuleKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showReRecommendationModal, setShowReRecommendationModal] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
@@ -385,6 +391,11 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
               return;
             }
 
+            if (useInPlaceReRecommendationModal) {
+              setShowReRecommendationModal(true);
+              return;
+            }
+
             const openRecommendationComposer = async () => {
               console.info('[RE04 Add Recommendation] click', {
                 documentId,
@@ -415,7 +426,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
                 query: params.toString(),
               });
 
-              navigate(`/documents/${documentId}/workspace?${params.toString()}`);
+              window.location.assign(`/documents/${documentId}/workspace?${params.toString()}`);
             };
 
             void openRecommendationComposer();
@@ -603,6 +614,21 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
             setShowAddModal(false);
             fetchActions();
           }}
+        />
+      )}
+
+      {isReModule && useInPlaceReRecommendationModal && showReRecommendationModal && sourceModuleKey && (
+        <CanonicalReRecommendationModal
+          isOpen={showReRecommendationModal}
+          onClose={() => setShowReRecommendationModal(false)}
+          onSaved={async () => {
+            bumpActionsVersion();
+            await fetchActions();
+          }}
+          documentId={documentId}
+          moduleInstanceId={moduleInstanceId}
+          sourceModuleKey={sourceModuleKey}
+          createdBy={user?.id || null}
         />
       )}
 
