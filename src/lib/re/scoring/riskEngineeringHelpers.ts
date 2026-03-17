@@ -74,6 +74,13 @@ export function clamp1to5(n: number): number {
 // Global pillar keys that should NOT be included in occupancy drivers
 const GLOBAL_PILLAR_KEYS = ['construction', 'fire_protection', 'exposure', 'management'];
 
+const GLOBAL_PILLAR_WEIGHTS: Record<'construction_and_combustibility' | 'fire_protection' | 'exposure' | 'management_systems', number> = {
+  construction_and_combustibility: 4,
+  fire_protection: 5,
+  exposure: 3,
+  management_systems: 3,
+};
+
 /**
  * Canonical scoring builder for Risk Engineering.
  * Single source of truth for building score breakdowns.
@@ -138,34 +145,34 @@ export async function buildRiskEngineeringScoreBreakdown(
       key: 'construction_and_combustibility',
       label: 'Construction & Combustibility',
       rating: constructionRating,
-      weight: getHrgConfig(industryKey, 'construction').weight || 3,
-      score: constructionRating * (getHrgConfig(industryKey, 'construction').weight || 3),
-      maxScore: 5 * (getHrgConfig(industryKey, 'construction').weight || 3),
+      weight: GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
+      score: constructionRating * GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
+      maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
       metadata: constructionMetadata,
     },
     {
       key: 'fire_protection',
       label: 'Fire Protection',
       rating: sectionGrades.fire_protection || 1,
-      weight: getHrgConfig(industryKey, 'fire_protection').weight || 3,
-      score: (sectionGrades.fire_protection || 1) * (getHrgConfig(industryKey, 'fire_protection').weight || 3),
-      maxScore: 5 * (getHrgConfig(industryKey, 'fire_protection').weight || 3),
+      weight: GLOBAL_PILLAR_WEIGHTS.fire_protection,
+      score: (sectionGrades.fire_protection || 1) * GLOBAL_PILLAR_WEIGHTS.fire_protection,
+      maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.fire_protection,
     },
     {
       key: 'exposure',
       label: 'Exposure',
       rating: sectionGrades.exposure || 3,
-      weight: getHrgConfig(industryKey, 'exposure').weight || 3,
-      score: (sectionGrades.exposure || 3) * (getHrgConfig(industryKey, 'exposure').weight || 3),
-      maxScore: 5 * (getHrgConfig(industryKey, 'exposure').weight || 3),
+      weight: GLOBAL_PILLAR_WEIGHTS.exposure,
+      score: (sectionGrades.exposure || 3) * GLOBAL_PILLAR_WEIGHTS.exposure,
+      maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.exposure,
     },
     {
       key: 'management_systems',
       label: 'Management Systems',
       rating: sectionGrades.management || 3,
-      weight: getHrgConfig(industryKey, 'management').weight || 3,
-      score: (sectionGrades.management || 3) * (getHrgConfig(industryKey, 'management').weight || 3),
-      maxScore: 5 * (getHrgConfig(industryKey, 'management').weight || 3),
+      weight: GLOBAL_PILLAR_WEIGHTS.management_systems,
+      score: (sectionGrades.management || 3) * GLOBAL_PILLAR_WEIGHTS.management_systems,
+      maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.management_systems,
     },
   ];
 

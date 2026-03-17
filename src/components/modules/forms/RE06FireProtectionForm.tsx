@@ -15,7 +15,7 @@ import {
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
-import { focusRingClass } from '../../../theme/semanticClasses';
+import RatingButtons from '../../re/RatingButtons';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
 
 interface Document {
@@ -142,7 +142,7 @@ interface FireProtectionModuleData {
   supplementary_assessment?: SupplementaryAssessmentData;
 }
 
-type SupplementaryQuestionGroup = 'adequacy' | 'reliability';
+type SupplementaryQuestionGroup = 'adequacy' | 'reliability' | 'localised_special';
 
 interface SupplementaryQuestionResponse {
   factor_key: string;
@@ -156,6 +156,7 @@ interface SupplementaryAssessmentData {
   questions: SupplementaryQuestionResponse[];
   adequacy_subscore: number | null;
   reliability_subscore: number | null;
+  localised_special_subscore: number | null;
   overall_score: number | null;
 }
 
@@ -206,9 +207,29 @@ const SUPPLEMENTARY_FIRE_QUESTIONS: Array<Pick<SupplementaryQuestionResponse, 'f
     prompt: 'How reliable is performance evidence from routine inspection, testing, and flow / functional verification?',
   },
   {
-    factor_key: 're06_fp_reliability_localised_special_protection',
-    group: 'reliability',
-    prompt: 'How adequate and reliable is localised/special protection (e.g., fryer suppression, water mist, process-specific systems)?',
+    factor_key: 're06_fp_localised_systems_provided',
+    group: 'localised_special',
+    prompt: 'Are local application or process-specific suppression systems provided where needed?',
+  },
+  {
+    factor_key: 're06_fp_localised_hazard_match',
+    group: 'localised_special',
+    prompt: 'Is the protection matched to the actual hazard/process?',
+  },
+  {
+    factor_key: 're06_fp_localised_coverage_positioning',
+    group: 'localised_special',
+    prompt: 'Is coverage/positioning adequate to protect the hazard effectively?',
+  },
+  {
+    factor_key: 're06_fp_localised_itm_reliability',
+    group: 'localised_special',
+    prompt: 'Is inspection, testing, and maintenance of localised systems reliable?',
+  },
+  {
+    factor_key: 're06_fp_localised_shutdown_response',
+    group: 'localised_special',
+    prompt: 'Are shutdown, isolation, and operator response arrangements adequate for these protected hazards?',
   },
 ];
 
@@ -221,6 +242,7 @@ function createDefaultSupplementaryAssessment(): SupplementaryAssessmentData {
     })),
     adequacy_subscore: null,
     reliability_subscore: null,
+    localised_special_subscore: null,
     overall_score: null,
   };
 }
@@ -249,6 +271,7 @@ function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
   const byGroup = {
     adequacy: questions.filter((q) => q.group === 'adequacy' && q.score_1_5 !== null),
     reliability: questions.filter((q) => q.group === 'reliability' && q.score_1_5 !== null),
+    localised_special: questions.filter((q) => q.group === 'localised_special' && q.score_1_5 !== null),
   };
 
   const average = (items: SupplementaryQuestionResponse[]) => {
@@ -260,11 +283,13 @@ function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
   const adequacy_subscore = average(byGroup.adequacy);
   const reliability_subscore = average(byGroup.reliability);
   const ratedQuestions = questions.filter((q) => q.score_1_5 !== null);
+  const localised_special_subscore = average(byGroup.localised_special);
   const overall_score = average(ratedQuestions);
 
   return {
     adequacy_subscore,
     reliability_subscore,
+    localised_special_subscore,
     overall_score,
   };
 }
@@ -575,16 +600,16 @@ export default function RE06FireProtectionForm({
         .maybeSingle();
 
       const industryKey = (riskEngInstance?.data as any)?.industry || null;
-      const scoredQuestions = payload.supplementary_assessment?.questions?.filter((q) => q.score_1_5 !== null) || [];
+      const allSupplementaryQuestions = payload.supplementary_assessment?.questions || [];
 
       void Promise.allSettled(
-        scoredQuestions.map((question) =>
+        allSupplementaryQuestions.map((question) =>
           syncAutoRecToRegister({
             documentId: moduleInstance.document_id,
             moduleKey: 'RE_06_FIRE_PROTECTION',
             canonicalKey: question.factor_key,
             moduleInstanceId: moduleInstance.id,
-            rating_1_5: Number(question.score_1_5),
+            rating_1_5: question.score_1_5 === null ? 5 : Number(question.score_1_5),
             industryKey,
           })
         )
@@ -758,7 +783,7 @@ export default function RE06FireProtectionForm({
             <p className="text-sm text-slate-600">Site-level water supply reliability assessment</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-600">Water Score:</span>
+            <span className="text-sm text-slate-600">Water indicator:</span>
             {assessorWaterScore !== null && assessorWaterScore !== undefined ? (
               <>
                 <div className="flex items-center gap-1">
@@ -777,7 +802,7 @@ export default function RE06FireProtectionForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {/* Water supply supports - New field at top */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Water supply supports</label>
@@ -815,7 +840,7 @@ export default function RE06FireProtectionForm({
 
           {/* Supply Type Other - Conditional */}
           {siteWaterData.supply_type === 'Other' && (
-            <div className="col-span-2">
+            <div className="col-span-2 md:col-span-2 xl:col-span-3">
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Supply Type Details (Other)
               </label>
@@ -832,7 +857,7 @@ export default function RE06FireProtectionForm({
           {/* Conditional hydrant/hose fields */}
           {(siteWaterData.supports === 'Hydrants / fire main / hose reels' || siteWaterData.supports === 'Both') && (
             <>
-              <div className="col-span-2 pt-4 border-t border-slate-200">
+              <div className="md:col-span-2 xl:col-span-3 pt-4 border-t border-slate-200">
                 <h4 className="font-semibold text-slate-900 mb-4">Hydrant / fire main / hose reels</h4>
               </div>
 
@@ -889,7 +914,7 @@ export default function RE06FireProtectionForm({
                 </select>
               </div>
 
-              <div className="col-span-2">
+              <div className="col-span-2 md:col-span-2 xl:col-span-3">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Last test date (optional)</label>
                 <input
                   type="date"
@@ -957,7 +982,7 @@ export default function RE06FireProtectionForm({
             </select>
           </div>
 
-          <div className="col-span-2">
+          <div className="col-span-2 md:col-span-2 xl:col-span-3">
             <label className="block text-sm font-medium text-slate-700 mb-2">Key Weaknesses</label>
             <textarea
               value={siteWaterData.key_weaknesses || ''}
@@ -968,7 +993,7 @@ export default function RE06FireProtectionForm({
             />
           </div>
 
-          <div className="col-span-2">
+          <div className="col-span-2 md:col-span-2 xl:col-span-3">
             <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
             <textarea
               value={siteWaterComments}
@@ -980,7 +1005,7 @@ export default function RE06FireProtectionForm({
           </div>
 
           {/* Site water score - Assessor judgment */}
-          <div className="col-span-2 pt-4 border-t border-slate-200">
+          <div className="md:col-span-2 xl:col-span-3 pt-4 border-t border-slate-200">
             <div className="flex items-start justify-between mb-3">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -1683,12 +1708,12 @@ export default function RE06FireProtectionForm({
             <TrendingUp className="w-5 h-5 text-risk-info-fg" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Supplementary Engineering Assessment (10 Questions)</h3>
-            <p className="text-sm text-slate-600">Adds judgement scoring while preserving factual table capture above</p>
+            <h3 className="text-lg font-semibold text-slate-900">Supplementary Engineering Assessment (Primary Fire Protection Score)</h3>
+            <p className="text-sm text-slate-600">Primary module scoring driver. Factual table capture remains unchanged above.</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
             <div className="text-sm text-slate-600 mb-1">Adequacy Subscore</div>
             <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
@@ -1698,40 +1723,48 @@ export default function RE06FireProtectionForm({
             <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
           </div>
           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Overall Supplementary Score</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.overall_score ?? 'Not rated'}</div>
+            <div className="text-sm text-slate-600 mb-1">Localised / Special Subscore</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_special_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
+            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score (drives RE-06)</div>
+            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
           </div>
         </div>
+        <p className="text-xs text-slate-500 mb-6">
+          Overall score is the average of all rated supplementary questions across adequacy, reliability, and localised/special protection.
+        </p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {(['adequacy', 'reliability'] as const).map((group) => (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {(['adequacy', 'reliability', 'localised_special'] as const).map((group) => (
             <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
-              <h4 className="font-semibold text-slate-900 capitalize">{group}</h4>
+              <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
               {supplementaryAssessment.questions
                 .filter((question) => question.group === group)
                 .map((question) => (
                   <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
                     <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <select
-                        value={question.score_1_5 === null ? '' : question.score_1_5}
-                        onChange={(e) =>
-                          updateSupplementaryQuestion(
-                            question.factor_key,
-                            'score_1_5',
-                            e.target.value === '' ? null : Number(e.target.value)
-                          )
-                        }
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                    <div className="space-y-3">
+                      <RatingButtons
+                        value={question.score_1_5}
+                        onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
+                        labels={{
+                          1: 'Inadequate',
+                          2: 'Deficient',
+                          3: 'Marginal',
+                          4: 'Adequate',
+                          5: 'Robust',
+                        }}
+                        size="sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
+                        className="text-xs text-slate-500 hover:text-slate-700 underline"
                       >
-                        <option value="">Not rated</option>
-                        <option value="1">1 – Very poor</option>
-                        <option value="2">2 – Poor</option>
-                        <option value="3">3 – Fair</option>
-                        <option value="4">4 – Good</option>
-                        <option value="5">5 – Excellent</option>
-                      </select>
-                      <div className="md:col-span-2">
+                        Clear rating
+                      </button>
+                      <div>
                         <textarea
                           rows={2}
                           value={question.notes}
@@ -1754,7 +1787,7 @@ export default function RE06FireProtectionForm({
             <TrendingUp className="w-5 h-5 text-risk-low-fg" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Site Fire Protection Roll-up</h3>
+            <h3 className="text-lg font-semibold text-slate-900">Site Fire Protection Roll-up (Informational Indicator)</h3>
             <p className="text-sm text-slate-600">
               Area-weighted average across buildings where sprinklers are required
             </p>
