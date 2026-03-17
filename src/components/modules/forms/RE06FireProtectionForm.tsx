@@ -478,6 +478,8 @@ export default function RE06FireProtectionForm({
   const selectedComments = selectedBuildingId
     ? fireProtectionData.buildings[selectedBuildingId]?.comments || ''
     : '';
+  const showLocalisedDetailedAssessment =
+    selectedSprinklerData.localised_required === 'Yes' && selectedSprinklerData.localised_present === 'Yes';
 
   // Suggested score from inputs (always calculated, never null)
   const suggestedWaterScore = useMemo(() => {
@@ -888,7 +890,7 @@ export default function RE06FireProtectionForm({
             <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_special_subscore ?? 'Not rated'}</div>
           </div>
           <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
-            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score (drives RE-06)</div>
+            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score (drives RE-04 Fire Protection)</div>
             <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
           </div>
         </div>
@@ -939,9 +941,16 @@ export default function RE06FireProtectionForm({
                 Knockout failed. This automatically forces a low localised/special protection factor rating and triggers a factor-linked recommendation.
               </p>
             )}
+            {!showLocalisedDetailedAssessment && (
+              <p className="mt-3 text-sm text-risk-info-fg">
+                Detailed localised/special protection assessment questions are only shown when protection is required and installed.
+              </p>
+            )}
           </div>
 
-          {(['adequacy', 'reliability', 'localised_special'] as const).map((group) => (
+          {(['adequacy', 'reliability', 'localised_special'] as const)
+            .filter((group) => group !== 'localised_special' || showLocalisedDetailedAssessment)
+            .map((group) => (
             <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
               <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
               {supplementaryAssessment.questions
