@@ -81,7 +81,7 @@ type SprinklersInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type SystemType = 'Wet pipe' | 'Dry pipe' | 'Pre-action' | 'Deluge' | 'Combination / Mixed' | 'Unknown';
 type SprinklerStandard = 'EN 12845' | 'NFPA 13' | 'FM' | 'LPC Rules' | 'VdS' | 'AS 2118' | 'NZS 4541' | 'SANS 10287' | 'Other…';
 type LocalisedRequired = 'Yes' | 'No' | 'Unknown';
-type LocalisedPresent = 'Yes' | 'No' | 'Partial' | 'Unknown';
+type LocalisedPresent = 'Yes' | 'No' | 'Unknown';
 type DetectionInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type AlarmMonitoring = 'Local only' | 'ARC' | 'Fire brigade connection' | 'Unknown';
 type DetectionTestingRegime = 'Documented' | 'Not documented' | 'Unknown';
@@ -728,6 +728,58 @@ export default function RE06FireProtectionForm({
     });
   };
 
+  const updateLocalisedKnockout = (
+    field: 'localised_required' | 'localised_present',
+    value: LocalisedRequired | LocalisedPresent
+  ) => {
+    if (!selectedBuildingId) return;
+
+    setFireProtectionData((prev) => {
+      const building = prev.buildings[selectedBuildingId] || {
+        sprinklerData: createDefaultBuildingSprinkler(),
+        comments: '',
+      };
+
+      const sprinklerData = {
+        ...building.sprinklerData,
+        [field]: value,
+      };
+
+      if (field === 'localised_required' && value !== 'Yes') {
+        sprinklerData.localised_present = 'Unknown';
+      }
+
+      const knockoutFailed =
+        sprinklerData.localised_required === 'Yes' && sprinklerData.localised_present === 'No';
+      const localisedQuestionFactor = 're06_fp_localised_systems_provided';
+
+      const currentSupplementary = normalizeSupplementaryAssessment(prev.supplementary_assessment);
+      const updatedQuestions = currentSupplementary.questions.map((question) => {
+        if (question.factor_key !== localisedQuestionFactor) return question;
+        return {
+          ...question,
+          score_1_5: knockoutFailed ? 1 : question.score_1_5,
+        };
+      });
+
+      return {
+        ...prev,
+        buildings: {
+          ...prev.buildings,
+          [selectedBuildingId]: {
+            ...building,
+            sprinklerData,
+          },
+        },
+        supplementary_assessment: {
+          ...currentSupplementary,
+          ...deriveSupplementaryScores(updatedQuestions),
+          questions: updatedQuestions,
+        },
+      };
+    });
+  };
+
   const updateBuildingComments = (comments: string) => {
     if (!selectedBuildingId) return;
 
@@ -792,6 +844,25 @@ export default function RE06FireProtectionForm({
 
   return (
     <div className="pb-24">
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-sm text-slate-600">
+            {saving && 'Saving fire protection assessment…'}
+            {!saving && lastSavedAt && `Last saved at ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
+            {!saving && !lastSavedAt && 'Save to persist RE-04 fire protection updates and recommendation lifecycle changes.'}
+          </div>
+          <button
+            type="button"
+            onClick={() => void saveData()}
+            disabled={saving}
+            className="px-4 py-2 rounded-md text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        {saveError && <p className="text-xs text-risk-high-fg mt-2">{saveError}</p>}
+      </div>
+
       <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
@@ -826,6 +897,50 @@ export default function RE06FireProtectionForm({
         </p>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          <div className="xl:col-span-3 border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
+            <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout (selected building)</h4>
+            {!selectedBuildingId ? (
+              <p className="text-sm text-risk-info-fg">Select a building to complete the knockout assessment.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Is localised/special protection required for the hazards/processes present?
+                  </label>
+                  <select
+                    value={selectedSprinklerData.localised_required || 'Unknown'}
+                    onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="Unknown">Unknown</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+
+                {selectedSprinklerData.localised_required === 'Yes' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">If required, is it installed?</label>
+                    <select
+                      value={selectedSprinklerData.localised_present || 'Unknown'}
+                      onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    >
+                      <option value="Unknown">Unknown</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+            {selectedSprinklerData.localised_required === 'Yes' && selectedSprinklerData.localised_present === 'No' && (
+              <p className="mt-3 text-sm text-risk-high-fg">
+                Knockout failed. This automatically forces a low localised/special protection factor rating and triggers a factor-linked recommendation.
+              </p>
+            )}
+          </div>
+
           {(['adequacy', 'reliability', 'localised_special'] as const).map((group) => (
             <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
               <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
@@ -1520,7 +1635,7 @@ export default function RE06FireProtectionForm({
                       </label>
                       <select
                         value={selectedSprinklerData.localised_required || 'Unknown'}
-                        onChange={(e) => updateBuildingSprinkler('localised_required', e.target.value as LocalisedRequired)}
+                        onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
                       >
                         <option value="Unknown">Unknown</option>
@@ -1538,13 +1653,12 @@ export default function RE06FireProtectionForm({
                           <select
                             value={selectedSprinklerData.localised_present || 'Unknown'}
                             onChange={(e) =>
-                              updateBuildingSprinkler('localised_present', e.target.value as LocalisedPresent)
+                              updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)
                             }
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
                           >
                             <option value="Unknown">Unknown</option>
                             <option value="Yes">Yes</option>
-                            <option value="Partial">Partial</option>
                             <option value="No">No</option>
                           </select>
                         </div>
@@ -1557,8 +1671,7 @@ export default function RE06FireProtectionForm({
                           </div>
                         )}
 
-                        {(selectedSprinklerData.localised_present === 'Yes' ||
-                          selectedSprinklerData.localised_present === 'Partial') && (
+                        {selectedSprinklerData.localised_present === 'Yes' && (
                           <>
                             <div>
                               <label className="block text-sm font-medium text-slate-700 mb-2">
