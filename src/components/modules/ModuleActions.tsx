@@ -391,7 +391,7 @@ export default function ModuleActions({
               return;
             }
 
-            if (useInPlaceReRecommendationModal) {
+            if (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') {
               setShowReRecommendationModal(true);
               return;
             }
@@ -617,7 +617,7 @@ export default function ModuleActions({
         />
       )}
 
-      {isReModule && useInPlaceReRecommendationModal && showReRecommendationModal && sourceModuleKey && (
+      {isReModule && (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') && showReRecommendationModal && sourceModuleKey && (
         <CanonicalReRecommendationModal
           isOpen={showReRecommendationModal}
           onClose={() => setShowReRecommendationModal(false)}
