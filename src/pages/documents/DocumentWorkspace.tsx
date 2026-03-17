@@ -218,6 +218,8 @@ export default function DocumentWorkspace() {
     return modules.find((m) => m.id === modalAction.module_instance_id) ?? null;
   }, [modalAction, modules]);
 
+  const hideOutstandingActionsPanel = isReRecommendationsRegisterModule(selectedStable?.module_key);
+
   useEffect(() => {
     if (!id) {
       setInvalidUrl(true);
@@ -769,7 +771,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
             )}
 
             {/* Actions Panel */}
-            {selectedStable && (
+            {selectedStable && !hideOutstandingActionsPanel && (
               <div className="bg-white rounded-lg shadow-sm border border-neutral-200 mb-6">
                 <div className="px-4 py-3 border-b border-neutral-200 bg-neutral-50">
                   <div className="flex items-center justify-between">
