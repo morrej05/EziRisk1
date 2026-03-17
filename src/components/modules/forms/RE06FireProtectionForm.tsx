@@ -16,7 +16,7 @@ import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommend
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
-import RatingButtons from '../../re/RatingButtons';
+import ReRatingPanel from '../../re/ReRatingPanel';
 import FloatingSaveBar from './FloatingSaveBar';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
 
@@ -148,21 +148,7 @@ interface FireProtectionModuleData {
 
 type SupplementaryQuestionGroup = 'adequacy' | 'reliability' | 'localised_special';
 
-const AUTO_REC_STATE_LABELS: Record<AutoRecommendationLifecycleState, string> = {
-  none: 'No recommendation created',
-  created: 'Auto recommendation created',
-  updated: 'Auto recommendation updated',
-  restored: 'Auto recommendation restored',
-  suppressed: 'Recommendation suppressed',
-};
-
 const focusRingClass = 'focus:ring-blue-500';
-
-function getAutoRecStateStyles(state: AutoRecommendationLifecycleState): string {
-  if (state === 'suppressed') return 'bg-slate-100 text-slate-700 border-slate-200';
-  if (state === 'none') return 'bg-slate-50 text-slate-600 border-slate-200';
-  return 'bg-amber-50 text-amber-800 border-amber-200';
-}
 
 interface SupplementaryQuestionResponse {
   factor_key: string;
@@ -982,26 +968,17 @@ export default function RE06FireProtectionForm({
                 .map((question) => {
                   const autoRecState = supplementaryAutoRecStates[question.factor_key] || 'none';
                   return (
-                    <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
-                      <div className="mb-3">
-                        <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${getAutoRecStateStyles(autoRecState)}`}>
-                          {AUTO_REC_STATE_LABELS[autoRecState]}
-                        </span>
-                      </div>
-                      <div className="space-y-3">
-                        <RatingButtons
-                          value={question.score_1_5}
-                          onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                          labels={{
-                            1: 'Inadequate',
-                            2: 'Deficient',
-                            3: 'Marginal',
-                            4: 'Adequate',
-                            5: 'Robust',
-                          }}
-                          size="sm"
-                        />
+                    <div key={question.factor_key} className="space-y-3">
+                      <ReRatingPanel
+                        canonicalKey={question.factor_key}
+                        industryKey={null}
+                        rating={question.score_1_5 ?? 3}
+                        onChangeRating={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
+                        helpText={question.prompt}
+                        weight={1}
+                        autoRecommendationState={autoRecState}
+                      />
+                      <div className="px-1">
                         <button
                           type="button"
                           onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
@@ -1009,15 +986,15 @@ export default function RE06FireProtectionForm({
                         >
                           Clear rating
                         </button>
-                        <div>
-                          <textarea
-                            rows={2}
-                            value={question.notes}
-                            onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
-                            placeholder="Optional assessor notes"
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                          />
-                        </div>
+                      </div>
+                      <div>
+                        <textarea
+                          rows={2}
+                          value={question.notes}
+                          onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
+                          placeholder="Optional assessor notes"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                        />
                       </div>
                     </div>
                   );
@@ -1083,26 +1060,17 @@ export default function RE06FireProtectionForm({
                   .map((question) => {
                     const autoRecState = supplementaryAutoRecStates[question.factor_key] || 'none';
                     return (
-                      <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
-                        <div className="mb-3">
-                          <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${getAutoRecStateStyles(autoRecState)}`}>
-                            {AUTO_REC_STATE_LABELS[autoRecState]}
-                          </span>
-                        </div>
-                        <div className="space-y-3">
-                          <RatingButtons
-                            value={question.score_1_5}
-                            onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                            labels={{
-                              1: 'Inadequate',
-                              2: 'Deficient',
-                              3: 'Marginal',
-                              4: 'Adequate',
-                              5: 'Robust',
-                            }}
-                            size="sm"
-                          />
+                      <div key={question.factor_key} className="space-y-3">
+                        <ReRatingPanel
+                          canonicalKey={question.factor_key}
+                          industryKey={null}
+                          rating={question.score_1_5 ?? 3}
+                          onChangeRating={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
+                          helpText={question.prompt}
+                          weight={1}
+                          autoRecommendationState={autoRecState}
+                        />
+                        <div className="px-1">
                           <button
                             type="button"
                             onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
@@ -1110,15 +1078,15 @@ export default function RE06FireProtectionForm({
                           >
                             Clear rating
                           </button>
-                          <div>
-                            <textarea
-                              rows={2}
-                              value={question.notes}
-                              onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
-                              placeholder="Optional assessor notes"
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                            />
-                          </div>
+                        </div>
+                        <div>
+                          <textarea
+                            rows={2}
+                            value={question.notes}
+                            onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
+                            placeholder="Optional assessor notes"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                          />
                         </div>
                       </div>
                     );
