@@ -31,6 +31,7 @@ export function SurveyBadgeRow({
   };
 
   const isDsear = product === 'DSEAR';
+  const isReProduct = product === 'RE';
 
   // --- Jurisdiction label ---
   const normalizedJurisdiction = normalizeJurisdiction(jurisdiction);
@@ -77,8 +78,9 @@ export function SurveyBadgeRow({
     moduleColor = 'bg-amber-100 text-amber-800 border-amber-300';
   }
 
-  // Hide jurisdiction only for pure RE docs; always show for DSEAR
-  const showJurisdiction = isDsear || !hasRE || hasFRA || hasFSD;
+  // Risk Engineering workspaces are jurisdiction-neutral.
+  // Preserve jurisdiction display for FRA/FSD/DSEAR and other non-RE contexts.
+  const showJurisdiction = !isReProduct && (isDsear || !hasRE || hasFRA || hasFSD);
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${className}`}>
