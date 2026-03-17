@@ -198,11 +198,6 @@ const SUPPLEMENTARY_FIRE_QUESTIONS: Array<Pick<SupplementaryQuestionResponse, 'f
     prompt: 'How reliable is the fire pump arrangement supplying the sprinkler system?',
   },
   {
-    factor_key: 're06_fp_reliability_water_supply',
-    group: 'reliability',
-    prompt: 'How reliable is the primary water source supplying the system?',
-  },
-  {
     factor_key: 're06_fp_reliability_itm_programme',
     group: 'reliability',
     prompt: 'Is the sprinkler system subject to a structured ITM programme?',
@@ -353,6 +348,7 @@ function calculateSiteRollup(
   buildingsWithArea: number;
   missingRequiredCoverageCount: number;
   missingInstalledCoverageCount: number;
+  missingFieldPaths: string[];
 } {
   let totalWeightedScore = 0;
   let totalWeight = 0;
@@ -364,15 +360,43 @@ function calculateSiteRollup(
   let buildingsWithArea = 0;
   let missingRequiredCoverageCount = 0;
   let missingInstalledCoverageCount = 0;
+  const missingFieldPaths = new Set<string>();
 
   for (const building of buildings) {
     const buildingFP = fireProtectionData.buildings[building.id];
     if (!buildingFP?.sprinklerData) continue;
 
-    // Include any building where sprinkler coverage is required, even if currently not installed
+    const area = resolveBuildingArea(building);
+    if (area <= 0) {
+      missingFieldPaths.add(`re_buildings.${building.id}.footprint_m2|floor_area_sqm`);
+      someAreaMissing = true;
+    }
+
+    // Coverage metrics are factual and should include any building with known area
+    if (area > 0) {
+      totalArea_m2 += area;
+      buildingsWithArea++;
+
+      const installedPctRaw = buildingFP.sprinklerData.sprinkler_coverage_installed_pct;
+      if (installedPctRaw === null || installedPctRaw === undefined) {
+        missingInstalledCoverageCount++;
+        missingFieldPaths.add(`module_instances.fire_protection.buildings.${building.id}.sprinklerData.sprinkler_coverage_installed_pct`);
+      } else {
+        installedSprinklerArea += (area * installedPctRaw) / 100;
+      }
+
+      const requiredPctRawForCoverage = buildingFP.sprinklerData.sprinkler_coverage_required_pct;
+      if (requiredPctRawForCoverage === null || requiredPctRawForCoverage === undefined) {
+        missingRequiredCoverageCount++;
+        missingFieldPaths.add(`module_instances.fire_protection.buildings.${building.id}.sprinklerData.sprinkler_coverage_required_pct`);
+      } else {
+        requiredSprinklerArea += (area * requiredPctRawForCoverage) / 100;
+      }
+    }
+
+    // Building scoring roll-up remains informational context and only includes required > 0
     const requiredPctRaw = buildingFP.sprinklerData.sprinkler_coverage_required_pct;
     if (requiredPctRaw === null || requiredPctRaw === undefined) {
-      missingRequiredCoverageCount++;
       continue;
     }
 
@@ -381,32 +405,18 @@ function calculateSiteRollup(
 
     const finalScore = buildingFP.sprinklerData.final_active_score_1_5;
 
-    // Parse area robustly (handles strings like "1,200", nulls, etc.)
-    const area = resolveBuildingArea(building);
-
     if (area > 0) {
-      const installedPctRaw = buildingFP.sprinklerData.sprinkler_coverage_installed_pct;
-      if (installedPctRaw === null || installedPctRaw === undefined) {
-        missingInstalledCoverageCount++;
-      }
-      const installedPct = installedPctRaw ?? 0;
-      requiredSprinklerArea += (area * requiredPct) / 100;
-      installedSprinklerArea += (area * installedPct) / 100;
-      totalArea_m2 += area;
-      buildingsWithArea++;
-
       // Use area for weighted scoring when final score is available
       if (finalScore !== null && finalScore !== undefined) {
         totalWeightedScore += finalScore * area;
         totalWeight += area;
       }
     } else {
-      // Building has no area - mark as missing; score weighting falls back only if final score exists
+      // Building has no area - score weighting falls back only if final score exists
       if (finalScore !== null && finalScore !== undefined) {
         totalWeightedScore += finalScore * 1;
         totalWeight += 1;
       }
-      someAreaMissing = true;
     }
 
     buildingsAssessed++;
@@ -432,6 +442,7 @@ function calculateSiteRollup(
     buildingsWithArea,
     missingRequiredCoverageCount,
     missingInstalledCoverageCount,
+    missingFieldPaths: Array.from(missingFieldPaths),
   };
 }
 
@@ -1429,7 +1440,7 @@ export default function RE06FireProtectionForm({
                     </div>
                     {buildingFP?.sprinklerData && (
                       <div className="ml-2">
-                        <div className="text-xs text-slate-600">Final</div>
+                        <div className="text-xs text-slate-600">Supporting</div>
                         <div className="text-sm font-bold text-slate-900">
                           {buildingFP.sprinklerData.final_active_score_1_5 !== null &&
                           buildingFP.sprinklerData.final_active_score_1_5 !== undefined
@@ -1490,7 +1501,7 @@ export default function RE06FireProtectionForm({
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-slate-600 flex items-center gap-1 justify-end">
-                    Final Active Score
+                    Building Active Score (supporting only)
                     {(assessorWaterScore === null || assessorWaterScore === undefined) && (
                       <span className="text-xs bg-risk-medium-bg text-risk-medium-fg px-2 py-0.5 rounded">provisional</span>
                     )}
@@ -2061,24 +2072,17 @@ export default function RE06FireProtectionForm({
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-slate-900">Site Fire Protection Roll-up (Informational Indicator)</h3>
             <p className="text-sm text-slate-600">
-              Area-weighted average across buildings where sprinklers are required
+              Coverage indicator calculated from building factual fields only (not used as RE-04 primary score)
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-6">
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Average Score</div>
-            <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.buildingsAssessed > 0 ? siteRollup.averageScore.toFixed(1) : 'Not rated'}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">Out of 5.0</div>
-          </div>
+        <div className="grid grid-cols-3 gap-6">
 
           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Buildings Assessed</div>
+            <div className="text-sm text-slate-600 mb-1">Buildings with required coverage</div>
             <div className="text-3xl font-bold text-slate-900">{siteRollup.buildingsAssessed}</div>
-            <div className="text-xs text-slate-500 mt-1">With required sprinklers</div>
+            <div className="text-xs text-slate-500 mt-1">Used only for informational roll-up context</div>
           </div>
 
           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
@@ -2145,6 +2149,11 @@ export default function RE06FireProtectionForm({
                 .
               </p>
             </div>
+            {siteRollup.missingFieldPaths.length > 0 && (
+              <div className="mt-2 text-xs text-risk-medium-fg">
+                Missing field paths: {siteRollup.missingFieldPaths.join(', ')}
+              </div>
+            )}
           </div>
         )}
 
