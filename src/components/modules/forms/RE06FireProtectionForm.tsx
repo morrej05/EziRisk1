@@ -13,6 +13,7 @@ import {
   calculateWaterScore,
 } from '../../../lib/re/fireProtectionModel';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
 import RatingButtons from '../../re/RatingButtons';
@@ -145,6 +146,20 @@ interface FireProtectionModuleData {
 }
 
 type SupplementaryQuestionGroup = 'adequacy' | 'reliability' | 'localised_special';
+
+const AUTO_REC_STATE_LABELS: Record<AutoRecommendationLifecycleState, string> = {
+  none: 'No recommendation created',
+  created: 'Auto recommendation created',
+  updated: 'Auto recommendation updated',
+  restored: 'Auto recommendation restored',
+  suppressed: 'Recommendation suppressed',
+};
+
+function getAutoRecStateStyles(state: AutoRecommendationLifecycleState): string {
+  if (state === 'suppressed') return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (state === 'none') return 'bg-slate-50 text-slate-600 border-slate-200';
+  return 'bg-amber-50 text-amber-800 border-amber-200';
+}
 
 interface SupplementaryQuestionResponse {
   factor_key: string;
@@ -294,6 +309,17 @@ function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
     localised_special_subscore,
     overall_score,
   };
+}
+
+
+
+function initializeAutoRecStates(
+  questions: SupplementaryQuestionResponse[]
+): Record<string, AutoRecommendationLifecycleState> {
+  return questions.reduce((acc, question) => {
+    acc[question.factor_key] = 'none';
+    return acc;
+  }, {} as Record<string, AutoRecommendationLifecycleState>);
 }
 
 function parseAreaValue(value: any): number {
@@ -506,6 +532,33 @@ export default function RE06FireProtectionForm({
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
   const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
   const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions);
+  const [supplementaryAutoRecStates, setSupplementaryAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>(
+    () => initializeAutoRecStates(supplementaryAssessment.questions)
+  );
+
+
+  useEffect(() => {
+    setSupplementaryAutoRecStates((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      for (const question of supplementaryAssessment.questions) {
+        if (!(question.factor_key in next)) {
+          next[question.factor_key] = 'none';
+          changed = true;
+        }
+      }
+
+      for (const key of Object.keys(next)) {
+        if (!supplementaryAssessment.questions.some((question) => question.factor_key === key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [supplementaryAssessment.questions]);
 
   const derivedRecommendations = useMemo(() => {
     const buildingsForRecs: Record<string, any> = {};
@@ -609,16 +662,18 @@ export default function RE06FireProtectionForm({
       const industryKey = (riskEngInstance?.data as any)?.industry || null;
       const allSupplementaryQuestions = payload.supplementary_assessment?.questions || [];
 
-      const supplementarySyncOps = allSupplementaryQuestions.map((question) =>
-        syncAutoRecToRegister({
+      const supplementarySyncOps = allSupplementaryQuestions.map(async (question) => {
+        const lifecycleState = await syncAutoRecToRegister({
           documentId: moduleInstance.document_id,
           moduleKey: 'RE_06_FIRE_PROTECTION',
           canonicalKey: question.factor_key,
           moduleInstanceId: moduleInstance.id,
           rating_1_5: question.score_1_5 === null ? 5 : Number(question.score_1_5),
           industryKey,
-        })
-      );
+        });
+
+        return { factorKey: question.factor_key, lifecycleState };
+      });
 
       const localisedKnockoutSyncOps = Object.entries(payload.buildings || {}).map(([buildingId, buildingData]) => {
         const sprinklerData = buildingData?.sprinklerData;
@@ -634,7 +689,21 @@ export default function RE06FireProtectionForm({
         });
       });
 
-      await Promise.allSettled([...supplementarySyncOps, ...localisedKnockoutSyncOps]);
+      const [supplementarySyncResults] = await Promise.all([
+        Promise.allSettled(supplementarySyncOps),
+        Promise.allSettled(localisedKnockoutSyncOps),
+      ]);
+
+      setSupplementaryAutoRecStates((prev) => {
+        const next = { ...prev };
+
+        for (const result of supplementarySyncResults) {
+          if (result.status !== 'fulfilled') continue;
+          next[result.value.factorKey] = result.value.lifecycleState;
+        }
+
+        return next;
+      });
 
       setLastSavedAt(new Date());
       onSaved();
@@ -899,6 +968,57 @@ export default function RE06FireProtectionForm({
         </p>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {(['adequacy', 'reliability'] as const).map((group) => (
+            <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
+              <h4 className="font-semibold text-slate-900">{group.charAt(0).toUpperCase() + group.slice(1)}</h4>
+              {supplementaryAssessment.questions
+                .filter((question) => question.group === group)
+                .map((question) => {
+                  const autoRecState = supplementaryAutoRecStates[question.factor_key] || 'none';
+                  return (
+                    <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
+                      <div className="mb-3">
+                        <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${getAutoRecStateStyles(autoRecState)}`}>
+                          {AUTO_REC_STATE_LABELS[autoRecState]}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        <RatingButtons
+                          value={question.score_1_5}
+                          onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
+                          labels={{
+                            1: 'Inadequate',
+                            2: 'Deficient',
+                            3: 'Marginal',
+                            4: 'Adequate',
+                            5: 'Robust',
+                          }}
+                          size="sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
+                          className="text-xs text-slate-500 hover:text-slate-700 underline"
+                        >
+                          Clear rating
+                        </button>
+                        <div>
+                          <textarea
+                            rows={2}
+                            value={question.notes}
+                            onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
+                            placeholder="Optional assessor notes"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ))}
+
           <div className="xl:col-span-3 border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
             <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout (selected building)</h4>
             {!selectedBuildingId ? (
@@ -948,50 +1068,58 @@ export default function RE06FireProtectionForm({
             )}
           </div>
 
-          {(['adequacy', 'reliability', 'localised_special'] as const)
-            .filter((group) => group !== 'localised_special' || showLocalisedDetailedAssessment)
-            .map((group) => (
-            <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
-              <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
-              {supplementaryAssessment.questions
-                .filter((question) => question.group === group)
-                .map((question) => (
-                  <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
-                    <div className="space-y-3">
-                      <RatingButtons
-                        value={question.score_1_5}
-                        onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                        labels={{
-                          1: 'Inadequate',
-                          2: 'Deficient',
-                          3: 'Marginal',
-                          4: 'Adequate',
-                          5: 'Robust',
-                        }}
-                        size="sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
-                        className="text-xs text-slate-500 hover:text-slate-700 underline"
-                      >
-                        Clear rating
-                      </button>
-                      <div>
-                        <textarea
-                          rows={2}
-                          value={question.notes}
-                          onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
-                          placeholder="Optional assessor notes"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                        />
+          {showLocalisedDetailedAssessment && (
+            <div className="xl:col-span-3 border border-slate-200 rounded-lg p-4 space-y-4">
+              <h4 className="font-semibold text-slate-900">Localised / Special Protection Assessment</h4>
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                {supplementaryAssessment.questions
+                  .filter((question) => question.group === 'localised_special')
+                  .map((question) => {
+                    const autoRecState = supplementaryAutoRecStates[question.factor_key] || 'none';
+                    return (
+                      <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
+                        <div className="mb-3">
+                          <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-medium ${getAutoRecStateStyles(autoRecState)}`}>
+                            {AUTO_REC_STATE_LABELS[autoRecState]}
+                          </span>
+                        </div>
+                        <div className="space-y-3">
+                          <RatingButtons
+                            value={question.score_1_5}
+                            onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
+                            labels={{
+                              1: 'Inadequate',
+                              2: 'Deficient',
+                              3: 'Marginal',
+                              4: 'Adequate',
+                              5: 'Robust',
+                            }}
+                            size="sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
+                            className="text-xs text-slate-500 hover:text-slate-700 underline"
+                          >
+                            Clear rating
+                          </button>
+                          <div>
+                            <textarea
+                              rows={2}
+                              value={question.notes}
+                              onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
+                              placeholder="Optional assessor notes"
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                            />
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
+              </div>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
