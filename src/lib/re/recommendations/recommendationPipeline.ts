@@ -48,6 +48,30 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     action_required_text: 'Upgrade detection and alarm zones/devices to ensure timely warning in occupied and higher-risk areas.',
     hazard_text: 'Late detection increases fire size at intervention and can materially worsen loss outcomes.',
   },
+  re06_fp_adequacy_passive_protection: {
+    title: 'Strengthen passive fire protection and compartment integrity',
+    observation_text: 'Compartmentation, fire stopping, and/or structural fire protection is not performing to the expected containment standard.',
+    action_required_text: 'Undertake a passive fire protection survey and complete remedial works to restore compliant compartment integrity and fire resistance performance.',
+    hazard_text: 'Weak passive protection allows uncontrolled fire and smoke spread, increasing property loss and business interruption severity.',
+  },
+  re06_fp_reliability_water_supply: {
+    title: 'Improve reliability of primary and backup firewater supply',
+    observation_text: 'Current firewater supply resilience is not sufficient for dependable suppression performance under incident conditions.',
+    action_required_text: 'Implement resilient supply arrangements (redundancy, storage, pumping, and resilience controls) and verify duty performance under loss-of-utility scenarios.',
+    hazard_text: 'Unreliable firewater availability can compromise suppression effectiveness during critical early incident phases.',
+  },
+  re06_fp_reliability_pumps_power: {
+    title: 'Improve fire pump and power resilience reliability',
+    observation_text: 'Pump arrangement, controls, or power resilience measures do not provide confidence in sustained firefighting support.',
+    action_required_text: 'Review pump duty/standby strategy, control logic, and emergency power arrangements; rectify deficiencies and validate performance by test.',
+    hazard_text: 'Pump or power failure during a fire event can rapidly reduce suppression capability and increase escalation risk.',
+  },
+  re06_fp_reliability_system_condition: {
+    title: 'Address condition-based reliability weaknesses in fire systems',
+    observation_text: 'Observed condition, defects, or impairment control evidence indicates reduced reliability of fire protection systems.',
+    action_required_text: 'Close outstanding defects, improve impairment management, and reinforce preventive maintenance to restore dependable readiness.',
+    hazard_text: 'Latent defects increase the likelihood that protection systems will underperform when demanded by an incident.',
+  },
   re06_fp_reliability_testing: {
     title: 'Strengthen fire protection inspection and test assurance',
     observation_text: 'Inspection, testing, and functional evidence is insufficient to demonstrate dependable performance.',
@@ -65,6 +89,24 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     observation_text: 'Installed localised suppression is not fully matched to fire load, fuel type, or process characteristics.',
     action_required_text: 'Review suppression media and discharge strategy to ensure compatibility with protected hazards/processes.',
     hazard_text: 'Mismatch between hazard and suppression method can lead to ineffective control at the point of ignition.',
+  },
+  re06_fp_localised_coverage_positioning: {
+    title: 'Correct localised suppression coverage and nozzle positioning',
+    observation_text: 'Localised/special suppression discharge pattern or coverage does not fully protect the identified hazard footprint.',
+    action_required_text: 'Reassess protected zones and adjust coverage, nozzle placement, or actuation arrangements to deliver effective hazard interception.',
+    hazard_text: 'Inadequate localised coverage can leave ignition points unprotected and permit rapid fire development.',
+  },
+  re06_fp_localised_itm_reliability: {
+    title: 'Improve inspection, testing, and maintenance for localised systems',
+    observation_text: 'Inspection and testing evidence for localised suppression systems is insufficient to confirm reliable operation.',
+    action_required_text: 'Establish and execute a documented ITM programme with functional testing records and timely defect closure.',
+    hazard_text: 'Without reliable ITM assurance, localised systems may fail to actuate or control fire at the point of origin.',
+  },
+  re06_fp_localised_shutdown_response: {
+    title: 'Strengthen shutdown and operator response arrangements',
+    observation_text: 'Shutdown, isolation, or operator response controls linked to protected hazards are not sufficiently robust.',
+    action_required_text: 'Define and validate emergency shutdown/isolation procedures, roles, and training for hazards requiring localised suppression response.',
+    hazard_text: 'Delayed or ineffective operator response can allow process-fed fires to escalate beyond suppression design assumptions.',
   },
   re06_fp_localised_required_installation: {
     title: 'Install required localised/special fire protection',
@@ -108,7 +150,7 @@ function buildFallbackContent(factorKey: string): FallbackContent {
     return specificFallback;
   }
 
-  const factorLabel = humanizeFactorKey(factorKey);
+  const factorLabel = humanizeFactorKey(factorKey).replace(/^Re\d+\s+/i, '').trim();
 
   return {
     title: `Improve ${factorLabel}`,

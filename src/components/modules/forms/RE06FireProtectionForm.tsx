@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AlertTriangle, Info, Droplet, Building as BuildingIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Info, Building as BuildingIcon, TrendingUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import {
   generateFireProtectionRecommendations,
@@ -331,6 +331,16 @@ function parseAreaValue(value: any): number {
   return 0;
 }
 
+function resolveBuildingArea(building: Building): number {
+  const footprintArea = parseAreaValue(building.footprint_m2);
+  if (footprintArea > 0) return footprintArea;
+
+  const floorArea = parseAreaValue(building.floor_area_sqm);
+  if (floorArea > 0) return floorArea;
+
+  return 0;
+}
+
 function calculateSiteRollup(
   fireProtectionData: FireProtectionModuleData,
   buildings: Building[]
@@ -346,6 +356,8 @@ function calculateSiteRollup(
   installedCoverage_pct: number;
   requiredCoverage_pct: number;
   buildingsWithArea: number;
+  missingRequiredCoverageCount: number;
+  missingInstalledCoverageCount: number;
 } {
   let totalWeightedScore = 0;
   let totalWeight = 0;
@@ -355,23 +367,35 @@ function calculateSiteRollup(
   let someAreaMissing = false;
   let totalArea_m2 = 0;
   let buildingsWithArea = 0;
+  let missingRequiredCoverageCount = 0;
+  let missingInstalledCoverageCount = 0;
 
   for (const building of buildings) {
     const buildingFP = fireProtectionData.buildings[building.id];
     if (!buildingFP?.sprinklerData) continue;
 
     // Include any building where sprinkler coverage is required, even if currently not installed
-    const requiredPct = buildingFP.sprinklerData.sprinkler_coverage_required_pct ?? 0;
+    const requiredPctRaw = buildingFP.sprinklerData.sprinkler_coverage_required_pct;
+    if (requiredPctRaw === null || requiredPctRaw === undefined) {
+      missingRequiredCoverageCount++;
+      continue;
+    }
+
+    const requiredPct = requiredPctRaw;
     if (requiredPct <= 0) continue;
 
     const finalScore = buildingFP.sprinklerData.final_active_score_1_5;
     if (finalScore === null || finalScore === undefined) continue;
 
     // Parse area robustly (handles strings like "1,200", nulls, etc.)
-    const area = parseAreaValue(building.footprint_m2);
+    const area = resolveBuildingArea(building);
 
     if (area > 0) {
-      const installedPct = buildingFP.sprinklerData.sprinkler_coverage_installed_pct ?? 0;
+      const installedPctRaw = buildingFP.sprinklerData.sprinkler_coverage_installed_pct;
+      if (installedPctRaw === null || installedPctRaw === undefined) {
+        missingInstalledCoverageCount++;
+      }
+      const installedPct = installedPctRaw ?? 0;
       requiredSprinklerArea += (area * requiredPct) / 100;
       installedSprinklerArea += (area * installedPct) / 100;
       totalArea_m2 += area;
@@ -408,6 +432,8 @@ function calculateSiteRollup(
     installedCoverage_pct: Math.round(installedCoverage_pct * 10) / 10,
     requiredCoverage_pct: Math.round(requiredCoverage_pct * 10) / 10,
     buildingsWithArea,
+    missingRequiredCoverageCount,
+    missingInstalledCoverageCount,
   };
 }
 
@@ -1100,30 +1126,9 @@ export default function RE06FireProtectionForm({
 
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
-            <Droplet className="w-5 h-5 text-risk-info-fg" />
-          </div>
           <div className="flex-1">
             <h2 className="text-lg font-semibold text-slate-900">Site Water & Fire Pumps</h2>
             <p className="text-sm text-slate-600">Site-level water supply reliability assessment</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-600">Water indicator:</span>
-            {assessorWaterScore !== null && assessorWaterScore !== undefined ? (
-              <>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                      key={i}
-                      className={`w-6 h-6 rounded ${i <= assessorWaterScore ? 'bg-risk-info-fg' : 'bg-slate-200'}`}
-                    />
-                  ))}
-                </div>
-                <span className="text-sm font-medium text-slate-900">{assessorWaterScore}/5</span>
-              </>
-            ) : (
-              <span className="text-sm font-medium text-slate-500">Not rated</span>
-            )}
           </div>
         </div>
 
@@ -1333,9 +1338,7 @@ export default function RE06FireProtectionForm({
           <div className="md:col-span-2 xl:col-span-3 pt-4 border-t border-slate-200">
             <div className="flex items-start justify-between mb-3">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Site Water Score (assessor judgement)
-                </label>
+                <div className="block text-sm font-medium text-slate-700 mb-1">Site Water Score (assessor judgement)</div>
                 <p className="text-xs text-slate-500">
                   Based on the inputs above, the suggested score is <strong>{suggestedWaterScore}/5</strong>
                 </p>
@@ -1347,18 +1350,22 @@ export default function RE06FireProtectionForm({
                 Apply suggested score
               </button>
             </div>
-            <select
-              value={assessorWaterScore === null || assessorWaterScore === undefined ? '' : assessorWaterScore}
-              onChange={(e) => setAssessorWaterScore(e.target.value === '' ? null : Number(e.target.value))}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+            <ReRatingPanel
+              canonicalKey="re06_fp_reliability_water_supply_assessor"
+              industryKey={null}
+              rating={assessorWaterScore ?? 3}
+              onChangeRating={(rating) => setAssessorWaterScore(rating)}
+              helpText="Set the site-level water reliability rating used internally for sprinkler reliability capping."
+              weight={1}
+              autoRecommendationState="none"
+            />
+            <button
+              type="button"
+              onClick={() => setAssessorWaterScore(null)}
+              className="mt-2 text-xs text-slate-500 hover:text-slate-700 underline"
             >
-              <option value="">Not rated</option>
-              <option value="1">1 – Very Poor (Highly unreliable)</option>
-              <option value="2">2 – Poor (Unreliable)</option>
-              <option value="3">3 – Fair (Limited reliability)</option>
-              <option value="4">4 – Good (Generally reliable)</option>
-              <option value="5">5 – Excellent (Highly reliable)</option>
-            </select>
+              Clear rating
+            </button>
           </div>
         </div>
 
@@ -1483,12 +1490,7 @@ export default function RE06FireProtectionForm({
                   </div>
                   <div className="text-xs text-slate-500 mt-1">
                     Sprinklers: {selectedSprinklerScore !== null && selectedSprinklerScore !== undefined ? `${selectedSprinklerScore}/5` : 'Not rated'} • Detection:{' '}
-                    {selectedDetectionScore !== null && selectedDetectionScore !== undefined ? `${selectedDetectionScore}/5` : 'Not rated'} • Water:{' '}
-                    {assessorWaterScore !== null && assessorWaterScore !== undefined ? (
-                      `${assessorWaterScore}/5`
-                    ) : (
-                      <span className="text-risk-medium-fg">~{suggestedWaterScore}/5</span>
-                    )}
+                    {selectedDetectionScore !== null && selectedDetectionScore !== undefined ? `${selectedDetectionScore}/5` : 'Not rated'}
                   </div>
                 </div>
               </div>
@@ -2112,6 +2114,25 @@ export default function RE06FireProtectionForm({
               <AlertTriangle className="w-4 h-4 text-risk-info-fg mt-0.5" />
               <p className="text-sm text-risk-info-fg">
                 Some buildings missing area; coverage based on {siteRollup.buildingsWithArea} building{siteRollup.buildingsWithArea !== 1 ? 's' : ''} with area data.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {(siteRollup.missingRequiredCoverageCount > 0 || siteRollup.missingInstalledCoverageCount > 0) && (
+          <div className="mt-4 p-3 bg-risk-medium-bg rounded-lg border border-risk-medium-border">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-risk-medium-fg mt-0.5" />
+              <p className="text-sm text-risk-medium-fg">
+                Coverage roll-up is partial due to missing source data:
+                {siteRollup.missingRequiredCoverageCount > 0
+                  ? ` required sprinkler coverage missing for ${siteRollup.missingRequiredCoverageCount} building${siteRollup.missingRequiredCoverageCount === 1 ? '' : 's'}`
+                  : ''}
+                {siteRollup.missingRequiredCoverageCount > 0 && siteRollup.missingInstalledCoverageCount > 0 ? '; ' : ''}
+                {siteRollup.missingInstalledCoverageCount > 0
+                  ? ` installed sprinkler coverage missing for ${siteRollup.missingInstalledCoverageCount} building${siteRollup.missingInstalledCoverageCount === 1 ? '' : 's'}`
+                  : ''}
+                .
               </p>
             </div>
           </div>
