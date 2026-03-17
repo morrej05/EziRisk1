@@ -385,12 +385,28 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
               return;
             }
 
-            const params = new URLSearchParams({
-              openAddRec: 'true',
-              sourceModuleInstanceId: moduleInstanceId,
-              sourceModuleKey: sourceModuleKey || 'OTHER',
-            });
-            navigate(`/documents/${documentId}/workspace?${params.toString()}`);
+            const openRecommendationComposer = async () => {
+              const { data: registerModule } = await supabase
+                .from('module_instances')
+                .select('id')
+                .eq('document_id', documentId)
+                .eq('module_key', 'RE_13_RECOMMENDATIONS')
+                .maybeSingle();
+
+              const params = new URLSearchParams({
+                openAddRec: 'true',
+                sourceModuleInstanceId: moduleInstanceId,
+                sourceModuleKey: sourceModuleKey || 'OTHER',
+              });
+
+              if (registerModule?.id) {
+                params.set('m', registerModule.id);
+              }
+
+              navigate(`/documents/${documentId}/workspace?${params.toString()}`);
+            };
+
+            void openRecommendationComposer();
           }}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
         >
