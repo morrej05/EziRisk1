@@ -30,17 +30,29 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     action_required_text: 'Review sprinkler design basis and extend/reconfigure coverage, densities, or zoning to match the hazard profile.',
     hazard_text: 'Under-designed sprinkler protection can allow fire growth beyond controllable limits, increasing damage and downtime.',
   },
+  re06_fp_adequacy_sprinkler_design_hazard: {
+    title: 'Align sprinkler design basis with current hazard and storage profile',
+    observation_text: 'The sprinkler design basis does not clearly match current process hazards and storage configuration.',
+    action_required_text: 'Complete an engineering design-basis review and update sprinkler design criteria to reflect current hazard class, storage geometry, and occupancy changes.',
+    hazard_text: 'A design basis mismatch can lead to underperformance during fire events and increased escalation potential.',
+  },
   re06_fp_adequacy_hydrants_fire_main: {
     title: 'Improve hydrant and fire main firefighting reach',
     observation_text: 'Hydrant, ring main, or hose reel availability/positioning is not sufficient for reliable firefighting access.',
     action_required_text: 'Survey hydrant/fire main layout and implement upgrades to improve reach, coverage, and operational usability.',
     hazard_text: 'Insufficient firefighting water access can delay attack and increase incident escalation potential.',
   },
-  re06_fp_adequacy_water_capacity: {
-    title: 'Increase available firewater capacity and duration',
-    observation_text: 'Firewater supply volume and/or duration appears below expected design fire demand.',
-    action_required_text: 'Validate hydraulic demand and increase usable firewater storage/supply duration to meet design duty.',
-    hazard_text: 'Inadequate firewater endurance can cause suppression shortfall during sustained incidents.',
+  re06_fp_adequacy_water_hydraulic_demand: {
+    title: 'Improve firewater capability against sprinkler hydraulic demand',
+    observation_text: 'Available water supply does not demonstrate reliable capacity against sprinkler hydraulic demand.',
+    action_required_text: 'Verify hydraulic demand and upgrade supply/pumping arrangements so the sprinkler system can meet required flow and pressure conditions.',
+    hazard_text: 'Hydraulic under-supply can reduce sprinkler control effectiveness during initial and developing fire stages.',
+  },
+  re06_fp_adequacy_water_duration: {
+    title: 'Increase firewater endurance for required sprinkler discharge duration',
+    observation_text: 'Water supply endurance is not assured for the required sprinkler discharge duration.',
+    action_required_text: 'Increase usable storage/replenishment resilience and verify endurance calculations against required discharge duration criteria.',
+    hazard_text: 'Insufficient water duration can lead to suppression failure before incident control is achieved.',
   },
   re06_fp_adequacy_detection_alarm: {
     title: 'Improve detection and alarm coverage for early intervention',
@@ -66,17 +78,29 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     action_required_text: 'Review pump duty/standby strategy, control logic, and emergency power arrangements; rectify deficiencies and validate performance by test.',
     hazard_text: 'Pump or power failure during a fire event can rapidly reduce suppression capability and increase escalation risk.',
   },
-  re06_fp_reliability_system_condition: {
-    title: 'Address condition-based reliability weaknesses in fire systems',
-    observation_text: 'Observed condition, defects, or impairment control evidence indicates reduced reliability of fire protection systems.',
-    action_required_text: 'Close outstanding defects, improve impairment management, and reinforce preventive maintenance to restore dependable readiness.',
-    hazard_text: 'Latent defects increase the likelihood that protection systems will underperform when demanded by an incident.',
+  re06_fp_adequacy_impairment_conditions: {
+    title: 'Address installation and operational impairment conditions',
+    observation_text: 'Installation or operating conditions are present that could impair sprinkler system performance.',
+    action_required_text: 'Identify and rectify impairment-causing conditions (valve states, obstruction risks, process changes, or temporary disablements) and track closure through formal controls.',
+    hazard_text: 'Impairment conditions can significantly reduce suppression reliability during critical incident periods.',
   },
-  re06_fp_reliability_testing: {
-    title: 'Strengthen fire protection inspection and test assurance',
-    observation_text: 'Inspection, testing, and functional evidence is insufficient to demonstrate dependable performance.',
-    action_required_text: 'Implement a documented inspection/testing plan with routine functional and flow verification evidence.',
-    hazard_text: 'Poor assurance testing increases risk of latent protection failures during an incident.',
+  re06_fp_reliability_itm_programme: {
+    title: 'Implement a structured sprinkler ITM programme',
+    observation_text: 'The sprinkler system is not currently subject to a sufficiently structured inspection, testing, and maintenance programme.',
+    action_required_text: 'Establish and enforce a documented ITM programme with defined frequencies, scope, accountability, and evidence retention.',
+    hazard_text: 'Without structured ITM, latent defects can accumulate and compromise system performance when needed.',
+  },
+  re06_fp_reliability_third_party_inspection: {
+    title: 'Introduce periodic independent third-party sprinkler inspection',
+    observation_text: 'Independent third-party inspection evidence is limited or absent for the sprinkler system.',
+    action_required_text: 'Arrange periodic qualified third-party inspections and close out findings through tracked corrective actions.',
+    hazard_text: 'Lack of independent assurance can allow critical reliability gaps to remain undetected.',
+  },
+  re06_fp_reliability_impairment_management: {
+    title: 'Strengthen sprinkler impairment control and management',
+    observation_text: 'Impairment controls are not consistently effective in managing sprinkler system availability risks.',
+    action_required_text: 'Implement formal impairment permits, temporary protection measures, escalation controls, and recovery verification for all sprinkler impairments.',
+    hazard_text: 'Weak impairment management increases the chance of major protection shortfalls during fire incidents.',
   },
   re06_fp_localised_systems_provided: {
     title: 'Provide localised suppression for process-specific hazards',

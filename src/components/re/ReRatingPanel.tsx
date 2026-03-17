@@ -6,6 +6,7 @@ import type { AutoRecommendationLifecycleState } from '../../lib/re/recommendati
 
 interface ReRatingPanelProps {
   canonicalKey: string;
+  title?: string;
   industryKey: string | null;
   rating: number;
   onChangeRating: (next: number) => void;
@@ -41,6 +42,7 @@ function getRatingButtonStyles(value: number, isSelected: boolean): string {
 
 export default function ReRatingPanel({
   canonicalKey,
+  title,
   industryKey: _industryKey,
   rating,
   onChangeRating,
@@ -52,7 +54,7 @@ export default function ReRatingPanel({
 }: ReRatingPanelProps) {
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
   const score = calculateScore(rating, weight);
-  const label = humanizeCanonicalKey(canonicalKey);
+  const label = title || humanizeCanonicalKey(canonicalKey);
   const showAutoRecIndicator = hasAutoRecommendation;
   const autoStateLabel: Record<AutoRecommendationLifecycleState, string> = {
     none: 'No recommendation created',
