@@ -80,7 +80,8 @@ interface SiteWaterData {
 type SprinklersInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type SystemType = 'Wet pipe' | 'Dry pipe' | 'Pre-action' | 'Deluge' | 'Combination / Mixed' | 'Unknown';
 type SprinklerStandard = 'EN 12845' | 'NFPA 13' | 'FM' | 'LPC Rules' | 'VdS' | 'AS 2118' | 'NZS 4541' | 'SANS 10287' | 'Other…';
-type LocalisedPresent = 'No' | 'Yes' | 'Partial' | 'Unknown';
+type LocalisedRequired = 'Yes' | 'No' | 'Unknown';
+type LocalisedPresent = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type DetectionInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type AlarmMonitoring = 'Local only' | 'ARC' | 'Fire brigade connection' | 'Unknown';
 type DetectionTestingRegime = 'Documented' | 'Not documented' | 'Unknown';
@@ -92,6 +93,7 @@ interface BuildingSprinklerData {
   system_type?: SystemType;
   standard?: SprinklerStandard;
   standard_other?: string;
+  localised_required?: LocalisedRequired;
   localised_present?: LocalisedPresent;
   localised_type?: string; // Predominant type for now (Gas suppression, Water mist, Foam, Other)
   localised_protected_asset?: string;
@@ -411,7 +413,8 @@ function createDefaultBuildingSprinkler(): BuildingSprinklerData {
     system_type: 'Unknown',
     standard: undefined,
     standard_other: '',
-    localised_present: 'No',
+    localised_required: 'Unknown',
+    localised_present: 'Unknown',
     localised_type: '',
     localised_protected_asset: '',
     localised_comments: '',
@@ -513,6 +516,8 @@ export default function RE06FireProtectionForm({
             rating: buildingFP.sprinklerData.sprinkler_score_1_5,
             provided_pct: buildingFP.sprinklerData.sprinkler_coverage_installed_pct,
             required_pct: buildingFP.sprinklerData.sprinkler_coverage_required_pct,
+            localised_required: buildingFP.sprinklerData.localised_required?.toLowerCase(),
+            localised_present: buildingFP.sprinklerData.localised_present?.toLowerCase(),
           },
         },
       };
@@ -602,18 +607,32 @@ export default function RE06FireProtectionForm({
       const industryKey = (riskEngInstance?.data as any)?.industry || null;
       const allSupplementaryQuestions = payload.supplementary_assessment?.questions || [];
 
-      void Promise.allSettled(
-        allSupplementaryQuestions.map((question) =>
-          syncAutoRecToRegister({
-            documentId: moduleInstance.document_id,
-            moduleKey: 'RE_06_FIRE_PROTECTION',
-            canonicalKey: question.factor_key,
-            moduleInstanceId: moduleInstance.id,
-            rating_1_5: question.score_1_5 === null ? 5 : Number(question.score_1_5),
-            industryKey,
-          })
-        )
+      const supplementarySyncOps = allSupplementaryQuestions.map((question) =>
+        syncAutoRecToRegister({
+          documentId: moduleInstance.document_id,
+          moduleKey: 'RE_06_FIRE_PROTECTION',
+          canonicalKey: question.factor_key,
+          moduleInstanceId: moduleInstance.id,
+          rating_1_5: question.score_1_5 === null ? 5 : Number(question.score_1_5),
+          industryKey,
+        })
       );
+
+      const localisedKnockoutSyncOps = Object.entries(payload.buildings || {}).map(([buildingId, buildingData]) => {
+        const sprinklerData = buildingData?.sprinklerData;
+        const knockoutFailed = sprinklerData?.localised_required === 'Yes' && sprinklerData?.localised_present === 'No';
+
+        return syncAutoRecToRegister({
+          documentId: moduleInstance.document_id,
+          moduleKey: 'RE_06_FIRE_PROTECTION',
+          canonicalKey: `re06_fp_localised_required_installation:${buildingId}`,
+          moduleInstanceId: moduleInstance.id,
+          rating_1_5: knockoutFailed ? 1 : 5,
+          industryKey,
+        });
+      });
+
+      await Promise.allSettled([...supplementarySyncOps, ...localisedKnockoutSyncOps]);
 
       setLastSavedAt(new Date());
       onSaved();
@@ -773,6 +792,86 @@ export default function RE06FireProtectionForm({
 
   return (
     <div className="pb-24">
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-slate-900">Supplementary Engineering Assessment (Primary Fire Protection Score)</h3>
+            <p className="text-sm text-slate-600">Primary module scoring driver. Factual table capture remains unchanged below as supporting evidence.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Adequacy Subscore</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Reliability Subscore</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Localised / Special Subscore</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_special_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
+            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score (drives RE-06)</div>
+            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mb-6">
+          Overall score is the average of all rated supplementary questions across adequacy, reliability, and localised/special protection.
+        </p>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {(['adequacy', 'reliability', 'localised_special'] as const).map((group) => (
+            <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
+              <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
+              {supplementaryAssessment.questions
+                .filter((question) => question.group === group)
+                .map((question) => (
+                  <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
+                    <div className="space-y-3">
+                      <RatingButtons
+                        value={question.score_1_5}
+                        onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
+                        labels={{
+                          1: 'Inadequate',
+                          2: 'Deficient',
+                          3: 'Marginal',
+                          4: 'Adequate',
+                          5: 'Robust',
+                        }}
+                        size="sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
+                        className="text-xs text-slate-500 hover:text-slate-700 underline"
+                      >
+                        Clear rating
+                      </button>
+                      <div>
+                        <textarea
+                          rows={2}
+                          value={question.notes}
+                          onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
+                          placeholder="Optional assessor notes"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
@@ -1410,72 +1509,99 @@ export default function RE06FireProtectionForm({
                   </>
                 )}
 
-                {/* Localised / Special Fire Protection - Always visible regardless of sprinklers */}
+                {/* Localised / Special Fire Protection knockout */}
                 <div className="pt-4 border-t border-slate-200">
                   <h4 className="font-semibold text-slate-900 mb-3">Localised / Special fire protection</h4>
 
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Localised protection installed?
+                        Is localised/special protection required for the hazards/processes present?
                       </label>
                       <select
-                        value={selectedSprinklerData.localised_present || 'No'}
-                        onChange={(e) =>
-                          updateBuildingSprinkler('localised_present', e.target.value as LocalisedPresent)
-                        }
+                        value={selectedSprinklerData.localised_required || 'Unknown'}
+                        onChange={(e) => updateBuildingSprinkler('localised_required', e.target.value as LocalisedRequired)}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
                       >
-                        <option value="No">No</option>
-                        <option value="Yes">Yes</option>
-                        <option value="Partial">Partial</option>
                         <option value="Unknown">Unknown</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
                       </select>
                     </div>
 
-                    {(selectedSprinklerData.localised_present === 'Yes' ||
-                      selectedSprinklerData.localised_present === 'Partial') && (
+                    {selectedSprinklerData.localised_required === 'Yes' && (
                       <>
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Protection type (predominant)
+                            If required, is it installed?
                           </label>
                           <select
-                            value={selectedSprinklerData.localised_type || ''}
-                            onChange={(e) => updateBuildingSprinkler('localised_type', e.target.value)}
+                            value={selectedSprinklerData.localised_present || 'Unknown'}
+                            onChange={(e) =>
+                              updateBuildingSprinkler('localised_present', e.target.value as LocalisedPresent)
+                            }
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
                           >
-                            <option value="">Select...</option>
-                            <option value="Gas suppression">Gas suppression</option>
-                            <option value="Water mist">Water mist</option>
-                            <option value="Foam">Foam</option>
-                            <option value="Other">Other</option>
+                            <option value="Unknown">Unknown</option>
+                            <option value="Yes">Yes</option>
+                            <option value="Partial">Partial</option>
+                            <option value="No">No</option>
                           </select>
                         </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Protected asset / area
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedSprinklerData.localised_protected_asset || ''}
-                            onChange={(e) => updateBuildingSprinkler('localised_protected_asset', e.target.value)}
-                            placeholder="e.g., Server room, Paint store, Battery room"
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                          />
-                        </div>
+                        {selectedSprinklerData.localised_present === 'No' && (
+                          <div className="p-3 bg-risk-high-bg border border-risk-high-border rounded-lg">
+                            <p className="text-sm text-risk-high-fg">
+                              Knockout failed: localised/special protection is required but not installed. This should drive a low engineering score and an open recommendation.
+                            </p>
+                          </div>
+                        )}
 
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
-                          <textarea
-                            value={selectedSprinklerData.localised_comments || ''}
-                            onChange={(e) => updateBuildingSprinkler('localised_comments', e.target.value)}
-                            placeholder="Additional details on localised protection..."
-                            rows={2}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                          />
-                        </div>
+                        {(selectedSprinklerData.localised_present === 'Yes' ||
+                          selectedSprinklerData.localised_present === 'Partial') && (
+                          <>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-2">
+                                Protection type (predominant)
+                              </label>
+                              <select
+                                value={selectedSprinklerData.localised_type || ''}
+                                onChange={(e) => updateBuildingSprinkler('localised_type', e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                              >
+                                <option value="">Select...</option>
+                                <option value="Gas suppression">Gas suppression</option>
+                                <option value="Water mist">Water mist</option>
+                                <option value="Foam">Foam</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-2">
+                                Protected asset / area
+                              </label>
+                              <input
+                                type="text"
+                                value={selectedSprinklerData.localised_protected_asset || ''}
+                                onChange={(e) => updateBuildingSprinkler('localised_protected_asset', e.target.value)}
+                                placeholder="e.g., Server room, Paint store, Battery room"
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
+                              <textarea
+                                value={selectedSprinklerData.localised_comments || ''}
+                                onChange={(e) => updateBuildingSprinkler('localised_comments', e.target.value)}
+                                placeholder="Additional details on localised protection..."
+                                rows={2}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                              />
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </div>
@@ -1699,85 +1825,6 @@ export default function RE06FireProtectionForm({
               </div>
             </>
           )}
-        </div>
-      </div>
-
-      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Supplementary Engineering Assessment (Primary Fire Protection Score)</h3>
-            <p className="text-sm text-slate-600">Primary module scoring driver. Factual table capture remains unchanged above.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Adequacy Subscore</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Reliability Subscore</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Localised / Special Subscore</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_special_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
-            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score (drives RE-06)</div>
-            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
-          </div>
-        </div>
-        <p className="text-xs text-slate-500 mb-6">
-          Overall score is the average of all rated supplementary questions across adequacy, reliability, and localised/special protection.
-        </p>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {(['adequacy', 'reliability', 'localised_special'] as const).map((group) => (
-            <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
-              <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
-              {supplementaryAssessment.questions
-                .filter((question) => question.group === group)
-                .map((question) => (
-                  <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
-                    <div className="space-y-3">
-                      <RatingButtons
-                        value={question.score_1_5}
-                        onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                        labels={{
-                          1: 'Inadequate',
-                          2: 'Deficient',
-                          3: 'Marginal',
-                          4: 'Adequate',
-                          5: 'Robust',
-                        }}
-                        size="sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
-                        className="text-xs text-slate-500 hover:text-slate-700 underline"
-                      >
-                        Clear rating
-                      </button>
-                      <div>
-                        <textarea
-                          rows={2}
-                          value={question.notes}
-                          onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
-                          placeholder="Optional assessor notes"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ))}
         </div>
       </div>
 

@@ -23,6 +23,71 @@ interface FallbackContent {
   hazard_text: string;
 }
 
+const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
+  re06_fp_adequacy_sprinkler_coverage: {
+    title: 'Align sprinkler design and coverage with hazard profile',
+    observation_text: 'Sprinkler arrangement is not fully aligned with current occupancy, storage, or hazard demand.',
+    action_required_text: 'Review sprinkler design basis and extend/reconfigure coverage, densities, or zoning to match the hazard profile.',
+    hazard_text: 'Under-designed sprinkler protection can allow fire growth beyond controllable limits, increasing damage and downtime.',
+  },
+  re06_fp_adequacy_hydrants_fire_main: {
+    title: 'Improve hydrant and fire main firefighting reach',
+    observation_text: 'Hydrant, ring main, or hose reel availability/positioning is not sufficient for reliable firefighting access.',
+    action_required_text: 'Survey hydrant/fire main layout and implement upgrades to improve reach, coverage, and operational usability.',
+    hazard_text: 'Insufficient firefighting water access can delay attack and increase incident escalation potential.',
+  },
+  re06_fp_adequacy_water_capacity: {
+    title: 'Increase available firewater capacity and duration',
+    observation_text: 'Firewater supply volume and/or duration appears below expected design fire demand.',
+    action_required_text: 'Validate hydraulic demand and increase usable firewater storage/supply duration to meet design duty.',
+    hazard_text: 'Inadequate firewater endurance can cause suppression shortfall during sustained incidents.',
+  },
+  re06_fp_adequacy_detection_alarm: {
+    title: 'Improve detection and alarm coverage for early intervention',
+    observation_text: 'Detection/alarm arrangements do not provide consistently adequate early warning coverage.',
+    action_required_text: 'Upgrade detection and alarm zones/devices to ensure timely warning in occupied and higher-risk areas.',
+    hazard_text: 'Late detection increases fire size at intervention and can materially worsen loss outcomes.',
+  },
+  re06_fp_reliability_testing: {
+    title: 'Strengthen fire protection inspection and test assurance',
+    observation_text: 'Inspection, testing, and functional evidence is insufficient to demonstrate dependable performance.',
+    action_required_text: 'Implement a documented inspection/testing plan with routine functional and flow verification evidence.',
+    hazard_text: 'Poor assurance testing increases risk of latent protection failures during an incident.',
+  },
+  re06_fp_localised_systems_provided: {
+    title: 'Provide localised suppression for process-specific hazards',
+    observation_text: 'Local application/process-specific suppression is not adequately provided where hazards indicate it is required.',
+    action_required_text: 'Identify relevant process/equipment hazards and install suitable localised suppression systems.',
+    hazard_text: 'Unprotected localised hazards can develop rapidly and bypass broader area-level controls.',
+  },
+  re06_fp_localised_hazard_match: {
+    title: 'Match localised protection technology to the actual hazard',
+    observation_text: 'Installed localised suppression is not fully matched to fire load, fuel type, or process characteristics.',
+    action_required_text: 'Review suppression media and discharge strategy to ensure compatibility with protected hazards/processes.',
+    hazard_text: 'Mismatch between hazard and suppression method can lead to ineffective control at the point of ignition.',
+  },
+  re06_fp_localised_required_installation: {
+    title: 'Install required localised/special fire protection',
+    observation_text: 'Localised/special protection has been identified as required but is not currently installed.',
+    action_required_text: 'Design and install suitable localised/special protection for the identified process/equipment hazards.',
+    hazard_text: 'Required point-of-hazard suppression absent: ignition can escalate before site-wide systems can control the event.',
+  },
+};
+
+function resolveFactorFallback(factorKey: string): FallbackContent | null {
+  if (FACTOR_SPECIFIC_FALLBACKS[factorKey]) {
+    return FACTOR_SPECIFIC_FALLBACKS[factorKey];
+  }
+
+  // Allow building-scoped synthetic factors, e.g. `re06_fp_localised_required_installation:building-id`
+  const [baseFactor] = factorKey.split(':');
+  if (FACTOR_SPECIFIC_FALLBACKS[baseFactor]) {
+    return FACTOR_SPECIFIC_FALLBACKS[baseFactor];
+  }
+
+  return null;
+}
+
 /**
  * Humanize a canonical key into a readable phrase
  */
@@ -38,6 +103,11 @@ function humanizeFactorKey(canonicalKey: string): string {
  * Uses SAME wording for rating 1 and 2 (only priority differs).
  */
 function buildFallbackContent(factorKey: string): FallbackContent {
+  const specificFallback = resolveFactorFallback(factorKey);
+  if (specificFallback) {
+    return specificFallback;
+  }
+
   const factorLabel = humanizeFactorKey(factorKey);
 
   return {
