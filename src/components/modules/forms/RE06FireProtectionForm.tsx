@@ -385,7 +385,6 @@ function calculateSiteRollup(
     if (requiredPct <= 0) continue;
 
     const finalScore = buildingFP.sprinklerData.final_active_score_1_5;
-    if (finalScore === null || finalScore === undefined) continue;
 
     // Parse area robustly (handles strings like "1,200", nulls, etc.)
     const area = resolveBuildingArea(building);
@@ -401,13 +400,17 @@ function calculateSiteRollup(
       totalArea_m2 += area;
       buildingsWithArea++;
 
-      // Use area for weighted scoring
-      totalWeightedScore += finalScore * area;
-      totalWeight += area;
+      // Use area for weighted scoring when final score is available
+      if (finalScore !== null && finalScore !== undefined) {
+        totalWeightedScore += finalScore * area;
+        totalWeight += area;
+      }
     } else {
-      // Building has no area - still count for scoring with weight=1, but mark as missing
-      totalWeightedScore += finalScore * 1;
-      totalWeight += 1;
+      // Building has no area - mark as missing; score weighting falls back only if final score exists
+      if (finalScore !== null && finalScore !== undefined) {
+        totalWeightedScore += finalScore * 1;
+        totalWeight += 1;
+      }
       someAreaMissing = true;
     }
 
@@ -555,6 +558,16 @@ export default function RE06FireProtectionForm({
   const effectiveWaterScore = assessorWaterScore ?? suggestedWaterScore;
   const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, effectiveWaterScore);
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
+  const installedCoverageUnavailableReason = siteRollup.totalArea_m2 > 0
+    ? null
+    : siteRollup.missingInstalledCoverageCount > 0
+      ? 'Installed coverage not provided'
+      : 'Coverage data unavailable';
+  const requiredCoverageUnavailableReason = siteRollup.totalArea_m2 > 0
+    ? null
+    : siteRollup.missingRequiredCoverageCount > 0
+      ? 'Required coverage not provided'
+      : 'Coverage data unavailable';
   const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
   const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions, {
     includeLocalisedGroup: showLocalisedDetailedAssessment || isLocalisedKnockoutFailed,
@@ -2074,7 +2087,7 @@ export default function RE06FireProtectionForm({
           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
             <div className="text-sm text-slate-600 mb-1">Installed sprinkler coverage</div>
             <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.totalArea_m2 > 0 ? siteRollup.installedSprinklerArea.toLocaleString() : '—'}
+              {siteRollup.totalArea_m2 > 0 ? siteRollup.installedSprinklerArea.toLocaleString() : installedCoverageUnavailableReason}
             </div>
             <div className="text-xs text-slate-500 mt-1">m²</div>
             {siteRollup.totalArea_m2 > 0 && (
@@ -2082,9 +2095,9 @@ export default function RE06FireProtectionForm({
                 {siteRollup.installedCoverage_pct.toFixed(1)}% of total area
               </div>
             )}
-            {siteRollup.totalArea_m2 === 0 && (
+            {siteRollup.totalArea_m2 === 0 && installedCoverageUnavailableReason && (
               <div className="mt-2 text-xs text-slate-500">
-                —%
+                {installedCoverageUnavailableReason}
               </div>
             )}
           </div>
@@ -2092,7 +2105,7 @@ export default function RE06FireProtectionForm({
           <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
             <div className="text-sm text-slate-600 mb-1">Required sprinkler coverage</div>
             <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.totalArea_m2 > 0 ? siteRollup.requiredSprinklerArea.toLocaleString() : '—'}
+              {siteRollup.totalArea_m2 > 0 ? siteRollup.requiredSprinklerArea.toLocaleString() : requiredCoverageUnavailableReason}
             </div>
             <div className="text-xs text-slate-500 mt-1">m²</div>
             {siteRollup.totalArea_m2 > 0 && (
@@ -2100,9 +2113,9 @@ export default function RE06FireProtectionForm({
                 {siteRollup.requiredCoverage_pct.toFixed(1)}% of total area
               </div>
             )}
-            {siteRollup.totalArea_m2 === 0 && (
+            {siteRollup.totalArea_m2 === 0 && requiredCoverageUnavailableReason && (
               <div className="mt-2 text-xs text-slate-500">
-                —%
+                {requiredCoverageUnavailableReason}
               </div>
             )}
           </div>

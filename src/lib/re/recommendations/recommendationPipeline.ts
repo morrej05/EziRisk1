@@ -150,7 +150,22 @@ function buildFallbackContent(factorKey: string): FallbackContent {
     return specificFallback;
   }
 
-  const factorLabel = humanizeFactorKey(factorKey).replace(/^Re\d+\s+/i, '').trim();
+  if (factorKey.startsWith('re06_fp_')) {
+    return {
+      title: 'Improve fire protection control reliability and adequacy',
+      observation_text:
+        'Fire protection control performance for this assessment factor is below the expected engineering standard.',
+      action_required_text:
+        'Complete a focused engineering review for this fire protection factor and implement corrective measures with accountable owners and target dates.',
+      hazard_text:
+        'Weak fire protection controls can delay containment and allow incident escalation, increasing damage severity and operational downtime.',
+    };
+  }
+
+  const factorLabel = humanizeFactorKey(factorKey)
+    .replace(/^re\d+_fp_/i, '')
+    .replace(/^Re\d+\s+/i, '')
+    .trim();
 
   return {
     title: `Improve ${factorLabel}`,

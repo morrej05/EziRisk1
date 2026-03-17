@@ -8,6 +8,7 @@ import ConfirmDialog from '../../ConfirmDialog';
 import AddFromLibraryModal from '../../AddFromLibraryModal';
 import { Plus, X, Upload, Image as ImageIcon, AlertTriangle, Filter, Table2, FileText, Library, BookmarkPlus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 
 interface Document {
   id: string;
@@ -153,20 +154,45 @@ export default function RE09RecommendationsForm({
     const sourceModuleInstanceId = searchParams.get('sourceModuleInstanceId') || moduleInstance.id;
     const sourceModuleKey = searchParams.get('sourceModuleKey') || moduleInstance.module_key;
 
-    setRecommendations((prev) => [
-      ...prev,
-      {
-        ...createEmptyRecommendation(document.id),
-        module_instance_id: sourceModuleInstanceId,
-        source_module_key: sourceModuleKey,
-      },
-    ]);
+    console.info('[RE04 Add Recommendation] RE-09 received openAddRec', {
+      sourceModuleInstanceId,
+      sourceModuleKey,
+      registerModuleInstanceId: moduleInstance.id,
+      source: searchParams.get('openRecSource') || 'unknown',
+    });
+
+    setRecommendations((prev) => {
+      const alreadyExists = prev.some(
+        (rec) =>
+          !rec.id.startsWith('auto-') &&
+          !rec.title.trim() &&
+          !rec.observation_text.trim() &&
+          !rec.action_required_text.trim() &&
+          !rec.hazard_text.trim() &&
+          rec.module_instance_id === sourceModuleInstanceId &&
+          rec.source_module_key === sourceModuleKey
+      );
+
+      if (alreadyExists) {
+        return prev;
+      }
+
+      return [
+        ...prev,
+        {
+          ...createEmptyRecommendation(document.id),
+          module_instance_id: sourceModuleInstanceId,
+          source_module_key: sourceModuleKey,
+        },
+      ];
+    });
 
     hasHandledOpenAddRec.current = true;
     const next = new URLSearchParams(searchParams);
     next.delete('openAddRec');
     next.delete('sourceModuleInstanceId');
     next.delete('sourceModuleKey');
+    next.delete('openRecSource');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, document.id, moduleInstance.id, moduleInstance.module_key]);
 
@@ -571,7 +597,13 @@ export default function RE09RecommendationsForm({
       }
 
       await loadRecommendations();
+      bumpActionsVersion();
       onSaved();
+
+      console.info('[RE04 Add Recommendation] recommendation save complete', {
+        documentId: document.id,
+        recommendationCount: recommendations.length,
+      });
 
       setFeedback({
         isOpen: true,

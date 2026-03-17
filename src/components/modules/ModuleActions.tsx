@@ -386,6 +386,12 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
             }
 
             const openRecommendationComposer = async () => {
+              console.info('[RE04 Add Recommendation] click', {
+                documentId,
+                sourceModuleInstanceId: moduleInstanceId,
+                sourceModuleKey,
+              });
+
               const { data: registerModule } = await supabase
                 .from('module_instances')
                 .select('id')
@@ -397,11 +403,17 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
                 openAddRec: 'true',
                 sourceModuleInstanceId: moduleInstanceId,
                 sourceModuleKey: sourceModuleKey || 'OTHER',
+                openRecSource: 'module-actions',
               });
 
               if (registerModule?.id) {
                 params.set('m', registerModule.id);
               }
+
+              console.info('[RE04 Add Recommendation] navigate', {
+                registerModuleId: registerModule?.id || null,
+                query: params.toString(),
+              });
 
               navigate(`/documents/${documentId}/workspace?${params.toString()}`);
             };
