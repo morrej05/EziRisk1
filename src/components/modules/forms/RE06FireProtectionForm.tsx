@@ -17,7 +17,8 @@ import ReEngineeringQuestionCard from '../../re/ReEngineeringQuestionCard';
 import FloatingSaveBar from './FloatingSaveBar';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
 import {
-  RE04_ENGINEERING_QUESTIONS
+  RE04_ENGINEERING_QUESTIONS,
+  RE04_ENGINEERING_QUESTIONS_BY_GROUP,
 } from '../../../lib/re/re04EngineeringModel';
 
 interface Document {
