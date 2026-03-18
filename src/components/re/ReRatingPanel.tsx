@@ -15,6 +15,7 @@ interface ReRatingPanelProps {
   defaultCollapsed?: boolean;
   hasAutoRecommendation?: boolean;
   autoRecommendationState?: AutoRecommendationLifecycleState;
+  alwaysExpanded?: boolean;
 }
 
 const RATING_LABELS: Record<number, string> = {
@@ -51,6 +52,7 @@ export default function ReRatingPanel({
   defaultCollapsed = false,
   hasAutoRecommendation = false,
   autoRecommendationState = 'none',
+  alwaysExpanded = false,
 }: ReRatingPanelProps) {
   void industryKey;
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
@@ -77,14 +79,9 @@ export default function ReRatingPanel({
     return 'No active recommendation';
   }, [autoRecommendationState, rating]);
 
-  return (
-    <div className="bg-white rounded-lg border border-slate-200">
-      {/* Compact Header - Always Visible */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
-      >
+  const headerContent = (
+    <>
+      {!alwaysExpanded && (
         <div className="flex-shrink-0">
           {isExpanded ? (
             <ChevronDown className="w-5 h-5 text-slate-600" />
@@ -92,42 +89,59 @@ export default function ReRatingPanel({
             <ChevronRight className="w-5 h-5 text-slate-600" />
           )}
         </div>
+      )}
 
-        <div className="flex-1 text-left">
-          {label ? <h3 className="font-semibold text-slate-900">{label}</h3> : null}
+      <div className="flex-1 text-left">
+        {label ? <h3 className="font-semibold text-slate-900">{label}</h3> : null}
 
-          <div className={`${label ? 'mt-3' : ''} grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,auto))_minmax(220px,1fr)] gap-x-4 gap-y-2 items-center text-sm`}>
-            <div className="text-left sm:text-center">
-              <div className="text-xs text-slate-500">Rating</div>
-              <div className="text-lg font-bold text-slate-900">{rating}</div>
+        <div className={`${label ? 'mt-3' : ''} grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,auto))_minmax(220px,1fr)] gap-x-4 gap-y-2 items-center text-sm`}>
+          <div className="text-left sm:text-center">
+            <div className="text-xs text-slate-500">Rating</div>
+            <div className="text-lg font-bold text-slate-900">{rating}</div>
+          </div>
+
+          <div className="text-left sm:text-center">
+            <div className="text-xs text-slate-500">Weight</div>
+            <div className="text-lg font-bold text-slate-900">{weight}</div>
+          </div>
+
+          <div className="text-left sm:text-center">
+            <div className="text-xs text-slate-500">Score</div>
+            <div className="text-lg font-bold text-blue-600">{score}</div>
+          </div>
+
+          {showAutoRecIndicator && (
+            <div className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium w-fit">
+              <AlertCircle className="w-3 h-3" />
+              Auto-rec
             </div>
+          )}
 
-            <div className="text-left sm:text-center">
-              <div className="text-xs text-slate-500">Weight</div>
-              <div className="text-lg font-bold text-slate-900">{weight}</div>
-            </div>
-
-            <div className="text-left sm:text-center">
-              <div className="text-xs text-slate-500">Score</div>
-              <div className="text-lg font-bold text-blue-600">{score}</div>
-            </div>
-
-            {showAutoRecIndicator && (
-              <div className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium w-fit">
-                <AlertCircle className="w-3 h-3" />
-                Auto-rec
-              </div>
-            )}
-
-            <div className="text-xs text-slate-500 xl:text-right col-span-2 sm:col-span-4 xl:col-span-1">
-              {autoStateLabel}
-            </div>
+          <div className="text-xs text-slate-500 xl:text-right col-span-2 sm:col-span-4 xl:col-span-1">
+            {autoStateLabel}
           </div>
         </div>
-      </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200">
+      {/* Compact Header - Always Visible */}
+      {alwaysExpanded ? (
+        <div className="w-full px-4 py-3 flex items-start gap-3">{headerContent}</div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
+        >
+          {headerContent}
+        </button>
+      )}
 
       {/* Expanded Body */}
-      {isExpanded && (
+      {(alwaysExpanded || isExpanded) && (
         <div className="px-4 pb-4 border-t border-slate-200">
           <div className="mt-4">
             <p className="text-sm text-slate-600 mb-4">{helpText}</p>
