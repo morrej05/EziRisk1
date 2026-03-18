@@ -406,7 +406,10 @@ export default function DocumentWorkspace() {
     setIsLoadingActions(true);
     try {
       const selectedModule = modules.find((m) => m.id === selectedModuleId);
-      const isSelectedReModule = Boolean(selectedModule?.module_key?.startsWith('RE_'));
+      const isReDocument = document?.document_type === 'RE' || document?.enabled_modules?.includes('RE');
+      const isSelectedReModule = Boolean(
+        isReDocument || selectedModule?.module_key?.startsWith('RE_')
+      );
 
       if (isSelectedReModule) {
         const selectedModuleKey = selectedModule?.module_key || null;
@@ -415,6 +418,7 @@ export default function DocumentWorkspace() {
           .select('id, title, status, priority, target_date, module_instance_id, source_module_key, created_at')
           .eq('document_id', id)
           .eq('is_suppressed', false)
+          .in('status', ['Open', 'In Progress'])
           .order('created_at', { ascending: false });
 
         const { data: recs, error: recError } = await recQuery;

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { Plus, X, Upload, Image as ImageIcon, FileText, AlertCircle } from 'lucide-react';
-import ModuleActions from '../ModuleActions';
+import { X, Upload, Image as ImageIcon, FileText, AlertCircle } from 'lucide-react';
 import FloatingSaveBar from './FloatingSaveBar';
 
 // Upload limits
@@ -71,8 +70,9 @@ export default function RE10SitePhotosForm({
 
   const [photos, setPhotos] = useState<Photo[]>(d.photos || []);
   const [sitePlan, setSitePlan] = useState<SitePlan | null>(d.site_plan || null);
-  const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
-  const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
+  const outcome = moduleInstance.outcome || '';
+  const assessorNotes = moduleInstance.assessor_notes || '';
+  void document;
 
   // Track signed URLs for display
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
@@ -447,9 +447,6 @@ export default function RE10SitePhotosForm({
         )}
       </div>
 
-      {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
-      )}
     </div>
 
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
