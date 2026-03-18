@@ -496,7 +496,7 @@ function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { le
 
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
   console.log('[PDF RE Survey] Starting RE Survey PDF build');
-  const { document, moduleInstances, organisation, renderMode, selectedModules } = options;
+  const { document, moduleInstances, actions, organisation, renderMode, selectedModules } = options;
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
