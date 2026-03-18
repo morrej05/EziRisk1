@@ -120,6 +120,8 @@ interface Building {
   ref?: string;
   description?: string;
   footprint_m2?: number;
+  roof_area_m2?: number;
+  mezzanine_area_m2?: number;
   floor_area_sqm?: number;
 }
 
@@ -260,6 +262,12 @@ function resolveBuildingArea(building: Building): number {
   const footprintArea = parseAreaValue(building.footprint_m2);
   if (footprintArea > 0) return footprintArea;
 
+  const roofArea = parseAreaValue(building.roof_area_m2);
+  if (roofArea > 0) return roofArea;
+
+  const mezzanineArea = parseAreaValue(building.mezzanine_area_m2);
+  if (mezzanineArea > 0) return mezzanineArea;
+
   const floorArea = parseAreaValue(building.floor_area_sqm);
   if (floorArea > 0) return floorArea;
 
@@ -284,6 +292,7 @@ function calculateSiteRollup(
   missingRequiredCoverageCount: number;
   missingInstalledCoverageCount: number;
   missingFieldPaths: string[];
+  coverageDataBuildings: number;
 } {
   let totalWeightedScore = 0;
   let totalWeight = 0;
@@ -295,6 +304,7 @@ function calculateSiteRollup(
   let buildingsWithArea = 0;
   let missingRequiredCoverageCount = 0;
   let missingInstalledCoverageCount = 0;
+  let coverageDataBuildings = 0;
   const missingFieldPaths = new Set<string>();
 
   for (const building of buildings) {
@@ -303,7 +313,7 @@ function calculateSiteRollup(
 
     const area = resolveBuildingArea(building);
     if (area <= 0) {
-      missingFieldPaths.add(`re_buildings.${building.id}.footprint_m2|floor_area_sqm`);
+      missingFieldPaths.add(`re_buildings.${building.id}.footprint_m2|roof_area_m2|mezzanine_area_m2|floor_area_sqm`);
       someAreaMissing = true;
     }
 
@@ -317,7 +327,9 @@ function calculateSiteRollup(
         missingInstalledCoverageCount++;
         missingFieldPaths.add(`module_instances.fire_protection.buildings.${building.id}.sprinklerData.sprinkler_coverage_installed_pct`);
       } else {
-        installedSprinklerArea += (area * installedPctRaw) / 100;
+        const installedPct = Math.max(0, Math.min(100, parseAreaValue(installedPctRaw)));
+        installedSprinklerArea += (area * installedPct) / 100;
+        coverageDataBuildings++;
       }
 
       const requiredPctRawForCoverage = buildingFP.sprinklerData.sprinkler_coverage_required_pct;
@@ -325,7 +337,9 @@ function calculateSiteRollup(
         missingRequiredCoverageCount++;
         missingFieldPaths.add(`module_instances.fire_protection.buildings.${building.id}.sprinklerData.sprinkler_coverage_required_pct`);
       } else {
-        requiredSprinklerArea += (area * requiredPctRawForCoverage) / 100;
+        const requiredPctForCoverage = Math.max(0, Math.min(100, parseAreaValue(requiredPctRawForCoverage)));
+        requiredSprinklerArea += (area * requiredPctForCoverage) / 100;
+        coverageDataBuildings++;
       }
     }
 
@@ -378,6 +392,7 @@ function calculateSiteRollup(
     missingRequiredCoverageCount,
     missingInstalledCoverageCount,
     missingFieldPaths: Array.from(missingFieldPaths),
+    coverageDataBuildings,
   };
 }
 
@@ -498,6 +513,7 @@ export default function RE06FireProtectionForm({
   const [supplementaryAutoRecStates, setSupplementaryAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>(
     () => initializeAutoRecStates(supplementaryAssessment.questions)
   );
+  const [localisedKnockoutAutoRecStates, setLocalisedKnockoutAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
 
   useEffect(() => {
@@ -549,6 +565,8 @@ export default function RE06FireProtectionForm({
 
     return generateFireProtectionRecommendations(fpModule);
   }, [fireProtectionData.buildings]);
+
+  const hasSufficientSiteRollupData = siteRollup.totalArea_m2 > 0 && siteRollup.coverageDataBuildings > 0;
 
   useEffect(() => {
     async function loadBuildings() {
@@ -656,10 +674,10 @@ export default function RE06FireProtectionForm({
           moduleInstanceId: moduleInstance.id,
           rating_1_5: knockoutFailed ? 1 : 5,
           industryKey,
-        });
+        }).then((lifecycleState) => ({ buildingId, lifecycleState }));
       });
 
-      const [supplementarySyncResults] = await Promise.all([
+      const [supplementarySyncResults, localisedKnockoutSyncResults] = await Promise.all([
         Promise.allSettled(supplementarySyncOps),
         Promise.allSettled(localisedKnockoutSyncOps),
       ]);
@@ -670,6 +688,17 @@ export default function RE06FireProtectionForm({
         for (const result of supplementarySyncResults) {
           if (result.status !== 'fulfilled') continue;
           next[result.value.factorKey] = result.value.lifecycleState;
+        }
+
+        return next;
+      });
+
+      setLocalisedKnockoutAutoRecStates((prev) => {
+        const next = { ...prev };
+
+        for (const result of localisedKnockoutSyncResults) {
+          if (result.status !== 'fulfilled') continue;
+          next[result.value.buildingId] = result.value.lifecycleState;
         }
 
         return next;
@@ -878,7 +907,7 @@ export default function RE06FireProtectionForm({
         <div className="space-y-6">
           <div>
             <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q5)</h4>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.adequacy.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                 if (!question) return null;
@@ -903,7 +932,7 @@ export default function RE06FireProtectionForm({
 
           <div>
             <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q6–Q10)</h4>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.reliability.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                 if (!question) return null;
@@ -956,14 +985,35 @@ export default function RE06FireProtectionForm({
                 </div>
               )}
             </div>
-            {isLocalisedKnockoutFailed && <p className="mt-3 text-sm text-risk-high-fg">Localised protection is required but not installed; recommendation will be kept active.</p>}
+            {(() => {
+              const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
+              const hasActiveRecommendation = currentState === 'created' || currentState === 'updated' || currentState === 'restored';
+
+              if (isLocalisedKnockoutFailed) {
+                return (
+                  <p className="mt-3 text-sm text-risk-high-fg">
+                    {hasActiveRecommendation ? 'Localised protection knockout recommendation is active.' : 'Localised protection knockout recommendation will be created on save.'}
+                  </p>
+                );
+              }
+
+              if (hasActiveRecommendation) {
+                return (
+                  <p className="mt-3 text-sm text-risk-info-fg">
+                    Localised protection knockout recommendation will be suppressed on save.
+                  </p>
+                );
+              }
+
+              return null;
+            })()}
             {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q11–Q13 are shown only when localised protection is required and installed.</p>}
           </div>
 
           {showLocalisedDetailedAssessment && (
             <div>
               <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q11–Q13)</h4>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
                   const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                   if (!question) return null;
@@ -1549,111 +1599,83 @@ export default function RE06FireProtectionForm({
         </div>
       </div>
 
-      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-risk-low-bg rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-risk-low-fg" />
+      {hasSufficientSiteRollupData ? (
+        <div className="mt-6 bg-slate-50 rounded-lg border border-slate-200 p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-4 h-4 text-slate-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold text-slate-800">Site coverage roll-up (secondary indicator)</h3>
+              <p className="text-xs text-slate-600">
+                Informational building-coverage context only. Engineering assessment above remains the scoring driver.
+              </p>
+            </div>
           </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Site Fire Protection Roll-up (Informational Indicator)</h3>
-            <p className="text-sm text-slate-600">
-              Coverage indicator calculated from building factual fields only (not used as RE-04 primary score)
-            </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-slate-200">
+              <div className="text-sm text-slate-600 mb-1">Buildings with required coverage</div>
+              <div className="text-2xl font-semibold text-slate-900">{siteRollup.buildingsAssessed}</div>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-slate-200">
+              <div className="text-sm text-slate-600 mb-1">Installed sprinkler coverage</div>
+              <div className="text-2xl font-semibold text-slate-900">{siteRollup.installedSprinklerArea.toLocaleString()} m²</div>
+              <div className="mt-1 text-sm text-slate-700">{siteRollup.installedCoverage_pct.toFixed(1)}% of total area</div>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-slate-200">
+              <div className="text-sm text-slate-600 mb-1">Required sprinkler coverage</div>
+              <div className="text-2xl font-semibold text-slate-900">{siteRollup.requiredSprinklerArea.toLocaleString()} m²</div>
+              <div className="mt-1 text-sm text-slate-700">{siteRollup.requiredCoverage_pct.toFixed(1)}% of total area</div>
+            </div>
           </div>
+
+          {siteRollup.someAreaMissing && siteRollup.buildingsAssessed > 0 && (
+            <div className="mt-4 p-3 bg-risk-info-bg rounded-lg border border-risk-info-border">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-risk-info-fg mt-0.5" />
+                <p className="text-sm text-risk-info-fg">
+                  Some buildings missing area; coverage based on {siteRollup.buildingsWithArea} building{siteRollup.buildingsWithArea !== 1 ? 's' : ''} with area data.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {(siteRollup.missingRequiredCoverageCount > 0 || siteRollup.missingInstalledCoverageCount > 0) && (
+            <div className="mt-4 p-3 bg-risk-medium-bg rounded-lg border border-risk-medium-border">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-risk-medium-fg mt-0.5" />
+                <p className="text-sm text-risk-medium-fg">
+                  Coverage roll-up is partial due to missing source data:
+                  {siteRollup.missingRequiredCoverageCount > 0
+                    ? ` required sprinkler coverage missing for ${siteRollup.missingRequiredCoverageCount} building${siteRollup.missingRequiredCoverageCount === 1 ? '' : 's'}`
+                    : ''}
+                  {siteRollup.missingRequiredCoverageCount > 0 && siteRollup.missingInstalledCoverageCount > 0 ? '; ' : ''}
+                  {siteRollup.missingInstalledCoverageCount > 0
+                    ? ` installed sprinkler coverage missing for ${siteRollup.missingInstalledCoverageCount} building${siteRollup.missingInstalledCoverageCount === 1 ? '' : 's'}`
+                    : ''}
+                  .
+                </p>
+              </div>
+              {siteRollup.missingFieldPaths.length > 0 && (
+                <div className="mt-2 text-xs text-risk-medium-fg">
+                  Missing field paths: {siteRollup.missingFieldPaths.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        <div className="grid grid-cols-3 gap-6">
-
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Buildings with required coverage</div>
-            <div className="text-3xl font-bold text-slate-900">{siteRollup.buildingsAssessed}</div>
-            <div className="text-xs text-slate-500 mt-1">Used only for informational roll-up context</div>
-          </div>
-
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Installed sprinkler coverage</div>
-            <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.totalArea_m2 > 0 ? siteRollup.installedSprinklerArea.toLocaleString() : installedCoverageUnavailableReason}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">m²</div>
-            {siteRollup.totalArea_m2 > 0 && (
-              <div className="mt-2 text-sm text-slate-700">
-                {siteRollup.installedCoverage_pct.toFixed(1)}% of total area
-              </div>
-            )}
-            {siteRollup.totalArea_m2 === 0 && installedCoverageUnavailableReason && (
-              <div className="mt-2 text-xs text-slate-500">
-                {installedCoverageUnavailableReason}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Required sprinkler coverage</div>
-            <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.totalArea_m2 > 0 ? siteRollup.requiredSprinklerArea.toLocaleString() : requiredCoverageUnavailableReason}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">m²</div>
-            {siteRollup.totalArea_m2 > 0 && (
-              <div className="mt-2 text-sm text-slate-700">
-                {siteRollup.requiredCoverage_pct.toFixed(1)}% of total area
-              </div>
-            )}
-            {siteRollup.totalArea_m2 === 0 && requiredCoverageUnavailableReason && (
-              <div className="mt-2 text-xs text-slate-500">
-                {requiredCoverageUnavailableReason}
-              </div>
-            )}
-          </div>
+      ) : (
+        <div className="mt-6 border border-slate-200 rounded-lg bg-slate-50 p-4">
+          <p className="text-sm text-slate-600">
+            Site coverage roll-up is hidden until sufficient building coverage data is available.
+            {installedCoverageUnavailableReason ? ` Installed coverage: ${installedCoverageUnavailableReason}.` : ''}
+            {requiredCoverageUnavailableReason ? ` Required coverage: ${requiredCoverageUnavailableReason}.` : ''}
+          </p>
         </div>
-
-        {siteRollup.someAreaMissing && siteRollup.buildingsAssessed > 0 && (
-          <div className="mt-4 p-3 bg-risk-info-bg rounded-lg border border-risk-info-border">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-risk-info-fg mt-0.5" />
-              <p className="text-sm text-risk-info-fg">
-                Some buildings missing area; coverage based on {siteRollup.buildingsWithArea} building{siteRollup.buildingsWithArea !== 1 ? 's' : ''} with area data.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {(siteRollup.missingRequiredCoverageCount > 0 || siteRollup.missingInstalledCoverageCount > 0) && (
-          <div className="mt-4 p-3 bg-risk-medium-bg rounded-lg border border-risk-medium-border">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-risk-medium-fg mt-0.5" />
-              <p className="text-sm text-risk-medium-fg">
-                Coverage roll-up is partial due to missing source data:
-                {siteRollup.missingRequiredCoverageCount > 0
-                  ? ` required sprinkler coverage missing for ${siteRollup.missingRequiredCoverageCount} building${siteRollup.missingRequiredCoverageCount === 1 ? '' : 's'}`
-                  : ''}
-                {siteRollup.missingRequiredCoverageCount > 0 && siteRollup.missingInstalledCoverageCount > 0 ? '; ' : ''}
-                {siteRollup.missingInstalledCoverageCount > 0
-                  ? ` installed sprinkler coverage missing for ${siteRollup.missingInstalledCoverageCount} building${siteRollup.missingInstalledCoverageCount === 1 ? '' : 's'}`
-                  : ''}
-                .
-              </p>
-            </div>
-            {siteRollup.missingFieldPaths.length > 0 && (
-              <div className="mt-2 text-xs text-risk-medium-fg">
-                Missing field paths: {siteRollup.missingFieldPaths.join(', ')}
-              </div>
-            )}
-          </div>
-        )}
-
-        {siteRollup.buildingsAssessed === 0 && (
-          <div className="mt-4 p-3 bg-risk-medium-bg rounded-lg border border-risk-medium-border">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-risk-medium-fg mt-0.5" />
-              <p className="text-sm text-risk-medium-fg">
-                No buildings with required sprinklers found. Mark buildings with required_pct {'>'} 0 to include
-                in roll-up.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
 
       {document?.id && moduleInstance?.id && (

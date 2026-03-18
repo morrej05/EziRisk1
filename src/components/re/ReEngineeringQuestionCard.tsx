@@ -27,10 +27,11 @@ export default function ReEngineeringQuestionCard({
   onNotesChange,
 }: ReEngineeringQuestionCardProps) {
   return (
-    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3">
+    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3 h-full">
       <p className="text-sm font-semibold text-slate-900">{questionId}. {prompt}</p>
       <ReRatingPanel
         canonicalKey={factorKey}
+        title={null}
         industryKey={null}
         rating={rating ?? 3}
         onChangeRating={onRatingChange}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { humanizeCanonicalKey } from '../../lib/re/reference/hrgMasterMap';
 import { calculateScore } from '../../lib/re/scoring/riskEngineeringHelpers';
@@ -6,7 +6,7 @@ import type { AutoRecommendationLifecycleState } from '../../lib/re/recommendati
 
 interface ReRatingPanelProps {
   canonicalKey: string;
-  title?: string;
+  title?: string | null;
   industryKey: string | null;
   rating: number;
   onChangeRating: (next: number) => void;
@@ -43,7 +43,7 @@ function getRatingButtonStyles(value: number, isSelected: boolean): string {
 export default function ReRatingPanel({
   canonicalKey,
   title,
-  industryKey: _industryKey,
+  industryKey,
   rating,
   onChangeRating,
   helpText,
@@ -52,17 +52,30 @@ export default function ReRatingPanel({
   hasAutoRecommendation = false,
   autoRecommendationState = 'none',
 }: ReRatingPanelProps) {
+  void industryKey;
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
   const score = calculateScore(rating, weight);
-  const label = title || humanizeCanonicalKey(canonicalKey);
+  const label = title === undefined ? humanizeCanonicalKey(canonicalKey) : title;
   const showAutoRecIndicator = hasAutoRecommendation;
-  const autoStateLabel: Record<AutoRecommendationLifecycleState, string> = {
-    none: 'No recommendation created',
-    created: 'Auto recommendation created',
-    updated: 'Auto recommendation updated',
-    restored: 'Auto recommendation restored',
-    suppressed: 'Auto recommendation suppressed after reassessment',
-  };
+  const autoStateLabel = useMemo(() => {
+    const lowScore = rating <= 2;
+
+    if (lowScore) {
+      if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+        return 'Auto recommendation active';
+      }
+      if (autoRecommendationState === 'suppressed') {
+        return 'Recommendation will be reactivated on save';
+      }
+      return 'Recommendation will be created on save';
+    }
+
+    if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+      return 'Recommendation will be suppressed on save';
+    }
+
+    return 'No active recommendation';
+  }, [autoRecommendationState, rating]);
 
   return (
     <div className="bg-white rounded-lg border border-slate-200">
@@ -70,7 +83,7 @@ export default function ReRatingPanel({
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
+        className="w-full px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
       >
         <div className="flex-shrink-0">
           {isExpanded ? (
@@ -80,34 +93,34 @@ export default function ReRatingPanel({
           )}
         </div>
 
-        <div className="flex-1 flex items-center gap-4 text-left">
-          <h3 className="font-semibold text-slate-900 flex-1">{label}</h3>
+        <div className="flex-1 text-left">
+          {label ? <h3 className="font-semibold text-slate-900">{label}</h3> : null}
 
-          <div className="flex items-center gap-3 text-sm">
-            <div className="text-center">
+          <div className={`${label ? 'mt-3' : ''} grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,auto))_minmax(220px,1fr)] gap-x-4 gap-y-2 items-center text-sm`}>
+            <div className="text-left sm:text-center">
               <div className="text-xs text-slate-500">Rating</div>
               <div className="text-lg font-bold text-slate-900">{rating}</div>
             </div>
 
-            <div className="text-center">
+            <div className="text-left sm:text-center">
               <div className="text-xs text-slate-500">Weight</div>
               <div className="text-lg font-bold text-slate-900">{weight}</div>
             </div>
 
-            <div className="text-center">
+            <div className="text-left sm:text-center">
               <div className="text-xs text-slate-500">Score</div>
               <div className="text-lg font-bold text-blue-600">{score}</div>
             </div>
 
             {showAutoRecIndicator && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium">
+              <div className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium w-fit">
                 <AlertCircle className="w-3 h-3" />
                 Auto-rec
               </div>
             )}
 
-            <div className="text-xs text-slate-500 max-w-[200px] text-right">
-              {autoStateLabel[autoRecommendationState]}
+            <div className="text-xs text-slate-500 xl:text-right col-span-2 sm:col-span-4 xl:col-span-1">
+              {autoStateLabel}
             </div>
           </div>
         </div>
