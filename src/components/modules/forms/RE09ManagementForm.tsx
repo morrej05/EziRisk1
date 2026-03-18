@@ -5,8 +5,9 @@ import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
 import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
 import { setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
-import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import RatingButtons from '../../re/RatingButtons';
 
 interface Document {
@@ -46,6 +47,16 @@ const RATING_LABELS: Record<number, string> = {
   3: 'Average / Acceptable',
   4: 'Good',
   5: 'Excellent',
+};
+
+const CATEGORY_FACTOR_KEYS: Record<string, string> = {
+  housekeeping: 'management_housekeeping',
+  hot_work: 'management_hot_work',
+  impairment_management: 'management_impairment_management',
+  contractor_control: 'management_contractor_control',
+  maintenance: 'management_maintenance',
+  emergency_planning: 'management_emergency_planning',
+  change_management: 'management_change_management',
 };
 
 // Invert rating for UI display: stored 1=excellent, UI 1=poor
@@ -96,6 +107,7 @@ export default function RE09ManagementForm({
   const [riskEngData, setRiskEngData] = useState<any>({});
   const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
   const [industryKey, setIndustryKey] = useState<string | null>(null);
+  const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
   // Refs to track hydration state
   const lastIdRef = useRef<string | null>(null);
@@ -160,6 +172,41 @@ export default function RE09ManagementForm({
     loadRiskEngModule();
   }, [moduleInstance.document_id]);
 
+  useEffect(() => {
+    async function loadAutoRecommendationStates() {
+      const factorKeys = Object.values(CATEGORY_FACTOR_KEYS);
+      const { data, error } = await supabase
+        .from('re_recommendations')
+        .select('source_factor_key, is_suppressed, created_at')
+        .eq('document_id', moduleInstance.document_id)
+        .eq('module_instance_id', moduleInstance.id)
+        .eq('source_module_key', 'RE_09_MANAGEMENT')
+        .eq('source_type', 'auto')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[RE09Management] Failed to load auto recommendation states:', error);
+        return;
+      }
+
+      const nextStates: Record<string, AutoRecommendationLifecycleState> = {};
+      factorKeys.forEach((factorKey) => {
+        nextStates[factorKey] = 'none';
+      });
+
+      for (const row of data || []) {
+        const factorKey = row.source_factor_key;
+        if (!factorKey || !factorKeys.includes(factorKey)) continue;
+        if (nextStates[factorKey] !== 'none') continue;
+        nextStates[factorKey] = row.is_suppressed ? 'suppressed' : 'created';
+      }
+
+      setAutoRecStates(nextStates);
+    }
+
+    void loadAutoRecommendationStates();
+  }, [moduleInstance.document_id, moduleInstance.id]);
+
   const hrgConfig = getHrgConfig(industryKey, CANONICAL_KEY);
 
   // Calculate overall rating from categories (weighted average)
@@ -216,6 +263,26 @@ export default function RE09ManagementForm({
     });
   };
 
+  const getAutoStateLabel = (rating: number | null, autoRecommendationState: AutoRecommendationLifecycleState) => {
+    const lowScore = rating !== null && rating <= 2;
+
+    if (lowScore) {
+      if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+        return 'Auto recommendation active';
+      }
+      if (autoRecommendationState === 'suppressed') {
+        return 'Recommendation will be reactivated on save';
+      }
+      return 'Recommendation will be created on save';
+    }
+
+    if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+      return 'Recommendation will be suppressed on save';
+    }
+
+    return 'No active recommendation';
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -247,25 +314,51 @@ export default function RE09ManagementForm({
 
       onSaved();
 
-      // Non-blocking: update RISK_ENGINEERING overall rating + auto-recs (rating 1/2 only)
+      // Non-blocking: update RISK_ENGINEERING overall rating + per-factor auto-recommendations
       const overallRating = calculateOverallRating(managementPayload.categories);
-      if (overallRating !== null) {
-        Promise.allSettled([
-          updateOverallRating(managementPayload.categories),
-          overallRating >= 4 // Only sync auto-recs for poor ratings (stored 1-2 = UI 4-5)
-            ? Promise.resolve()
-            : syncAutoRecToRegister({
-                documentId: moduleInstance.document_id,
-                moduleKey: 'RE_09_MANAGEMENT',
-                canonicalKey: CANONICAL_KEY,
-                moduleInstanceId: moduleInstance.id,
-                rating_1_5: overallRating,
-                industryKey,
-              }),
-        ]).catch((e) => {
-          console.error('[RE09Management] post-save tasks failed:', e);
-        });
-      }
+      const syncCategoryAutos = async () => {
+        let hasLifecycleChange = false;
+        const lifecycleUpdates: Record<string, AutoRecommendationLifecycleState> = {};
+
+        for (const category of formData.categories) {
+          const canonicalKey = CATEGORY_FACTOR_KEYS[category.key];
+          if (!canonicalKey) continue;
+          const rating = category.rating_1_5 !== null ? Number(category.rating_1_5) : null;
+          if (rating === null) continue;
+
+          const lifecycleState = await syncAutoRecToRegister({
+            documentId: moduleInstance.document_id,
+            moduleKey: 'RE_09_MANAGEMENT',
+            canonicalKey,
+            moduleInstanceId: moduleInstance.id,
+            rating_1_5: rating,
+            industryKey,
+          });
+
+          lifecycleUpdates[canonicalKey] = lifecycleState;
+          if (lifecycleState !== 'none') {
+            hasLifecycleChange = true;
+          }
+        }
+
+        if (Object.keys(lifecycleUpdates).length > 0) {
+          setAutoRecStates((prev) => ({
+            ...prev,
+            ...lifecycleUpdates,
+          }));
+        }
+
+        if (hasLifecycleChange) {
+          bumpActionsVersion();
+        }
+      };
+
+      Promise.allSettled([
+        overallRating !== null ? updateOverallRating(managementPayload.categories) : Promise.resolve(),
+        syncCategoryAutos(),
+      ]).catch((e) => {
+        console.error('[RE09Management] post-save tasks failed:', e);
+      });
     } catch (error) {
       console.error('Error saving module:', error);
       alert('Failed to save module. Please try again.');
@@ -329,6 +422,12 @@ export default function RE09ManagementForm({
                       labels={RATING_LABELS}
                       size="sm"
                     />
+                    <p className="mt-2 text-xs text-slate-500">
+                      {getAutoStateLabel(
+                        category.rating_1_5 !== null ? Number(category.rating_1_5) : null,
+                        autoRecStates[CATEGORY_FACTOR_KEYS[category.key]] || 'none'
+                      )}
+                    </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
@@ -348,7 +447,12 @@ export default function RE09ManagementForm({
       </div>
 
       {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
+        <ModuleActions
+          documentId={document.id}
+          moduleInstanceId={moduleInstance.id}
+          buttonLabel="Add Recommendation"
+          useInPlaceReRecommendationModal
+        />
       )}
     </div>
 
