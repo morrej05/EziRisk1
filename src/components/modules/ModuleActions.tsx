@@ -6,7 +6,11 @@ import AddActionModal from '../actions/AddActionModal';
 import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
 import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
-import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
+import {
+  filterReRecommendationsByScope,
+  hasReRecommendationWorkflow,
+  isReRecommendationsRegisterModule,
+} from '../../lib/re/recommendations/moduleRecommendationFilters';
 import CanonicalReRecommendationModal from '../re/CanonicalReRecommendationModal';
 
 interface Action {
@@ -59,6 +63,7 @@ export default function ModuleActions({
   const [actions, setActions] = useState<Action[]>([]);
   const [isReModule, setIsReModule] = useState(false);
   const [sourceModuleKey, setSourceModuleKey] = useState<string | null>(null);
+  const [isModuleTypeLoaded, setIsModuleTypeLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showReRecommendationModal, setShowReRecommendationModal] = useState(false);
@@ -95,13 +100,15 @@ export default function ModuleActions({
         .maybeSingle();
 
       setSourceModuleKey(data?.module_key || null);
-      setIsReModule(Boolean(data?.module_key?.startsWith('RE_')));
+      setIsReModule(hasReRecommendationWorkflow(data?.module_key || null));
+      setIsModuleTypeLoaded(true);
     };
 
     loadModuleType();
   }, [moduleInstanceId]);
 
   useEffect(() => {
+    if (!isModuleTypeLoaded) return;
     if (!isValidUUID(documentId)) {
       console.warn('ModuleActions: Invalid documentId provided:', documentId);
       setIsLoading(false);
@@ -114,7 +121,7 @@ export default function ModuleActions({
     }
     fetchActions();
     fetchDocumentStatus();
-  }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey]);
+  }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey, isModuleTypeLoaded]);
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -358,6 +365,9 @@ export default function ModuleActions({
 
   const isDeletable = documentStatus === 'draft';
   const hasValidIds = isValidUUID(documentId) && isValidUUID(moduleInstanceId);
+  const hideModuleActionsUi = Boolean(
+    sourceModuleKey?.startsWith('RE_') && !hasReRecommendationWorkflow(sourceModuleKey)
+  );
 
   if (!hasValidIds) {
     return (
@@ -377,6 +387,10 @@ export default function ModuleActions({
         </div>
       </div>
     );
+  }
+
+  if (!isModuleTypeLoaded || hideModuleActionsUi) {
+    return null;
   }
 
   // All document types (including RE modules) show actions UI for the active module instance

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
 import ReRatingPanel from '../../re/ReRatingPanel';
 import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
@@ -10,7 +9,7 @@ import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRe
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import { getSuggestedEquipment, STANDARD_EQUIPMENT_OPTIONS, isHeavyOccupancy } from '../../../lib/re/reference/occupancyCriticalEquipment';
-import { Plus, X, Trash2 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 interface Document {
   id: string;
@@ -76,7 +75,6 @@ const SERVICE_TYPE_OPTIONS = [
 
 export default function RE08UtilitiesForm({
   moduleInstance,
-  document,
   onSaved,
 }: RE08UtilitiesFormProps) {
   const [isSaving, setIsSaving] = useState(false);
@@ -837,14 +835,6 @@ export default function RE08UtilitiesForm({
           </div>
         </div>
 
-        {document?.id && moduleInstance?.id && (
-          <ModuleActions
-            documentId={document.id}
-            moduleInstanceId={moduleInstance.id}
-            buttonLabel="Add Recommendation"
-            useInPlaceReRecommendationModal
-          />
-        )}
       </div>
 
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
 
 interface Document {
@@ -40,7 +39,6 @@ const CURRENCIES = [
 
 export default function RE12LossValuesForm({
   moduleInstance,
-  document,
   onSaved,
 }: RE12LossValuesFormProps) {
   const [isSaving, setIsSaving] = useState(false);
@@ -104,7 +102,7 @@ export default function RE12LossValuesForm({
     },
   });
 
-  const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
+  const [assessorNotes] = useState(moduleInstance.assessor_notes || '');
 
   // Calculation helpers
   const calcTotalPD = () => {
@@ -1181,9 +1179,6 @@ export default function RE12LossValuesForm({
         </div>
       </div>
 
-      {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
-      )}
     </div>
 
     <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
