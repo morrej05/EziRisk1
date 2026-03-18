@@ -35,7 +35,11 @@ import DocumentStatusBadge from '../../components/documents/DocumentStatusBadge'
 import OverallGradeWidget from '../../components/re/OverallGradeWidget';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
 import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
-import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
+import {
+  filterReRecommendationsByScope,
+  hasReRecommendationWorkflow,
+  shouldForceDocumentRecommendationScope,
+} from '../../lib/re/recommendations/moduleRecommendationFilters';
 
 interface Document {
   id: string;
@@ -218,7 +222,10 @@ export default function DocumentWorkspace() {
     return modules.find((m) => m.id === modalAction.module_instance_id) ?? null;
   }, [modalAction, modules]);
 
-  const hideOutstandingActionsPanel = isReRecommendationsRegisterModule(selectedStable?.module_key);
+  const hideOutstandingActionsPanel = Boolean(
+    selectedStable?.module_key?.startsWith('RE_') && !hasReRecommendationWorkflow(selectedStable?.module_key)
+  );
+  const forceDocumentActionScope = shouldForceDocumentRecommendationScope(selectedStable?.module_key);
 
   useEffect(() => {
     if (!id) {
@@ -413,6 +420,7 @@ export default function DocumentWorkspace() {
 
       if (isSelectedReModule) {
         const selectedModuleKey = selectedModule?.module_key || null;
+        const effectiveScope = shouldForceDocumentRecommendationScope(selectedModuleKey) ? 'document' : actionScope;
         const recQuery = supabase
           .from('re_recommendations')
           .select('id, title, status, priority, target_date, module_instance_id, source_module_key, created_at')
@@ -436,9 +444,9 @@ export default function DocumentWorkspace() {
         };
 
         const filteredRecs = filterReRecommendationsByScope((recs || []) as ReRecommendationRow[], {
-          scope: actionScope,
+          scope: effectiveScope,
           moduleInstanceId: selectedModuleId,
-          isRegisterModule: isReRecommendationsRegisterModule(selectedModuleKey),
+          isRegisterModule: shouldForceDocumentRecommendationScope(selectedModuleKey),
         });
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
@@ -796,16 +804,18 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                 {!isActionsPanelCollapsed && (
                   <>
                     <div className="flex gap-2 px-4 py-2 border-b border-neutral-200">
-                      <button
-                        onClick={() => setActionScope('module')}
-                        className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                          actionScope === 'module'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                        }`}
-                      >
-                        This module ({actionScope === 'module' ? actions.length : '...'})
-                      </button>
+                      {!forceDocumentActionScope && (
+                        <button
+                          onClick={() => setActionScope('module')}
+                          className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                            actionScope === 'module'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                          }`}
+                        >
+                          This module ({actionScope === 'module' ? actions.length : '...'})
+                        </button>
+                      )}
                       <button
                         onClick={() => setActionScope('document')}
                         className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
@@ -814,7 +824,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                             : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                         }`}
                       >
-                        All actions ({actionScope === 'document' ? actions.length : '...'})
+                        {forceDocumentActionScope ? `All actions (${actions.length})` : `All actions (${actionScope === 'document' ? actions.length : '...'})`}
                       </button>
                     </div>
 
@@ -827,7 +837,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                         <div className="text-center py-8">
                           <AlertCircle className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
                           <p className="text-sm text-neutral-600">
-                            {actionScope === 'module' ? 'No actions in this module' : 'No actions in this document'}
+                            {forceDocumentActionScope || actionScope === 'document' ? 'No actions in this document' : 'No actions in this module'}
                           </p>
                         </div>
                       ) : (
