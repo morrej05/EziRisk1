@@ -310,6 +310,7 @@ function calculateSiteRollup(
   for (const building of buildings) {
     const buildingFP = fireProtectionData.buildings[building.id];
     if (!buildingFP?.sprinklerData) continue;
+    const sprinklersInstalled = buildingFP.sprinklerData.sprinklers_installed === 'Yes';
 
     const area = resolveBuildingArea(building);
     if (area <= 0) {
@@ -317,8 +318,8 @@ function calculateSiteRollup(
       someAreaMissing = true;
     }
 
-    // Coverage metrics are factual and should include any building with known area
-    if (area > 0) {
+    // Coverage metrics and missing-data checks apply only where sprinklers are installed
+    if (area > 0 && sprinklersInstalled) {
       totalArea_m2 += area;
       buildingsWithArea++;
 
@@ -348,6 +349,9 @@ function calculateSiteRollup(
     if (requiredPctRaw === null || requiredPctRaw === undefined) {
       continue;
     }
+
+    // Building scoring roll-up includes only sprinkler-installed buildings with required coverage
+    if (!sprinklersInstalled) continue;
 
     const requiredPct = requiredPctRaw;
     if (requiredPct <= 0) continue;
