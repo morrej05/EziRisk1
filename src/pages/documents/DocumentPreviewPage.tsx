@@ -14,6 +14,7 @@ import { uploadDraftPdfAndSign, saveReModuleSelection, loadReModuleSelection, sa
 import { saveAs } from 'file-saver';
 import { SurveyBadgeRow } from '../../components/SurveyBadgeRow';
 import { getReModulesForDocument } from '../../lib/modules/moduleCatalog';
+import { getModuleDisplayName } from '../../lib/modules/moduleDisplay';
 import { migrateLegacyFraActions } from '../../lib/modules/fra/migrateLegacyFraActions';
 import type { FraContext } from '../../lib/modules/fra/severityEngine';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
@@ -242,7 +243,7 @@ export default function DocumentPreviewPage() {
         if (doc.document_type === 'RE') {
           const canonicalModules = getReModulesForDocument(modules, { documentId: id });
           setReAvailableModules(
-            canonicalModules.map(m => ({ code: m.module_key, title: m.module_key }))
+            canonicalModules.map((m) => ({ code: m.module_key, title: getModuleDisplayName(m.module_key) }))
           );
 
           // Load saved module selection or default to all
