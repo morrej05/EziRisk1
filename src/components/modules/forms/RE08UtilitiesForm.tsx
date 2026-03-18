@@ -838,7 +838,12 @@ export default function RE08UtilitiesForm({
         </div>
 
         {document?.id && moduleInstance?.id && (
-          <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
+          <ModuleActions
+            documentId={document.id}
+            moduleInstanceId={moduleInstance.id}
+            buttonLabel="Add Recommendation"
+            useInPlaceReRecommendationModal
+          />
         )}
       </div>
 
