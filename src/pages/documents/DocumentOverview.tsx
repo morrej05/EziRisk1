@@ -99,6 +99,11 @@ interface ReRecommendationEntry {
   updated_at: string;
 }
 
+const isRecommendationActiveStatus = (status: string | null | undefined): boolean => {
+  const normalized = (status || '').trim().toLowerCase().replace(/\s+/g, '_');
+  return normalized === 'open' || normalized === 'in_progress';
+};
+
 export default function DocumentOverview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -321,23 +326,29 @@ export default function DocumentOverview() {
     try {
       const { data, error } = await supabase
         .from('re_recommendations')
-        .select('priority, status')
+        .select(`
+          priority,
+          status,
+          documents!inner(
+            organisation_id
+          )
+        `)
         .eq('document_id', id)
-        .eq('organisation_id', organisation.id)
-        .eq('is_suppressed', false)
-        .in('status', ['Open', 'In Progress']);
+        .eq('documents.organisation_id', organisation.id)
+        .or('is_suppressed.is.false,is_suppressed.is.null');
 
       if (error) throw error;
 
       const counts = { P1: 0, P2: 0, P3: 0, P4: 0 };
       (data || []).forEach((recommendation) => {
+        if (!isRecommendationActiveStatus(recommendation.status)) return;
         if (recommendation.priority === 'High') counts.P1++;
         if (recommendation.priority === 'Medium') counts.P2++;
         if (recommendation.priority === 'Low') counts.P3++;
       });
 
       setActionCounts(counts);
-      setTotalActions((data || []).length);
+      setTotalActions((data || []).filter((recommendation) => isRecommendationActiveStatus(recommendation.status)).length);
     } catch (error) {
       console.error('Error fetching recommendation counts:', error);
     }
@@ -393,15 +404,32 @@ export default function DocumentOverview() {
     try {
       const { data, error } = await supabase
         .from('re_recommendations')
-        .select('id, rec_number, title, status, priority, target_date, source_module_key, created_at, updated_at')
+        .select(`
+          id,
+          rec_number,
+          title,
+          status,
+          priority,
+          target_date,
+          source_module_key,
+          created_at,
+          updated_at,
+          documents!inner(
+            organisation_id
+          )
+        `)
         .eq('document_id', id)
-        .eq('organisation_id', organisation.id)
-        .eq('is_suppressed', false)
+        .eq('documents.organisation_id', organisation.id)
+        .or('is_suppressed.is.false,is_suppressed.is.null')
         .order('rec_number', { ascending: true, nullsFirst: false })
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
-      setRecommendations(data || []);
+      const normalizedRows = ((data || []) as ReRecommendationEntry[]).map((row) => ({
+        ...row,
+        status: row.status?.trim() || row.status,
+      }));
+      setRecommendations(normalizedRows);
     } catch (error) {
       console.error('Error fetching recommendations:', error);
       setRecommendations([]);
@@ -430,7 +458,7 @@ export default function DocumentOverview() {
     let filtered = [...recommendations];
 
     if (actionStatusFilter === 'open') {
-      filtered = filtered.filter(r => r.status === 'Open' || r.status === 'In Progress');
+      filtered = filtered.filter((r) => isRecommendationActiveStatus(r.status));
     }
 
     if (actionPriorityFilter.length > 0) {
