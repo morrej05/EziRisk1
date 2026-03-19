@@ -62,25 +62,24 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
   const [isSaving, setIsSaving] = useState(false);
   const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
-  // Local draft state (single source of truth for UI)
-  const [floodRating, setFloodRating] = useState<number>(3);
+  const [floodRating, setFloodRating] = useState<number | null>(null);
   const [floodNotes, setFloodNotes] = useState<string>('');
 
-  const [windRating, setWindRating] = useState<number>(3);
+  const [windRating, setWindRating] = useState<number | null>(null);
   const [windNotes, setWindNotes] = useState<string>('');
 
-  const [earthquakeRating, setEarthquakeRating] = useState<number>(3);
+  const [earthquakeRating, setEarthquakeRating] = useState<number | null>(null);
   const [earthquakeNotes, setEarthquakeNotes] = useState<string>('');
 
-  const [wildfireRating, setWildfireRating] = useState<number>(3);
+  const [wildfireRating, setWildfireRating] = useState<number | null>(null);
   const [wildfireNotes, setWildfireNotes] = useState<string>('');
 
   const [hasOtherPeril, setHasOtherPeril] = useState<boolean>(false);
   const [otherLabel, setOtherLabel] = useState<string>('');
-  const [otherRating, setOtherRating] = useState<number>(3);
+  const [otherRating, setOtherRating] = useState<number | null>(null);
   const [otherNotes, setOtherNotes] = useState<string>('');
 
-  const [humanExposureRating, setHumanExposureRating] = useState<number>(3);
+  const [humanExposureRating, setHumanExposureRating] = useState<number | null>(null);
   const [humanExposureNotes, setHumanExposureNotes] = useState<string>('');
 
   // Refs to track hydration state
@@ -114,24 +113,24 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         });
       }
 
-      setFloodRating(p.flood?.rating ?? 3);
+      setFloodRating(p.flood?.rating ?? null);
       setFloodNotes(p.flood?.notes ?? '');
 
-      setWindRating(p.wind?.rating ?? 3);
+      setWindRating(p.wind?.rating ?? null);
       setWindNotes(p.wind?.notes ?? '');
 
-      setEarthquakeRating(p.earthquake?.rating ?? 3);
+      setEarthquakeRating(p.earthquake?.rating ?? null);
       setEarthquakeNotes(p.earthquake?.notes ?? '');
 
-      setWildfireRating(p.wildfire?.rating ?? 3);
+      setWildfireRating(p.wildfire?.rating ?? null);
       setWildfireNotes(p.wildfire?.notes ?? '');
 
       setHasOtherPeril(!!p.other);
       setOtherLabel(p.other?.label ?? '');
-      setOtherRating(p.other?.rating ?? 3);
+      setOtherRating(p.other?.rating ?? null);
       setOtherNotes(p.other?.notes ?? '');
 
-      setHumanExposureRating(ex.human_exposure?.rating ?? 3);
+      setHumanExposureRating(ex.human_exposure?.rating ?? null);
       setHumanExposureNotes(ex.human_exposure?.notes ?? '');
 
       // Update tracking refs
@@ -144,13 +143,15 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
   const includeOther = hasOtherPeril && otherLabelTrim.length > 0;
 
   // Derived ratings (computed, not stored)
-  const derivedEnvironmentalRating = useMemo(() => {
-    const perilRatings: number[] = [floodRating, windRating, earthquakeRating, wildfireRating];
+  const derivedEnvironmentalRating = useMemo<number | null>(() => {
+    const perilRatings: Array<number | null> = [floodRating, windRating, earthquakeRating, wildfireRating];
     if (includeOther) perilRatings.push(otherRating);
-    return Math.min(...perilRatings);
+    if (perilRatings.some((rating) => typeof rating !== 'number')) return null;
+    return Math.min(...(perilRatings as number[]));
   }, [floodRating, windRating, earthquakeRating, wildfireRating, includeOther, otherRating]);
 
-  const overallExposureRating = useMemo(() => {
+  const overallExposureRating = useMemo<number | null>(() => {
+    if (derivedEnvironmentalRating === null || humanExposureRating === null) return null;
     return Math.min(derivedEnvironmentalRating, humanExposureRating);
   }, [derivedEnvironmentalRating, humanExposureRating]);
 
@@ -201,14 +202,18 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
     void loadAutoRecommendationStates();
   }, [moduleInstance.document_id, moduleInstance.id, allFactorKeys]);
 
-  const getDerivedRatingColor = (rating: number): string => {
+  const getDerivedRatingColor = (rating: number | null): string => {
+    if (rating === null) return 'text-slate-700 bg-slate-50 border-slate-300';
     if (rating >= 4) return 'text-green-700 bg-green-50 border-green-300';
     if (rating === 3) return 'text-amber-700 bg-amber-50 border-amber-300';
     if (rating === 2) return 'text-orange-700 bg-orange-50 border-orange-300';
     return 'text-red-700 bg-red-50 border-red-300';
   };
 
-  const getAutoStateLabel = (rating: number, autoRecommendationState: AutoRecommendationLifecycleState) => {
+  const getAutoStateLabel = (rating: number | null, autoRecommendationState: AutoRecommendationLifecycleState) => {
+    if (rating === null) {
+      return 'Unrated';
+    }
     const lowScore = rating <= 2;
 
     if (lowScore) {
@@ -231,7 +236,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
   const syncExposureAutosToRegister = async () => {
     const documentId = moduleInstance.document_id;
 
-    const items: Array<{ canonicalKey: string; rating: number }> = [
+    const rawItems: Array<{ canonicalKey: string; rating: number | null }> = [
       { canonicalKey: AUTO_REC_FACTOR_KEYS.flood, rating: floodRating },
       { canonicalKey: AUTO_REC_FACTOR_KEYS.wind, rating: windRating },
       { canonicalKey: AUTO_REC_FACTOR_KEYS.earthquake, rating: earthquakeRating },
@@ -246,6 +251,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         : []),
       { canonicalKey: AUTO_REC_FACTOR_KEYS.human, rating: humanExposureRating },
     ];
+    const items = rawItems.filter((item): item is { canonicalKey: string; rating: number } => typeof item.rating === 'number');
 
     // Always sync so existing auto-recommendations can be suppressed when ratings improve.
     let hasLifecycleChange = false;
@@ -323,7 +329,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
 
       // Non-blocking: section grade update + auto-recs (rating 1/2 only)
       Promise.allSettled([
-        updateSectionGrade(document.id, 'exposure', overallExposureRating),
+        ...(overallExposureRating !== null ? [updateSectionGrade(document.id, 'exposure', overallExposureRating)] : []),
         syncExposureAutosToRegister(),
       ]).catch((e) => {
         console.error('[RE07Exposures] post-save tasks failed:', e);
@@ -340,7 +346,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
     factorKey: string,
     icon: React.ReactNode,
     label: string,
-    rating: number,
+    rating: number | null,
     notes: string,
     onRatingChange: (value: number) => void,
     onNotesChange: (value: string) => void
@@ -443,7 +449,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
                       setHasOtherPeril(false);
                       setOtherLabel('');
                       setOtherNotes('');
-                      setOtherRating(3);
+                      setOtherRating(null);
                     }}
                     className="text-red-600 hover:text-red-700 text-sm font-medium"
                   >
@@ -484,7 +490,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
                 <p className="text-sm font-medium">Environmental Risk Rating (Auto-Derived)</p>
                 <p className="text-xs opacity-75 mt-1">Derived from the highest-risk environmental peril</p>
               </div>
-              <div className="text-2xl font-bold">{derivedEnvironmentalRating}</div>
+              <div className="text-2xl font-bold">{derivedEnvironmentalRating ?? '—'}</div>
             </div>
           </div>
         </div>
@@ -536,8 +542,8 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
               <p className="text-xs text-slate-500 mt-2">This rating feeds into the Risk Ratings Summary as a global pillar</p>
             </div>
             <div className={`px-6 py-4 rounded-lg border-2 ${getDerivedRatingColor(overallExposureRating)}`}>
-              <div className="text-3xl font-bold text-center">{overallExposureRating}</div>
-              <div className="text-xs text-center mt-1 opacity-75">{RATING_LABELS[overallExposureRating]}</div>
+              <div className="text-3xl font-bold text-center">{overallExposureRating ?? '—'}</div>
+              <div className="text-xs text-center mt-1 opacity-75">{overallExposureRating ? RATING_LABELS[overallExposureRating] : 'Unrated'}</div>
             </div>
           </div>
         </div>

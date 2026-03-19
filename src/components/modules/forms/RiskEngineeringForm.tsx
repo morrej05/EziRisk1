@@ -17,7 +17,7 @@
  */
 
 import { useMemo } from 'react';
-import { HRG_CANONICAL_KEYS, HRG_MASTER_MAP, humanizeCanonicalKey, humanizeIndustryKey, getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
+import { HRG_CANONICAL_KEYS, humanizeCanonicalKey, humanizeIndustryKey, getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
 import { getRating, calculateScore } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import { Info } from 'lucide-react';
 

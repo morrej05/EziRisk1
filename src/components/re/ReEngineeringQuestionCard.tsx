@@ -33,7 +33,7 @@ export default function ReEngineeringQuestionCard({
         canonicalKey={factorKey}
         title={null}
         industryKey={null}
-        rating={rating ?? 3}
+        rating={rating}
         onChangeRating={onRatingChange}
         helpText="Rate this fire-protection engineering factor using the 1–5 shared RE scale."
         weight={weight}
