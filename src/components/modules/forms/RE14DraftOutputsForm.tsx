@@ -64,58 +64,13 @@ export default function RE14DraftOutputsForm({
   const [occupancyMissing, setOccupancyMissing] = useState(false);
   const [missingRequiredRatings, setMissingRequiredRatings] = useState<string[]>([]);
 
-  // Lifecycle instrumentation
-  useEffect(() => {
-    const dataHash = JSON.stringify(moduleInstance.data || {}).substring(0, 100);
-    console.log('[RE14] MOUNT', {
-      moduleId: moduleInstance.id,
-      dirty,
-      executiveSummaryLength: executiveSummary.length,
-      dataPreview: dataHash,
-      updatedAt: moduleInstance.updated_at,
-    });
-
-    return () => {
-      console.log('[RE14] UNMOUNT', {
-        moduleId: moduleInstance.id,
-        dirty,
-        executiveSummaryLength: executiveSummary.length,
-      });
-    };
-  }, []); // mount/unmount only
-
-  // Track moduleInstance changes
-  useEffect(() => {
-    const dataHash = JSON.stringify(moduleInstance.data || {}).substring(0, 100);
-    console.log('[RE14] PROPS CHANGE', {
-      moduleId: moduleInstance.id,
-      dirty,
-      executiveSummaryLength: executiveSummary.length,
-      dataPreview: dataHash,
-      updatedAt: moduleInstance.updated_at,
-    });
-  }, [moduleInstance]);
-
   // Hydrate only when module ID changes, don't overwrite while user is editing
   useEffect(() => {
-    console.log('[RE14] HYDRATION CHECK', {
-      moduleId: moduleInstance.id,
-      dirty,
-      willHydrate: !dirty,
-      currentLength: executiveSummary.length,
-      incomingLength: (moduleInstance.data?.executive_summary || '').length,
-    });
-
     if (dirty) return; // Don't overwrite user edits
 
     setExecutiveSummary(moduleInstance.data?.executive_summary || '');
     setExecutiveSummaryAi(moduleInstance.data?.executive_summary_ai || '');
     setDirty(false); // Reset dirty flag on module change
-
-    console.log('[RE14] HYDRATED', {
-      moduleId: moduleInstance.id,
-      newLength: (moduleInstance.data?.executive_summary || '').length,
-    });
   }, [moduleInstance.id]);
 
   useEffect(() => {
@@ -145,20 +100,11 @@ export default function RE14DraftOutputsForm({
         }
 
         if (riskEng?.data) {
-          // Debug: log what's in the RISK_ENGINEERING module data
-          console.log('[RE14] sectionGrades.construction', riskEng.data?.sectionGrades?.construction);
-          console.log('[RE14] sectionMeta.construction', riskEng.data?.sectionMeta?.construction);
-
           // Use canonical scoring builder (single source of truth)
           const breakdown = await buildRiskEngineeringScoreBreakdown(
             moduleInstance.document_id,
             riskEng.data
           );
-
-          console.log('[RE-11] industryKey', breakdown.industryKey);
-          console.log('[RE-11] globalPillars len', breakdown.globalPillars.length);
-          console.log('[RE-11] occupancyDrivers len', breakdown.occupancyDrivers.length);
-          console.log('[RE14] Construction factor rating:', breakdown.globalPillars.find(p => p.key === 'construction_and_combustibility')?.rating);
           setIndustryKey(breakdown.industryKey);
           setIndustryLabel(breakdown.industryLabel);
           setOccupancyMissing(!breakdown.industryKey);
@@ -218,11 +164,6 @@ export default function RE14DraftOutputsForm({
       executive_summary: executiveSummary,
     };
 
-    console.log('[RE14] SAVING', {
-      moduleId: moduleInstance.id,
-      executiveSummaryLength: executiveSummary.length,
-    });
-
     try {
       const { error } = await supabase
         .from('module_instances')
@@ -232,10 +173,6 @@ export default function RE14DraftOutputsForm({
         .eq('id', moduleInstance.id);
 
       if (error) throw error;
-
-      console.log('[RE14] SAVE SUCCESS', {
-        moduleId: moduleInstance.id,
-      });
 
       setDirty(false); // Reset dirty flag after successful save
 

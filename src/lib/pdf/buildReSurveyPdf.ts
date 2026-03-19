@@ -13,6 +13,7 @@ import {
 import { addIssuedReportPages } from './issuedPdfPages';
 import { drawSectionHeaderBar, drawRiskSignificanceBlock, SignificanceLevel } from './pdfPrimitives';
 import { buildRiskEngineeringScoreBreakdown } from '../re/scoring/riskEngineeringHelpers';
+import { getModuleDisplayName } from '../modules/moduleDisplay';
 
 interface DocumentMeta {
   client?: { name?: string };
@@ -678,7 +679,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (!module) continue;
     ({ page, yPosition } = ensurePageSpace(170, page, yPosition, pdfDoc, isDraft, totalPages));
 
-    const sectionTitle = RE_SECTION_CONFIG[module.module_key]?.title || module.module_key;
+    const sectionTitle = RE_SECTION_CONFIG[module.module_key]?.title || getModuleDisplayName(module.module_key);
     yPosition = drawSectionHeaderBar({
       page,
       x: MARGIN,
