@@ -43,6 +43,7 @@ const MEZZ_MATERIAL_OPTIONS = [
   { value: 'reinforced_concrete', label: 'Reinforced concrete' },
   { value: 'precast_concrete', label: 'Precast concrete' },
   { value: 'steel_concrete_deck', label: 'Steel + concrete deck' },
+  { value: 'steel_mezzanine_steel_frame', label: 'Steel mezzanine on steel frame' },
   { value: 'steel_timber_deck', label: 'Steel + timber deck' },
   { value: 'timber_joists_deck', label: 'Timber joists / timber deck' },
   { value: 'grp_composite_deck', label: 'Composite / GRP deck' },

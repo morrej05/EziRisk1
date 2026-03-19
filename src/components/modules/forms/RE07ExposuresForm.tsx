@@ -213,7 +213,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
 
     if (lowScore) {
       if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
-        return 'Auto recommendation active';
+        return 'Recommendation has been added';
       }
       if (autoRecommendationState === 'suppressed') {
         return 'Recommendation will be reactivated on save';

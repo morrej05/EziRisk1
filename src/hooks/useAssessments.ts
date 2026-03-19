@@ -13,6 +13,10 @@ export interface Document {
   created_at: string;
   updated_at: string;
   assessor_name: string | null;
+  meta?: {
+    client?: { name?: string | null } | null;
+    site?: { name?: string | null } | null;
+  } | null;
   organisations?: {
     name: string;
   };
@@ -32,6 +36,11 @@ export interface AssessmentViewModel {
 }
 
 function getClientDisplayName(document: Document): string {
+  const metaClientName = document.meta?.client?.name?.trim();
+  if (metaClientName) {
+    return metaClientName;
+  }
+
   const rawOrgName = document.organisations?.name?.trim();
   const looksLikeSignupPlaceholder = !!rawOrgName && /@.+organisation$/i.test(rawOrgName);
 
@@ -56,7 +65,7 @@ function mapDocumentToViewModel(document: Document): AssessmentViewModel {
   return {
     id: document.id,
     clientName: getClientDisplayName(document),
-    siteName: document.title || 'Site not set',
+    siteName: document.meta?.site?.name?.trim() || document.title || 'Site not set',
     discipline: typeInfo.discipline,
     type: typeInfo.display,
     status: document.status.charAt(0).toUpperCase() + document.status.slice(1),
@@ -104,6 +113,7 @@ export function useAssessments(options: UseAssessmentsOptions = {}) {
             updated_at,
             assessor_name,
             issue_status,
+            meta,
             organisations (name)
           `)
           .eq('organisation_id', organisation.id)

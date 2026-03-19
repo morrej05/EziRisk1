@@ -8,7 +8,7 @@ interface ReRatingPanelProps {
   canonicalKey: string;
   title?: string | null;
   industryKey: string | null;
-  rating: number;
+  rating: number | null;
   onChangeRating: (next: number) => void;
   helpText: string;
   weight: number;
@@ -56,11 +56,11 @@ export default function ReRatingPanel({
 }: ReRatingPanelProps) {
   void industryKey;
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
-  const score = calculateScore(rating, weight);
+  const score = calculateScore(rating ?? 0, weight);
   const label = title === undefined ? humanizeCanonicalKey(canonicalKey) : title;
   const showAutoRecIndicator = hasAutoRecommendation;
   const autoStateLabel = useMemo(() => {
-    const lowScore = rating <= 2;
+    const lowScore = typeof rating === 'number' && rating <= 2;
 
     if (lowScore) {
       if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
@@ -97,7 +97,7 @@ export default function ReRatingPanel({
         <div className={`${label ? 'mt-3' : ''} grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,auto))_minmax(220px,1fr)] gap-x-4 gap-y-2 items-center text-sm`}>
           <div className="text-left sm:text-center">
             <div className="text-xs text-slate-500">Rating</div>
-            <div className="text-lg font-bold text-slate-900">{rating}</div>
+            <div className="text-lg font-bold text-slate-900">{rating ?? '—'}</div>
           </div>
 
           <div className="text-left sm:text-center">
@@ -156,9 +156,7 @@ export default function ReRatingPanel({
                     key={value}
                     type="button"
                     onClick={() => onChangeRating(value)}
-                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-center ${
-                      getRatingButtonStyles(value, rating === value)
-                    }`}
+                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-center ${getRatingButtonStyles(value, rating === value)}`}
                   >
                     <div className="text-lg font-bold">{value}</div>
                     <div className="text-xs mt-0.5">{RATING_LABELS[value]}</div>
@@ -167,7 +165,7 @@ export default function ReRatingPanel({
               </div>
             </div>
 
-            {rating <= 2 && (
+            {typeof rating === 'number' && rating <= 2 && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-sm text-amber-900">
                   <strong>Note:</strong> This rating will generate an automatic recommendation for improvement.
