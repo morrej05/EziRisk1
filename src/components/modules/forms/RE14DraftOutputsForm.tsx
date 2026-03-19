@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { AlertCircle, TrendingUp, FileText, Save, Sparkles, Copy } from 'lucide-react';
 import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
-import { buildRiskEngineeringScoreBreakdown, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
+import { buildRiskEngineeringScoreBreakdown, getMissingRequiredRatings, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
 import { generateRiskEngineeringSummary } from '../../../lib/ai/generateReSummary';
 
@@ -62,6 +62,7 @@ export default function RE14DraftOutputsForm({
     highPriorityItems: [],
   });
   const [occupancyMissing, setOccupancyMissing] = useState(false);
+  const [missingRequiredRatings, setMissingRequiredRatings] = useState<string[]>([]);
 
   // Lifecycle instrumentation
   useEffect(() => {
@@ -166,6 +167,22 @@ export default function RE14DraftOutputsForm({
           setTotalScore(breakdown.totalScore);
           setMaxScore(breakdown.maxScore);
           setTopContributors(breakdown.topContributors);
+
+          const missing = getMissingRequiredRatings(
+            riskEng.data,
+            Object.fromEntries(
+              breakdown.globalPillars.map((pillar) => {
+                if (pillar.key === 'construction_and_combustibility') return ['construction', pillar.rating];
+                if (pillar.key === 'fire_protection') return ['fire_protection', pillar.rating];
+                if (pillar.key === 'exposure') return ['exposure', pillar.rating];
+                return ['management', pillar.rating];
+              })
+            )
+          );
+          setMissingRequiredRatings([
+            ...missing.missingGlobalPillars.map((key) => `Global pillar: ${key}`),
+            ...missing.missingOccupancyDrivers.map((key) => `Occupancy driver: ${key}`),
+          ]);
         }
 
         if (recommendations?.data?.recommendations) {
@@ -235,6 +252,10 @@ export default function RE14DraftOutputsForm({
   const handleGenerateAiDraft = async () => {
     if (!siteMetadata || !industryKey || (globalPillars.length === 0 && occupancyDrivers.length === 0)) {
       alert('Please ensure all assessment data is complete before generating an AI summary.');
+      return;
+    }
+    if (missingRequiredRatings.length > 0) {
+      alert('Required ratings are incomplete. Complete unrated factors before generating a reportable summary.');
       return;
     }
 
@@ -346,7 +367,7 @@ export default function RE14DraftOutputsForm({
           <div className="flex gap-2">
             <button
               onClick={handleGenerateAiDraft}
-              disabled={generating || !siteMetadata || !industryKey}
+              disabled={generating || !siteMetadata || !industryKey || missingRequiredRatings.length > 0}
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
               <Sparkles className="w-4 h-4" />
@@ -371,6 +392,11 @@ export default function RE14DraftOutputsForm({
           {!siteMetadata || !industryKey ? (
             <p className="text-amber-700 font-medium">
               Complete RE-01 Document Control and RISK_ENGINEERING modules before generating.
+            </p>
+          ) : null}
+          {missingRequiredRatings.length > 0 ? (
+            <p className="text-amber-700 font-medium mt-2">
+              Complete all required unrated factors before generating reportable summary content.
             </p>
           ) : null}
         </div>
@@ -426,6 +452,17 @@ export default function RE14DraftOutputsForm({
               <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-amber-900">
                 Occupancy not set — risk factors may be incomplete. Set occupancy in RE-03 Occupancy to see all relevant factors.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {missingRequiredRatings.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex gap-2 items-start">
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-900">
+                Reportable scoring is incomplete. Required unrated factors remain.
               </p>
             </div>
           </div>

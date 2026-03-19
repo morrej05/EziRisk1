@@ -9,6 +9,7 @@ import { getHrgConfig, HRG_MASTER_MAP } from '../../../lib/re/reference/hrgMaste
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import { Plus, X, AlertCircle, BookOpen } from 'lucide-react';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
@@ -158,6 +159,9 @@ export default function RE03OccupancyForm({
         industryKey,
       });
       setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
+      if (lifecycleState !== 'none') {
+        bumpActionsVersion();
+      }
 
       const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
       if (updatedFormData !== formData) {

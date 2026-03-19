@@ -51,7 +51,7 @@ export default function RiskEngineeringForm({ moduleInstance }: RiskEngineeringF
     const rows = HRG_CANONICAL_KEYS.map((canonicalKey) => {
       const rating = getRating(data, canonicalKey);
       const config = getHrgConfig(industryKey, canonicalKey);
-      const score = calculateScore(rating, config.weight);
+      const score = calculateScore(rating ?? 0, config.weight);
 
       return {
         canonicalKey,
@@ -139,9 +139,9 @@ export default function RiskEngineeringForm({ moduleInstance }: RiskEngineeringF
                       row.rating === 4 ? 'bg-green-100 text-green-700' :
                       row.rating === 3 ? 'bg-amber-100 text-amber-700' :
                       row.rating === 2 ? 'bg-orange-100 text-orange-700' :
-                      'bg-red-100 text-red-700'
+                      row.rating === 1 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'
                     }`}>
-                      {row.rating}
+                      {row.rating ?? '—'}
                     </span>
                   </td>
                   <td className="text-center px-4 py-3 text-slate-700 font-medium">

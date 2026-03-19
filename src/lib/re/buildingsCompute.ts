@@ -54,6 +54,7 @@ const MEZZ_COMBUSTIBILITY: Record<string, number> = {
   reinforced_concrete: 0,
   precast_concrete: 0,
   steel_concrete_deck: 0,
+  steel_mezzanine_steel_frame: 1,
   steel_timber_deck: 2,
   timber_joists_deck: 3,
   grp_composite_deck: 3,
