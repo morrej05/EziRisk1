@@ -14,8 +14,14 @@ function isReModule(moduleKey?: string): boolean {
 
 function hasMeaningfulValue(value: unknown): boolean {
   if (value == null) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  if (typeof value === 'number' || typeof value === 'boolean') return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    if (['unknown', 'not specified', 'n/a', 'na', 'not set'].includes(normalized)) return false;
+    return true;
+  }
+  if (typeof value === 'number') return true;
+  if (typeof value === 'boolean') return value;
   if (Array.isArray(value)) return value.some((entry) => hasMeaningfulValue(entry));
 
   if (typeof value === 'object') {

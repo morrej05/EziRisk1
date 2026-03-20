@@ -223,9 +223,16 @@ export default function DocumentWorkspace() {
   }, [modalAction, modules]);
 
   const hideOutstandingActionsPanel = Boolean(
-    selectedStable?.module_key?.startsWith('RE_') && !hasReRecommendationWorkflow(selectedStable?.module_key)
+    selectedStable?.module_key === 'RISK_ENGINEERING'
+    || selectedStable?.module_key === 'RE_13_RECOMMENDATIONS'
+    || (selectedStable?.module_key?.startsWith('RE_') && !hasReRecommendationWorkflow(selectedStable?.module_key))
   );
   const forceDocumentActionScope = shouldForceDocumentRecommendationScope(selectedStable?.module_key);
+  const isReRecommendationPanel = Boolean(
+    selectedStable?.module_key === 'RE_13_RECOMMENDATIONS'
+    || selectedStable?.module_key?.startsWith('RE_')
+    || selectedStable?.module_key === 'RISK_ENGINEERING'
+  );
 
   useEffect(() => {
     if (!id) {
@@ -787,7 +794,9 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               <div className="bg-white rounded-lg shadow-sm border border-neutral-200 mb-6">
                 <div className="px-4 py-3 border-b border-neutral-200 bg-neutral-50">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-neutral-900">Outstanding Actions</h3>
+                    <h3 className="text-sm font-semibold text-neutral-900">
+                      {isReRecommendationPanel ? 'Outstanding Recommendations' : 'Outstanding Actions'}
+                    </h3>
                     <button
                       onClick={() => setIsActionsPanelCollapsed(!isActionsPanelCollapsed)}
                       className="p-1 hover:bg-neutral-100 rounded transition-colors"
@@ -824,7 +833,9 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                             : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                         }`}
                       >
-                        {forceDocumentActionScope ? `All actions (${actions.length})` : `All actions (${actionScope === 'document' ? actions.length : '...'})`}
+                        {forceDocumentActionScope
+                          ? `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actions.length})`
+                          : `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actionScope === 'document' ? actions.length : '...'})`}
                       </button>
                     </div>
 
@@ -837,7 +848,9 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                         <div className="text-center py-8">
                           <AlertCircle className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
                           <p className="text-sm text-neutral-600">
-                            {forceDocumentActionScope || actionScope === 'document' ? 'No actions in this document' : 'No actions in this module'}
+                            {forceDocumentActionScope || actionScope === 'document'
+                              ? `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this document`
+                              : `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this module`}
                           </p>
                         </div>
                       ) : (

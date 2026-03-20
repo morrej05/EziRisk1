@@ -8,8 +8,8 @@
 import { supabase } from '../../supabase';
 
 export interface ConstructionRatingResult {
-  rating: number;
-  source: 'section_grade' | 'computed' | 'default';
+  rating: number | null;
+  source: 'section_grade' | 'computed' | 'unavailable';
   details?: string;
   metadata?: {
     site_score?: number;
@@ -22,7 +22,7 @@ export interface ConstructionRatingResult {
  * Priority:
  * 1. documents.section_grades.construction (if set)
  * 2. Compute from RE_02_CONSTRUCTION module data
- * 3. Default to 3 (Adequate)
+ * 3. Return null when no meaningful construction input exists
  */
 export async function getConstructionRating(documentId: string): Promise<ConstructionRatingResult> {
   try {
@@ -70,19 +70,19 @@ export async function getConstructionRating(documentId: string): Promise<Constru
       };
     }
 
-    // 3. Default fallback
+    // 3. No data fallback
     return {
-      rating: 3,
-      source: 'default',
-      details: 'No construction data available - defaulting to 3 (Adequate)',
+      rating: null,
+      source: 'unavailable',
+      details: 'No construction data available',
       metadata,
     };
   } catch (error) {
     console.error('[getConstructionRating] Error:', error);
     return {
-      rating: 3,
-      source: 'default',
-      details: 'Error fetching data - defaulting to 3',
+      rating: null,
+      source: 'unavailable',
+      details: 'Error fetching construction data',
     };
   }
 }
@@ -98,7 +98,7 @@ export async function getConstructionRating(documentId: string): Promise<Constru
  * 2 = Poor (High combustible content, older construction)
  * 1 = Inadequate (Heavy combustible loading, significant fire spread risk)
  */
-function computeConstructionRatingFromRE02(re02Data: any): { rating: number; details: string } {
+function computeConstructionRatingFromRE02(re02Data: any): { rating: number | null; details: string } {
   // Check if there's a direct site_rating_1_5 at the top level
   if (re02Data.ratings?.site_rating_1_5) {
     return {
@@ -111,8 +111,8 @@ function computeConstructionRatingFromRE02(re02Data: any): { rating: number; det
   const buildings = re02Data.buildings || [];
   if (buildings.length === 0) {
     return {
-      rating: 3,
-      details: 'No buildings defined - default to 3',
+      rating: null,
+      details: 'No buildings defined',
     };
   }
 
@@ -183,7 +183,7 @@ function computeBuildingConstructionRating(building: any): number {
 export async function syncConstructionGrade(documentId: string): Promise<void> {
   const result = await getConstructionRating(documentId);
 
-  if (result.source === 'section_grade') {
+  if (result.source === 'section_grade' || result.rating === null) {
     // Already set in section_grades, no need to update
     return;
   }

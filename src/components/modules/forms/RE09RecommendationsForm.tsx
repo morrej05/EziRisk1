@@ -710,7 +710,7 @@ export default function RE09RecommendationsForm({
       <div className="p-6 max-w-7xl mx-auto pb-24">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-900 mb-2">RE-09 — Recommendations</h2>
-          <p className="text-slate-600">Risk engineering action register</p>
+          <p className="text-slate-600">Risk engineering recommendation register</p>
         </div>
 
         {/* Document-wide Summary */}
