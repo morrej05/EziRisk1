@@ -156,7 +156,7 @@ export async function buildRiskEngineeringScoreBreakdown(
   const sectionGrades = doc?.section_grades || {};
 
   // Get construction rating and metadata
-  // Priority: 1) riskEngData.sectionGrades.construction, 2) documents.section_grades, 3) computed, 4) default 3
+  // Priority: 1) riskEngData.sectionGrades.construction, 2) documents.section_grades, 3) computed, 4) null when unavailable
   let constructionRating: number | null = null;
   let constructionMetadata = riskEngData?.sectionMeta?.construction;
 

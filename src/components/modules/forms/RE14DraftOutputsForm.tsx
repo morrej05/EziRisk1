@@ -10,6 +10,8 @@ import { generateRiskEngineeringSummary } from '../../../lib/ai/generateReSummar
 interface Document {
   id: string;
   title: string;
+  assessment_date?: string | null;
+  assessor_name?: string | null;
 }
 
 interface ModuleInstance {
@@ -37,6 +39,19 @@ interface RecommendationSummary {
   highPriorityItems: Array<{ text: string; priority: string }>;
 }
 
+interface SiteMetadata {
+  site_name: string | null;
+  site_address: string | null;
+  assessor_name: string | null;
+  assessment_date: string | null;
+}
+
+const toNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 export default function RE14DraftOutputsForm({
   moduleInstance,
   document,
@@ -50,7 +65,7 @@ export default function RE14DraftOutputsForm({
   const [executiveSummaryAi, setExecutiveSummaryAi] = useState('');
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [industryLabel, setIndustryLabel] = useState('No Industry Selected');
-  const [siteMetadata, setSiteMetadata] = useState<any>(null);
+  const [siteMetadata, setSiteMetadata] = useState<SiteMetadata | null>(null);
   const [globalPillars, setGlobalPillars] = useState<ScoreFactor[]>([]);
   const [occupancyDrivers, setOccupancyDrivers] = useState<ScoreFactor[]>([]);
   const [totalScore, setTotalScore] = useState(0);
@@ -81,23 +96,28 @@ export default function RE14DraftOutputsForm({
           .from('module_instances')
           .select('module_key, data')
           .eq('document_id', moduleInstance.document_id)
-          .in('module_key', ['RE_01_DOC_CONTROL', 'RE_01_DOCUMENT_CONTROL', 'RISK_ENGINEERING', 'RE_13_RECOMMENDATIONS']);
+          .in('module_key', ['RE_01_DOC_CONTROL', 'RE_01_DOCUMENT_CONTROL', 'RISK_ENGINEERING']);
 
         if (error) throw error;
 
         const re01 = modules.find(m => m.module_key === 'RE_01_DOC_CONTROL')
           ?? modules.find(m => m.module_key === 'RE_01_DOCUMENT_CONTROL');
         const riskEng = modules.find(m => m.module_key === 'RISK_ENGINEERING');
-        const recommendations = modules.find(m => m.module_key === 'RE_13_RECOMMENDATIONS');
+        const re01Data = re01?.data || {};
 
-        if (re01?.data) {
-          setSiteMetadata({
-            site_name: re01.data.site_name || 'Not specified',
-            site_address: re01.data.site_address || 'Not specified',
-            assessor_name: re01.data.assessor_name || 'Not specified',
-            assessment_date: re01.data.assessment_date || 'Not specified',
-          });
-        }
+        const mappedSiteMetadata: SiteMetadata = {
+          site_name: toNonEmptyString(re01Data?.client_site?.site)
+            ?? toNonEmptyString(re01Data?.site_name),
+          site_address: toNonEmptyString(re01Data?.client_site?.address)
+            ?? toNonEmptyString(re01Data?.site_address),
+          assessor_name: toNonEmptyString(re01Data?.assessor?.name)
+            ?? toNonEmptyString(re01Data?.assessor_name)
+            ?? toNonEmptyString(document.assessor_name),
+          assessment_date: toNonEmptyString(re01Data?.dates?.assessment_date)
+            ?? toNonEmptyString(re01Data?.assessment_date)
+            ?? toNonEmptyString(document.assessment_date),
+        };
+        setSiteMetadata(mappedSiteMetadata);
 
         if (riskEng?.data) {
           // Use canonical scoring builder (single source of truth)
@@ -131,22 +151,44 @@ export default function RE14DraftOutputsForm({
           ]);
         }
 
-        if (recommendations?.data?.recommendations) {
-          const recs = recommendations.data.recommendations;
-          const summary: RecommendationSummary = {
-            total: recs.length,
-            byPriority: {
-              critical: recs.filter((r: any) => r.priority === 'critical').length,
-              high: recs.filter((r: any) => r.priority === 'high').length,
-              medium: recs.filter((r: any) => r.priority === 'medium').length,
-              low: recs.filter((r: any) => r.priority === 'low').length,
-            },
-            highPriorityItems: recs
-              .filter((r: any) => r.priority === 'high' || r.priority === 'critical')
-              .map((r: any) => ({ text: r.text, priority: r.priority })),
-          };
-          setRecSummary(summary);
-        }
+        const { data: recommendations, error: recommendationsError } = await supabase
+          .from('re_recommendations')
+          .select('title, observation_text, action_required_text, priority')
+          .eq('document_id', moduleInstance.document_id)
+          .eq('is_suppressed', false);
+
+        if (recommendationsError) throw recommendationsError;
+
+        const recommendationRows = (recommendations || []) as Array<{
+          title?: string | null;
+          observation_text?: string | null;
+          action_required_text?: string | null;
+          priority?: string | null;
+        }>;
+
+        const summary: RecommendationSummary = {
+          total: recommendationRows.length,
+          byPriority: {
+            critical: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'critical').length,
+            high: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'high').length,
+            medium: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'medium').length,
+            low: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'low').length,
+          },
+          highPriorityItems: recommendationRows
+            .filter((r) => {
+              const normalized = r.priority?.toLowerCase();
+              return normalized === 'high' || normalized === 'critical';
+            })
+            .map((r) => ({
+              text: toNonEmptyString(r.title)
+                ?? toNonEmptyString(r.action_required_text)
+                ?? toNonEmptyString(r.observation_text)
+                ?? 'No description',
+              priority: (r.priority || 'high').toLowerCase(),
+            })),
+        };
+
+        setRecSummary(summary);
       } catch (error) {
         console.error('Error loading summary data:', error);
       } finally {
@@ -187,7 +229,13 @@ export default function RE14DraftOutputsForm({
   };
 
   const handleGenerateAiDraft = async () => {
-    if (!siteMetadata || !industryKey || (globalPillars.length === 0 && occupancyDrivers.length === 0)) {
+    if (
+      !siteMetadata
+      || !siteMetadata.site_name
+      || !siteMetadata.assessment_date
+      || !industryKey
+      || (globalPillars.length === 0 && occupancyDrivers.length === 0)
+    ) {
       alert('Please ensure all assessment data is complete before generating an AI summary.');
       return;
     }
@@ -304,11 +352,17 @@ export default function RE14DraftOutputsForm({
           <div className="flex gap-2">
             <button
               onClick={handleGenerateAiDraft}
-              disabled={generating || !siteMetadata || !industryKey || missingRequiredRatings.length > 0}
+              disabled={
+                generating
+                || !siteMetadata?.site_name
+                || !siteMetadata?.assessment_date
+                || !industryKey
+                || missingRequiredRatings.length > 0
+              }
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
               <Sparkles className="w-4 h-4" />
-              {generating ? 'Generating...' : 'Generate AI draft'}
+              {generating ? 'Generating...' : 'Generate auto draft'}
             </button>
             {executiveSummaryAi && (
               <button
@@ -316,7 +370,7 @@ export default function RE14DraftOutputsForm({
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Copy className="w-4 h-4" />
-                Use AI draft
+                Use auto draft
               </button>
             )}
           </div>
@@ -326,7 +380,7 @@ export default function RE14DraftOutputsForm({
             Generate an AI-assisted draft summary based on assessment data. This summary is deterministic
             and uses only the data entered in other modules (150-250 words, UK English, professional tone).
           </p>
-          {!siteMetadata || !industryKey ? (
+          {!siteMetadata?.site_name || !siteMetadata?.assessment_date || !industryKey ? (
             <p className="text-amber-700 font-medium">
               Complete RE-01 Document Control and RISK_ENGINEERING modules before generating.
             </p>
@@ -343,7 +397,7 @@ export default function RE14DraftOutputsForm({
           </div>
         ) : (
           <div className="bg-white border border-dashed border-violet-300 rounded-lg p-4 text-center">
-            <p className="text-sm text-slate-500 italic">No AI draft generated yet. Click "Generate AI draft" to create one.</p>
+            <p className="text-sm text-slate-500 italic">No auto draft generated yet. Click "Generate auto draft" to create one.</p>
           </div>
         )}
       </div>
@@ -357,19 +411,19 @@ export default function RE14DraftOutputsForm({
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="font-medium text-slate-700">Site Name:</span>
-              <p className="text-slate-900">{siteMetadata.site_name}</p>
+              <p className="text-slate-900">{siteMetadata.site_name || '—'}</p>
             </div>
             <div>
               <span className="font-medium text-slate-700">Assessor:</span>
-              <p className="text-slate-900">{siteMetadata.assessor_name}</p>
+              <p className="text-slate-900">{siteMetadata.assessor_name || '—'}</p>
             </div>
             <div>
               <span className="font-medium text-slate-700">Address:</span>
-              <p className="text-slate-900">{siteMetadata.site_address}</p>
+              <p className="text-slate-900">{siteMetadata.site_address || '—'}</p>
             </div>
             <div>
               <span className="font-medium text-slate-700">Assessment Date:</span>
-              <p className="text-slate-900">{siteMetadata.assessment_date}</p>
+              <p className="text-slate-900">{siteMetadata.assessment_date || '—'}</p>
             </div>
           </div>
         ) : (
