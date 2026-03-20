@@ -1000,33 +1000,6 @@ export default function RE06FireProtectionForm({
 
 
 
-          <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
-                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
-                if (!question) return null;
-                return (
-                  <ReEngineeringQuestionCard
-                    key={definition.factorKey}
-                    questionId={definition.id}
-                    factorKey={definition.factorKey}
-                    title={definition.uiLabel}
-                    prompt={definition.prompt}
-                    weight={definition.weight}
-                    answerStates={definition.answerStates}
-                    rating={question.score_1_5}
-                    notes={question.notes}
-                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
-                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
-                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
-                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
           {showLocalisedDetailedAssessment && (
             <div>
               <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
@@ -1055,6 +1028,33 @@ export default function RE06FireProtectionForm({
               </div>
             </div>
           )}
+
+          <div>
+            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
