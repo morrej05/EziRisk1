@@ -366,7 +366,8 @@ export default function ModuleActions({
   const isDeletable = documentStatus === 'draft';
   const hasValidIds = isValidUUID(documentId) && isValidUUID(moduleInstanceId);
   const hideModuleActionsUi = Boolean(
-    sourceModuleKey?.startsWith('RE_') && !hasReRecommendationWorkflow(sourceModuleKey)
+    sourceModuleKey === 'RISK_ENGINEERING'
+    || (sourceModuleKey?.startsWith('RE_') && !hasReRecommendationWorkflow(sourceModuleKey))
   );
 
   if (!hasValidIds) {

@@ -496,7 +496,7 @@ export default function RE11DraftOutputsForm({
         isSaving={isSaving}
       />
 
-      {document?.id && moduleInstance?.id && (
+      {document?.id && moduleInstance?.id && moduleInstance.module_key !== 'RISK_ENGINEERING' && (
         <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
       )}
     </div>

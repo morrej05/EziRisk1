@@ -447,6 +447,61 @@ async function saveMezz() {
     return weightedBuildings.reduce((sum, area) => sum + area, 0);
   }, [rows, buildingExtras]);
 
+  useEffect(() => {
+    if (mode === 'fire_protection') return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const { data: moduleInstance, error: moduleError } = await supabase
+          .from('module_instances')
+          .select('id, data')
+          .eq('document_id', documentId)
+          .eq('module_key', 'RE_02_CONSTRUCTION')
+          .maybeSingle();
+
+        if (moduleError) throw moduleError;
+        if (!moduleInstance) return;
+
+        const normalizedBuildings = rows.map((row) => ({
+          id: row.id,
+          ref: row.ref,
+          building_name: row.ref,
+          include_in_scoring: true,
+          frame_type: row.frame_type,
+          roof_area_m2: row.roof_area_m2,
+          mezzanine_area_m2: row.mezzanine_area_m2 ?? 0,
+          compartmentation_minutes: row.compartmentation_minutes,
+          has_extra_construction_split: Boolean(row.id && buildingExtras[row.id]),
+        }));
+
+        const updatedData = {
+          ...(moduleInstance.data || {}),
+          construction: {
+            ...((moduleInstance.data || {}).construction || {}),
+            buildings: normalizedBuildings,
+            site_notes: constructionNotes,
+            completion: {
+              building_count: normalizedBuildings.length,
+              included_building_count: normalizedBuildings.filter((building) => building.include_in_scoring !== false).length,
+              site_score: Number.isFinite(siteMetrics.score) ? siteMetrics.score : null,
+              site_score_computable: Number.isFinite(siteMetrics.score),
+            },
+          },
+        };
+
+        const { error: updateError } = await supabase
+          .from('module_instances')
+          .update({ data: updatedData })
+          .eq('id', moduleInstance.id);
+        if (updateError) throw updateError;
+      } catch (e) {
+        console.error('[RE02 completion snapshot] Failed to persist RE_02 module data:', e);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [documentId, mode, rows, buildingExtras, constructionNotes, siteMetrics.score]);
+
   // Persist site score to RISK_ENGINEERING module (debounced)
   useEffect(() => {
     if (mode === 'fire_protection' || isNaN(siteMetrics.score)) {

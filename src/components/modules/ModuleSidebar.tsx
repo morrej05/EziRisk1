@@ -171,6 +171,7 @@ export default function ModuleSidebar({
                   <p className="text-xs font-semibold text-amber-900">This module is incomplete</p>
                   {completion.missingRequirements.length > 0 && (
                     <ul className="mt-2 list-disc pl-4 text-xs text-slate-700 space-y-1">
+                      <li className="list-none -ml-4 text-slate-600">To mark this module complete:</li>
                       {completion.missingRequirements.map((item) => (
                         <li key={item}>{item}</li>
                       ))}

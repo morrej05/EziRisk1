@@ -1,4 +1,5 @@
 import { resolveSectionAssessmentOutcome, type ModuleInstanceAssessmentShape } from './moduleAssessment';
+import { HRG_MASTER_MAP } from '../lib/re/reference/hrgMasterMap';
 
 const RE_MODULE_KEY_PREFIX = 'RE_';
 const RE_ROOT_MODULE_KEY = 'RISK_ENGINEERING';
@@ -146,41 +147,75 @@ function getReModuleMissingRequirements(
       return ['Add at least one building'];
     }
 
-    const hasBuildingWithRequiredFields = buildings.some((building) => {
-      const areaCandidates = [
-        building?.roof?.area_sqm,
-        building?.floor_area_sqm,
-        building?.footprint_m2,
-      ];
-      const hasArea = areaCandidates.some((value) => typeof value === 'number' && value > 0);
-      const hasConstructionType = hasMeaningfulValue(building?.frame_type);
-      return hasArea && hasConstructionType;
+    const includedBuildings = buildings.filter((building) => building?.include_in_scoring !== false);
+    if (includedBuildings.length === 0) {
+      return ['Add at least one building included in scoring'];
+    }
+
+    const missingBuildingInputs = includedBuildings.some((building) => {
+      const roofArea = Number(building?.roof?.area_sqm ?? building?.roof_area_m2);
+      const mezzAreaRaw = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
+      const mezzArea = Number(mezzAreaRaw);
+      const hasBuildingRef = hasMeaningfulValue(building?.building_name) || hasMeaningfulValue(building?.ref);
+      const hasRoofArea = Number.isFinite(roofArea) && roofArea > 0;
+      const hasMezzArea = Number.isFinite(mezzArea) && mezzArea >= 0;
+      const hasFrameType = hasMeaningfulValue(building?.frame_type) && String(building?.frame_type).toLowerCase() !== 'unknown';
+      const hasCompartmentation = Number.isFinite(Number(building?.compartmentation_minutes))
+        || (hasMeaningfulValue(building?.compartmentation) && String(building?.compartmentation).toLowerCase() !== 'unknown');
+
+      return !(hasBuildingRef && hasRoofArea && hasMezzArea && hasFrameType && hasCompartmentation);
     });
 
-    return hasBuildingWithRequiredFields ? [] : ['Complete construction details (area + construction type)'];
+    const siteScore = Number(
+      data?.construction?.site_score
+      ?? data?.construction?.completion?.site_score
+      ?? data?.construction?.completion?.siteScore
+      ?? data?.site_score
+      ?? data?.sectionMeta?.construction?.site_score
+    );
+    const hasSiteScore = Number.isFinite(siteScore);
+
+    const missing: string[] = [];
+    if (missingBuildingInputs) {
+      missing.push('Complete required construction details for all included buildings');
+    }
+    if (!hasSiteScore) {
+      missing.push('Ensure site construction score can be calculated');
+    }
+    return missing;
   }
 
   const ratings = getRiskEngineeringRatings(context);
 
   if (moduleKey === 'RE_03_OCCUPANCY') {
-    const hasIndustry = hasMeaningfulValue(data?.industry_key) || hasMeaningfulValue(data?.occupancy?.process_overview);
-    const hasAnyRating = Object.keys(ratings).length > 0;
-    return hasIndustry && hasAnyRating ? [] : ['Complete all required ratings'];
+    const industryKey = (data?.industry_key as string | undefined) || '';
+    const hasIndustry = hasMeaningfulValue(industryKey);
+    const requiredIndustryRatingKeys = hasIndustry && HRG_MASTER_MAP.industries[industryKey]
+      ? Object.keys(HRG_MASTER_MAP.industries[industryKey].modules || {})
+      : [];
+    const hasRequiredRatings = requiredIndustryRatingKeys.length > 0
+      ? requiredIndustryRatingKeys.every((key) => hasRating(ratings, key))
+      : Object.keys(ratings).length > 0;
+
+    const missing: string[] = [];
+    if (!hasIndustry) missing.push('Select an industry classification');
+    if (!hasRequiredRatings) missing.push('Complete required occupancy rating drivers');
+    return missing;
   }
 
   if (moduleKey === 'RE_06_FIRE_PROTECTION') {
     const required = ['fire_protection_water_supply_reliability', 'fire_protection_automatic_suppression'];
-    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required ratings'];
+    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required fire protection ratings'];
   }
 
   if (moduleKey === 'RE_07_NATURAL_HAZARDS') {
     const required = ['exposures_flood', 'exposures_wind_storm', 'exposures_earthquake', 'exposures_wildfire', 'exposures_human_malicious'];
-    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required ratings'];
+    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required exposure ratings'];
   }
 
   if (moduleKey === 'RE_08_UTILITIES') {
     const required = ['electrical_and_utilities_reliability', 'critical_equipment_reliability'];
-    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required ratings'];
+    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required utilities and critical-services ratings'];
   }
 
   if (moduleKey === 'RE_09_MANAGEMENT') {
@@ -193,7 +228,7 @@ function getReModuleMissingRequirements(
       'management_emergency_planning',
       'management_change_management',
     ];
-    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required ratings'];
+    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required management-system ratings'];
   }
 
   if (moduleKey === 'RE_12_LOSS_VALUES') {
@@ -216,6 +251,17 @@ function getReModuleMissingRequirements(
     return [];
   }
 
+  if (moduleKey === 'RE_10_SITE_PHOTOS') {
+    const supportingDocsRequired = Boolean(data?.supporting_documentation_required);
+    const hasRequiredStep = hasMeaningfulValue(data?.supporting_documents_complete_at)
+      || hasMeaningfulValue(data?.uploads_completed_at)
+      || hasMeaningfulValue(data?.completion_confirmed_at)
+      || Boolean(data?.completion_confirmed === true);
+
+    if (!supportingDocsRequired) return [];
+    return hasRequiredStep ? [] : ['Complete required supporting documentation'];
+  }
+
   return [];
 }
 
@@ -233,6 +279,10 @@ export function getModuleCompletionDetails(
 
   if (isReModule(moduleInstance.module_key)) {
     const missingRequirements = getReModuleMissingRequirements(moduleInstance, context);
+    if (moduleInstance.module_key === 'RISK_ENGINEERING' || moduleInstance.module_key === 'RE_13_RECOMMENDATIONS') {
+      return { state: 'untouched', missingRequirements: [] };
+    }
+
     if (missingRequirements.length === 0) {
       return { state: 'complete', missingRequirements: [] };
     }
