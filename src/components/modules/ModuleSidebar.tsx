@@ -18,6 +18,7 @@ interface ModuleSidebarProps {
   isMobileMenuOpen: boolean;
   onCloseMobileMenu: () => void;
   documentId?: string;
+  documentAssessmentDate?: string | null;
 }
 
 export default function ModuleSidebar({
@@ -28,6 +29,7 @@ export default function ModuleSidebar({
   isMobileMenuOpen,
   onCloseMobileMenu,
   documentId,
+  documentAssessmentDate,
 }: ModuleSidebarProps) {
   // Load/save expand/collapse state from localStorage
   const storageKey = documentId ? `moduleNavGroups:${documentId}` : null;
@@ -128,7 +130,7 @@ export default function ModuleSidebar({
   const ModuleNavItem = ({ module, productTag }: { module: ModuleInstance; productTag?: 'fire' | 'explosion' | null }) => {
     const isDerived = isDerivedModule(module.module_key);
     const storedOutcome = module.data?.section_assessment_outcome ?? module.outcome ?? '';
-    const completion = getModuleCompletionDetails(module, { allModules: modules });
+    const completion = getModuleCompletionDetails(module, { allModules: modules, documentAssessmentDate });
     const isCompleted = completion.state === 'complete';
     const isStarted = completion.state === 'incomplete';
 

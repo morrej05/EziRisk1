@@ -81,4 +81,48 @@ describe('getModuleCompletionDetails for RE modules', () => {
     });
     expect(requiredAndComplete.state).toBe('complete');
   });
+
+  it('accepts RE-01 assessment date from canonical document metadata source', () => {
+    const completion = getModuleCompletionDetails(
+      {
+        module_key: 'RE_01_DOC_CONTROL',
+        data: {
+          client_site: { site: 'Main Site' },
+          assessor: { name: 'A. Surveyor' },
+          dates: { assessment_date: null },
+        } as any,
+      },
+      {
+        documentAssessmentDate: '2026-03-20',
+      },
+    );
+
+    expect(completion.state).toBe('complete');
+    expect(completion.missingRequirements).toEqual([]);
+  });
+
+  it('uses canonical RISK_ENGINEERING industry for RE-03 completion checks', () => {
+    const completion = getModuleCompletionDetails(
+      {
+        module_key: 'RE_03_OCCUPANCY',
+        data: {} as any,
+      },
+      {
+        allModules: [
+          {
+            module_key: 'RISK_ENGINEERING',
+            data: {
+              industry_key: 'warehouse_distribution',
+              ratings: {
+                exposures_fire_department_response: 3,
+                occupancy_combustible_loading_control: 3,
+              },
+            },
+          } as any,
+        ],
+      },
+    );
+
+    expect(completion.missingRequirements).not.toContain('Select an industry classification');
+  });
 });

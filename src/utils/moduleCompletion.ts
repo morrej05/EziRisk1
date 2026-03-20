@@ -12,6 +12,7 @@ interface ModuleCompletionShape extends ModuleInstanceAssessmentShape {
 
 interface ModuleCompletionContext {
   allModules?: ModuleCompletionShape[];
+  documentAssessmentDate?: string | null;
 }
 
 type CompletionState = 'complete' | 'incomplete' | 'untouched';
@@ -117,6 +118,12 @@ function getRiskEngineeringRatings(context?: ModuleCompletionContext): Record<st
   return (riskEngineeringModule?.data?.ratings || {}) as Record<string, unknown>;
 }
 
+function getRiskEngineeringIndustryKey(context?: ModuleCompletionContext): string {
+  const riskEngineeringModule = context?.allModules?.find((module) => module.module_key === 'RISK_ENGINEERING');
+  const key = riskEngineeringModule?.data?.industry_key;
+  return typeof key === 'string' ? key : '';
+}
+
 function getReModuleMissingRequirements(
   moduleInstance: ModuleCompletionShape,
   context?: ModuleCompletionContext,
@@ -132,7 +139,12 @@ function getReModuleMissingRequirements(
     const missing: string[] = [];
     if (!hasMeaningfulValue(data?.client_site?.site)) missing.push('Complete required field: Site');
     if (!hasMeaningfulValue(data?.assessor?.name)) missing.push('Complete required field: Assessor');
-    if (!hasMeaningfulValue(data?.dates?.assessment_date)) missing.push('Complete required field: Date');
+    const assessmentDate =
+      data?.dates?.assessment_date
+      ?? data?.assessment_date
+      ?? context?.documentAssessmentDate
+      ?? null;
+    if (!hasMeaningfulValue(assessmentDate)) missing.push('Complete required field: Date');
     return missing;
   }
 
@@ -188,7 +200,7 @@ function getReModuleMissingRequirements(
   const ratings = getRiskEngineeringRatings(context);
 
   if (moduleKey === 'RE_03_OCCUPANCY') {
-    const industryKey = (data?.industry_key as string | undefined) || '';
+    const industryKey = ((data?.industry_key as string | undefined) || getRiskEngineeringIndustryKey(context) || '');
     const hasIndustry = hasMeaningfulValue(industryKey);
     const requiredIndustryRatingKeys = hasIndustry && HRG_MASTER_MAP.industries[industryKey]
       ? Object.keys(HRG_MASTER_MAP.industries[industryKey].modules || {})

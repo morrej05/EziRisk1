@@ -762,6 +762,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
           isMobileMenuOpen={isMobileMenuOpen}
           onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
           documentId={document?.id}
+          documentAssessmentDate={document?.assessment_date ?? null}
         />
 
         <div className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
