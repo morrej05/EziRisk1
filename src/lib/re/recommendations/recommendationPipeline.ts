@@ -24,6 +24,67 @@ interface FallbackContent {
 }
 
 const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
+
+  re06_fp_adequacy_fixed_protection_required_provided: {
+    title: 'Provide/extend fixed protection where hazard warrants it',
+    observation_text: 'Areas requiring fixed fire protection are not adequately protected across the current occupancy/process/storage profile.',
+    action_required_text: 'Provide or extend fixed fire protection in warranted areas based on occupancy/process/storage hazards and current risk profile.',
+    hazard_text: 'Unprotected warranted areas can permit rapid fire growth before intervention, increasing loss severity.',
+  },
+  re06_fp_adequacy_system_type_hazard_match: {
+    title: 'Review protection type/design suitability against actual hazard',
+    observation_text: 'Installed protection type/design is not sufficiently matched to the actual occupancy/process/storage hazard.',
+    action_required_text: 'Complete an engineering review of system type/design basis and align protection approach to the actual hazard profile.',
+    hazard_text: 'A mismatched protection strategy may underperform in real fire conditions and allow escalation.',
+  },
+  re06_fp_adequacy_critical_area_coverage: {
+    title: 'Extend protection to unprotected critical areas',
+    observation_text: 'Protection coverage is incomplete across critical risk areas that should be protected.',
+    action_required_text: 'Extend protection coverage to currently omitted critical areas (e.g., plant zones, storage, mezzanines, concealed/process areas).',
+    hazard_text: 'Critical-area omissions can allow fire development in the least protected zones and increase escalation potential.',
+  },
+  re06_fp_adequacy_supply_capacity_pressure_duration: {
+    title: 'Upgrade extinguishing supply sufficiency',
+    observation_text: 'Extinguishing supply capacity/pressure/duration is inadequate or uncertain for expected hazard demand.',
+    action_required_text: 'Review and upgrade extinguishing supply capacity, pressure, and duration where inadequate or uncertain.',
+    hazard_text: 'Inadequate or uncertain supply can cause suppression underperformance during key incident stages.',
+  },
+  re06_fp_reliability_pumps_valves_controls_utilities: {
+    title: 'Improve pumps/valves/controls/utilities reliability and supervision',
+    observation_text: 'Critical pumps, valves, controls, or utility dependencies show reliability vulnerabilities.',
+    action_required_text: 'Strengthen reliability of pumps/valves/controls/utilities and improve supervision of critical positions and dependencies.',
+    hazard_text: 'Control or utility failures can remove suppression capability when needed most.',
+  },
+  re06_fp_reliability_itm_standard: {
+    title: 'Strengthen documented inspection, testing, maintenance, and defect close-out',
+    observation_text: 'ITM arrangements are irregular, incomplete, or weakly evidenced.',
+    action_required_text: 'Implement or strengthen formal documented ITM arrangements and timely defect close-out tracking.',
+    hazard_text: 'Weak ITM governance can leave latent failures unresolved until an incident.',
+  },
+  re06_fp_reliability_impairment_fault_escalation: {
+    title: 'Strengthen impairment control and alarm/fault escalation',
+    observation_text: 'Impairment, fault, isolation, and alarm conditions are not consistently controlled and escalated.',
+    action_required_text: 'Implement or strengthen formal impairment management and alarm/fault escalation procedures with tracking to restoration.',
+    hazard_text: 'Poor impairment governance can leave protection outages uncontrolled during fire events.',
+  },
+  re06_fp_localised_required_provided: {
+    title: 'Provide or improve localised/special hazard protection',
+    observation_text: 'Localised/special hazard protection is absent, limited, or incomplete for identified hazards.',
+    action_required_text: 'Provide or improve localised/special hazard protection for identified hazards where required.',
+    hazard_text: 'Uncontrolled special hazards can escalate before general area protection can contain the event.',
+  },
+  re06_fp_localised_reliability_testing_integration: {
+    title: 'Improve localised protection testing, maintenance, and integration',
+    observation_text: 'Localised protection reliability is weakened by limited testing, maintenance, or system integration assurance.',
+    action_required_text: 'Improve testing, maintenance, and integration arrangements for localised protection systems.',
+    hazard_text: 'Localised systems may fail on demand if reliability assurance and interfaces are weak.',
+  },
+  re06_fp_evidence_design_performance_change_control: {
+    title: 'Improve documentation, performance evidence, and change-control discipline',
+    observation_text: 'Design/performance/change-control evidence is limited or incomplete, reducing confidence in claimed protection standards.',
+    action_required_text: 'Improve design/performance documentation, evidence retention, and change-control discipline.',
+    hazard_text: 'Weak evidence and change control can conceal degradation and delay risk-reducing corrective actions.',
+  },
   re06_fp_adequacy_fixed_protection_provided: {
     title: 'Provide fixed protection where hazard profile warrants it',
     observation_text: 'Areas/processes requiring fixed fire protection are not fully protected with suitable systems.',
@@ -200,7 +261,7 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
   },
 };
 
-function resolveFactorFallback(factorKey: string): FallbackContent | null {
+export function resolveFactorFallback(factorKey: string): FallbackContent | null {
   if (FACTOR_SPECIFIC_FALLBACKS[factorKey]) {
     return FACTOR_SPECIFIC_FALLBACKS[factorKey];
   }

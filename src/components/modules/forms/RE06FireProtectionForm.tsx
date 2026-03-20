@@ -20,6 +20,7 @@ import {
   RE04_ENGINEERING_QUESTIONS,
   RE04_ENGINEERING_QUESTIONS_BY_GROUP,
   RE04_LOCALISED_INSTALLED_FACTOR_KEY,
+  deriveRe04SupplementaryScores,
 } from '../../../lib/re/re04EngineeringModel';
 
 interface Document {
@@ -200,44 +201,6 @@ function normalizeSupplementaryAssessment(
         notes: existing?.notes || '',
       };
     }),
-  };
-}
-
-function deriveSupplementaryScores(
-  questions: SupplementaryQuestionResponse[],
-  options?: { includeLocalisedGroup?: boolean }
-) {
-  const includeLocalisedGroup = options?.includeLocalisedGroup ?? true;
-  const byGroup = {
-    adequacy: questions.filter((q) => q.group === 'adequacy' && q.score_1_5 !== null),
-    reliability: questions.filter((q) => q.group === 'reliability' && q.score_1_5 !== null),
-    localised: includeLocalisedGroup
-      ? questions.filter((q) => q.group === 'localised' && q.score_1_5 !== null)
-      : [],
-    evidence: questions.filter((q) => q.group === 'evidence' && q.score_1_5 !== null),
-  };
-
-  const average = (items: SupplementaryQuestionResponse[]) => {
-    if (items.length === 0) return null;
-    const sum = items.reduce((acc, item) => acc + Number(item.score_1_5), 0);
-    return Math.round((sum / items.length) * 10) / 10;
-  };
-
-  const adequacy_subscore = average(byGroup.adequacy);
-  const reliability_subscore = average(byGroup.reliability);
-  const ratedQuestions = questions.filter(
-    (q) => q.score_1_5 !== null && (includeLocalisedGroup || q.group !== 'localised')
-  );
-  const localised_subscore = average(byGroup.localised);
-  const evidence_subscore = average(byGroup.evidence);
-  const overall_score = average(ratedQuestions);
-
-  return {
-    adequacy_subscore,
-    reliability_subscore,
-    localised_subscore,
-    evidence_subscore,
-    overall_score,
   };
 }
 
@@ -528,7 +491,7 @@ export default function RE06FireProtectionForm({
       ? 'Required coverage not provided'
       : 'Coverage data unavailable';
   const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
-  const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions, {
+  const supplementaryScores = deriveRe04SupplementaryScores(supplementaryAssessment.questions, {
     includeLocalisedGroup: showLocalisedDetailedAssessment || isLocalisedKnockoutFailed,
   });
   const [supplementaryAutoRecStates, setSupplementaryAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>(
@@ -643,7 +606,7 @@ export default function RE06FireProtectionForm({
           const sprinklerData = buildingData?.sprinklerData;
           return sprinklerData?.localised_required === 'Yes' && sprinklerData?.localised_present === 'No';
         });
-      const supplementaryScoresToSave = deriveSupplementaryScores(supplementaryToSave.questions, {
+      const supplementaryScoresToSave = deriveRe04SupplementaryScores(supplementaryToSave.questions, {
         includeLocalisedGroup: includeLocalisedGroupForSave,
       });
       const payload: FireProtectionModuleData = {
@@ -816,7 +779,7 @@ export default function RE06FireProtectionForm({
         buildings: updatedBuildings,
         supplementary_assessment: {
           ...currentSupplementary,
-          ...deriveSupplementaryScores(updatedQuestions, { includeLocalisedGroup }),
+          ...deriveRe04SupplementaryScores(updatedQuestions, { includeLocalisedGroup }),
           questions: updatedQuestions,
         },
       };
@@ -853,7 +816,7 @@ export default function RE06FireProtectionForm({
         ...prev,
         supplementary_assessment: {
           ...current,
-          ...deriveSupplementaryScores(questions, {
+          ...deriveRe04SupplementaryScores(questions, {
             includeLocalisedGroup: shouldIncludeLocalisedScoring(prev.buildings),
           }),
           questions,
@@ -927,7 +890,7 @@ export default function RE06FireProtectionForm({
 
         <div className="space-y-6">
           <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q3)</h4>
+            <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q4)</h4>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.adequacy.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
@@ -937,8 +900,10 @@ export default function RE06FireProtectionForm({
                     key={definition.factorKey}
                     questionId={definition.id}
                     factorKey={definition.factorKey}
+                    title={definition.uiLabel}
                     prompt={definition.prompt}
                     weight={definition.weight}
+                    answerStates={definition.answerStates}
                     rating={question.score_1_5}
                     notes={question.notes}
                     autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
@@ -952,7 +917,7 @@ export default function RE06FireProtectionForm({
           </div>
 
           <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q4–Q6)</h4>
+            <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q5–Q7)</h4>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.reliability.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
@@ -962,8 +927,10 @@ export default function RE06FireProtectionForm({
                     key={definition.factorKey}
                     questionId={definition.id}
                     factorKey={definition.factorKey}
+                    title={definition.uiLabel}
                     prompt={definition.prompt}
                     weight={definition.weight}
+                    answerStates={definition.answerStates}
                     rating={question.score_1_5}
                     notes={question.notes}
                     autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
@@ -1028,13 +995,13 @@ export default function RE06FireProtectionForm({
 
               return null;
             })()}
-            {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q7–Q8 are shown only when localised protection is required and installed.</p>}
+            {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q8–Q9 are shown only when localised protection is required and installed.</p>}
           </div>
 
 
 
           <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q9–Q10)</h4>
+            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
@@ -1044,8 +1011,10 @@ export default function RE06FireProtectionForm({
                     key={definition.factorKey}
                     questionId={definition.id}
                     factorKey={definition.factorKey}
+                    title={definition.uiLabel}
                     prompt={definition.prompt}
                     weight={definition.weight}
+                    answerStates={definition.answerStates}
                     rating={question.score_1_5}
                     notes={question.notes}
                     autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
@@ -1060,7 +1029,7 @@ export default function RE06FireProtectionForm({
 
           {showLocalisedDetailedAssessment && (
             <div>
-              <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q7–Q8)</h4>
+              <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
                   const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
@@ -1070,8 +1039,10 @@ export default function RE06FireProtectionForm({
                       key={definition.factorKey}
                       questionId={definition.id}
                       factorKey={definition.factorKey}
+                      title={definition.uiLabel}
                       prompt={definition.prompt}
                       weight={definition.weight}
+                      answerStates={definition.answerStates}
                       rating={question.score_1_5}
                       notes={question.notes}
                       autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
