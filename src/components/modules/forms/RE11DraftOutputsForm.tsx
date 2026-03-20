@@ -184,7 +184,29 @@ export default function RE11DraftOutputsForm({
 
     const supplementary = fp.supplementary_assessment || {};
     const supplementaryQuestions = Array.isArray(supplementary.questions) ? supplementary.questions : [];
-    const ratedSupplementaryQuestions = supplementaryQuestions.filter((q: any) => q?.score_1_5 !== null && q?.score_1_5 !== undefined);
+    const ratedSupplementaryQuestions = supplementaryQuestions.filter(
+      (q: any) => q?.score_1_5 !== null && q?.score_1_5 !== undefined
+    );
+
+    const summariseGroup = (group: string, label: string) => {
+      const groupRated = ratedSupplementaryQuestions.filter((q: any) => q.group === group);
+      const lowFactors = groupRated.filter((q: any) => Number(q.score_1_5) <= 2);
+
+      if (!groupRated.length) {
+        return `${label}: Not rated.`;
+      }
+
+      if (!lowFactors.length) {
+        return `${label}: Rated ${groupRated.length} factor(s), with no weak factors identified.`;
+      }
+
+      const weakest = lowFactors
+        .slice(0, 2)
+        .map((q: any) => q.prompt)
+        .join('; ');
+
+      return `${label}: ${lowFactors.length} weak factor(s) noted. Priority focus: ${weakest}.`;
+    };
 
     let content = '';
 
@@ -196,25 +218,32 @@ export default function RE11DraftOutputsForm({
     }
 
     if (fp.systems?.detection_alarm?.present) {
-      content += `Fire detection system present. `;
+      content += 'Fire detection/alarm system present. ';
       if (fp.systems.detection_alarm.monitoring_to_arc) {
-        content += `Monitored to ARC. `;
+        content += 'Monitored to ARC. ';
       }
-      content += `\n`;
+      content += '\n';
     }
 
     if (fp.systems?.water_supply?.reliability) {
-      content += `Water supply: ${fp.systems.water_supply.reliability}. `;
+      content += `Water supply reliability: ${fp.systems.water_supply.reliability}. `;
       content += `Primary source: ${fp.systems.water_supply.primary_source || 'not specified'}.\n`;
     }
 
     if (supplementary.overall_score !== null && supplementary.overall_score !== undefined) {
-      content += `\nSupplementary engineering fire protection score: ${supplementary.overall_score}/5.`;
+      content += `\nRE-04 engineering score: ${supplementary.overall_score}/5.`;
       content += ` Adequacy: ${supplementary.adequacy_subscore ?? 'Not rated'}/5.`;
       content += ` Reliability: ${supplementary.reliability_subscore ?? 'Not rated'}/5.`;
+      content += ` Localised/special hazards: ${supplementary.localised_subscore ?? 'Not rated'}/5.`;
+      content += ` Evidence/confidence: ${supplementary.evidence_subscore ?? 'Not rated'}/5.`;
       content += ` (${ratedSupplementaryQuestions.length} supporting factor(s) rated)\n`;
+
+      content += `\n${summariseGroup('adequacy', 'Adequacy summary')}`;
+      content += `\n${summariseGroup('reliability', 'Reliability summary')}`;
+      content += `\n${summariseGroup('localised', 'Localised/special hazard summary')}`;
+      content += `\n${summariseGroup('evidence', 'Evidence/confidence summary')}`;
     } else {
-      content += '\nSupplementary engineering fire protection score: Not rated.\n';
+      content += '\nRE-04 engineering score: Not rated.\n';
     }
 
     return content;

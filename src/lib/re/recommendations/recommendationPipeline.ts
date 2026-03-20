@@ -24,6 +24,66 @@ interface FallbackContent {
 }
 
 const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
+  re06_fp_adequacy_fixed_protection_provided: {
+    title: 'Provide fixed protection where hazard profile warrants it',
+    observation_text: 'Areas/processes requiring fixed fire protection are not fully protected with suitable systems.',
+    action_required_text: 'Complete a gap assessment of warranted fixed protection by area/process and install or extend systems where required.',
+    hazard_text: 'Unprotected warranted areas can permit rapid fire growth before intervention, increasing property and business interruption loss.',
+  },
+  re06_fp_adequacy_system_suitability: {
+    title: 'Align protection technology with occupancy/process/storage hazards',
+    observation_text: 'Installed system type/design is not fully suited to the actual hazard characteristics and storage/process conditions.',
+    action_required_text: 'Review design basis against current hazards and re-specify system type, density/application criteria, and zoning as needed.',
+    hazard_text: 'Unsuitable suppression strategy can underperform at ignition source and allow escalation beyond controllable limits.',
+  },
+  re06_fp_adequacy_coverage_supply_capacity_duration: {
+    title: 'Close suppression coverage and capacity shortfalls',
+    observation_text: 'Coverage and/or supply capacity-duration evidence indicates shortfall against credible fire demand.',
+    action_required_text: 'Undertake hydraulic/application verification and implement upgrades for coverage, pressure/flow, and discharge endurance.',
+    hazard_text: 'Capacity or endurance deficits can lead to loss of suppression effectiveness during critical incident stages.',
+  },
+  re06_fp_reliability_pumps_valves_controls: {
+    title: 'Improve dependability of pumps, valves, and control arrangements',
+    observation_text: 'Pumps/valves/controls and utility resilience do not provide sufficient confidence in on-demand operation.',
+    action_required_text: 'Rectify reliability weaknesses in pump duty/standby logic, valve supervision, controls, and supporting utilities with functional proving tests.',
+    hazard_text: 'Control or utility failures during an incident can remove suppression capability and drive rapid loss escalation.',
+  },
+  re06_fp_reliability_itm_quality: {
+    title: 'Strengthen fire protection inspection, testing, and maintenance quality',
+    observation_text: 'Current ITM regime quality and closure discipline are not sufficient to demonstrate dependable system readiness.',
+    action_required_text: 'Implement risk-based ITM frequencies, quality assurance checks, and tracked close-out of all defects.',
+    hazard_text: 'Weak ITM quality allows latent failures to persist until demand conditions, increasing failure probability during fire events.',
+  },
+  re06_fp_reliability_impairment_and_fault_monitoring: {
+    title: 'Tighten impairment control and fault/alarm supervision',
+    observation_text: 'Impairments and fault conditions are not consistently controlled, escalated, and restored within defined timeframes.',
+    action_required_text: 'Implement formal impairment permits, compensatory controls, remote/local fault monitoring, and escalation-response KPIs.',
+    hazard_text: 'Poor impairment governance can create unrecognized protection outages when a fire occurs.',
+  },
+  re06_fp_localised_protection_suitability: {
+    title: 'Improve suitability of localised/special hazard protection',
+    observation_text: 'Localised/special hazard protection does not fully match the protected process/equipment hazard profile.',
+    action_required_text: 'Reassess special hazard scenarios and align suppression media, discharge strategy, and protected scope accordingly.',
+    hazard_text: 'Mismatched local protection can fail to control high-energy ignition sources before spread to surrounding assets.',
+  },
+  re06_fp_localised_reliability_integration: {
+    title: 'Improve reliability and integration of localised protection',
+    observation_text: 'Localised systems show weaknesses in integration logic, functional test assurance, or maintenance reliability.',
+    action_required_text: 'Validate detection-actuation-shutdown interfaces and strengthen periodic functional testing and maintenance close-out evidence.',
+    hazard_text: 'Integration or reliability failures can prevent localised systems from performing when rapid intervention is essential.',
+  },
+  re06_fp_evidence_design_and_asset_documentation: {
+    title: 'Improve design and coverage evidence quality',
+    observation_text: 'Design basis and asset/zone documentation evidence is incomplete, outdated, or insufficient for a high-confidence adequacy judgement.',
+    action_required_text: 'Update design basis documents, as-built drawings, hazard-coverage schedules, and engineering assumptions to current conditions.',
+    hazard_text: 'Low evidential confidence can mask adequacy gaps and delay corrective action planning.',
+  },
+  re06_fp_evidence_test_records_and_change_control: {
+    title: 'Improve evidential confidence from test records and change control',
+    observation_text: 'Test evidence, impairment logs, and change-control records are not sufficiently robust to support high reliability confidence.',
+    action_required_text: 'Strengthen record quality, traceability, and management-of-change workflows to maintain reliable assurance over time.',
+    hazard_text: 'Poor assurance records increase uncertainty in protection reliability and can conceal emerging control degradation.',
+  },
   re06_fp_adequacy_sprinkler_coverage: {
     title: 'Align sprinkler design and coverage with hazard profile',
     observation_text: 'Sprinkler arrangement is not fully aligned with current occupancy, storage, or hazard demand.',
