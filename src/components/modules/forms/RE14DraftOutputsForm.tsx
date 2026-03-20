@@ -44,6 +44,7 @@ interface SiteMetadata {
   site_address: string | null;
   assessor_name: string | null;
   assessment_date: string | null;
+  site_name_source: 're01' | 'document_title' | 'missing';
 }
 
 const toNonEmptyString = (value: unknown): string | null => {
@@ -107,7 +108,8 @@ export default function RE14DraftOutputsForm({
 
         const mappedSiteMetadata: SiteMetadata = {
           site_name: toNonEmptyString(re01Data?.client_site?.site)
-            ?? toNonEmptyString(re01Data?.site_name),
+            ?? toNonEmptyString(re01Data?.site_name)
+            ?? toNonEmptyString(document.title),
           site_address: toNonEmptyString(re01Data?.client_site?.address)
             ?? toNonEmptyString(re01Data?.site_address),
           assessor_name: toNonEmptyString(re01Data?.assessor?.name)
@@ -116,6 +118,10 @@ export default function RE14DraftOutputsForm({
           assessment_date: toNonEmptyString(re01Data?.dates?.assessment_date)
             ?? toNonEmptyString(re01Data?.assessment_date)
             ?? toNonEmptyString(document.assessment_date),
+          site_name_source: toNonEmptyString(re01Data?.client_site?.site)
+            ?? toNonEmptyString(re01Data?.site_name)
+            ? 're01'
+            : (toNonEmptyString(document.title) ? 'document_title' : 'missing'),
         };
         setSiteMetadata(mappedSiteMetadata);
 
@@ -229,14 +235,19 @@ export default function RE14DraftOutputsForm({
   };
 
   const handleGenerateAiDraft = async () => {
+    const missingFields: string[] = [];
+    if (!siteMetadata?.site_name) missingFields.push('Site Name');
+    if (!siteMetadata?.assessment_date) missingFields.push('Assessment Date');
+    if (!industryKey) missingFields.push('Industry (RE-03 Occupancy)');
+    if (globalPillars.length === 0 && occupancyDrivers.length === 0) {
+      missingFields.push('Risk ratings (RISK_ENGINEERING)');
+    }
+
     if (
       !siteMetadata
-      || !siteMetadata.site_name
-      || !siteMetadata.assessment_date
-      || !industryKey
-      || (globalPillars.length === 0 && occupancyDrivers.length === 0)
+      || missingFields.length > 0
     ) {
-      alert('Please ensure all assessment data is complete before generating an AI summary.');
+      alert(`Cannot generate auto draft yet. Missing: ${missingFields.join(', ')}.`);
       return;
     }
     if (missingRequiredRatings.length > 0) {
@@ -382,7 +393,7 @@ export default function RE14DraftOutputsForm({
           </p>
           {!siteMetadata?.site_name || !siteMetadata?.assessment_date || !industryKey ? (
             <p className="text-amber-700 font-medium">
-              Complete RE-01 Document Control and RISK_ENGINEERING modules before generating.
+              Complete required data before generating: Site Name, Assessment Date, Industry (RE-03), and risk ratings.
             </p>
           ) : null}
           {missingRequiredRatings.length > 0 ? (
@@ -412,6 +423,11 @@ export default function RE14DraftOutputsForm({
             <div>
               <span className="font-medium text-slate-700">Site Name:</span>
               <p className="text-slate-900">{siteMetadata.site_name || '—'}</p>
+              {siteMetadata.site_name_source === 'document_title' && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Fallback shown from document title. Enter canonical site name in RE-01 Document Control.
+                </p>
+              )}
             </div>
             <div>
               <span className="font-medium text-slate-700">Assessor:</span>
