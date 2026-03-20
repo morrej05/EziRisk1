@@ -98,6 +98,7 @@ export default function BuildingsGrid({
   // Site notes state
   const [constructionNotes, setConstructionNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [openExplanationForBuildingId, setOpenExplanationForBuildingId] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -433,6 +434,17 @@ async function saveMezz() {
       combustiblePercent,
       score: Math.round(siteScore * 10) / 10 // 1 decimal place
     };
+  }, [rows, buildingExtras]);
+
+  const siteWeightTotal = useMemo(() => {
+    const weightedBuildings = rows
+      .filter((b) => b.id && buildingExtras[b.id])
+      .map((b) => {
+        let area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
+        if (area <= 0) area = 1;
+        return area;
+      });
+    return weightedBuildings.reduce((sum, area) => sum + area, 0);
   }, [rows, buildingExtras]);
 
   // Persist site score to RISK_ENGINEERING module (debounced)
@@ -859,13 +871,56 @@ async function saveMezz() {
                         (R: {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} | W: {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} | M: {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`})
                       </span>
                       <button
+                        type="button"
                         className="ml-auto flex items-center gap-1 text-slate-600 hover:text-slate-900"
-                        title={computed.explanation}
+                        onClick={() => setOpenExplanationForBuildingId((current) => (current === b.id ? null : b.id ?? null))}
+                        title="Show score explanation"
                       >
                         <Info className="w-4 h-4" />
                         <span className="text-xs">Explanation</span>
                       </button>
                     </div>
+                    {openExplanationForBuildingId === b.id && (
+                      <div className="mt-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 space-y-2">
+                        <p className="font-medium text-slate-900">How this RE-02 score was derived</p>
+                        <p>{computed.explanation}</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>Building RE-02 score: <span className="font-semibold">{computed.score}</span></li>
+                          <li>
+                            Building combustible %: <span className="font-semibold">
+                              {isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}
+                            </span>
+                          </li>
+                          <li>
+                            Components (roof / walls / mezz):{' '}
+                            <span className="font-semibold">
+                              {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} /{' '}
+                              {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} /{' '}
+                              {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`}
+                            </span>
+                          </li>
+                          <li>
+                            Area weighting in site score: <span className="font-semibold">
+                              {(() => {
+                                const area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
+                                const effectiveArea = area > 0 ? area : 1;
+                                if (!siteWeightTotal) return '—';
+                                return `${((effectiveArea / siteWeightTotal) * 100).toFixed(1)}%`;
+                              })()}
+                            </span>
+                          </li>
+                          <li>
+                            Site context: score <span className="font-semibold">
+                              {isNaN(siteMetrics.score) ? '—' : siteMetrics.score.toFixed(1)}
+                            </span>{' '}
+                            / combustible{' '}
+                            <span className="font-semibold">
+                              {isNaN(siteMetrics.combustiblePercent) ? '—' : `${siteMetrics.combustiblePercent}%`}
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}

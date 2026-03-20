@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { AlertCircle, TrendingUp, FileText, Save, Sparkles, Copy } from 'lucide-react';
-import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
 import { buildRiskEngineeringScoreBreakdown, getMissingRequiredRatings, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
@@ -610,9 +609,6 @@ export default function RE14DraftOutputsForm({
         )}
       </div>
 
-      {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
-      )}
     </div>
 
       <FloatingSaveBar onSave={handleSaveExecutiveSummary} isSaving={saving} />
