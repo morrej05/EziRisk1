@@ -183,70 +183,67 @@ export default function RE11DraftOutputsForm({
     if (!fp) return 'No fire protection data available.';
 
     const supplementary = fp.supplementary_assessment || {};
-    const supplementaryQuestions = Array.isArray(supplementary.questions) ? supplementary.questions : [];
-    const ratedSupplementaryQuestions = supplementaryQuestions.filter(
-      (q: any) => q?.score_1_5 !== null && q?.score_1_5 !== undefined
-    );
+    const questions = Array.isArray(supplementary.questions) ? supplementary.questions : [];
+    const rated = questions.filter((q: any) => q?.score_1_5 !== null && q?.score_1_5 !== undefined);
 
-    const summariseGroup = (group: string, label: string) => {
-      const groupRated = ratedSupplementaryQuestions.filter((q: any) => q.group === group);
-      const lowFactors = groupRated.filter((q: any) => Number(q.score_1_5) <= 2);
-
-      if (!groupRated.length) {
-        return `${label}: Not rated.`;
-      }
-
-      if (!lowFactors.length) {
-        return `${label}: Rated ${groupRated.length} factor(s), with no weak factors identified.`;
-      }
-
-      const weakest = lowFactors
-        .slice(0, 2)
+    const groupQuestions = (group: string) => rated.filter((q: any) => q.group === group);
+    const weakPrompts = (group: string) =>
+      groupQuestions(group)
+        .filter((q: any) => Number(q.score_1_5) <= 2)
         .map((q: any) => q.prompt)
-        .join('; ');
+        .slice(0, 2);
 
-      return `${label}: ${lowFactors.length} weak factor(s) noted. Priority focus: ${weakest}.`;
+    const scoreBand = (value: number | null | undefined) => {
+      if (value === null || value === undefined) return 'not rated';
+      if (value < 1.75) return 'weak';
+      if (value < 3) return 'mixed';
+      if (value < 4.2) return 'broadly adequate';
+      return 'strong';
     };
 
-    let content = '';
+    const adequacyWeak = weakPrompts('adequacy');
+    const reliabilityWeak = weakPrompts('reliability');
+    const localisedApplicable = groupQuestions('localised').length > 0;
+    const localisedWeak = weakPrompts('localised');
+    const evidenceWeak = weakPrompts('evidence');
 
-    if (fp.systems?.sprinklers?.present) {
-      content += `Sprinkler system present: ${fp.systems.sprinklers.type || 'type not specified'}. `;
-      content += `Design basis: ${fp.systems.sprinklers.design_basis || 'not specified'}.\n`;
-    } else {
-      content += 'No sprinkler system present.\n';
-    }
+    const adequacyScore = supplementary.adequacy_subscore_raw_0_4 ?? null;
+    const reliabilityScore = supplementary.reliability_subscore_raw_0_4 ?? null;
+    const localisedScore = supplementary.localised_subscore_raw_0_4 ?? null;
+    const evidenceScore = supplementary.evidence_subscore_raw_0_4 ?? null;
+    const overallRaw = supplementary.overall_raw_0_4 ?? null;
 
-    if (fp.systems?.detection_alarm?.present) {
-      content += 'Fire detection/alarm system present. ';
-      if (fp.systems.detection_alarm.monitoring_to_arc) {
-        content += 'Monitored to ARC. ';
-      }
-      content += '\n';
-    }
+    const adequacyLine = adequacyWeak.length
+      ? `Adequacy is ${scoreBand(adequacyScore)} with limitations in ${adequacyWeak.join('; ')}.`
+      : `Adequacy is ${scoreBand(adequacyScore)} based on provision, suitability, coverage, and extinguishing supply.`;
 
-    if (fp.systems?.water_supply?.reliability) {
-      content += `Water supply reliability: ${fp.systems.water_supply.reliability}. `;
-      content += `Primary source: ${fp.systems.water_supply.primary_source || 'not specified'}.\n`;
-    }
+    const reliabilityLine = reliabilityWeak.length
+      ? `Reliability is ${scoreBand(reliabilityScore)}; confidence is reduced by ${reliabilityWeak.join('; ')}.`
+      : `Reliability is ${scoreBand(reliabilityScore)} across component dependability, ITM quality, and impairment governance.`;
 
-    if (supplementary.overall_score !== null && supplementary.overall_score !== undefined) {
-      content += `\nRE-04 engineering score: ${supplementary.overall_score}/5.`;
-      content += ` Adequacy: ${supplementary.adequacy_subscore ?? 'Not rated'}/5.`;
-      content += ` Reliability: ${supplementary.reliability_subscore ?? 'Not rated'}/5.`;
-      content += ` Localised/special hazards: ${supplementary.localised_subscore ?? 'Not rated'}/5.`;
-      content += ` Evidence/confidence: ${supplementary.evidence_subscore ?? 'Not rated'}/5.`;
-      content += ` (${ratedSupplementaryQuestions.length} supporting factor(s) rated)\n`;
+    const localisedLine = localisedApplicable
+      ? localisedWeak.length
+        ? `Localised/special hazard protection is applicable and currently ${scoreBand(localisedScore)}, with weaknesses in ${localisedWeak.join('; ')}.`
+        : `Localised/special hazard protection is applicable and ${scoreBand(localisedScore)} for identified hazards.`
+      : 'Localised/special hazard protection is not applicable for the assessed hazards and was excluded from scoring.';
 
-      content += `\n${summariseGroup('adequacy', 'Adequacy summary')}`;
-      content += `\n${summariseGroup('reliability', 'Reliability summary')}`;
-      content += `\n${summariseGroup('localised', 'Localised/special hazard summary')}`;
-      content += `\n${summariseGroup('evidence', 'Evidence/confidence summary')}`;
-    } else {
-      content += '\nRE-04 engineering score: Not rated.\n';
-    }
+    const evidenceLine = evidenceWeak.length
+      ? `Evidence/confidence is ${scoreBand(evidenceScore)} with gaps in ${evidenceWeak.join('; ')}.`
+      : `Evidence/confidence is ${scoreBand(evidenceScore)} based on available design, performance, and change-control records.`;
 
-    return content;
+    const overallLine = `Overall fire protection view: ${scoreBand(overallRaw)} (raw ${overallRaw ?? 'not rated'}/4, mapped ${supplementary.overall_score ?? 'not rated'}/5).`;
+
+    return [
+      `RE-04 engineering score (mapped): ${supplementary.overall_score ?? 'Not rated'}/5.`,
+      `RE-04 engineering score (raw): ${overallRaw ?? 'Not rated'}/4.`,
+      '',
+      adequacyLine,
+      reliabilityLine,
+      localisedLine,
+      evidenceLine,
+      overallLine,
+    ].join('
+');
   };
 
   const generateUtilitiesContent = (data: any): string => {
