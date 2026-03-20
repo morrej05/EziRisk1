@@ -19,6 +19,7 @@ import { updateSectionGrade } from '../../../utils/sectionGrades';
 import {
   RE04_ENGINEERING_QUESTIONS,
   RE04_ENGINEERING_QUESTIONS_BY_GROUP,
+  RE04_LOCALISED_INSTALLED_FACTOR_KEY,
 } from '../../../lib/re/re04EngineeringModel';
 
 interface Document {
@@ -233,6 +234,17 @@ function deriveSupplementaryScores(
     localised_subscore,
     overall_score,
   };
+}
+
+function shouldIncludeLocalisedScoring(buildings: Record<string, BuildingFireProtection>): boolean {
+  return Object.values(buildings).some((buildingData) => {
+    const sprinklerData = buildingData?.sprinklerData;
+    if (!sprinklerData) return false;
+    const required = sprinklerData.localised_required === 'Yes';
+    const installed = sprinklerData.localised_present === 'Yes';
+    const requiredButMissing = required && sprinklerData.localised_present === 'No';
+    return (required && installed) || requiredButMissing;
+  });
 }
 
 
@@ -781,31 +793,25 @@ export default function RE06FireProtectionForm({
         sprinklerData.localised_present = 'Unknown';
       }
 
-      const knockoutFailed =
-        sprinklerData.localised_required === 'Yes' && sprinklerData.localised_present === 'No';
-      const localisedQuestionFactor = RE04_LOCALISED_INSTALLED_FACTOR_KEY;
-
       const currentSupplementary = normalizeSupplementaryAssessment(prev.supplementary_assessment);
-      const updatedQuestions = currentSupplementary.questions.map((question) => {
-        if (question.factor_key !== localisedQuestionFactor) return question;
-        return {
-          ...question,
-          score_1_5: knockoutFailed ? 1 : question.score_1_5,
-        };
-      });
+      const updatedBuildings = {
+        ...prev.buildings,
+        [selectedBuildingId]: {
+          ...building,
+          sprinklerData,
+        },
+      };
+      const includeLocalisedGroup = shouldIncludeLocalisedScoring(updatedBuildings);
+      const updatedQuestions = currentSupplementary.questions.map((question) =>
+        question.factor_key === RE04_LOCALISED_INSTALLED_FACTOR_KEY ? { ...question, score_1_5: null } : question
+      );
 
       return {
         ...prev,
-        buildings: {
-          ...prev.buildings,
-          [selectedBuildingId]: {
-            ...building,
-            sprinklerData,
-          },
-        },
+        buildings: updatedBuildings,
         supplementary_assessment: {
           ...currentSupplementary,
-          ...deriveSupplementaryScores(updatedQuestions),
+          ...deriveSupplementaryScores(updatedQuestions, { includeLocalisedGroup }),
           questions: updatedQuestions,
         },
       };
@@ -842,7 +848,9 @@ export default function RE06FireProtectionForm({
         ...prev,
         supplementary_assessment: {
           ...current,
-          ...deriveSupplementaryScores(questions),
+          ...deriveSupplementaryScores(questions, {
+            includeLocalisedGroup: shouldIncludeLocalisedScoring(prev.buildings),
+          }),
           questions,
         },
       };
