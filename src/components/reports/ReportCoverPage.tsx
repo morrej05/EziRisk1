@@ -1,5 +1,5 @@
 import { Shield } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DEFAULT_LOGO } from '../../lib/pdf/pdfUtils';
 
 interface ReportCoverPageProps {
@@ -23,21 +23,18 @@ export default function ReportCoverPage({
   clientAddress,
   isDraft = false,
 }: ReportCoverPageProps) {
-  const hasClientLogo = Boolean(clientLogoUrl?.trim());
+  const normalizedClientLogoUrl = clientLogoUrl?.trim() || null;
+  const hasClientLogo = Boolean(normalizedClientLogoUrl);
 
-  const [logoStage, setLogoStage] = useState<'client' | 'default' | 'text'>(
-    hasClientLogo ? 'client' : 'default',
+  const [logoSrc, setLogoSrc] = useState<string>(
+    hasClientLogo ? normalizedClientLogoUrl! : DEFAULT_LOGO,
   );
+  const [showTextFallback, setShowTextFallback] = useState(false);
 
   useEffect(() => {
-    setLogoStage(hasClientLogo ? 'client' : 'default');
-  }, [hasClientLogo]);
-
-  const logoSrc = useMemo(() => {
-    if (logoStage === 'client') return hasClientLogo ? clientLogoUrl! : DEFAULT_LOGO;
-    if (logoStage === 'default') return DEFAULT_LOGO;
-    return null;
-  }, [clientLogoUrl, hasClientLogo, logoStage]);
+    setLogoSrc(hasClientLogo ? normalizedClientLogoUrl! : DEFAULT_LOGO);
+    setShowTextFallback(false);
+  }, [hasClientLogo, normalizedClientLogoUrl]);
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return null;
@@ -74,17 +71,17 @@ export default function ReportCoverPage({
 
       <div className="relative z-10 text-center max-w-2xl space-y-12">
         <div className="flex justify-center mb-8">
-          {logoStage !== 'text' && logoSrc ? (
+          {!showTextFallback ? (
             <img
               src={logoSrc}
-              alt={logoStage === 'client' ? 'Client Logo' : 'EziRisk Logo'}
+              alt={logoSrc === DEFAULT_LOGO ? 'EziRisk Logo' : 'Client Logo'}
               className="max-h-24 max-w-xs object-contain"
               onError={() => {
-                if (logoStage === 'client') {
-                  setLogoStage('default');
+                if (logoSrc !== DEFAULT_LOGO) {
+                  setLogoSrc(DEFAULT_LOGO);
                   return;
                 }
-                setLogoStage('text');
+                setShowTextFallback(true);
               }}
             />
           ) : (
