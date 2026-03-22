@@ -10,6 +10,11 @@ export const REPORT_TITLE_TO_BODY_GAP = 20;
 export const REPORT_BODY_TEXT_SIZE = 11;
 export const REPORT_BODY_LINE_GAP = 16;
 export const REPORT_BODY_PARAGRAPH_GAP = 10;
+export const DEFAULT_LOGO = '/ezirisk-logo-primary.svg';
+
+export function resolveLogoUrl(preferredLogoUrl?: string | null): string {
+  return preferredLogoUrl || DEFAULT_LOGO;
+}
 
 // PDF Debug Layout Mode - developer-only overlay for spacing/pagination tuning
 // export const PDF_DEBUG_LAYOUT = import.meta.env.VITE_PDF_DEBUG_LAYOUT === 'true';
@@ -839,6 +844,37 @@ export async function fetchAndEmbedLogo(
     console.error('[PDF Logo] Error embedding logo:', errorMsg);
     return null;
   }
+}
+
+export async function loadPdfLogoWithFallback(
+  pdfDoc: PDFDocument,
+  args: {
+    organisationLogoPath?: string | null;
+    organisationSignedUrl?: string | null;
+  } = {}
+): Promise<{ image: any; width: number; height: number } | null> {
+  const organisationLogo = await fetchAndEmbedLogo(
+    pdfDoc,
+    args.organisationLogoPath ?? null,
+    args.organisationSignedUrl ?? null
+  );
+
+  if (organisationLogo) {
+    return organisationLogo;
+  }
+
+  try {
+    const defaultLogoUrl = new URL(resolveLogoUrl(), window.location.origin).toString();
+    const defaultLogo = await fetchAndEmbedLogo(pdfDoc, DEFAULT_LOGO, defaultLogoUrl);
+    if (defaultLogo) {
+      return defaultLogo;
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.warn('[PDF Logo] Failed to load default EziRisk logo:', errorMsg);
+  }
+
+  return null;
 }
 
 export async function drawCoverPage(
