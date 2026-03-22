@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { getBearerToken } from "../_shared/auth.ts";
+import { getBearerToken, requireAuthenticatedUser } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,16 +18,9 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(payload), { status, headers: jsonHeaders });
 
   try {
-    const rawAuthHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
-    if (!rawAuthHeader) {
-      console.warn("[delete-org-logo] missing authorization header");
-      return respond(401, { error: "Missing Authorization header" });
-    }
-
     const token = getBearerToken(req);
     if (!token) {
-      console.warn("[delete-org-logo] bearer parse failure");
-      return respond(401, { error: "Malformed Authorization bearer token" });
+      return respond(401, { error: "Missing or malformed Authorization header" });
     }
 
     const supabaseClient = createClient(
@@ -36,36 +29,9 @@ Deno.serve(async (req: Request) => {
       { global: { headers: { Authorization: `Bearer ${token}` } } }
     );
 
-    const { data: directAuthData, error: directAuthError } = await supabaseClient.auth.getUser(token);
-    const directUser = directAuthData?.user ?? null;
-    if (directAuthError) {
-      console.warn("[delete-org-logo] auth.getUser(token) failure", {
-        message: directAuthError.message,
-      });
-    }
-
-    const { data: headerAuthData, error: headerAuthError } = directUser
-      ? { data: { user: null }, error: null }
-      : await supabaseClient.auth.getUser();
-    const user = directUser ?? headerAuthData?.user ?? null;
-
-    if (!directUser && directAuthError && !headerAuthData?.user && !headerAuthError) {
-      console.warn("[delete-org-logo] auth.getUser(token) failure", {
-        message: directAuthError.message,
-      });
-      return respond(401, { error: `auth.getUser(token) failed: ${directAuthError.message}` });
-    }
-
-    if (!directUser && headerAuthError) {
-      console.warn("[delete-org-logo] auth.getUser() fallback failure", {
-        message: headerAuthError.message,
-      });
-      return respond(401, { error: `auth.getUser() fallback failed: ${headerAuthError.message}` });
-    }
-
-    if (!user) {
-      console.warn("[delete-org-logo] auth user missing after token + fallback checks");
-      return respond(401, { error: "Unauthorized" });
+    const { user, error: authError } = await requireAuthenticatedUser(supabaseClient, req);
+    if (authError || !user) {
+      return respond(401, { error: authError ?? "Unauthorized" });
     }
 
     const contentType = req.headers.get("content-type") ?? "";
