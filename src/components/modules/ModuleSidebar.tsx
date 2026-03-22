@@ -8,7 +8,7 @@ import {
   type ModuleInstance,
 } from '../../lib/modules/moduleDisplay';
 import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
-import { isModuleCompleteForUi } from '../../utils/moduleCompletion';
+import { getModuleCompletionDetails } from '../../utils/moduleCompletion';
 
 interface ModuleSidebarProps {
   modules: ModuleInstance[];
@@ -18,6 +18,7 @@ interface ModuleSidebarProps {
   isMobileMenuOpen: boolean;
   onCloseMobileMenu: () => void;
   documentId?: string;
+  documentAssessmentDate?: string | null;
 }
 
 export default function ModuleSidebar({
@@ -28,6 +29,7 @@ export default function ModuleSidebar({
   isMobileMenuOpen,
   onCloseMobileMenu,
   documentId,
+  documentAssessmentDate,
 }: ModuleSidebarProps) {
   // Load/save expand/collapse state from localStorage
   const storageKey = documentId ? `moduleNavGroups:${documentId}` : null;
@@ -47,6 +49,7 @@ export default function ModuleSidebar({
   };
 
   const [expandedState, setExpandedState] = useState(loadExpandedState);
+  const [openIncompleteHelpForModuleId, setOpenIncompleteHelpForModuleId] = useState<string | null>(null);
 
   useEffect(() => {
     if (storageKey) {
@@ -127,7 +130,9 @@ export default function ModuleSidebar({
   const ModuleNavItem = ({ module, productTag }: { module: ModuleInstance; productTag?: 'fire' | 'explosion' | null }) => {
     const isDerived = isDerivedModule(module.module_key);
     const storedOutcome = module.data?.section_assessment_outcome ?? module.outcome ?? '';
-    const isCompleted = isModuleCompleteForUi(module);
+    const completion = getModuleCompletionDetails(module, { allModules: modules, documentAssessmentDate });
+    const isCompleted = completion.state === 'complete';
+    const isStarted = completion.state === 'incomplete';
 
     return (
     <button
@@ -145,6 +150,38 @@ export default function ModuleSidebar({
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
           ) : !isDerived && isCompleted && storedOutcome === 'info_gap' ? (
             <AlertCircle className="w-4 h-4 text-blue-600" />
+          ) : !isDerived && isStarted ? (
+            <div className="relative">
+              <button
+                type="button"
+                className="inline-flex"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpenIncompleteHelpForModuleId((current) => (current === module.id ? null : module.id));
+                }}
+                title={
+                  completion.missingRequirements.length > 0
+                    ? `This module is incomplete\n${completion.missingRequirements.map((item) => `• ${item}`).join('\n')}`
+                    : 'This module is incomplete'
+                }
+                aria-label="Show incomplete module requirements"
+              >
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+              </button>
+              {openIncompleteHelpForModuleId === module.id && (
+                <div className="absolute left-6 top-0 z-20 w-64 rounded-lg border border-amber-200 bg-white p-3 shadow-lg">
+                  <p className="text-xs font-semibold text-amber-900">This module is incomplete</p>
+                  {completion.missingRequirements.length > 0 && (
+                    <ul className="mt-2 list-disc pl-4 text-xs text-slate-700 space-y-1">
+                      <li className="list-none -ml-4 text-slate-600">To mark this module complete:</li>
+                      {completion.missingRequirements.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
           ) : !isDerived ? (
             <Circle className="w-4 h-4 text-neutral-300" />
           ) : (

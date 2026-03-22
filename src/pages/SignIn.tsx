@@ -13,6 +13,7 @@ export default function SignIn() {
   const [resetEmail, setResetEmail] = useState('');
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const { signIn, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
 
@@ -63,8 +64,17 @@ export default function SignIn() {
       <nav className="bg-white border-b border-neutral-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <Link to="/" className="text-2xl font-bold text-neutral-900 flex items-center gap-2">
-              <span>EziRisk</span>
+            <Link to="/" className="flex items-center gap-2">
+              {!logoError ? (
+                <img
+                  src="/ezirisk-logo-primary.svg"
+                  alt="EziRisk"
+                  className="h-9 w-auto"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <span className="text-2xl font-bold text-neutral-900">EziRisk</span>
+              )}
             </Link>
           </div>
         </div>

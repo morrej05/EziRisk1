@@ -7,6 +7,8 @@ import { updateSectionGrade } from '../../../utils/sectionGrades';
 import { AlertTriangle, Shield, Cloud, Flame, Wind, Mountain } from 'lucide-react';
 import RatingButtons from '../../re/RatingButtons';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
 interface Document {
   id: string;
@@ -19,7 +21,7 @@ interface ModuleInstance {
   document_id: string;
   outcome: string | null;
   assessor_notes: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 interface RE07ExposuresFormProps {
@@ -40,6 +42,14 @@ const RATING_LABELS: Record<number, string> = {
   5: 'Excellent',
 };
 
+const AUTO_REC_FACTOR_KEYS = {
+  flood: 'exposures_flood',
+  wind: 'exposures_wind_storm',
+  earthquake: 'exposures_earthquake',
+  wildfire: 'exposures_wildfire',
+  human: 'exposures_human_malicious',
+} as const;
+
 function slugifyKey(input: string): string {
   return input
     .toLowerCase()
@@ -50,26 +60,26 @@ function slugifyKey(input: string): string {
 
 export default function RE07ExposuresForm({ moduleInstance, document, onSaved }: RE07ExposuresFormProps) {
   const [isSaving, setIsSaving] = useState(false);
+  const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
-  // Local draft state (single source of truth for UI)
-  const [floodRating, setFloodRating] = useState<number>(3);
+  const [floodRating, setFloodRating] = useState<number | null>(null);
   const [floodNotes, setFloodNotes] = useState<string>('');
 
-  const [windRating, setWindRating] = useState<number>(3);
+  const [windRating, setWindRating] = useState<number | null>(null);
   const [windNotes, setWindNotes] = useState<string>('');
 
-  const [earthquakeRating, setEarthquakeRating] = useState<number>(3);
+  const [earthquakeRating, setEarthquakeRating] = useState<number | null>(null);
   const [earthquakeNotes, setEarthquakeNotes] = useState<string>('');
 
-  const [wildfireRating, setWildfireRating] = useState<number>(3);
+  const [wildfireRating, setWildfireRating] = useState<number | null>(null);
   const [wildfireNotes, setWildfireNotes] = useState<string>('');
 
   const [hasOtherPeril, setHasOtherPeril] = useState<boolean>(false);
   const [otherLabel, setOtherLabel] = useState<string>('');
-  const [otherRating, setOtherRating] = useState<number>(3);
+  const [otherRating, setOtherRating] = useState<number | null>(null);
   const [otherNotes, setOtherNotes] = useState<string>('');
 
-  const [humanExposureRating, setHumanExposureRating] = useState<number>(3);
+  const [humanExposureRating, setHumanExposureRating] = useState<number | null>(null);
   const [humanExposureNotes, setHumanExposureNotes] = useState<string>('');
 
   // Refs to track hydration state
@@ -103,24 +113,24 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         });
       }
 
-      setFloodRating(p.flood?.rating ?? 3);
+      setFloodRating(p.flood?.rating ?? null);
       setFloodNotes(p.flood?.notes ?? '');
 
-      setWindRating(p.wind?.rating ?? 3);
+      setWindRating(p.wind?.rating ?? null);
       setWindNotes(p.wind?.notes ?? '');
 
-      setEarthquakeRating(p.earthquake?.rating ?? 3);
+      setEarthquakeRating(p.earthquake?.rating ?? null);
       setEarthquakeNotes(p.earthquake?.notes ?? '');
 
-      setWildfireRating(p.wildfire?.rating ?? 3);
+      setWildfireRating(p.wildfire?.rating ?? null);
       setWildfireNotes(p.wildfire?.notes ?? '');
 
       setHasOtherPeril(!!p.other);
       setOtherLabel(p.other?.label ?? '');
-      setOtherRating(p.other?.rating ?? 3);
+      setOtherRating(p.other?.rating ?? null);
       setOtherNotes(p.other?.notes ?? '');
 
-      setHumanExposureRating(ex.human_exposure?.rating ?? 3);
+      setHumanExposureRating(ex.human_exposure?.rating ?? null);
       setHumanExposureNotes(ex.human_exposure?.notes ?? '');
 
       // Update tracking refs
@@ -133,45 +143,122 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
   const includeOther = hasOtherPeril && otherLabelTrim.length > 0;
 
   // Derived ratings (computed, not stored)
-  const derivedEnvironmentalRating = useMemo(() => {
-    const perilRatings: number[] = [floodRating, windRating, earthquakeRating, wildfireRating];
+  const derivedEnvironmentalRating = useMemo<number | null>(() => {
+    const perilRatings: Array<number | null> = [floodRating, windRating, earthquakeRating, wildfireRating];
     if (includeOther) perilRatings.push(otherRating);
-    return Math.min(...perilRatings);
+    if (perilRatings.some((rating) => typeof rating !== 'number')) return null;
+    return Math.min(...(perilRatings as number[]));
   }, [floodRating, windRating, earthquakeRating, wildfireRating, includeOther, otherRating]);
 
-  const overallExposureRating = useMemo(() => {
+  const overallExposureRating = useMemo<number | null>(() => {
+    if (derivedEnvironmentalRating === null || humanExposureRating === null) return null;
     return Math.min(derivedEnvironmentalRating, humanExposureRating);
   }, [derivedEnvironmentalRating, humanExposureRating]);
 
-  const getDerivedRatingColor = (rating: number): string => {
+  const otherFactorKey = useMemo(() => (
+    includeOther ? `exposures_other_${slugifyKey(otherLabelTrim)}` : null
+  ), [includeOther, otherLabelTrim]);
+
+  const allFactorKeys = useMemo(() => ([
+    AUTO_REC_FACTOR_KEYS.flood,
+    AUTO_REC_FACTOR_KEYS.wind,
+    AUTO_REC_FACTOR_KEYS.earthquake,
+    AUTO_REC_FACTOR_KEYS.wildfire,
+    ...(otherFactorKey ? [otherFactorKey] : []),
+    AUTO_REC_FACTOR_KEYS.human,
+  ]), [otherFactorKey]);
+
+  useEffect(() => {
+    async function loadAutoRecommendationStates() {
+      const { data, error } = await supabase
+        .from('re_recommendations')
+        .select('source_factor_key, is_suppressed, created_at')
+        .eq('document_id', moduleInstance.document_id)
+        .eq('module_instance_id', moduleInstance.id)
+        .eq('source_module_key', 'RE_07_NATURAL_HAZARDS')
+        .eq('source_type', 'auto')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('[RE07Exposures] Failed to load auto recommendation states:', error);
+        return;
+      }
+
+      const nextStates: Record<string, AutoRecommendationLifecycleState> = {};
+      allFactorKeys.forEach((factorKey) => {
+        nextStates[factorKey] = 'none';
+      });
+
+      for (const row of data || []) {
+        const factorKey = row.source_factor_key;
+        if (!factorKey || !allFactorKeys.includes(factorKey)) continue;
+        if (nextStates[factorKey] !== 'none') continue;
+        nextStates[factorKey] = row.is_suppressed ? 'suppressed' : 'created';
+      }
+
+      setAutoRecStates(nextStates);
+    }
+
+    void loadAutoRecommendationStates();
+  }, [moduleInstance.document_id, moduleInstance.id, allFactorKeys]);
+
+  const getDerivedRatingColor = (rating: number | null): string => {
+    if (rating === null) return 'text-slate-700 bg-slate-50 border-slate-300';
     if (rating >= 4) return 'text-green-700 bg-green-50 border-green-300';
     if (rating === 3) return 'text-amber-700 bg-amber-50 border-amber-300';
     if (rating === 2) return 'text-orange-700 bg-orange-50 border-orange-300';
     return 'text-red-700 bg-red-50 border-red-300';
   };
 
+  const getAutoStateLabel = (rating: number | null, autoRecommendationState: AutoRecommendationLifecycleState) => {
+    if (rating === null) {
+      return 'Unrated';
+    }
+    const lowScore = rating <= 2;
+
+    if (lowScore) {
+      if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+        return 'Recommendation has been added';
+      }
+      if (autoRecommendationState === 'suppressed') {
+        return 'Recommendation will be reactivated on save';
+      }
+      return 'Recommendation will be created on save';
+    }
+
+    if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+      return 'Recommendation will be suppressed on save';
+    }
+
+    return 'No active recommendation';
+  };
+
   const syncExposureAutosToRegister = async () => {
     const documentId = moduleInstance.document_id;
 
-    const items: Array<{ canonicalKey: string; rating: number }> = [
-      { canonicalKey: 'exposures_flood', rating: floodRating },
-      { canonicalKey: 'exposures_wind_storm', rating: windRating },
-      { canonicalKey: 'exposures_earthquake', rating: earthquakeRating },
-      { canonicalKey: 'exposures_wildfire', rating: wildfireRating },
+    const rawItems: Array<{ canonicalKey: string; rating: number | null }> = [
+      { canonicalKey: AUTO_REC_FACTOR_KEYS.flood, rating: floodRating },
+      { canonicalKey: AUTO_REC_FACTOR_KEYS.wind, rating: windRating },
+      { canonicalKey: AUTO_REC_FACTOR_KEYS.earthquake, rating: earthquakeRating },
+      { canonicalKey: AUTO_REC_FACTOR_KEYS.wildfire, rating: wildfireRating },
       ...(includeOther
         ? [
             {
-              canonicalKey: `exposures_other_${slugifyKey(otherLabelTrim)}`,
+              canonicalKey: otherFactorKey!,
               rating: otherRating,
             },
           ]
         : []),
-      { canonicalKey: 'exposures_human_malicious', rating: humanExposureRating },
+      { canonicalKey: AUTO_REC_FACTOR_KEYS.human, rating: humanExposureRating },
     ];
+    const items = rawItems.filter((item): item is { canonicalKey: string; rating: number } => typeof item.rating === 'number');
 
     // Always sync so existing auto-recommendations can be suppressed when ratings improve.
+    let hasLifecycleChange = false;
+    const lifecycleUpdates: Record<string, AutoRecommendationLifecycleState> = {};
+
     for (const item of items) {
-      await syncAutoRecToRegister({
+      const lifecycleState = await syncAutoRecToRegister({
         documentId,
         moduleKey: 'RE_07_NATURAL_HAZARDS',
         canonicalKey: item.canonicalKey,
@@ -179,6 +266,23 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         rating_1_5: item.rating,
         industryKey: null,
       });
+
+      if (lifecycleState !== 'none') {
+        hasLifecycleChange = true;
+      }
+
+      lifecycleUpdates[item.canonicalKey] = lifecycleState;
+    }
+
+    if (Object.keys(lifecycleUpdates).length > 0) {
+      setAutoRecStates((prev) => ({
+        ...prev,
+        ...lifecycleUpdates,
+      }));
+    }
+
+    if (hasLifecycleChange) {
+      bumpActionsVersion();
     }
   };
 
@@ -225,7 +329,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
 
       // Non-blocking: section grade update + auto-recs (rating 1/2 only)
       Promise.allSettled([
-        updateSectionGrade(document.id, 'exposure', overallExposureRating),
+        ...(overallExposureRating !== null ? [updateSectionGrade(document.id, 'exposure', overallExposureRating)] : []),
         syncExposureAutosToRegister(),
       ]).catch((e) => {
         console.error('[RE07Exposures] post-save tasks failed:', e);
@@ -239,9 +343,10 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
   };
 
   const renderPerilRow = (
+    factorKey: string,
     icon: React.ReactNode,
     label: string,
-    rating: number,
+    rating: number | null,
     notes: string,
     onRatingChange: (value: number) => void,
     onNotesChange: (value: string) => void
@@ -253,6 +358,10 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
       </div>
 
       <RatingButtons value={rating} onChange={onRatingChange} labels={RATING_LABELS} size="sm" />
+
+      <p className="text-xs text-slate-500">
+        {getAutoStateLabel(rating, autoRecStates[factorKey] || 'none')}
+      </p>
 
       <textarea
         value={notes}
@@ -284,6 +393,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
 
           <div className="space-y-3">
             {renderPerilRow(
+              AUTO_REC_FACTOR_KEYS.flood,
               <Cloud className="w-5 h-5 text-blue-600" />,
               'Flood',
               floodRating,
@@ -293,6 +403,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
             )}
 
             {renderPerilRow(
+              AUTO_REC_FACTOR_KEYS.wind,
               <Wind className="w-5 h-5 text-cyan-600" />,
               'Wind / Storm',
               windRating,
@@ -302,6 +413,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
             )}
 
             {renderPerilRow(
+              AUTO_REC_FACTOR_KEYS.earthquake,
               <Mountain className="w-5 h-5 text-amber-600" />,
               'Earthquake',
               earthquakeRating,
@@ -311,6 +423,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
             )}
 
             {renderPerilRow(
+              AUTO_REC_FACTOR_KEYS.wildfire,
               <Flame className="w-5 h-5 text-orange-600" />,
               'Wildfire',
               wildfireRating,
@@ -336,7 +449,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
                       setHasOtherPeril(false);
                       setOtherLabel('');
                       setOtherNotes('');
-                      setOtherRating(3);
+                      setOtherRating(null);
                     }}
                     className="text-red-600 hover:text-red-700 text-sm font-medium"
                   >
@@ -345,6 +458,12 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
                 </div>
 
                 <RatingButtons value={otherRating} onChange={setOtherRating} labels={RATING_LABELS} size="sm" />
+
+                {otherFactorKey && (
+                  <p className="text-xs text-slate-500">
+                    {getAutoStateLabel(otherRating, autoRecStates[otherFactorKey] || 'none')}
+                  </p>
+                )}
 
                 <textarea
                   value={otherNotes}
@@ -371,7 +490,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
                 <p className="text-sm font-medium">Environmental Risk Rating (Auto-Derived)</p>
                 <p className="text-xs opacity-75 mt-1">Derived from the highest-risk environmental peril</p>
               </div>
-              <div className="text-2xl font-bold">{derivedEnvironmentalRating}</div>
+              <div className="text-2xl font-bold">{derivedEnvironmentalRating ?? '—'}</div>
             </div>
           </div>
         </div>
@@ -394,6 +513,9 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
               labels={RATING_LABELS}
               size="sm"
             />
+            <p className="mt-2 text-xs text-slate-500">
+              {getAutoStateLabel(humanExposureRating, autoRecStates[AUTO_REC_FACTOR_KEYS.human] || 'none')}
+            </p>
           </div>
 
           <div className="space-y-3">
@@ -420,13 +542,20 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
               <p className="text-xs text-slate-500 mt-2">This rating feeds into the Risk Ratings Summary as a global pillar</p>
             </div>
             <div className={`px-6 py-4 rounded-lg border-2 ${getDerivedRatingColor(overallExposureRating)}`}>
-              <div className="text-3xl font-bold text-center">{overallExposureRating}</div>
-              <div className="text-xs text-center mt-1 opacity-75">{RATING_LABELS[overallExposureRating]}</div>
+              <div className="text-3xl font-bold text-center">{overallExposureRating ?? '—'}</div>
+              <div className="text-xs text-center mt-1 opacity-75">{overallExposureRating ? RATING_LABELS[overallExposureRating] : 'Unrated'}</div>
             </div>
           </div>
         </div>
 
-        {document?.id && moduleInstance?.id && <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />}
+        {document?.id && moduleInstance?.id && (
+          <ModuleActions
+            documentId={document.id}
+            moduleInstanceId={moduleInstance.id}
+            buttonLabel="Add Recommendation"
+            useInPlaceReRecommendationModal
+          />
+        )}
       </div>
 
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />

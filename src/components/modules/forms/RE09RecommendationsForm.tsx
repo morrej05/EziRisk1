@@ -8,6 +8,7 @@ import ConfirmDialog from '../../ConfirmDialog';
 import AddFromLibraryModal from '../../AddFromLibraryModal';
 import { Plus, X, Upload, Image as ImageIcon, AlertTriangle, Filter, Table2, FileText, Library, BookmarkPlus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 
 interface Document {
   id: string;
@@ -153,20 +154,45 @@ export default function RE09RecommendationsForm({
     const sourceModuleInstanceId = searchParams.get('sourceModuleInstanceId') || moduleInstance.id;
     const sourceModuleKey = searchParams.get('sourceModuleKey') || moduleInstance.module_key;
 
-    setRecommendations((prev) => [
-      ...prev,
-      {
-        ...createEmptyRecommendation(document.id),
-        module_instance_id: sourceModuleInstanceId,
-        source_module_key: sourceModuleKey,
-      },
-    ]);
+    console.info('[RE04 Add Recommendation] RE-09 received openAddRec', {
+      sourceModuleInstanceId,
+      sourceModuleKey,
+      registerModuleInstanceId: moduleInstance.id,
+      source: searchParams.get('openRecSource') || 'unknown',
+    });
+
+    setRecommendations((prev) => {
+      const alreadyExists = prev.some(
+        (rec) =>
+          !rec.id.startsWith('auto-') &&
+          !rec.title.trim() &&
+          !rec.observation_text.trim() &&
+          !rec.action_required_text.trim() &&
+          !rec.hazard_text.trim() &&
+          rec.module_instance_id === sourceModuleInstanceId &&
+          rec.source_module_key === sourceModuleKey
+      );
+
+      if (alreadyExists) {
+        return prev;
+      }
+
+      return [
+        ...prev,
+        {
+          ...createEmptyRecommendation(document.id),
+          module_instance_id: sourceModuleInstanceId,
+          source_module_key: sourceModuleKey,
+        },
+      ];
+    });
 
     hasHandledOpenAddRec.current = true;
     const next = new URLSearchParams(searchParams);
     next.delete('openAddRec');
     next.delete('sourceModuleInstanceId');
     next.delete('sourceModuleKey');
+    next.delete('openRecSource');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, document.id, moduleInstance.id, moduleInstance.module_key]);
 
@@ -571,7 +597,13 @@ export default function RE09RecommendationsForm({
       }
 
       await loadRecommendations();
+      bumpActionsVersion();
       onSaved();
+
+      console.info('[RE04 Add Recommendation] recommendation save complete', {
+        documentId: document.id,
+        recommendationCount: recommendations.length,
+      });
 
       setFeedback({
         isOpen: true,
@@ -646,6 +678,21 @@ export default function RE09RecommendationsForm({
   const completedCount = recommendations.filter((r) => r.status === 'Completed').length;
   const autoCount = recommendations.filter((r) => r.source_type === 'auto').length;
   const manualCount = recommendations.filter((r) => r.source_type === 'manual').length;
+  const overdueCount = recommendations.filter((r) => r.status !== 'Completed' && r.target_date && new Date(r.target_date) < new Date()).length;
+  const highPriorityOpenCount = recommendations.filter((r) => r.status !== 'Completed' && r.priority === 'High').length;
+  const byStatus = recommendations.reduce<Record<string, number>>((acc, rec) => {
+    acc[rec.status] = (acc[rec.status] || 0) + 1;
+    return acc;
+  }, {});
+  const topModules = Object.entries(
+    recommendations.reduce<Record<string, number>>((acc, rec) => {
+      const moduleLabel = MODULE_SECTIONS.find((section) => section.key === rec.source_module_key)?.label || rec.source_module_key || 'Unassigned';
+      acc[moduleLabel] = (acc[moduleLabel] || 0) + 1;
+      return acc;
+    }, {})
+  )
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
 
   if (isLoading) {
     return (
@@ -663,27 +710,35 @@ export default function RE09RecommendationsForm({
       <div className="p-6 max-w-7xl mx-auto pb-24">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-900 mb-2">RE-09 — Recommendations</h2>
-          <p className="text-slate-600">Risk engineering action register</p>
+          <p className="text-slate-600">Risk engineering recommendation register</p>
         </div>
 
-        {/* Stats Banner */}
+        {/* Document-wide Summary */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <div className="flex items-start gap-3">
             <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-semibold text-blue-900 mb-1">Recommendations Overview</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-blue-800">
+              <p className="font-semibold text-blue-900 mb-1">Document-wide recommendation summary</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 text-sm text-blue-800 mb-3">
+                <div><span className="font-semibold">{recommendations.length}</span> Total</div>
+                <div><span className="font-semibold">{activeCount}</span> Open</div>
+                <div><span className="font-semibold">{overdueCount}</span> Overdue</div>
+                <div><span className="font-semibold">{highPriorityOpenCount}</span> High Priority</div>
+                <div><span className="font-semibold">{autoCount}</span> Auto</div>
+                <div><span className="font-semibold">{manualCount}</span> Manual</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-900">
                 <div>
-                  <span className="font-semibold">{recommendations.length}</span> Total
+                  <p className="font-semibold mb-1">By status</p>
+                  {Object.entries(byStatus).map(([status, count]) => (
+                    <div key={status} className="flex items-center justify-between"><span>{status}</span><span className="font-semibold">{count}</span></div>
+                  ))}
                 </div>
                 <div>
-                  <span className="font-semibold">{activeCount}</span> Active
-                </div>
-                <div>
-                  <span className="font-semibold">{completedCount}</span> Completed
-                </div>
-                <div>
-                  <span className="font-semibold">{autoCount}</span> Auto / <span className="font-semibold">{manualCount}</span> Manual
+                  <p className="font-semibold mb-1">Top modules</p>
+                  {topModules.map(([module, count]) => (
+                    <div key={module} className="flex items-center justify-between gap-2"><span className="truncate">{module}</span><span className="font-semibold">{count}</span></div>
+                  ))}
                 </div>
               </div>
             </div>

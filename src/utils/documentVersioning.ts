@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { canIssueDocument } from './approvalWorkflow';
 import { generateChangeSummary, createInitialIssueSummary } from './changeSummary';
 import { carryForwardEvidence } from './evidenceManagement';
+import { getMissingRequiredRatings } from '../lib/re/scoring/riskEngineeringHelpers';
 
 export interface DocumentVersion {
   id: string;
@@ -41,7 +42,7 @@ export async function validateDocumentForIssue(
     // 1) Document exists + accessible
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('id, organisation_id, issue_status, document_type, approval_status')
+      .select('id, organisation_id, issue_status, document_type, approval_status, section_grades')
       .eq('id', documentId)
       .eq('organisation_id', organisationId)
       .maybeSingle();
@@ -135,6 +136,37 @@ export async function validateDocumentForIssue(
         for (const m of modules) {
           if (!requiredModuleKeys.has(m.module_key) && !moduleHasData(m)) {
             warnings.push(`Optional module ${m.module_key} has no data`);
+          }
+        }
+      } else if (document.document_type === 'RE') {
+        const riskEngineeringModule = modules.find((m) => m.module_key === 'RISK_ENGINEERING');
+        if (!riskEngineeringModule) {
+          errors.push('Required module RISK_ENGINEERING is missing');
+        } else {
+          const missing = getMissingRequiredRatings(
+            riskEngineeringModule.data || {},
+            (document as any).section_grades || {}
+          );
+
+          if (missing.hasMissing) {
+            const details: string[] = [];
+            if (missing.missingGlobalPillars.length > 0) {
+              details.push(`global pillars: ${missing.missingGlobalPillars.join(', ')}`);
+            }
+            if (missing.missingOccupancyDrivers.length > 0) {
+              details.push(`occupancy drivers: ${missing.missingOccupancyDrivers.join(', ')}`);
+            }
+
+            errors.push(
+              `Required module RISK_ENGINEERING has unrated required factors (${details.join(' | ')})`
+            );
+          }
+        }
+
+        // Keep existing RE module data completeness behavior intact
+        for (const m of modules) {
+          if (!moduleHasData(m)) {
+            errors.push(`Module ${m.module_key} has no data`);
           }
         }
       } else {

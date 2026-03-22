@@ -87,6 +87,23 @@ interface ModuleInstance {
   updated_at: string;
 }
 
+interface ReRecommendationEntry {
+  id: string;
+  rec_number: string | null;
+  title: string | null;
+  status: string;
+  priority: string;
+  target_date: string | null;
+  source_module_key: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const isRecommendationActiveStatus = (status: string | null | undefined): boolean => {
+  const normalized = (status || '').trim().toLowerCase().replace(/\s+/g, '_');
+  return normalized === 'open' || normalized === 'in_progress';
+};
+
 export default function DocumentOverview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -113,7 +130,9 @@ export default function DocumentOverview() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
+  const [recommendations, setRecommendations] = useState<ReRecommendationEntry[]>([]);
   const [filteredActions, setFilteredActions] = useState<ActionRegisterEntry[]>([]);
+  const [filteredRecommendations, setFilteredRecommendations] = useState<ReRecommendationEntry[]>([]);
   const [actionStatusFilter, setActionStatusFilter] = useState<'open' | 'all'>('open');
   const [actionPriorityFilter, setActionPriorityFilter] = useState<string[]>([]);
   const [selectedAction, setSelectedAction] = useState<ActionRegisterEntry | null>(null);
@@ -145,20 +164,44 @@ export default function DocumentOverview() {
     return '/dashboard';
   };
 
+  const isReDocument = document?.document_type === 'RE';
+  const recommendationsRegisterPath = (() => {
+    const params = new URLSearchParams({ status: 'Active' });
+    if (document?.title) {
+      params.set('document', document.title);
+    }
+    return `/remediation/recommendations?${params.toString()}`;
+  })();
+
   useEffect(() => {
     if (id && organisation?.id) {
       fetchDocument();
       fetchModules();
-      fetchActionCounts();
       fetchEvidenceCount();
       fetchDefencePack();
-      fetchActions();
     }
   }, [id, organisation?.id]);
 
   useEffect(() => {
+    if (!id || !organisation?.id || !document) return;
+
+    if (document.document_type === 'RE') {
+      fetchRecommendationCounts();
+      fetchRecommendations();
+      return;
+    }
+
+    fetchActionCounts();
+    fetchActions();
+  }, [id, organisation?.id, document]);
+
+  useEffect(() => {
+    if (isReDocument) {
+      applyRecommendationFilters();
+      return;
+    }
     applyActionFilters();
-  }, [actions, actionStatusFilter, actionPriorityFilter]);
+  }, [actions, recommendations, actionStatusFilter, actionPriorityFilter, isReDocument]);
 
   useEffect(() => {
     if (!document || modules.length === 0) return;
@@ -277,6 +320,40 @@ export default function DocumentOverview() {
     }
   };
 
+  const fetchRecommendationCounts = async () => {
+    if (!id || !organisation?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('re_recommendations')
+        .select(`
+          priority,
+          status,
+          documents!inner(
+            organisation_id
+          )
+        `)
+        .eq('document_id', id)
+        .eq('documents.organisation_id', organisation.id)
+        .or('is_suppressed.is.false,is_suppressed.is.null');
+
+      if (error) throw error;
+
+      const counts = { P1: 0, P2: 0, P3: 0, P4: 0 };
+      (data || []).forEach((recommendation) => {
+        if (!isRecommendationActiveStatus(recommendation.status)) return;
+        if (recommendation.priority === 'High') counts.P1++;
+        if (recommendation.priority === 'Medium') counts.P2++;
+        if (recommendation.priority === 'Low') counts.P3++;
+      });
+
+      setActionCounts(counts);
+      setTotalActions((data || []).filter((recommendation) => isRecommendationActiveStatus(recommendation.status)).length);
+    } catch (error) {
+      console.error('Error fetching recommendation counts:', error);
+    }
+  };
+
   const fetchEvidenceCount = async () => {
     if (!id || !organisation) return;
 
@@ -320,6 +397,47 @@ export default function DocumentOverview() {
     }
   };
 
+  const fetchRecommendations = async () => {
+    if (!id || !organisation?.id) return;
+
+    setIsLoadingActions(true);
+    try {
+      const { data, error } = await supabase
+        .from('re_recommendations')
+        .select(`
+          id,
+          rec_number,
+          title,
+          status,
+          priority,
+          target_date,
+          source_module_key,
+          created_at,
+          updated_at,
+          documents!inner(
+            organisation_id
+          )
+        `)
+        .eq('document_id', id)
+        .eq('documents.organisation_id', organisation.id)
+        .or('is_suppressed.is.false,is_suppressed.is.null')
+        .order('rec_number', { ascending: true, nullsFirst: false })
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+      const normalizedRows = ((data || []) as ReRecommendationEntry[]).map((row) => ({
+        ...row,
+        status: row.status?.trim() || row.status,
+      }));
+      setRecommendations(normalizedRows);
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+      setRecommendations([]);
+    } finally {
+      setIsLoadingActions(false);
+    }
+  };
+
   const applyActionFilters = () => {
     let filtered = [...actions];
 
@@ -336,12 +454,33 @@ export default function DocumentOverview() {
     setFilteredActions(filtered);
   };
 
+  const applyRecommendationFilters = () => {
+    let filtered = [...recommendations];
+
+    if (actionStatusFilter === 'open') {
+      filtered = filtered.filter((r) => isRecommendationActiveStatus(r.status));
+    }
+
+    if (actionPriorityFilter.length > 0) {
+      filtered = filtered.filter((r) => actionPriorityFilter.includes(r.priority));
+    }
+
+    setFilteredRecommendations(filtered);
+  };
+
   const togglePriorityFilter = (priority: string) => {
     setActionPriorityFilter(prev =>
       prev.includes(priority)
         ? prev.filter(p => p !== priority)
         : [...prev, priority]
     );
+  };
+
+  const getRecommendationPriorityBadgeClass = (priority: string) => {
+    if (priority === 'High') return 'bg-red-100 text-red-800 border-red-300';
+    if (priority === 'Medium') return 'bg-amber-100 text-amber-800 border-amber-300';
+    if (priority === 'Low') return 'bg-emerald-100 text-emerald-800 border-emerald-300';
+    return 'bg-neutral-100 text-neutral-700 border-neutral-300';
   };
 
   const handleBuildDefencePack = async () => {
@@ -1148,9 +1287,11 @@ try {
 
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-neutral-500 uppercase">Open Actions</h3>
+              <h3 className="text-sm font-medium text-neutral-500 uppercase">
+                {isReDocument ? 'Active Recommendations' : 'Open Actions'}
+              </h3>
               <button
-                onClick={() => navigate(`/dashboard/actions?document=${id}`)}
+                onClick={() => navigate(isReDocument ? recommendationsRegisterPath : `/dashboard/actions?document=${id}`)}
                 className="text-xs text-neutral-600 hover:text-neutral-900 font-medium flex items-center gap-1"
               >
                 <List className="w-3 h-3" />
@@ -1159,24 +1300,26 @@ try {
             </div>
             <div className="mb-3">
               <div className="text-3xl font-semibold text-neutral-900 mb-1">{totalActions}</div>
-              <div className="text-sm text-neutral-600">Total open actions</div>
+              <div className="text-sm text-neutral-600">
+                {isReDocument ? 'Total active recommendations' : 'Total open actions'}
+              </div>
             </div>
             <div className="grid grid-cols-4 gap-2">
               <div className="text-center">
                 <div className="text-lg font-semibold text-red-700">{actionCounts.P1}</div>
-                <div className="text-xs text-neutral-500">P1</div>
+                <div className="text-xs text-neutral-500">{isReDocument ? 'High' : 'P1'}</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-orange-700">{actionCounts.P2}</div>
-                <div className="text-xs text-neutral-500">P2</div>
+                <div className="text-xs text-neutral-500">{isReDocument ? 'Medium' : 'P2'}</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-amber-700">{actionCounts.P3}</div>
-                <div className="text-xs text-neutral-500">P3</div>
+                <div className="text-xs text-neutral-500">{isReDocument ? 'Low' : 'P3'}</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-neutral-700">{actionCounts.P4}</div>
-                <div className="text-xs text-neutral-500">P4</div>
+                <div className="text-xs text-neutral-500">{isReDocument ? '—' : 'P4'}</div>
               </div>
             </div>
           </Card>
@@ -1248,20 +1391,22 @@ try {
           </Card>
         </div>
 
-        {/* Actions Panel */}
+        {/* Actions/Recommendations Panel */}
         <Card className="mb-6">
           <div className="px-6 py-4 border-b border-neutral-200">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-neutral-900">Actions</h2>
+                <h2 className="text-lg font-semibold text-neutral-900">
+                  {isReDocument ? 'Recommendations' : 'Actions'}
+                </h2>
                 <p className="text-sm text-neutral-600 mt-1">
-                  Manage and track actions from this document
+                  {isReDocument ? 'Manage active recommendations from this RE document' : 'Manage and track actions from this document'}
                 </p>
               </div>
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => navigate(`/dashboard/actions?document=${id}`)}
+                onClick={() => navigate(isReDocument ? recommendationsRegisterPath : `/dashboard/actions?document=${id}`)}
               >
                 <List className="w-4 h-4 mr-2" />
                 Full Register
@@ -1302,13 +1447,13 @@ try {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-neutral-700">Priority:</span>
                 <div className="flex gap-2">
-                  {['P1', 'P2', 'P3', 'P4'].map(priority => (
+                  {(isReDocument ? ['High', 'Medium', 'Low'] : ['P1', 'P2', 'P3', 'P4']).map(priority => (
                     <button
                       key={priority}
                       onClick={() => togglePriorityFilter(priority)}
                       className={`px-2 py-1 text-xs font-semibold rounded border transition-colors ${
                         actionPriorityFilter.includes(priority)
-                          ? getPriorityColor(priority)
+                          ? (isReDocument ? getRecommendationPriorityBadgeClass(priority) : getPriorityColor(priority))
                           : 'bg-white text-neutral-500 hover:bg-neutral-100 border-neutral-300'
                       }`}
                     >
@@ -1329,18 +1474,20 @@ try {
             </div>
           </div>
 
-          {/* Actions Table */}
+          {/* Actions/Recommendations Table */}
           <div className="overflow-x-auto">
             {isLoadingActions ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-4 border-neutral-200 border-t-blue-600"></div>
               </div>
-            ) : filteredActions.length === 0 ? (
+            ) : (isReDocument ? filteredRecommendations.length === 0 : filteredActions.length === 0) ? (
               <div className="flex flex-col items-center justify-center py-12 text-center px-6">
                 <CheckCircle className="w-12 h-12 text-neutral-300 mb-3" />
-                <p className="text-neutral-600 font-medium">No actions found</p>
+                <p className="text-neutral-600 font-medium">{isReDocument ? 'No recommendations found' : 'No actions found'}</p>
                 <p className="text-sm text-neutral-500 mt-1">
-                  {actionStatusFilter === 'open' ? 'All actions are complete' : 'No actions have been created yet'}
+                  {isReDocument
+                    ? (actionStatusFilter === 'open' ? 'No active recommendations for this document' : 'No recommendations have been created yet')
+                    : (actionStatusFilter === 'open' ? 'All actions are complete' : 'No actions have been created yet')}
                 </p>
               </div>
             ) : (
@@ -1360,59 +1507,87 @@ try {
                       Section
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
-                      Action
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
-                      Owner
+                      {isReDocument ? 'Recommendation' : 'Action'}
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
                       Target Date
                     </th>
+                    {!isReDocument && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-neutral-600 uppercase tracking-wider">
+                        Owner
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-200">
-                  {filteredActions.slice(0, 10).map((action, index) => {
+                  {(isReDocument ? filteredRecommendations : filteredActions).slice(0, 10).map((action, index) => {
                     // Use canonical reference_number if assigned, otherwise show pending indicator
-                    const refNumber = action.reference_number ?? '—';
+                    const refNumber = isReDocument
+                      ? ((action as ReRecommendationEntry).rec_number ?? '—')
+                      : ((action as ActionRegisterEntry).reference_number ?? '—');
 
                     return (
                       <tr
-                        key={action.id}
+                        key={action.id || index}
                         className="hover:bg-neutral-50 transition-colors"
                       >
                         <td className="px-4 py-3 text-sm font-mono text-neutral-900">
-                          <Link
-                            to={`/documents/${action.document_id}/workspace?openAction=${action.id}`}
-                            className="hover:underline"
-                          >
-                            {refNumber}
-                          </Link>
+                          {isReDocument ? (
+                            refNumber
+                          ) : (
+                            <Link
+                              to={`/documents/${(action as ActionRegisterEntry).document_id}/workspace?openAction=${action.id}`}
+                              className="hover:underline"
+                            >
+                              {refNumber}
+                            </Link>
+                          )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded border ${getPriorityColor(action.priority_band)}`}>
-                            {action.priority_band}
+                          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded border ${
+                            isReDocument
+                              ? getRecommendationPriorityBadgeClass((action as ReRecommendationEntry).priority)
+                              : getPriorityColor((action as ActionRegisterEntry).priority_band)
+                          }`}>
+                            {isReDocument
+                              ? (action as ReRecommendationEntry).priority
+                              : (action as ActionRegisterEntry).priority_band}
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          {getActionStatusBadge(action.status)}
+                          {isReDocument
+                            ? (action as ReRecommendationEntry).status
+                            : getActionStatusBadge((action as ActionRegisterEntry).status)}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-600">
-                          {action.module_key ? getModuleName(action.module_key) : '—'}
+                          {isReDocument
+                            ? ((action as ReRecommendationEntry).source_module_key
+                                ? getModuleName((action as ReRecommendationEntry).source_module_key as string)
+                                : '—')
+                            : ((action as ActionRegisterEntry).module_key ? getModuleName((action as ActionRegisterEntry).module_key as string) : '—')}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-900 max-w-md">
-                          <Link
-                            to={`/documents/${action.document_id}/workspace?openAction=${action.id}`}
-                            className="block truncate hover:underline"
-                          >
-                            {action.recommended_action || '—'}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-neutral-600">
-                          {action.owner_name || '—'}
+                          {isReDocument ? (
+                            <span className="block truncate">
+                              {(action as ReRecommendationEntry).title || '—'}
+                            </span>
+                          ) : (
+                            <Link
+                              to={`/documents/${(action as ActionRegisterEntry).document_id}/workspace?openAction=${action.id}`}
+                              className="block truncate hover:underline"
+                            >
+                              {(action as ActionRegisterEntry).recommended_action || '—'}
+                            </Link>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-600">
                           {action.target_date ? formatDate(action.target_date) : '—'}
                         </td>
+                        {!isReDocument && (
+                          <td className="px-4 py-3 text-sm text-neutral-600">
+                            {(action as ActionRegisterEntry).owner_name || '—'}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -1422,12 +1597,12 @@ try {
           </div>
 
           {/* Show more indicator */}
-          {filteredActions.length > 10 && (
+          {(isReDocument ? filteredRecommendations.length > 10 : filteredActions.length > 10) && (
             <div className="px-6 py-3 border-t border-neutral-200 bg-neutral-50 text-center">
               <p className="text-sm text-neutral-600">
-                Showing 10 of {filteredActions.length} actions.{' '}
+                Showing 10 of {isReDocument ? filteredRecommendations.length : filteredActions.length} {isReDocument ? 'recommendations' : 'actions'}.{' '}
                 <button
-                  onClick={() => navigate(`/dashboard/actions?document=${id}`)}
+                  onClick={() => navigate(isReDocument ? recommendationsRegisterPath : `/dashboard/actions?document=${id}`)}
                   className="text-blue-600 hover:text-blue-700 font-medium"
                 >
                   View all in register

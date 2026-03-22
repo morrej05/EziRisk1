@@ -1,4 +1,6 @@
 import { Shield } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { DEFAULT_LOGO, resolveLogoUrl } from '../../utils/logo';
 
 interface ReportCoverPageProps {
   reportType: 'survey' | 'recommendation';
@@ -21,6 +23,16 @@ export default function ReportCoverPage({
   clientAddress,
   isDraft = false,
 }: ReportCoverPageProps) {
+  const preferredLogo = resolveLogoUrl(clientLogoUrl);
+  const [logoSrc, setLogoSrc] = useState<string>(preferredLogo);
+  const [showTextFallback, setShowTextFallback] = useState(false);
+  const isDefaultLogo = logoSrc === DEFAULT_LOGO;
+
+  useEffect(() => {
+    setLogoSrc(resolveLogoUrl(clientLogoUrl));
+    setShowTextFallback(false);
+  }, [clientLogoUrl]);
+
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return null;
     try {
@@ -56,12 +68,23 @@ export default function ReportCoverPage({
 
       <div className="relative z-10 text-center max-w-2xl space-y-12">
         <div className="flex justify-center mb-8">
-          {clientLogoUrl ? (
-            <img
-              src={clientLogoUrl}
-              alt="Client Logo"
-              className="max-h-24 max-w-xs object-contain"
-            />
+          {!showTextFallback ? (
+            <div className="w-80 h-24 flex items-center justify-center">
+              <img
+                src={logoSrc}
+                alt={isDefaultLogo ? 'EziRisk Logo' : 'Client Logo'}
+                width={320}
+                height={96}
+                className="block w-full h-full object-contain"
+                onError={() => {
+                  if (!isDefaultLogo) {
+                    setLogoSrc(DEFAULT_LOGO);
+                    return;
+                  }
+                  setShowTextFallback(true);
+                }}
+              />
+            </div>
           ) : (
             <div className="flex items-center gap-3">
               <Shield className="w-16 h-16 text-primary-600" />

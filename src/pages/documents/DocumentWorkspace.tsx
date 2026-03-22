@@ -35,7 +35,11 @@ import DocumentStatusBadge from '../../components/documents/DocumentStatusBadge'
 import OverallGradeWidget from '../../components/re/OverallGradeWidget';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
 import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
-import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
+import {
+  filterReRecommendationsByScope,
+  hasReRecommendationWorkflow,
+  shouldForceDocumentRecommendationScope,
+} from '../../lib/re/recommendations/moduleRecommendationFilters';
 
 interface Document {
   id: string;
@@ -217,6 +221,18 @@ export default function DocumentWorkspace() {
     if (!modalAction?.module_instance_id) return null;
     return modules.find((m) => m.id === modalAction.module_instance_id) ?? null;
   }, [modalAction, modules]);
+
+  const hideOutstandingActionsPanel = Boolean(
+    selectedStable?.module_key === 'RISK_ENGINEERING'
+    || selectedStable?.module_key === 'RE_13_RECOMMENDATIONS'
+    || (selectedStable?.module_key?.startsWith('RE_') && !hasReRecommendationWorkflow(selectedStable?.module_key))
+  );
+  const forceDocumentActionScope = shouldForceDocumentRecommendationScope(selectedStable?.module_key);
+  const isReRecommendationPanel = Boolean(
+    selectedStable?.module_key === 'RE_13_RECOMMENDATIONS'
+    || selectedStable?.module_key?.startsWith('RE_')
+    || selectedStable?.module_key === 'RISK_ENGINEERING'
+  );
 
   useEffect(() => {
     if (!id) {
@@ -404,15 +420,20 @@ export default function DocumentWorkspace() {
     setIsLoadingActions(true);
     try {
       const selectedModule = modules.find((m) => m.id === selectedModuleId);
-      const isSelectedReModule = Boolean(selectedModule?.module_key?.startsWith('RE_'));
+      const isReDocument = document?.document_type === 'RE' || document?.enabled_modules?.includes('RE');
+      const isSelectedReModule = Boolean(
+        isReDocument || selectedModule?.module_key?.startsWith('RE_')
+      );
 
       if (isSelectedReModule) {
         const selectedModuleKey = selectedModule?.module_key || null;
+        const effectiveScope = shouldForceDocumentRecommendationScope(selectedModuleKey) ? 'document' : actionScope;
         const recQuery = supabase
           .from('re_recommendations')
           .select('id, title, status, priority, target_date, module_instance_id, source_module_key, created_at')
           .eq('document_id', id)
           .eq('is_suppressed', false)
+          .in('status', ['Open', 'In Progress'])
           .order('created_at', { ascending: false });
 
         const { data: recs, error: recError } = await recQuery;
@@ -430,9 +451,9 @@ export default function DocumentWorkspace() {
         };
 
         const filteredRecs = filterReRecommendationsByScope((recs || []) as ReRecommendationRow[], {
-          scope: actionScope,
+          scope: effectiveScope,
           moduleInstanceId: selectedModuleId,
-          isRegisterModule: isReRecommendationsRegisterModule(selectedModuleKey),
+          isRegisterModule: shouldForceDocumentRecommendationScope(selectedModuleKey),
         });
 
         const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
@@ -741,6 +762,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
           isMobileMenuOpen={isMobileMenuOpen}
           onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
           documentId={document?.id}
+          documentAssessmentDate={document?.assessment_date ?? null}
         />
 
         <div className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
@@ -769,11 +791,13 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
             )}
 
             {/* Actions Panel */}
-            {selectedStable && (
+            {selectedStable && !hideOutstandingActionsPanel && (
               <div className="bg-white rounded-lg shadow-sm border border-neutral-200 mb-6">
                 <div className="px-4 py-3 border-b border-neutral-200 bg-neutral-50">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-neutral-900">Outstanding Actions</h3>
+                    <h3 className="text-sm font-semibold text-neutral-900">
+                      {isReRecommendationPanel ? 'Outstanding Recommendations' : 'Outstanding Actions'}
+                    </h3>
                     <button
                       onClick={() => setIsActionsPanelCollapsed(!isActionsPanelCollapsed)}
                       className="p-1 hover:bg-neutral-100 rounded transition-colors"
@@ -790,16 +814,18 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                 {!isActionsPanelCollapsed && (
                   <>
                     <div className="flex gap-2 px-4 py-2 border-b border-neutral-200">
-                      <button
-                        onClick={() => setActionScope('module')}
-                        className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                          actionScope === 'module'
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-                        }`}
-                      >
-                        This module ({actionScope === 'module' ? actions.length : '...'})
-                      </button>
+                      {!forceDocumentActionScope && (
+                        <button
+                          onClick={() => setActionScope('module')}
+                          className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                            actionScope === 'module'
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                          }`}
+                        >
+                          This module ({actionScope === 'module' ? actions.length : '...'})
+                        </button>
+                      )}
                       <button
                         onClick={() => setActionScope('document')}
                         className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
@@ -808,7 +834,9 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                             : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
                         }`}
                       >
-                        All actions ({actionScope === 'document' ? actions.length : '...'})
+                        {forceDocumentActionScope
+                          ? `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actions.length})`
+                          : `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actionScope === 'document' ? actions.length : '...'})`}
                       </button>
                     </div>
 
@@ -821,7 +849,9 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                         <div className="text-center py-8">
                           <AlertCircle className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
                           <p className="text-sm text-neutral-600">
-                            {actionScope === 'module' ? 'No actions in this module' : 'No actions in this document'}
+                            {forceDocumentActionScope || actionScope === 'document'
+                              ? `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this document`
+                              : `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this module`}
                           </p>
                         </div>
                       ) : (

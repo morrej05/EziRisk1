@@ -10,6 +10,7 @@ export const REPORT_TITLE_TO_BODY_GAP = 20;
 export const REPORT_BODY_TEXT_SIZE = 11;
 export const REPORT_BODY_LINE_GAP = 16;
 export const REPORT_BODY_PARAGRAPH_GAP = 10;
+export const DEFAULT_LOGO_PDF = '/ezirisk-logo-primary.svg';
 
 // PDF Debug Layout Mode - developer-only overlay for spacing/pagination tuning
 // export const PDF_DEBUG_LAYOUT = import.meta.env.VITE_PDF_DEBUG_LAYOUT === 'true';
@@ -819,6 +820,42 @@ export async function fetchAndEmbedLogo(
           setTimeout(() => reject(new Error('PNG embed timed out after 2 seconds')), 2000)
         )
       ]);
+    } else if (logoPath.toLowerCase().endsWith('.svg')) {
+      const svgText = new TextDecoder('utf-8').decode(uint8Array);
+      const svgBlob = new Blob([svgText], { type: 'image/svg+xml' });
+      const objectUrl = URL.createObjectURL(svgBlob);
+
+      try {
+        const svgImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error('SVG image decode failed'));
+          img.src = objectUrl;
+        });
+
+        const width = Math.max(1, Math.round(svgImage.naturalWidth || svgImage.width || 1));
+        const height = Math.max(1, Math.round(svgImage.naturalHeight || svgImage.height || 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Canvas context unavailable for SVG rasterization');
+        }
+
+        ctx.drawImage(svgImage, 0, 0, width, height);
+        const pngDataUrl = canvas.toDataURL('image/png');
+        const pngBytes = Uint8Array.from(atob(pngDataUrl.split(',')[1]), c => c.charCodeAt(0));
+
+        image = await Promise.race([
+          pdfDoc.embedPng(pngBytes),
+          new Promise<any>((_, reject) =>
+            setTimeout(() => reject(new Error('SVG->PNG embed timed out after 2 seconds')), 2000)
+          )
+        ]);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
     } else if (logoPath.toLowerCase().endsWith('.jpg') || logoPath.toLowerCase().endsWith('.jpeg')) {
       // Add timeout to embed operation
       image = await Promise.race([
@@ -839,6 +876,37 @@ export async function fetchAndEmbedLogo(
     console.error('[PDF Logo] Error embedding logo:', errorMsg);
     return null;
   }
+}
+
+export async function loadPdfLogoWithFallback(
+  pdfDoc: PDFDocument,
+  args: {
+    organisationLogoPath?: string | null;
+    organisationSignedUrl?: string | null;
+  } = {}
+): Promise<{ image: any; width: number; height: number } | null> {
+  const organisationLogo = await fetchAndEmbedLogo(
+    pdfDoc,
+    args.organisationLogoPath ?? null,
+    args.organisationSignedUrl ?? null
+  );
+
+  if (organisationLogo) {
+    return organisationLogo;
+  }
+
+  try {
+    const defaultLogoUrl = new URL(DEFAULT_LOGO_PDF, window.location.origin).toString();
+    const defaultLogo = await fetchAndEmbedLogo(pdfDoc, DEFAULT_LOGO_PDF, defaultLogoUrl);
+    if (defaultLogo) {
+      return defaultLogo;
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.warn('[PDF Logo] Failed to load default EziRisk logo:', errorMsg);
+  }
+
+  return null;
 }
 
 export async function drawCoverPage(
@@ -862,8 +930,8 @@ export async function drawCoverPage(
   let yPosition = pageHeight - margin;
 
   if (logoData) {
-    const maxLogoWidth = 340.2;
-    const maxLogoHeight = 85.05;
+    const maxLogoWidth = 300;
+    const maxLogoHeight = 72;
 
     const scale = Math.min(
       maxLogoWidth / logoData.width,
@@ -873,18 +941,22 @@ export async function drawCoverPage(
 
     const scaledWidth = logoData.width * scale;
     const scaledHeight = logoData.height * scale;
+    const logoX = pageWidth / 2 - scaledWidth / 2;
+    const logoTopY = pageHeight - margin - 12;
+    const logoY = logoTopY - scaledHeight;
 
     page.drawImage(logoData.image, {
-      x: margin,
-      y: yPosition - scaledHeight,
+      x: logoX,
+      y: logoY,
       width: scaledWidth,
       height: scaledHeight,
     });
 
-    yPosition -= scaledHeight + 40;
+    yPosition = logoY - 40;
   } else {
+    const fallbackLogoText = 'EziRisk';
     page.drawText('EziRisk', {
-      x: margin,
+      x: pageWidth / 2 - fonts.bold.widthOfTextAtSize(fallbackLogoText, 24) / 2,
       y: yPosition,
       size: 24,
       font: fonts.bold,

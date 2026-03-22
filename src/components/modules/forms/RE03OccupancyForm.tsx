@@ -9,6 +9,7 @@ import { getHrgConfig, HRG_MASTER_MAP } from '../../../lib/re/reference/hrgMaste
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import { Plus, X, AlertCircle, BookOpen } from 'lucide-react';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
@@ -64,7 +65,6 @@ export default function RE03OccupancyForm({
   onSaved,
 }: RE03OccupancyFormProps) {
   const [isSaving, setIsSaving] = useState(false);
-  const [isAddingRecommendation, setIsAddingRecommendation] = useState(false);
   const d = moduleInstance?.data ?? {};
 
   const safeHazards: Hazard[] = Array.isArray(d.occupancy?.hazards)
@@ -89,7 +89,6 @@ export default function RE03OccupancyForm({
   const [riskEngInstanceId, setRiskEngInstanceId] = useState<string | null>(null);
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [selectedHazardToAdd, setSelectedHazardToAdd] = useState('');
-  const [pendingRecommendationKeys, setPendingRecommendationKeys] = useState<Set<string>>(new Set());
   const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
   const [feedback, setFeedback] = useState<{
@@ -160,6 +159,9 @@ export default function RE03OccupancyForm({
         industryKey,
       });
       setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
+      if (lifecycleState !== 'none') {
+        bumpActionsVersion();
+      }
 
       const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
       if (updatedFormData !== formData) {
@@ -216,122 +218,6 @@ export default function RE03OccupancyForm({
       ...formData,
       hazards: formData.hazards.map(h => h.id === id ? { ...h, ...updates } : h),
     });
-  };
-
-  const addRecommendation = async (title: string, detail: string, relatedSection: string = 'Hazards') => {
-    const dedupeKey = `${title.trim().toLowerCase()}::${detail.trim().toLowerCase()}::${relatedSection}`;
-    if (pendingRecommendationKeys.has(dedupeKey)) {
-      return;
-    }
-
-    setPendingRecommendationKeys((prev) => {
-      const next = new Set(prev);
-      next.add(dedupeKey);
-      return next;
-    });
-
-    setIsAddingRecommendation(true);
-    try {
-      const { data: existingRec, error: duplicateError } = await supabase
-        .from('re_recommendations')
-        .select('id')
-        .eq('document_id', moduleInstance.document_id)
-        .eq('module_instance_id', moduleInstance.id)
-        .eq('source_module_key', 'RE_03_OCCUPANCY')
-        .eq('title', title)
-        .eq('observation_text', detail)
-        .eq('is_suppressed', false)
-        .maybeSingle();
-
-      if (duplicateError) throw duplicateError;
-
-      if (existingRec) {
-        setFeedback({
-          isOpen: true,
-          type: 'warning',
-          title: 'Recommendation already exists',
-          message: 'A matching recommendation is already present for this module.',
-          autoClose: true,
-        });
-        return;
-      }
-
-      const { error: insertError } = await supabase
-        .from('re_recommendations')
-        .insert({
-          document_id: moduleInstance.document_id,
-          module_instance_id: moduleInstance.id,
-          source_type: 'manual',
-          source_module_key: 'RE_03_OCCUPANCY',
-          source_factor_key: relatedSection,
-          title,
-          observation_text: detail,
-          action_required_text: 'Review and implement appropriate controls.',
-          hazard_text: detail,
-          status: 'Open',
-          priority: 'Medium',
-          photos: [],
-        });
-
-      if (insertError) throw insertError;
-
-      setFeedback({
-        isOpen: true,
-        type: 'success',
-        title: 'Recommendation added',
-        message: 'The recommendation has been successfully added.',
-        autoClose: true,
-      });
-    } catch (err) {
-      console.error('Error adding recommendation:', err);
-      setFeedback({
-        isOpen: true,
-        type: 'error',
-        title: 'Failed to add recommendation',
-        message: 'Unable to add the recommendation. Please try again.',
-        autoClose: false,
-      });
-    } finally {
-      setIsAddingRecommendation(false);
-      setPendingRecommendationKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(dedupeKey);
-        return next;
-      });
-    }
-  };
-
-  const handleAddIndustryRecommendation = () => {
-    if (!formData.industry_special_hazards_notes.trim()) {
-      setFeedback({
-        isOpen: true,
-        type: 'warning',
-        title: 'Notes required',
-        message: 'Please add notes before creating a recommendation.',
-        autoClose: false,
-      });
-      return;
-    }
-    addRecommendation(
-      'RE-03: Industry-specific hazards',
-      formData.industry_special_hazards_notes,
-      'Hazards'
-    );
-  };
-
-  const handleAddHazardRecommendation = (hazard: Hazard) => {
-    const detailParts = [];
-    if (hazard.description) detailParts.push(`Description: ${hazard.description}`);
-    if (hazard.assessment) detailParts.push(`Assessment: ${hazard.assessment}`);
-    if (hazard.free_text) detailParts.push(`Notes: ${hazard.free_text}`);
-
-    const detail = detailParts.length > 0 ? detailParts.join('\n\n') : 'See RE-03 for details.';
-
-    addRecommendation(
-      `RE-03: ${hazard.hazard_label}`,
-      detail,
-      'Hazards'
-    );
   };
 
   const handleSave = async () => {
@@ -414,15 +300,6 @@ export default function RE03OccupancyForm({
               placeholder="Document industry-specific hazards and high-risk processes identified at this site..."
             />
           </div>
-          <button
-            type="button"
-            onClick={handleAddIndustryRecommendation}
-            disabled={isAddingRecommendation || !formData.industry_special_hazards_notes.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-4 h-4" />
-            Add Recommendation to {moduleInstance.module_key || 'this module'}
-          </button>
         </div>
       </div>
 
@@ -447,6 +324,7 @@ export default function RE03OccupancyForm({
                 helpText={hrgConfig.helpText}
                 weight={hrgConfig.weight}
                 autoRecommendationState={autoRecStates[canonicalKey] || 'none'}
+                alwaysExpanded
               />
             );
           })}
@@ -549,15 +427,6 @@ export default function RE03OccupancyForm({
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleAddHazardRecommendation(hazard)}
-                  disabled={isAddingRecommendation}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Recommendation to {moduleInstance.module_key || 'this module'}
-                </button>
               </div>
             </div>
           ))}
@@ -590,6 +459,7 @@ export default function RE03OccupancyForm({
             documentId={document.id}
             moduleInstanceId={moduleInstance.id}
             buttonLabel="Add Recommendation"
+            useInPlaceReRecommendationModal
           />
         )}
       </div>

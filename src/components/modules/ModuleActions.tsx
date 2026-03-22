@@ -6,8 +6,12 @@ import AddActionModal from '../actions/AddActionModal';
 import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
 import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
-import { filterReRecommendationsByScope, isReRecommendationsRegisterModule } from '../../lib/re/recommendations/moduleRecommendationFilters';
-import { useNavigate } from 'react-router-dom';
+import {
+  filterReRecommendationsByScope,
+  hasReRecommendationWorkflow,
+  isReRecommendationsRegisterModule,
+} from '../../lib/re/recommendations/moduleRecommendationFilters';
+import CanonicalReRecommendationModal from '../re/CanonicalReRecommendationModal';
 
 interface Action {
   id: string;
@@ -40,6 +44,7 @@ interface ModuleActionsProps {
   documentId: string;
   moduleInstanceId: string;
   buttonLabel?: string;
+  useInPlaceReRecommendationModal?: boolean;
 }
 
 const isValidUUID = (id: string | undefined | null): boolean => {
@@ -48,14 +53,20 @@ const isValidUUID = (id: string | undefined | null): boolean => {
   return uuidRegex.test(id);
 };
 
-export default function ModuleActions({ documentId, moduleInstanceId, buttonLabel = 'Add Action' }: ModuleActionsProps) {
-  const navigate = useNavigate();
+export default function ModuleActions({
+  documentId,
+  moduleInstanceId,
+  buttonLabel = 'Add Action',
+  useInPlaceReRecommendationModal = false,
+}: ModuleActionsProps) {
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
   const [isReModule, setIsReModule] = useState(false);
   const [sourceModuleKey, setSourceModuleKey] = useState<string | null>(null);
+  const [isModuleTypeLoaded, setIsModuleTypeLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showReRecommendationModal, setShowReRecommendationModal] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
@@ -89,13 +100,15 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
         .maybeSingle();
 
       setSourceModuleKey(data?.module_key || null);
-      setIsReModule(Boolean(data?.module_key?.startsWith('RE_')));
+      setIsReModule(hasReRecommendationWorkflow(data?.module_key || null));
+      setIsModuleTypeLoaded(true);
     };
 
     loadModuleType();
   }, [moduleInstanceId]);
 
   useEffect(() => {
+    if (!isModuleTypeLoaded) return;
     if (!isValidUUID(documentId)) {
       console.warn('ModuleActions: Invalid documentId provided:', documentId);
       setIsLoading(false);
@@ -108,7 +121,7 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     }
     fetchActions();
     fetchDocumentStatus();
-  }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey]);
+  }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey, isModuleTypeLoaded]);
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -352,6 +365,10 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
 
   const isDeletable = documentStatus === 'draft';
   const hasValidIds = isValidUUID(documentId) && isValidUUID(moduleInstanceId);
+  const hideModuleActionsUi = Boolean(
+    sourceModuleKey === 'RISK_ENGINEERING'
+    || (sourceModuleKey?.startsWith('RE_') && !hasReRecommendationWorkflow(sourceModuleKey))
+  );
 
   if (!hasValidIds) {
     return (
@@ -373,6 +390,10 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
     );
   }
 
+  if (!isModuleTypeLoaded || hideModuleActionsUi) {
+    return null;
+  }
+
   // All document types (including RE modules) show actions UI for the active module instance
   return (
     <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
@@ -385,12 +406,45 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
               return;
             }
 
-            const params = new URLSearchParams({
-              openAddRec: 'true',
-              sourceModuleInstanceId: moduleInstanceId,
-              sourceModuleKey: sourceModuleKey || 'OTHER',
-            });
-            navigate(`/documents/${documentId}/workspace?${params.toString()}`);
+            if (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') {
+              setShowReRecommendationModal(true);
+              return;
+            }
+
+            const openRecommendationComposer = async () => {
+              console.info('[RE04 Add Recommendation] click', {
+                documentId,
+                sourceModuleInstanceId: moduleInstanceId,
+                sourceModuleKey,
+              });
+
+              const { data: registerModule } = await supabase
+                .from('module_instances')
+                .select('id')
+                .eq('document_id', documentId)
+                .eq('module_key', 'RE_13_RECOMMENDATIONS')
+                .maybeSingle();
+
+              const params = new URLSearchParams({
+                openAddRec: 'true',
+                sourceModuleInstanceId: moduleInstanceId,
+                sourceModuleKey: sourceModuleKey || 'OTHER',
+                openRecSource: 'module-actions',
+              });
+
+              if (registerModule?.id) {
+                params.set('m', registerModule.id);
+              }
+
+              console.info('[RE04 Add Recommendation] navigate', {
+                registerModuleId: registerModule?.id || null,
+                query: params.toString(),
+              });
+
+              window.location.assign(`/documents/${documentId}/workspace?${params.toString()}`);
+            };
+
+            void openRecommendationComposer();
           }}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
         >
@@ -575,6 +629,21 @@ export default function ModuleActions({ documentId, moduleInstanceId, buttonLabe
             setShowAddModal(false);
             fetchActions();
           }}
+        />
+      )}
+
+      {isReModule && (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') && showReRecommendationModal && sourceModuleKey && (
+        <CanonicalReRecommendationModal
+          isOpen={showReRecommendationModal}
+          onClose={() => setShowReRecommendationModal(false)}
+          onSaved={async () => {
+            bumpActionsVersion();
+            await fetchActions();
+          }}
+          documentId={documentId}
+          moduleInstanceId={moduleInstanceId}
+          sourceModuleKey={sourceModuleKey}
+          createdBy={user?.id || null}
         />
       )}
 
