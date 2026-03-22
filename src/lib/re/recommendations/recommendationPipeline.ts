@@ -499,7 +499,7 @@ async function findMatchingLibraryRecommendation(params: {
       .from('re_recommendation_library')
       .select('*')
       .eq('is_active', true)
-      .order('priority', { ascending: false });
+      .order('default_priority', { ascending: false });
 
     if (error) {
       console.error('Error querying recommendation library:', error);
