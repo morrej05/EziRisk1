@@ -109,6 +109,9 @@ const RE_SECTION_CONFIG: Record<string, { title: string; key: string }> = {
   RE_14_DRAFT_OUTPUTS: { title: 'Supporting Documentation / Evidence Appendix', key: 'supporting_documentation' },
 };
 
+const RE_SURVEY_DISCLAIMER_TEXT =
+  'This report represents a professional opinion based on observations and information available at the time of survey. It does not constitute a guarantee of loss prevention performance. Generated outputs are support tools requiring competent review before issue or reliance. Responsibility for interpretation and implementation of recommendations remains with the duty holder and competent professional.';
+
 function getRatingFromModule(module?: ModuleInstance | null): number | null {
   if (!module?.data) return null;
   if (module.module_key === 'RE_06_FIRE_PROTECTION') {
@@ -713,6 +716,21 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
   totalPages.push(coverPage);
 
+  page = addNewPage(pdfDoc, isDraft, totalPages).page;
+  yPosition = PAGE_TOP_Y;
+  sectionStartPages.set('Disclaimer', totalPages.length);
+  ({ page, yPosition } = ensurePageSpace(180, page, yPosition, pdfDoc, isDraft, totalPages));
+  yPosition = drawSectionHeaderBar({
+    page,
+    x: MARGIN,
+    y: yPosition,
+    w: CONTENT_WIDTH,
+    title: 'Disclaimer',
+    product: 're',
+    fonts: { regular: font, bold: fontBold },
+  });
+  yPosition = drawParagraph(page, yPosition, RE_SURVEY_DISCLAIMER_TEXT, font);
+
   let { page } = addNewPage(pdfDoc, isDraft, totalPages);
   let yPosition = PAGE_TOP_Y;
   const contentsPage = page;
@@ -1008,6 +1026,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     color: rgb(0.08, 0.08, 0.08),
   });
   const contentsRows: Array<[string, number | undefined]> = [
+    ['Disclaimer', sectionStartPages.get('Disclaimer')],
     ['Executive Summary', sectionStartPages.get('Executive Summary')],
     ['Risk Scoring Summary', sectionStartPages.get('Risk Scoring Summary')],
     ['Document Control', sectionStartPages.get('Document Control')],
