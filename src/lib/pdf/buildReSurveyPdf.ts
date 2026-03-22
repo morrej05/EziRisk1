@@ -696,44 +696,72 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
-    const wallsCombPct = getMaterialPercent(building?.walls?.breakdown, true);
-    const wallsPct =
-      Number.isFinite(Number(building?.walls?.total_percent)) ? Number(building.walls.total_percent) :
-      Number.isFinite(Number(building?.walls_percent)) ? Number(building?.walls_percent) :
-      Number.isFinite(Number(building?.wall_percent)) ? Number(building?.wall_percent) :
-      null;
     const storeys = building?.geometry?.floors ?? building?.storeys ?? building?.floors ?? building?.number_of_storeys;
     const basements = building?.geometry?.basements ?? building?.basements ?? building?.basement_levels ?? building?.number_of_basements;
-    const claddingPresent = Boolean(
-      building?.combustible_cladding?.present ??
-      building?.cladding_present ??
-      building?.has_combustible_cladding ??
-      (building?.cladding_present && building?.cladding_combustible)
-    );
-    const cladding = claddingPresent
-      ? `Yes${building?.combustible_cladding?.details || building?.cladding_system ? ` - ${building?.combustible_cladding?.details || building?.cladding_system}` : ''}`
-      : 'No';
+    return [
+      formatDataValue(refOrName),
+      formatDataValue(roofArea),
+      formatDataValue(mezzArea),
+      formatDataValue(storeys),
+      formatDataValue(basements),
+    ];
+  });
+}
+
+function formatConstructionPercent(value: unknown, source: 'explicit' | 'derived' | 'none' = 'explicit'): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'Data not provided';
+  if (numeric === 0 && source === 'none') return 'Data not provided';
+  return `${numeric}%`;
+}
+
+function resolveCladdingDescriptor(building: any): string {
+  const claddingPresentRaw =
+    building?.combustible_cladding?.present ??
+    building?.cladding_present ??
+    building?.has_combustible_cladding ??
+    building?.cladding_combustible;
+  const claddingType = building?.combustible_cladding?.details || building?.cladding_system || building?.cladding_type;
+
+  if (claddingPresentRaw === true) return `Yes${claddingType ? ` - ${claddingType}` : ''}`;
+  if (claddingPresentRaw === false) return claddingType ? `No - ${claddingType}` : 'No';
+  if (claddingType) return `Data not provided - ${claddingType}`;
+  return 'Data not provided';
+}
+
+function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: Breakdown): Row[] {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const fallbackSiteScore = breakdown.globalPillars.find((p) => p.key === 'construction_and_combustibility')?.rating;
+  return buildings.map((building: any): Row => {
+    const refOrName = building.ref || building.building_name || building.name || building.id;
+    const wallsCombPctExplicit =
+      building?.walls?.combustibility_percent ??
+      building?.walls_combustibility_percent ??
+      null;
+    const wallsCombPctDerived = wallsCombPctExplicit === null ? getMaterialPercent(building?.walls?.breakdown, true) : null;
+    const wallsCombPct = wallsCombPctExplicit ?? wallsCombPctDerived;
+    const wallsCombSource = wallsCombPctExplicit !== null ? 'explicit' : wallsCombPctDerived !== null ? 'derived' : 'none';
+    const frameType = building?.frame_type ?? building?.structure?.frame_type ?? building?.construction_frame;
     const score =
       building?.calculated?.construction_rating ??
       building?.calculated?.re02 ??
       building?.re02_score ??
       building?.re02_construction_score ??
-      building?.construction_rating;
-    const combustibility =
+      building?.construction_rating ??
+      fallbackSiteScore;
+    const combustibilityExplicit =
       building?.calculated?.combustible_percent ??
       building?.area_weighted_combustible_percent ??
-      building?.combustible_percent ??
-      getMaterialPercent(building?.roof?.breakdown, true);
+      building?.combustible_percent;
+
     return [
       formatDataValue(refOrName),
-      formatDataValue(roofArea),
-      formatDataValue(mezzArea),
-      `${formatDataPercent(wallsCombPct)} / ${formatDataPercent(wallsPct)}`,
-      formatDataValue(storeys),
-      formatDataValue(basements),
-      sanitizePdfText(cladding),
+      formatConstructionPercent(wallsCombPct, wallsCombSource),
+      sanitizePdfText(resolveCladdingDescriptor(building)),
+      formatDataValue(frameType),
       formatDataValue(score),
-      formatDataPercent(combustibility),
+      formatConstructionPercent(combustibilityExplicit, combustibilityExplicit !== undefined && combustibilityExplicit !== null ? 'explicit' : 'none'),
     ];
   });
 }
@@ -1297,6 +1325,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       fonts: { regular: font, bold: fontBold },
     });
 
+    // NOTE (report separation readiness):
+    // Survey report currently consumes recommendation metadata via action rows (module_instance_id linkage).
+    // This is the integration point to keep for future extraction into a dedicated LP/recommendations PDF builder.
     const linkedRecommendationCount = actions.filter((action) => action.module_instance_id === module.id).length;
     const tableRows = getSectionTableRows(module, { breakdown, linkedRecommendationCount });
     if (tableRows.length > 0) {
@@ -1312,14 +1343,26 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_02_CONSTRUCTION') {
-      const buildingRows = getConstructionBuildingEvidenceRows(module);
-      if (buildingRows.length > 0) {
-        ({ page, yPosition } = ensurePageSpace(100 + buildingRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
-        yPosition = drawBlockHeading(page, yPosition, 'Building-level Construction Inputs', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Ref / Name', 'Roof (m²)', 'Upper floors / mezz (m²)', 'Walls combustibility / walls %', 'Storeys', 'Basements', 'Combined cladding', 'Building RE-02 score', 'Combustibility %'], buildingRows, { regular: font, bold: fontBold }, {
-          colWidths: [65, 48, 58, 74, 40, 44, 62, 56, 68],
-          fontSize: 7.5,
-          minRowHeight: 20,
+      const geometryRows = getConstructionBuildingEvidenceRows(module);
+      if (geometryRows.length > 0) {
+        ({ page, yPosition } = ensurePageSpace(100 + geometryRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Building Geometry', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building name', 'Roof (m²)', 'Upper floors / mezz (m²)', 'Storeys', 'Basements'], geometryRows, { regular: font, bold: fontBold }, {
+          colWidths: [145, 82, 140, 68, 80],
+          fontSize: 8.25,
+          minRowHeight: 18,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition);
+      }
+      const characteristicRows = getConstructionCharacteristicsRows(module, breakdown);
+      if (characteristicRows.length > 0) {
+        ({ page, yPosition } = ensurePageSpace(100 + characteristicRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Construction Characteristics', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building name', 'Walls combustibility (%)', 'Cladding (Yes/No/type)', 'Frame type', 'Building RE-02 score', 'Combustibility %'], characteristicRows, { regular: font, bold: fontBold }, {
+          colWidths: [100, 90, 104, 70, 72, 79],
+          fontSize: 7.75,
+          minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
         yPosition = sectionBreak(yPosition);
