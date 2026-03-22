@@ -23,19 +23,21 @@ export default function ReportCoverPage({
   clientAddress,
   isDraft = false,
 }: ReportCoverPageProps) {
+  const hasClientLogo = Boolean(clientLogoUrl?.trim());
+
   const [logoStage, setLogoStage] = useState<'client' | 'default' | 'text'>(
-    clientLogoUrl ? 'client' : 'default',
+    hasClientLogo ? 'client' : 'default',
   );
 
   useEffect(() => {
-    setLogoStage(clientLogoUrl ? 'client' : 'default');
-  }, [clientLogoUrl]);
+    setLogoStage(hasClientLogo ? 'client' : 'default');
+  }, [hasClientLogo]);
 
   const logoSrc = useMemo(() => {
-    if (logoStage === 'client') return clientLogoUrl || DEFAULT_LOGO;
+    if (logoStage === 'client') return hasClientLogo ? clientLogoUrl! : DEFAULT_LOGO;
     if (logoStage === 'default') return DEFAULT_LOGO;
     return null;
-  }, [clientLogoUrl, logoStage]);
+  }, [clientLogoUrl, hasClientLogo, logoStage]);
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return null;
