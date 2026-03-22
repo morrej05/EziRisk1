@@ -18,10 +18,16 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(payload), { status, headers: jsonHeaders });
 
   try {
+    const rawAuthHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
+    if (!rawAuthHeader) {
+      console.warn("[delete-org-logo] missing authorization header");
+      return respond(401, { error: "Missing Authorization header" });
+    }
+
     const token = getBearerToken(req);
     if (!token) {
-      console.warn("[delete-org-logo] missing authorization header or bearer token");
-      return respond(401, { error: "Missing or malformed Authorization header" });
+      console.warn("[delete-org-logo] bearer parse failure");
+      return respond(401, { error: "Malformed Authorization bearer token" });
     }
 
     const supabaseClient = createClient(
@@ -32,17 +38,34 @@ Deno.serve(async (req: Request) => {
 
     const { data: directAuthData, error: directAuthError } = await supabaseClient.auth.getUser(token);
     const directUser = directAuthData?.user ?? null;
+    if (directAuthError) {
+      console.warn("[delete-org-logo] auth.getUser(token) failure", {
+        message: directAuthError.message,
+      });
+    }
+
     const { data: headerAuthData, error: headerAuthError } = directUser
       ? { data: { user: null }, error: null }
       : await supabaseClient.auth.getUser();
     const user = directUser ?? headerAuthData?.user ?? null;
-    const authError = directAuthError ?? headerAuthError;
 
-    if (authError || !user) {
-      console.warn("[delete-org-logo] auth.getUser failed", {
-        authError: authError ?? "Unauthorized",
+    if (!directUser && directAuthError && !headerAuthData?.user && !headerAuthError) {
+      console.warn("[delete-org-logo] auth.getUser(token) failure", {
+        message: directAuthError.message,
       });
-      return respond(401, { error: authError ?? "Unauthorized" });
+      return respond(401, { error: `auth.getUser(token) failed: ${directAuthError.message}` });
+    }
+
+    if (!directUser && headerAuthError) {
+      console.warn("[delete-org-logo] auth.getUser() fallback failure", {
+        message: headerAuthError.message,
+      });
+      return respond(401, { error: `auth.getUser() fallback failed: ${headerAuthError.message}` });
+    }
+
+    if (!user) {
+      console.warn("[delete-org-logo] auth user missing after token + fallback checks");
+      return respond(401, { error: "Unauthorized" });
     }
 
     const contentType = req.headers.get("content-type") ?? "";
@@ -60,6 +83,20 @@ Deno.serve(async (req: Request) => {
       return respond(400, { error: "No organisation_id provided" });
     }
 
+    const { data: org, error: orgError } = await supabaseClient
+      .from("organisations")
+      .select("id, branding_logo_path")
+      .eq("id", organisation_id)
+      .maybeSingle();
+
+    if (orgError || !org) {
+      console.warn("[delete-org-logo] organisation not found", {
+        organisation_id,
+        message: orgError?.message ?? null,
+      });
+      return respond(404, { error: "Organisation not found" });
+    }
+
     const { data: membership, error: membershipError } = await supabaseClient
       .from("organisation_members")
       .select("role, status")
@@ -69,31 +106,21 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (membershipError || !membership) {
-      console.warn("[delete-org-logo] organisation membership not found", {
+      console.warn("[delete-org-logo] no organisation_members row", {
         userId: user.id,
         organisation_id,
         membershipError: membershipError?.message ?? null,
       });
-      return respond(403, { error: "Only active organisation owner/admin members can delete logos" });
+      return respond(403, { error: "No active organisation membership found" });
     }
 
     if (!["owner", "admin"].includes(membership.role)) {
-      console.warn("[delete-org-logo] role not allowed", {
+      console.warn("[delete-org-logo] role not owner/admin", {
         userId: user.id,
         organisation_id,
         role: membership.role,
       });
-      return respond(403, { error: "Only active organisation owner/admin members can delete logos" });
-    }
-
-    const { data: org, error: orgError } = await supabaseClient
-      .from("organisations")
-      .select("branding_logo_path")
-      .eq("id", organisation_id)
-      .maybeSingle();
-
-    if (orgError || !org) {
-      return respond(404, { error: "Organisation not found" });
+      return respond(403, { error: "Role not permitted: owner/admin required" });
     }
 
     if (org.branding_logo_path) {
