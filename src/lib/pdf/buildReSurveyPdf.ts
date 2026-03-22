@@ -114,6 +114,23 @@ const RE_SURVEY_DISCLAIMER_TEXT =
 
 function getRatingFromModule(module?: ModuleInstance | null): number | null {
   if (!module?.data) return null;
+  if (module.module_key === 'RE_02_CONSTRUCTION') {
+    const construction = (module.data as any)?.construction || module.data || {};
+    const moduleSpecific =
+      Number((module.data as any)?.ratings?.site_rating_1_5) ||
+      Number(construction?.site_re02_score) ||
+      Number(construction?.calculated?.site_construction_rating) ||
+      Number(construction?.site_totals?.site_re02_score);
+    if (Number.isFinite(moduleSpecific) && moduleSpecific >= 1) return moduleSpecific;
+  }
+  if (module.module_key === 'RE_03_OCCUPANCY') {
+    const occupancy = (module.data as any)?.occupancy || module.data || {};
+    const moduleSpecific =
+      Number((module.data as any)?.ratings?.site_rating_1_5) ||
+      Number(occupancy?.ratings?.site_rating_1_5) ||
+      Number(occupancy?.site_rating_1_5);
+    if (Number.isFinite(moduleSpecific) && moduleSpecific >= 1) return moduleSpecific;
+  }
   if (module.module_key === 'RE_06_FIRE_PROTECTION') {
     const supplementaryOverall = Number((module.data as any)?.fire_protection?.supplementary_assessment?.overall_score);
     if (Number.isFinite(supplementaryOverall) && supplementaryOverall >= 1) return supplementaryOverall;
@@ -448,12 +465,30 @@ function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: 
   const scoreBand = getScoreBand(rating);
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
-    const base = `Construction selected score: ${rating ?? 'Not stated'}/5 (${scoreBand.label}). ${scoreBand.constructionImplication} This indicates ${scoreBand.resilienceLabel} resilience in structural fire performance and fire spread resistance.`;
+    const construction = (module.data as any)?.construction || module.data || {};
+    const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+    const combustibleValues = buildings
+      .map((building: any) => Number(building?.calculated?.combustible_percent ?? getMaterialPercent(building?.roof?.breakdown, true)))
+      .filter((value: number) => Number.isFinite(value));
+    const meanCombustible = combustibleValues.length
+      ? Math.round((combustibleValues.reduce((sum: number, value: number) => sum + value, 0) / combustibleValues.length) * 10) / 10
+      : Number(construction?.site_combustible_percent ?? construction?.calculated?.site_combustible_percent ?? construction?.site_totals?.site_combustible_percent);
+    const buildingMix = describeConstructionBuildingMix(buildings);
+    const fireSpreadRisk = meanCombustible >= 40 ? 'elevated fire spread potential' : meanCombustible >= 20 ? 'moderate fire spread potential' : 'generally controlled fire spread potential';
+    const structuralResilience = rating && rating >= 4 ? 'strong structural resilience' : rating && rating >= 3 ? 'mixed structural resilience' : 'heightened structural vulnerability';
+    const reinstatementComplexity = meanCombustible >= 40 || (rating ?? 0) <= 2.5 ? 'reinstatement complexity is likely high' : 'reinstatement complexity is expected to be moderate';
+    const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
+    const combustibleText = Number.isFinite(meanCombustible) ? `${meanCombustible}%` : 'Unavailable';
+    const base = `Construction score: ${scoreText} (${scoreBand.label}). RE-02 reflects construction combustibility, structural system resilience, and envelope escalation potential. Current profile shows combustible proportion ${combustibleText} with ${buildingMix}. This indicates ${fireSpreadRisk}, ${structuralResilience}, and ${reinstatementComplexity}.`;
     return notes ? `${base} Additional assessor notes: ${notes}` : base;
   }
 
   if (module.module_key === 'RE_03_OCCUPANCY') {
-    const base = `Occupancy selected score: ${rating ?? 'Not stated'}/5 (${scoreBand.label}). ${scoreBand.occupancyImplication} This indicates ${scoreBand.resilienceLabel} resilience in process controls, ignition management and loss containment potential.`;
+    const occupancy = (module.data as any)?.occupancy || module.data || {};
+    const hazards = Array.isArray(occupancy.hazards) ? occupancy.hazards : [];
+    const hazardSignals = describeOccupancyHazardSignals(hazards, occupancy);
+    const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
+    const base = `Occupancy score: ${scoreText} (${scoreBand.label}). ${scoreBand.occupancyImplication} Observed hazards (${hazardSignals.hazardSummary}) indicate ${hazardSignals.ignitionLikelihood}, ${hazardSignals.fireLoadSeverity}, and ${hazardSignals.controlsDependency}.`;
     return notes ? `${base} Additional assessor notes: ${notes}` : base;
   }
 
@@ -470,7 +505,7 @@ function getScoreBand(rating: number | null): {
 } {
   if (!rating || !Number.isFinite(rating)) {
     return {
-      label: 'Not stated',
+      label: 'Unscored',
       resilienceLabel: 'mixed',
       constructionImplication: 'Construction conditions could not be benchmarked from a selected score.',
       occupancyImplication: 'Occupancy/process controls could not be benchmarked from a selected score.',
@@ -494,10 +529,10 @@ function getScoreBand(rating: number | null): {
   }
   if (rating <= 3.5) {
     return {
-      label: 'Average',
+      label: 'Moderate',
       resilienceLabel: 'mixed',
-      constructionImplication: 'An average rating indicates mixed construction performance with both resilient and vulnerable features.',
-      occupancyImplication: 'An average rating indicates mixed occupancy/process risk with baseline controls but meaningful residual hazard.',
+      constructionImplication: 'A moderate rating indicates mixed construction performance with both resilient and vulnerable features.',
+      occupancyImplication: 'A moderate rating indicates mixed occupancy/process risk with baseline controls but meaningful residual hazard.',
     };
   }
   if (rating <= 4.5) {
@@ -514,6 +549,38 @@ function getScoreBand(rating: number | null): {
     constructionImplication: 'An excellent rating indicates strong construction resilience and robust resistance to rapid fire propagation.',
     occupancyImplication: 'An excellent rating indicates robust occupancy/process controls and strong resilience against severe fire/explosion scenarios.',
   };
+}
+
+function describeConstructionBuildingMix(buildings: any[]): string {
+  if (!buildings.length) return 'no building-level mix data';
+  const frameTypes = new Set<string>();
+  for (const building of buildings) {
+    const frame = String(building?.frame_type || '').trim();
+    if (frame) frameTypes.add(frame.replace(/_/g, ' '));
+  }
+  if (frameTypes.size === 0) return `${buildings.length} building(s) with unspecified frame mix`;
+  return `${buildings.length} building(s) across ${frameTypes.size} frame type(s): ${Array.from(frameTypes).join(', ')}`;
+}
+
+function describeOccupancyHazardSignals(hazards: any[], occupancy: any): {
+  hazardSummary: string;
+  ignitionLikelihood: string;
+  fireLoadSeverity: string;
+  controlsDependency: string;
+} {
+  const tokens = hazards.map((hazard) => String(hazard?.hazard_label || hazard?.hazard_key || '').toLowerCase()).filter(Boolean);
+  const bodyText = `${occupancy?.industry_special_hazards_notes || ''} ${occupancy?.hazards_free_text || ''} ${hazards.map((h) => h?.free_text || '').join(' ')}`.toLowerCase();
+  const hasFlammable = tokens.some((token) => token.includes('ignitable') || token.includes('flammable') || token.includes('gas')) || bodyText.includes('flammable') || bodyText.includes('solvent');
+  const hasDustExplosion = tokens.some((token) => token.includes('dust') || token.includes('explosive')) || bodyText.includes('dust') || bodyText.includes('powder');
+  const hasBatteryRisk = tokens.some((token) => token.includes('lithium') || token.includes('battery')) || bodyText.includes('lithium') || bodyText.includes('battery');
+  const highHazardCount = [hasFlammable, hasDustExplosion, hasBatteryRisk].filter(Boolean).length;
+
+  const ignitionLikelihood = highHazardCount >= 2 ? 'high ignition likelihood' : highHazardCount === 1 ? 'moderate ignition likelihood' : 'baseline ignition likelihood';
+  const fireLoadSeverity = hasFlammable || hasDustExplosion ? 'elevated fire load/severity potential' : 'moderate fire load/severity potential';
+  const controlsDependency = highHazardCount >= 2 ? 'high dependency on engineered and procedural controls' : 'moderate dependency on controls';
+  const hazardSummary = tokens.length ? tokens.slice(0, 4).join(', ') : 'no explicit hazard entries';
+
+  return { hazardSummary, ignitionLikelihood, fireLoadSeverity, controlsDependency };
 }
 
 function getMaterialPercent(
@@ -540,15 +607,33 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
     const wallsCombPct = getMaterialPercent(building?.walls?.breakdown, true);
-    const wallsPct = Number.isFinite(Number(building?.walls?.total_percent)) ? Number(building.walls.total_percent) : null;
-    const storeys = building?.geometry?.floors ?? building?.storeys;
-    const basements = building?.geometry?.basements ?? building?.basements;
-    const claddingPresent = Boolean(building?.combustible_cladding?.present ?? (building?.cladding_present && building?.cladding_combustible));
+    const wallsPct =
+      Number.isFinite(Number(building?.walls?.total_percent)) ? Number(building.walls.total_percent) :
+      Number.isFinite(Number(building?.walls_percent)) ? Number(building?.walls_percent) :
+      Number.isFinite(Number(building?.wall_percent)) ? Number(building?.wall_percent) :
+      null;
+    const storeys = building?.geometry?.floors ?? building?.storeys ?? building?.floors ?? building?.number_of_storeys;
+    const basements = building?.geometry?.basements ?? building?.basements ?? building?.basement_levels ?? building?.number_of_basements;
+    const claddingPresent = Boolean(
+      building?.combustible_cladding?.present ??
+      building?.cladding_present ??
+      building?.has_combustible_cladding ??
+      (building?.cladding_present && building?.cladding_combustible)
+    );
     const cladding = claddingPresent
-      ? `Yes${building?.combustible_cladding?.details ? ` - ${building.combustible_cladding.details}` : ''}`
+      ? `Yes${building?.combustible_cladding?.details || building?.cladding_system ? ` - ${building?.combustible_cladding?.details || building?.cladding_system}` : ''}`
       : 'No';
-    const score = building?.calculated?.construction_rating ?? building?.calculated?.re02 ?? building?.re02_score;
-    const combustibility = building?.calculated?.combustible_percent ?? getMaterialPercent(building?.roof?.breakdown, true);
+    const score =
+      building?.calculated?.construction_rating ??
+      building?.calculated?.re02 ??
+      building?.re02_score ??
+      building?.re02_construction_score ??
+      building?.construction_rating;
+    const combustibility =
+      building?.calculated?.combustible_percent ??
+      building?.area_weighted_combustible_percent ??
+      building?.combustible_percent ??
+      getMaterialPercent(building?.roof?.breakdown, true);
     return [
       formatValue(refOrName),
       formatValue(roofArea),
@@ -598,6 +683,37 @@ function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
     ['Selected hazards / descriptors', hazardList.length ? hazardList.join('; ') : 'Not stated'],
     ['User free-text notes', formatValue(occupancy.hazards_free_text ?? occupancy.notes)],
   ];
+}
+
+function buildConstructionScoringBasisText(module: ModuleInstance): string {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildingCount = buildings.length;
+  return `RE-02 measures physical fire performance of the built asset: combustible proportion in roof/wall/mezzanine assemblies, structural system robustness, and external envelope/cladding escalation pathways. Higher scores are driven by lower combustible percentages, resilient non-combustible structural assemblies, and absence of combustible cladding. Lower scores are driven by high combustible fractions, vulnerable mixed assemblies, weak compartmentation, and combustible envelope elements. Current dataset includes ${buildingCount} building record${buildingCount === 1 ? '' : 's'} for this assessment.`;
+}
+
+function buildConstructionEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const rating = resolveSectionRating(module, breakdown);
+  const combustibleValues = buildings
+    .map((building: any) => Number(building?.calculated?.combustible_percent ?? getMaterialPercent(building?.roof?.breakdown, true)))
+    .filter((value: number) => Number.isFinite(value));
+  const meanCombustible = combustibleValues.length
+    ? Math.round((combustibleValues.reduce((sum: number, value: number) => sum + value, 0) / combustibleValues.length) * 10) / 10
+    : Number(construction?.site_combustible_percent ?? construction?.calculated?.site_combustible_percent ?? construction?.site_totals?.site_combustible_percent);
+  const buildingMix = describeConstructionBuildingMix(buildings);
+  const fireSpreadRisk = meanCombustible >= 40 ? 'high fire spread risk' : meanCombustible >= 20 ? 'moderate fire spread risk' : 'lower fire spread risk';
+  const structuralResilience = rating && rating >= 4 ? 'strong structural resilience' : rating && rating >= 3 ? 'intermediate structural resilience' : 'limited structural resilience';
+  const reinstatementComplexity = meanCombustible >= 40 || (rating ?? 0) <= 2.5 ? 'high reinstatement complexity' : 'moderate reinstatement complexity';
+  return `Engineering Interpretation: Combustible proportion (${Number.isFinite(meanCombustible) ? `${meanCombustible}%` : 'unavailable'}) and building mix (${buildingMix}) with RE-02 score (${Number.isFinite(rating as number) ? `${rating}/5` : 'unavailable'}) indicate ${fireSpreadRisk}, ${structuralResilience}, and ${reinstatementComplexity}.`;
+}
+
+function buildOccupancyEngineeringInterpretation(module: ModuleInstance): string {
+  const occupancy = (module.data as any)?.occupancy || module.data || {};
+  const hazards = Array.isArray(occupancy.hazards) ? occupancy.hazards : [];
+  const hazardSignals = describeOccupancyHazardSignals(hazards, occupancy);
+  return `Engineering Interpretation: Current hazard profile indicates ${hazardSignals.ignitionLikelihood}, ${hazardSignals.fireLoadSeverity}, and ${hazardSignals.controlsDependency}.`;
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -957,6 +1073,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      const scoringBasis = buildConstructionScoringBasisText(module);
+      ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawParagraph(page, yPosition, 'Construction Scoring Basis', fontBold);
+      yPosition = drawParagraph(page, yPosition, scoringBasis, font);
+      const engineeringInterpretation = buildConstructionEngineeringInterpretation(module, breakdown);
+      ({ page, yPosition } = ensurePageSpace(80, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawParagraph(page, yPosition, engineeringInterpretation, font);
     }
 
     if (module.module_key === 'RE_03_OCCUPANCY') {
@@ -971,6 +1094,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      const occupancyInterpretation = buildOccupancyEngineeringInterpretation(module);
+      ({ page, yPosition } = ensurePageSpace(80, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawParagraph(page, yPosition, 'Engineering Interpretation', fontBold);
+      yPosition = drawParagraph(page, yPosition, occupancyInterpretation, font);
     }
 
     const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
