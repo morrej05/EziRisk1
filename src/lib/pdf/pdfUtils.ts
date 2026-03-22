@@ -930,8 +930,8 @@ export async function drawCoverPage(
   let yPosition = pageHeight - margin;
 
   if (logoData) {
-    const maxLogoWidth = 340.2;
-    const maxLogoHeight = 85.05;
+    const maxLogoWidth = 300;
+    const maxLogoHeight = 72;
 
     const scale = Math.min(
       maxLogoWidth / logoData.width,
@@ -941,18 +941,22 @@ export async function drawCoverPage(
 
     const scaledWidth = logoData.width * scale;
     const scaledHeight = logoData.height * scale;
+    const logoX = pageWidth / 2 - scaledWidth / 2;
+    const logoTopY = pageHeight - margin - 12;
+    const logoY = logoTopY - scaledHeight;
 
     page.drawImage(logoData.image, {
-      x: margin,
-      y: yPosition - scaledHeight,
+      x: logoX,
+      y: logoY,
       width: scaledWidth,
       height: scaledHeight,
     });
 
-    yPosition -= scaledHeight + 40;
+    yPosition = logoY - 40;
   } else {
+    const fallbackLogoText = 'EziRisk';
     page.drawText('EziRisk', {
-      x: margin,
+      x: pageWidth / 2 - fonts.bold.widthOfTextAtSize(fallbackLogoText, 24) / 2,
       y: yPosition,
       size: 24,
       font: fonts.bold,
