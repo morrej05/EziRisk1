@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X, Shield } from 'lucide-react';
+import { resolveLogoUrl } from '../../lib/pdf/pdfUtils';
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -35,12 +37,23 @@ export default function Navbar() {
             to="/"
             className="flex items-center gap-2 hover:opacity-90 transition-opacity"
           >
-            <Shield className={`w-7 h-7 ${isScrolled ? 'text-primary-600' : 'text-white'}`} />
-            <span className={`text-2xl font-bold transition-colors ${
-              isScrolled ? 'text-neutral-900' : 'text-white'
-            }`}>
-              EziRisk
-            </span>
+            {!logoError ? (
+              <img
+                src={resolveLogoUrl()}
+                alt="EziRisk"
+                className="h-9 w-auto"
+                onError={() => setLogoError(true)}
+              />
+            ) : (
+              <>
+                <Shield className={`w-7 h-7 ${isScrolled ? 'text-primary-600' : 'text-white'}`} />
+                <span className={`text-2xl font-bold transition-colors ${
+                  isScrolled ? 'text-neutral-900' : 'text-white'
+                }`}>
+                  EziRisk
+                </span>
+              </>
+            )}
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
