@@ -13,10 +13,15 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
+  const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+  const respond = (status: number, payload: Record<string, unknown>) =>
+    new Response(JSON.stringify(payload), { status, headers: jsonHeaders });
+
   try {
     const token = getBearerToken(req);
     if (!token) {
-      throw new Error("Missing authorization header");
+      return respond(401, { error: "Missing or malformed Authorization header" });
     }
 
     const supabaseClient = createClient(
@@ -27,18 +32,18 @@ Deno.serve(async (req: Request) => {
 
     const { user, error: authError } = await requireAuthenticatedUser(supabaseClient, req);
     if (authError || !user) {
-      throw new Error(authError ?? "Unauthorized");
+      return respond(401, { error: authError ?? "Unauthorized" });
     }
 
     const { organisation_id } = await req.json();
 
     if (!organisation_id) {
-      throw new Error("No organisation_id provided");
+      return respond(400, { error: "No organisation_id provided" });
     }
 
     const canManageLogo = await hasRequiredOrganisationRole(supabaseClient, user.id, organisation_id, ["owner", "admin"]);
     if (!canManageLogo) {
-      throw new Error("Only active organisation owner/admin members can delete logos");
+      return respond(403, { error: "Only active organisation owner/admin members can delete logos" });
     }
 
     const { data: org, error: orgError } = await supabaseClient
@@ -48,7 +53,7 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (orgError || !org) {
-      throw new Error("Organisation not found");
+      return respond(404, { error: "Organisation not found" });
     }
 
     if (org.branding_logo_path) {
@@ -70,23 +75,13 @@ Deno.serve(async (req: Request) => {
       .eq("id", organisation_id);
 
     if (updateError) {
-      throw new Error(`Failed to update organisation: ${updateError.message}`);
+      return respond(400, { error: `Failed to update organisation: ${updateError.message}` });
     }
 
-    return new Response(
-      JSON.stringify({ success: true }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return respond(200, { success: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    console.error("[delete-org-logo] unhandled error:", error);
+    return respond(500, { error: message });
   }
 });
