@@ -11,6 +11,7 @@ export const REPORT_BODY_TEXT_SIZE = 11;
 export const REPORT_BODY_LINE_GAP = 16;
 export const REPORT_BODY_PARAGRAPH_GAP = 10;
 export const DEFAULT_LOGO = '/ezirisk-logo-primary.svg';
+export const DEFAULT_LOGO_PDF = '/ezirisk-logo-primary.png';
 
 export function resolveLogoUrl(preferredLogoUrl?: string | null): string {
   return preferredLogoUrl || DEFAULT_LOGO;
@@ -864,8 +865,8 @@ export async function loadPdfLogoWithFallback(
   }
 
   try {
-    const defaultLogoUrl = new URL(resolveLogoUrl(), window.location.origin).toString();
-    const defaultLogo = await fetchAndEmbedLogo(pdfDoc, DEFAULT_LOGO, defaultLogoUrl);
+    const defaultLogoUrl = new URL(DEFAULT_LOGO_PDF, window.location.origin).toString();
+    const defaultLogo = await fetchAndEmbedLogo(pdfDoc, DEFAULT_LOGO_PDF, defaultLogoUrl);
     if (defaultLogo) {
       return defaultLogo;
     }
