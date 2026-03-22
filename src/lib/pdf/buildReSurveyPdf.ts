@@ -832,8 +832,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
   totalPages.push(coverPage);
 
-  page = addNewPage(pdfDoc, isDraft, totalPages).page;
-  yPosition = PAGE_TOP_Y;
+  let { page } = addNewPage(pdfDoc, isDraft, totalPages);
+  let yPosition = PAGE_TOP_Y;
   sectionStartPages.set('Disclaimer', totalPages.length);
   ({ page, yPosition } = ensurePageSpace(180, page, yPosition, pdfDoc, isDraft, totalPages));
   yPosition = drawSectionHeaderBar({
@@ -847,8 +847,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
   yPosition = drawParagraph(page, yPosition, RE_SURVEY_DISCLAIMER_TEXT, font);
 
-  let { page } = addNewPage(pdfDoc, isDraft, totalPages);
-  let yPosition = PAGE_TOP_Y;
+  ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+  yPosition = PAGE_TOP_Y;
   const contentsPage = page;
   sectionStartPages.set('Contents', totalPages.length);
 
