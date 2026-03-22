@@ -550,6 +550,7 @@ export default function DocumentPreviewPage() {
             <SurveyBadgeRow
               status={document.issue_status as 'draft' | 'in_review' | 'approved' | 'issued'}
               jurisdiction={normalizeJurisdiction(document.jurisdiction)}
+              product={document.document_type}
               enabledModules={document.enabled_modules}
             />
           </div>
