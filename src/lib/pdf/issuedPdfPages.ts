@@ -58,6 +58,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
 }> {
   console.log('[PDF Issued Pages] Starting issued pages generation');
   const { pdfDoc, document, organisation, client, fonts } = options;
+  const preferredOrganisationLogoPath = organisation.branding_logo_path?.trim() || null;
 
   let logoData: { image: any; width: number; height: number } | null = null;
 
@@ -67,14 +68,14 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
       console.log('[PDF Logo] Attempting logo fallback chain (org -> default -> text)');
 
       let orgSignedUrl: string | null = null;
-      if (organisation.branding_logo_path) {
-        const logoResult = await resolveOrganisationLogo(organisation.id, organisation.branding_logo_path);
+      if (preferredOrganisationLogoPath) {
+        const logoResult = await resolveOrganisationLogo(organisation.id, preferredOrganisationLogoPath);
         orgSignedUrl = logoResult.signedUrl;
       }
 
       logoData = await withTimeout(
         loadPdfLogoWithFallback(pdfDoc, {
-          organisationLogoPath: organisation.branding_logo_path ?? null,
+          organisationLogoPath: preferredOrganisationLogoPath,
           organisationSignedUrl: orgSignedUrl,
         }),
         5000,

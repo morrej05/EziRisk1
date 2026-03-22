@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LogOut, Shield } from 'lucide-react';
 import { canAccessAdmin, canAccessPlatformSettings, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
-import { resolveLogoUrl } from '../lib/pdf/pdfUtils';
+import { resolveLogoUrl } from '../utils/logo';
 
 type AuthUserWithPlatform = { platform?: boolean };
 

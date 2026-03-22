@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useClientBranding } from '../contexts/ClientBrandingContext';
-import { AlertCircle, CheckCircle2, Clock, XCircle, Sparkles, Building2, X, Download, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, XCircle, Sparkles, X, Download, Loader2 } from 'lucide-react';
 import { generateSurveySummary, prepareSurveyDataForSummary } from '../utils/surveySummaryApi';
 import { ensureReferenceNumbers, getSurveyYear, sortByReferenceNumber } from '../utils/recommendationReferenceNumber';
+import { DEFAULT_LOGO, resolveLogoUrl } from '../utils/logo';
 
 interface Recommendation {
   id: string;
@@ -43,6 +44,8 @@ export default function RecommendationDraftModal({ surveyId, onClose, cachedSumm
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [aiSummary, setAiSummary] = useState(cachedSummary || '');
+  const [headerLogoSrc, setHeaderLogoSrc] = useState<string>(resolveLogoUrl(null));
+  const [showHeaderLogoTextFallback, setShowHeaderLogoTextFallback] = useState(false);
   const { branding: clientBranding } = useClientBranding();
 
   useEffect(() => {
@@ -54,6 +57,11 @@ export default function RecommendationDraftModal({ surveyId, onClose, cachedSumm
       setAiSummary(cachedSummary);
     }
   }, [cachedSummary]);
+
+  useEffect(() => {
+    setHeaderLogoSrc(resolveLogoUrl(clientBranding.logoUrl));
+    setShowHeaderLogoTextFallback(false);
+  }, [clientBranding.logoUrl]);
 
   const fetchSurveyData = async () => {
     setIsLoading(true);
@@ -315,19 +323,24 @@ export default function RecommendationDraftModal({ surveyId, onClose, cachedSumm
                   <h2 className="text-2xl font-bold text-slate-900 mb-2">Fire Risk Recommendations Report</h2>
                   <p className="text-slate-600">Action-Focused Summary</p>
                 </div>
-                {clientBranding.logoUrl ? (
+                {!showHeaderLogoTextFallback ? (
                   <div className="flex-shrink-0 ml-6">
                     <img
-                      src={clientBranding.logoUrl}
-                      alt={clientBranding.companyName}
+                      src={headerLogoSrc}
+                      alt={headerLogoSrc === DEFAULT_LOGO ? 'EziRisk Logo' : clientBranding.companyName}
                       className="h-16 object-contain"
+                      onError={() => {
+                        if (headerLogoSrc !== DEFAULT_LOGO) {
+                          setHeaderLogoSrc(DEFAULT_LOGO);
+                          return;
+                        }
+                        setShowHeaderLogoTextFallback(true);
+                      }}
                     />
                   </div>
                 ) : (
                   <div className="flex-shrink-0 ml-6">
-                    <div className="flex items-center gap-2 text-slate-500">
-                      <Building2 className="w-12 h-12" />
-                    </div>
+                    <div className="text-3xl font-bold text-slate-500">EziRisk</div>
                   </div>
                 )}
               </div>

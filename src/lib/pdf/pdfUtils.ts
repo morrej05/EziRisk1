@@ -10,12 +10,7 @@ export const REPORT_TITLE_TO_BODY_GAP = 20;
 export const REPORT_BODY_TEXT_SIZE = 11;
 export const REPORT_BODY_LINE_GAP = 16;
 export const REPORT_BODY_PARAGRAPH_GAP = 10;
-export const DEFAULT_LOGO = '/ezirisk-logo-primary.svg';
 export const DEFAULT_LOGO_PDF = '/ezirisk-logo-primary.png';
-
-export function resolveLogoUrl(preferredLogoUrl?: string | null): string {
-  return preferredLogoUrl || DEFAULT_LOGO;
-}
 
 // PDF Debug Layout Mode - developer-only overlay for spacing/pagination tuning
 // export const PDF_DEBUG_LAYOUT = import.meta.env.VITE_PDF_DEBUG_LAYOUT === 'true';
