@@ -55,6 +55,9 @@ export default function OrganisationBranding() {
         if (data?.signedUrl) {
           setLogoUrl(data.signedUrl);
         }
+      } else {
+        setLogoPath(null);
+        setLogoUrl(null);
       }
     } catch (err: any) {
       console.error('Error loading branding:', err);
@@ -187,37 +190,32 @@ export default function OrganisationBranding() {
       setSuccess(null);
 
       const { data: { session } } = await supabase.auth.getSession();
-if (!session?.access_token) {
-  throw new Error('Not authenticated (no access token)');
-}
+      if (!session?.access_token) {
+        throw new Error('Not authenticated (no access token)');
+      }
 
-const response = await fetch(
-  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-org-logo`,
-  {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: formData,
-  }
-);
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-org-logo`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ organisation_id: organisationId }),
+        }
+      );
 
-// ✅ THESE LINES GO AFTER fetch(...) — not inside it
-const text = await response.text();
-console.log('[Logo Upload] status:', response.status);
-console.log('[Logo Upload] body:', text);
-
-if (!response.ok) {
-  throw new Error(`Upload failed (${response.status}): ${text}`);
-}
-
-// if success, you can continue here
-console.log('[Logo Upload] Upload OK');
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || `Delete failed (${response.status})`);
+      }
 
       setSuccess('Logo removed successfully');
       setLogoUrl(null);
       setLogoPath(null);
+      await loadOrganisationBranding();
     } catch (err: any) {
       console.error('Error deleting logo:', err);
       setError(err.message);
