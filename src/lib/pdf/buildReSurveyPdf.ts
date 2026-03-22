@@ -98,7 +98,7 @@ interface LossValuesSummary {
   effectivePropertyTotal: number;
 }
 
-const SECTION_BLOCK_SPACING = 14;
+const SECTION_BLOCK_SPACING = 20;
 
 const RE_SECTION_CONFIG: Record<string, { title: string; key: string }> = {
   RE_02_CONSTRUCTION: { title: 'Construction', key: 'construction' },
@@ -237,6 +237,11 @@ function drawParagraph(
 
 function sectionBreak(yPosition: number, spacing = SECTION_BLOCK_SPACING): number {
   return yPosition - spacing;
+}
+
+function drawBlockHeading(page: PDFPage, yPosition: number, title: string, fontBold: any): number {
+  const withTopSpacing = sectionBreak(yPosition, 8);
+  return drawParagraph(page, withTopSpacing, title, fontBold);
 }
 
 function drawSimpleTable(
@@ -761,7 +766,10 @@ function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
     .filter((value: string, index: number, arr: string[]) => arr.indexOf(value) === index);
 
   return [
+    ['Occupancy type', formatDataValue(occupancy.occupancy_type)],
     ['Process / use overview', formatDataValue(occupancy.process_overview ?? occupancy.process_description ?? occupancy.operations_description ?? occupancy.occupancy_type)],
+    ['Shift pattern / operating profile', formatDataValue(occupancy.shift_pattern ?? occupancy.operating_profile)],
+    ['Combustible loading profile', formatDataValue(occupancy.combustible_loading)],
     ['Industry-specific special hazards', formatDataValue(occupancy.industry_special_hazards_notes)],
     ['Industry fire / explosion features', formatDataValue(occupancy.fire_explosion_features ?? occupancy.industry_fire_explosion_features ?? occupancy.special_fire_explosion_features)],
     ['Selected hazards / descriptors', hazardList.length ? hazardList.join('\n') : 'Data not provided'],
@@ -785,13 +793,18 @@ function getFireProtectionBuildingRows(module: ModuleInstance): Row[] {
         `System/standard: ${formatDataValue(sprinklerData?.system_type)} / ${formatDataValue(sprinklerData?.standard ?? sprinklerData?.sprinkler_standard)}`,
         `Maintenance/adequacy: ${formatDataValue(sprinklerData?.maintenance_status)} / ${formatDataValue(sprinklerData?.sprinkler_adequacy)}`,
         `Localised required/present: ${formatDataValue(sprinklerData?.localised_required)} / ${formatDataValue(sprinklerData?.localised_present)}`,
+        `Localised type/asset: ${formatDataValue(sprinklerData?.localised_type)} / ${formatDataValue(sprinklerData?.localised_protected_asset)}`,
+        `Localised comments: ${formatDataValue(sprinklerData?.localised_comments)}`,
+        `Coverage justification: ${formatDataValue(sprinklerData?.justification_if_required_lt_100)}`,
+        `Building reliability notes: ${formatDataValue(buildingData?.comments)}`,
       ].join('\n'),
       [
         `Detection installed: ${formatDataValue(sprinklerData?.detection_installed)}`,
         `Monitoring: ${formatDataValue(sprinklerData?.alarm_monitoring)}`,
         `Testing/maintenance: ${formatDataValue(sprinklerData?.detection_testing_regime)} / ${formatDataValue(sprinklerData?.detection_maintenance_status)}`,
         `Detection types: ${formatDataValue(detectionTypes || sprinklerData?.detection_type_other)}`,
-        `Sprinkler/final score: ${formatDataValue(sprinklerData?.sprinkler_score_1_5)} / ${formatDataValue(sprinklerData?.final_active_score_1_5)}`,
+        `Detection comments: ${formatDataValue(sprinklerData?.detection_comments)}`,
+        `Sprinkler/detection/final score: ${formatDataValue(sprinklerData?.sprinkler_score_1_5)} / ${formatDataValue(sprinklerData?.detection_score_1_5)} / ${formatDataValue(sprinklerData?.final_active_score_1_5)}`,
       ].join('\n'),
     ];
   });
@@ -805,12 +818,15 @@ function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
   const required = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.sprinklerData?.sprinkler_coverage_required_pct), 0);
   const count = Math.max(buildings.length, 1);
   return [
-    ['Water reliability / supply type', `${formatDataValue(water?.water_reliability)} / ${formatDataValue(water?.supply_type)}`],
+    ['Water reliability / supply type', `${formatDataValue(water?.water_reliability)} / ${formatDataValue(water?.supply_type)} (${formatDataValue(water?.supply_type_other)})`],
     ['Supports / pumps / arrangement', `${formatDataValue(water?.supports)} / ${formatDataValue(water?.pumps_present)} / ${formatDataValue(water?.pump_arrangement)}`],
     ['Power resilience / testing regime', `${formatDataValue(water?.power_resilience)} / ${formatDataValue(water?.testing_regime)}`],
     ['Hydrant/fire main/hose reels', `${formatDataValue(water?.hydrant_coverage)} / ${formatDataValue(water?.fire_main_condition)} / ${formatDataValue(water?.hose_reels_present)}`],
     ['Flow test evidence / date', `${formatDataValue(water?.flow_test_evidence)} / ${formatDataValue(water?.flow_test_date)}`],
     ['Water weaknesses / site comments', `${formatDataValue(water?.key_weaknesses)} / ${formatDataValue(fp?.site?.comments)}`],
+    ['Site water score (1-5)', formatDataValue(fp?.site?.water_score_1_5)],
+    ['Impairment management notes', formatDataValue((module.data as any)?.management?.impairment_management ?? (module.data as any)?.management?.impairment_management_notes)],
+    ['Legacy fixed systems / detection', `${formatDataValue(fp?.sprinklers_present)} / ${formatDataValue(fp?.automatic_detection)} / ${formatDataValue(fp?.hydrants)}`],
     ['Building totals and averages', `${formatDataValue(buildings.length || '')} buildings; avg installed ${Math.round((installed / count) * 10) / 10}% vs avg required ${Math.round((required / count) * 10) / 10}%`],
   ];
 }
@@ -851,7 +867,9 @@ function getExposuresStructuredRows(module: ModuleInstance): Row[] {
 
   return [
     ['Environmental perils', formatDataValue(environmental || exposures?.flood_exposure_level || exposures?.windstorm_exposure_level || exposures?.wildfire_exposure_level)],
+    ['Other peril', `${formatDataValue(perils?.other?.label)} / ${formatDataValue(perils?.other?.rating)} / ${formatDataValue(perils?.other?.notes)}`],
     ['Human exposure / adjoining risk', `${formatDataValue(exposures?.human_exposure?.rating)} / ${formatDataValue(exposures?.adjoining_risk)}`],
+    ['Human exposure notes', formatDataValue(exposures?.human_exposure?.notes)],
     ['Security / arson controls', formatDataValue(exposures?.security?.notes ?? exposures?.arson_controls)],
     ['Drainage / site topography notes', formatDataValue(exposures?.drainage_notes ?? exposures?.site_topography_notes)],
     ['Mitigation / resilience notes', formatDataValue(exposures?.resilience_measures ?? exposures?.mitigation_notes)],
@@ -866,9 +884,10 @@ function getUtilitiesStructuredRows(module: ModuleInstance): Row[] {
   const spof = Array.isArray((d as any).single_points_of_failure) ? (d as any).single_points_of_failure : [];
   return [
     ['Backup power present / capacity', `${formatDataValue(power?.backup_power_present ?? power?.resilience_level)} / ${formatDataValue(power?.generator_capacity_notes ?? power?.backup_generation)}`],
+    ['Power resilience notes', formatDataValue(power?.notes)],
     ['Critical dependencies', formatDataValue((d as any).critical_dependencies)],
-    ['Critical services', services.length ? services.map((item: any) => formatDataValue(item?.service_name ?? item?.name ?? item)).join('\n') : 'Data not provided'],
-    ['Critical equipment', equipment.length ? equipment.map((item: any) => formatDataValue(item?.equipment_name ?? item?.name ?? item)).join('\n') : 'Data not provided'],
+    ['Critical services', services.length ? services.map((item: any) => `${formatDataValue(item?.custom_label ?? item?.service_name ?? item?.service_type ?? item?.name ?? item)} | present ${formatDataValue(item?.present)} | criticality ${formatDataValue(item?.criticality)} | backup ${formatDataValue(item?.backup_available)} | notes ${formatDataValue(item?.notes)}`).join('\n') : 'Data not provided'],
+    ['Critical equipment', equipment.length ? equipment.map((item: any) => `${formatDataValue(item?.custom_label ?? item?.equipment_name ?? item?.equipment_type ?? item?.name ?? item)} (${formatDataValue(item?.tag_or_name)}) | criticality ${formatDataValue(item?.criticality)} | redundancy ${formatDataValue(item?.redundancy)} | spares ${formatDataValue(item?.spares_strategy)} | maintenance ${formatDataValue(item?.maintenance_adequacy_rating)} | condition ${formatDataValue(item?.condition_notes ?? item?.known_issues)} | notes ${formatDataValue(item?.notes)}`).join('\n') : 'Data not provided'],
     ['Single points of failure', spof.length ? spof.map((item: any) => `- ${formatDataValue(item)}`).join('\n') : 'Data not provided'],
   ];
 }
@@ -886,6 +905,7 @@ function getManagementStructuredRows(module: ModuleInstance): Row[] {
     ['Emergency response planning', formatDataValue(management?.emergency_response_plan)],
     ['Impairment controls', formatDataValue(management?.impairment_management ?? management?.impairment_management_notes)],
     ['Category ratings and notes', formatDataValue(categoryRows)],
+    ['Recommendations / actions', Array.isArray(management?.recommendations) ? management.recommendations.map((rec: any) => formatDataValue(rec?.action || rec?.text || rec)).join('\n') : 'Data not provided'],
   ];
 }
 
@@ -895,12 +915,28 @@ function getLossValuesStructuredRows(module: ModuleInstance): Row[] {
   const sums = ((d as any).sums_insured || (d as any).property_sums_insured || {}) as any;
   const bi = ((d as any).business_interruption || sums?.business_interruption || {}) as any;
   return [
+    ['Currency', formatDataValue((d as any)?.currency)],
     ['Buildings / plant & machinery / stock', `${formatDataValue(loss.buildings)} / ${formatDataValue(loss.plantMachinery)} / ${formatDataValue(loss.stock)}`],
     ['Property total (effective)', formatDataValue(loss.effectivePropertyTotal)],
     ['BI gross profit annual / indemnity months', `${formatDataValue(loss.grossProfitAnnual)} / ${formatDataValue(loss.indemnityMonths)}`],
     ['Additional BI notes', formatDataValue(bi?.notes ?? (d as any)?.business_interruption_notes)],
     ['Declared values commentary', formatDataValue((d as any)?.loss_comments ?? (d as any)?.declared_values_notes ?? sums?.notes)],
+    ['Sums insured additional comments', formatDataValue((d as any)?.sums_insured?.additional_comments)],
+    ['WLE scenario / estimate', `${formatDataValue((d as any)?.wle?.scenario_summary ?? (d as any)?.wle?.scenario_description)} | ${formatDataValue((d as any)?.wle?.estimated_total ?? (d as any)?.wle?.estimated_total_loss)}`],
+    ['NLE scenario / estimate', `${formatDataValue((d as any)?.nle?.scenario_summary ?? (d as any)?.nle?.scenario_description)} | ${formatDataValue((d as any)?.nle?.estimated_total ?? (d as any)?.nle?.estimated_total_loss)}`],
   ];
+}
+
+function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): string {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
+  const sprinklerRequiredCount = buildings.filter((b: any) => Number.isFinite(Number(b?.sprinklerData?.sprinkler_coverage_required_pct)) && Number(b?.sprinklerData?.sprinkler_coverage_required_pct) > 0).length;
+  const sprinklerInstalledCount = buildings.filter((b: any) => (b?.sprinklerData?.sprinklers_installed === 'Yes' || Number(b?.sprinklerData?.sprinkler_coverage_installed_pct) > 0)).length;
+  const localisedMissing = buildings.filter((b: any) => b?.sprinklerData?.localised_required === 'Yes' && b?.sprinklerData?.localised_present === 'No').length;
+  const water = fp?.site?.water || {};
+  const reliability = formatDataValue(water?.water_reliability).toLowerCase();
+  const reliabilityNarrative = reliability.includes('reliable') ? 'water supply reliability appears broadly resilient' : reliability.includes('unreliable') ? 'water supply reliability is a material weakness' : 'water supply reliability is uncertain from submitted evidence';
+  return `Engineering Interpretation: Building-level fixed protection records show ${sprinklerInstalledCount} building(s) with installed sprinkler coverage against ${sprinklerRequiredCount} building(s) showing a stated requirement. ${reliabilityNarrative}. Localised/special protection gaps are identified in ${localisedMissing} building(s), and should be prioritised where high-value or high-challenge hazards are present. Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.`;
 }
 
 function buildConstructionScoringBasisText(module: ModuleInstance): string {
@@ -1265,7 +1301,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     const tableRows = getSectionTableRows(module, { breakdown, linkedRecommendationCount });
     if (tableRows.length > 0) {
       ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Section Snapshot', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Section Snapshot', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Detail'], tableRows, { regular: font, bold: fontBold }, {
         colWidths: [195, CONTENT_WIDTH - 195],
         fontSize: 9,
@@ -1279,7 +1315,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       const buildingRows = getConstructionBuildingEvidenceRows(module);
       if (buildingRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + buildingRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
-        yPosition = drawParagraph(page, yPosition, 'Building-level Construction Inputs', fontBold);
+        yPosition = drawBlockHeading(page, yPosition, 'Building-level Construction Inputs', fontBold);
         ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Ref / Name', 'Roof (m²)', 'Upper floors / mezz (m²)', 'Walls combustibility / walls %', 'Storeys', 'Basements', 'Combined cladding', 'Building RE-02 score', 'Combustibility %'], buildingRows, { regular: font, bold: fontBold }, {
           colWidths: [65, 48, 58, 74, 40, 44, 62, 56, 68],
           fontSize: 7.5,
@@ -1290,7 +1326,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
       const siteTotals = getConstructionSiteSummaryRows(module, breakdown);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Site Construction Summary', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Site Construction Summary', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Metric', 'Value'], siteTotals, { regular: font, bold: fontBold }, {
         colWidths: [180, CONTENT_WIDTH - 180],
         fontSize: 8.5,
@@ -1300,12 +1336,12 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
       const scoringBasis = buildConstructionScoringBasisText(module);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Construction Scoring Basis', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Construction Scoring Basis', fontBold);
       yPosition = drawParagraph(page, yPosition, scoringBasis, font);
       yPosition = sectionBreak(yPosition);
       const engineeringInterpretation = buildConstructionEngineeringInterpretation(module, breakdown);
       ({ page, yPosition } = ensurePageSpace(80, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Engineering Interpretation', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
       yPosition = drawParagraph(page, yPosition, engineeringInterpretation, font);
       yPosition = sectionBreak(yPosition);
     }
@@ -1313,9 +1349,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (module.module_key === 'RE_03_OCCUPANCY') {
       const occupancyRows = getOccupancyStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + occupancyRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Process / Use Overview', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Process / Use Overview', fontBold);
       yPosition = drawParagraph(page, yPosition, formatValue((module.data as any)?.occupancy?.process_overview ?? (module.data as any)?.occupancy?.process_description ?? (module.data as any)?.occupancy?.operations_description ?? (module.data as any)?.occupancy?.occupancy_type), font);
-      yPosition = drawParagraph(page, yPosition, 'Occupancy Structured Inputs', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Occupancy Structured Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], occupancyRows, { regular: font, bold: fontBold }, {
         colWidths: [170, CONTENT_WIDTH - 170],
         fontSize: 8.75,
@@ -1325,7 +1361,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
       const occupancyInterpretation = buildOccupancyEngineeringInterpretation(module);
       ({ page, yPosition } = ensurePageSpace(80, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Engineering Interpretation', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
       yPosition = drawParagraph(page, yPosition, occupancyInterpretation, font);
       yPosition = sectionBreak(yPosition);
     }
@@ -1334,7 +1370,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       const buildingRows = getFireProtectionBuildingRows(module);
       if (buildingRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(110 + buildingRows.length * 22, page, yPosition, pdfDoc, isDraft, totalPages));
-        yPosition = drawParagraph(page, yPosition, 'Fire Protection Module Inputs (Building Detail)', fontBold);
+        yPosition = drawBlockHeading(page, yPosition, 'Fire Protection Detail Table / Structured Inputs', fontBold);
         ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Active Protection', 'Detection / Scores'], buildingRows, { regular: font, bold: fontBold }, {
           colWidths: [70, 205, CONTENT_WIDTH - 275],
           fontSize: 8,
@@ -1345,7 +1381,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
       const siteRows = getFireProtectionSiteRows(module);
       ({ page, yPosition } = ensurePageSpace(105 + siteRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Fire Protection Site / Reliability Inputs', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Fire Protection Site / Reliability Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], siteRows, { regular: font, bold: fontBold }, {
         colWidths: [185, CONTENT_WIDTH - 185],
         fontSize: 8.5,
@@ -1355,7 +1391,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
       const supplementaryRows = getFireProtectionSupplementaryRows(module);
       ({ page, yPosition } = ensurePageSpace(95 + supplementaryRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Supplementary Engineering Assessment (10-question output)', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Supplementary Engineering Assessment (10-question output)', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], supplementaryRows, { regular: font, bold: fontBold }, {
         colWidths: [205, CONTENT_WIDTH - 205],
         fontSize: 8.5,
@@ -1363,12 +1399,17 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
       yPosition = sectionBreak(yPosition);
+      const fireInterpretation = buildFireProtectionEngineeringInterpretation(module);
+      ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
+      yPosition = drawParagraph(page, yPosition, fireInterpretation, font);
+      yPosition = sectionBreak(yPosition);
     }
 
     if (module.module_key === 'RE_07_NATURAL_HAZARDS') {
       const exposuresRows = getExposuresStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + exposuresRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Exposures Structured Inputs', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Exposures Structured Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], exposuresRows, { regular: font, bold: fontBold }, {
         colWidths: [190, CONTENT_WIDTH - 190],
         fontSize: 8.5,
@@ -1381,7 +1422,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (module.module_key === 'RE_08_UTILITIES') {
       const utilitiesRows = getUtilitiesStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + utilitiesRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Utilities Structured Inputs', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Utilities Structured Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], utilitiesRows, { regular: font, bold: fontBold }, {
         colWidths: [180, CONTENT_WIDTH - 180],
         fontSize: 8.5,
@@ -1394,7 +1435,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (module.module_key === 'RE_09_MANAGEMENT') {
       const managementRows = getManagementStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + managementRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Management Structured Inputs', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Management Structured Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], managementRows, { regular: font, bold: fontBold }, {
         colWidths: [180, CONTENT_WIDTH - 180],
         fontSize: 8.5,
@@ -1407,7 +1448,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (module.module_key === 'RE_12_LOSS_VALUES') {
       const lossRows = getLossValuesStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + lossRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Loss & Values Structured Inputs', fontBold);
+      yPosition = drawBlockHeading(page, yPosition, 'Loss & Values Structured Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], lossRows, { regular: font, bold: fontBold }, {
         colWidths: [185, CONTENT_WIDTH - 185],
         fontSize: 8.5,
@@ -1419,7 +1460,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
     const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
     ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
-    yPosition = drawParagraph(page, yPosition, 'Narrative Commentary', fontBold);
+    yPosition = drawBlockHeading(page, yPosition, 'Narrative Commentary', fontBold);
     yPosition = drawParagraph(page, yPosition, commentary, font);
     yPosition = sectionBreak(yPosition);
 
