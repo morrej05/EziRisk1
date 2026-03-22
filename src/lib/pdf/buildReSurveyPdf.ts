@@ -14,6 +14,7 @@ import {
 import { drawSectionHeaderBar, drawRiskSignificanceBlock, SignificanceLevel } from './pdfPrimitives';
 import { buildRiskEngineeringScoreBreakdown } from '../re/scoring/riskEngineeringHelpers';
 import { getModuleDisplayName } from '../modules/moduleDisplay';
+import { addIssuedReportPages } from './issuedPdfPages';
 
 interface DocumentMeta {
   client?: { name?: string };
@@ -419,9 +420,28 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
 }
 
 
-function getNarrativeCommentary(module: ModuleInstance): string {
+function resolveSectionRating(module: ModuleInstance, breakdown: Breakdown): number | null {
+  const direct = getRatingFromModule(module);
+  if (direct && Number.isFinite(direct)) return direct;
+
+  if (module.module_key === 'RE_02_CONSTRUCTION') {
+    return breakdown.globalPillars.find((p) => p.key === 'construction_and_combustibility')?.rating ?? null;
+  }
+  if (module.module_key === 'RE_03_OCCUPANCY') {
+    const weighted = breakdown.occupancyDrivers.filter((driver) => Number.isFinite(Number(driver.rating)) && driver.weight > 0);
+    if (weighted.length === 0) return null;
+    const totalWeight = weighted.reduce((sum, driver) => sum + driver.weight, 0);
+    if (totalWeight <= 0) return null;
+    const weightedAverage = weighted.reduce((sum, driver) => sum + Number(driver.rating) * driver.weight, 0) / totalWeight;
+    return Math.max(1, Math.min(5, Math.round(weightedAverage * 10) / 10));
+  }
+
+  return null;
+}
+
+function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: Breakdown): string {
   const notes = sanitizePdfText(module.assessor_notes || '').trim();
-  const rating = getRatingFromModule(module);
+  const rating = resolveSectionRating(module, breakdown);
   const scoreBand = getScoreBand(rating);
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
@@ -509,7 +529,7 @@ function getMaterialPercent(
   return Math.max(0, Math.min(100, Math.round(total * 10) / 10));
 }
 
-function getConstructionBuildingRows(module: ModuleInstance): Row[] {
+function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
   return buildings.map((building: any): Row => {
@@ -517,6 +537,7 @@ function getConstructionBuildingRows(module: ModuleInstance): Row[] {
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
     const wallsCombPct = getMaterialPercent(building?.walls?.breakdown, true);
+    const wallsPct = Number.isFinite(Number(building?.walls?.total_percent)) ? Number(building.walls.total_percent) : null;
     const storeys = building?.geometry?.floors ?? building?.storeys;
     const basements = building?.geometry?.basements ?? building?.basements;
     const claddingPresent = Boolean(building?.combustible_cladding?.present ?? (building?.cladding_present && building?.cladding_combustible));
@@ -525,12 +546,34 @@ function getConstructionBuildingRows(module: ModuleInstance): Row[] {
       : 'No';
     const score = building?.calculated?.construction_rating ?? building?.calculated?.re02 ?? building?.re02_score;
     const combustibility = building?.calculated?.combustible_percent ?? getMaterialPercent(building?.roof?.breakdown, true);
-
     return [
       formatValue(refOrName),
-      `Roof ${formatValue(roofArea)} m² | Mezz ${formatValue(mezzArea)} m² | Walls combust. ${formatValue(wallsCombPct)}% | Storeys ${formatValue(storeys)} | Basements ${formatValue(basements)} | Comb. cladding ${cladding} | RE-02 ${formatValue(score)} | Combustibility ${formatValue(combustibility)}%`,
+      formatValue(roofArea),
+      formatValue(mezzArea),
+      `${formatValue(wallsCombPct)}% / ${formatValue(wallsPct)}%`,
+      formatValue(storeys),
+      formatValue(basements),
+      sanitizePdfText(cladding),
+      formatValue(score),
+      `${formatValue(combustibility)}%`,
     ];
   });
+}
+
+function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Breakdown): Row[] {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const totalRoofArea = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.roof?.area_sqm ?? b?.roof_area_m2), 0);
+  const totalMezzArea = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.upper_floors_mezzanine?.area_sqm ?? b?.mezzanine_area_m2), 0);
+  const pillarScore = breakdown.globalPillars.find((p) => p.key === 'construction_and_combustibility');
+  const siteScore = construction?.site_re02_score ?? construction?.calculated?.site_construction_rating ?? construction?.site_totals?.site_re02_score ?? pillarScore?.rating;
+  const combustiblePct = construction?.site_combustible_percent ?? construction?.calculated?.site_combustible_percent ?? construction?.site_totals?.site_combustible_percent ?? pillarScore?.metadata?.site_combustible_percent;
+  return [
+    ['Site totals (roof m² / mezz m²)', `${formatValue(totalRoofArea)} / ${formatValue(totalMezzArea)}`],
+    ['Site RE-02 score', `${formatValue(siteScore)}`],
+    ['Site combustible %', `${formatValue(combustiblePct)}%`],
+    ['Site-level construction notes', formatValue(construction.site_notes)],
+  ];
 }
 
 function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
@@ -636,9 +679,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
   console.log('[PDF RE Survey] Render mode:', isIssuedMode ? 'ISSUED' : 'DRAFT');
 
-  let { page } = addNewPage(pdfDoc, isDraft, totalPages);
-  let yPosition = PAGE_TOP_Y;
-
   const modulesToInclude = selectedModules
     ? moduleInstances.filter(m => selectedModules.includes(m.module_key))
     : moduleInstances;
@@ -646,6 +686,41 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
   const riskEngineeringData = modulesByKey.get('RISK_ENGINEERING')?.data || {};
   const breakdown = options.scoreBreakdownOverride || await buildRiskEngineeringScoreBreakdown(document.id, riskEngineeringData);
+  const sectionStartPages = new Map<string, number>();
+
+  const { coverPage, docControlPage } = await addIssuedReportPages({
+    pdfDoc,
+    document: {
+      id: document.id,
+      title: document.title,
+      document_type: 'RE',
+      version_number: Number(document.version_number || document.version || 1),
+      issue_date: (document.issue_date || document.assessment_date) || new Date().toISOString(),
+      issue_status: isIssuedMode ? 'issued' : 'draft',
+      assessor_name: document.assessor_name,
+      base_document_id: document.base_document_id,
+    },
+    organisation: {
+      id: organisation.id,
+      name: organisation.name,
+      branding_logo_path: organisation.branding_logo_path,
+    },
+    client: {
+      name: document.meta?.client?.name || document.responsible_person || '',
+      site: document.meta?.site?.name || document.scope_description || '',
+    },
+    fonts: { bold: fontBold, regular: font },
+  });
+  totalPages.push(coverPage);
+
+  let { page } = addNewPage(pdfDoc, isDraft, totalPages);
+  let yPosition = PAGE_TOP_Y;
+  const contentsPage = page;
+  sectionStartPages.set('Contents', totalPages.length);
+
+  page = addNewPage(pdfDoc, isDraft, totalPages).page;
+  yPosition = PAGE_TOP_Y;
+  sectionStartPages.set('Executive Summary', totalPages.length);
 
   ({ page, yPosition } = ensurePageSpace(110, page, yPosition, pdfDoc, isDraft, totalPages));
   yPosition = drawSectionHeaderBar({
@@ -732,6 +807,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
   yPosition -= 8;
 
+  page = addNewPage(pdfDoc, isDraft, totalPages).page;
+  yPosition = PAGE_TOP_Y;
+  sectionStartPages.set('Risk Scoring Summary', totalPages.length);
   ({ page, yPosition } = ensurePageSpace(220, page, yPosition, pdfDoc, isDraft, totalPages));
   yPosition = drawSectionHeaderBar({
     page,
@@ -792,34 +870,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
   }));
 
-  ({ page, yPosition } = ensurePageSpace(180, page, yPosition, pdfDoc, isDraft, totalPages));
-  yPosition = drawSectionHeaderBar({
-    page,
-    x: MARGIN,
-    y: yPosition,
-    w: CONTENT_WIDTH,
-    title: 'Document Control',
-    product: 're',
-    fonts: { regular: font, bold: fontBold },
-  });
-  ({ page, yPosition } = drawSimpleTable(
-    page,
-    yPosition,
-    ['Control item', 'Value'],
-    [
-      ['Document ID', formatValue(document.id)],
-      ['Assessment date', formatValue(formatDate(document.assessment_date || null))],
-      ['Review date', formatValue(formatDate(document.review_date || null))],
-      ['Issue date', formatValue(formatDate((document.issue_date || document.assessment_date) || null))],
-      ['Assessor', formatValue(document.assessor_name)],
-      ['Assessor role', formatValue(document.assessor_role)],
-      ['Responsible person', formatValue(document.responsible_person)],
-    ],
-    { regular: font, bold: fontBold },
-    {
-      onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
-    }
-  ));
+  totalPages.push(docControlPage);
+  sectionStartPages.set('Document Control', totalPages.length);
+  page = addNewPage(pdfDoc, isDraft, totalPages).page;
+  yPosition = PAGE_TOP_Y;
 
   const orderedSections = [
     'RE_02_CONSTRUCTION',
@@ -838,6 +892,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ({ page, yPosition } = ensurePageSpace(170, page, yPosition, pdfDoc, isDraft, totalPages));
 
     const sectionTitle = RE_SECTION_CONFIG[module.module_key]?.title || getModuleDisplayName(module.module_key);
+    if (!sectionStartPages.has(sectionTitle)) {
+      sectionStartPages.set(sectionTitle, totalPages.length);
+    }
     yPosition = drawSectionHeaderBar({
       page,
       x: MARGIN,
@@ -862,23 +919,34 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_02_CONSTRUCTION') {
-      const buildingRows = getConstructionBuildingRows(module);
+      const buildingRows = getConstructionBuildingEvidenceRows(module);
       if (buildingRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + buildingRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawParagraph(page, yPosition, 'Building-level Construction Inputs', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Module detail'], buildingRows, { regular: font, bold: fontBold }, {
-          colWidths: [140, CONTENT_WIDTH - 140],
-          fontSize: 8.5,
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Ref / Name', 'Roof (m²)', 'Upper floors / mezz (m²)', 'Walls combustibility / walls %', 'Storeys', 'Basements', 'Combined cladding', 'Building RE-02 score', 'Combustibility %'], buildingRows, { regular: font, bold: fontBold }, {
+          colWidths: [65, 48, 58, 74, 40, 44, 62, 56, 68],
+          fontSize: 7.5,
           minRowHeight: 20,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
       }
+      const siteTotals = getConstructionSiteSummaryRows(module, breakdown);
+      ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawParagraph(page, yPosition, 'Site Construction Summary', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Metric', 'Value'], siteTotals, { regular: font, bold: fontBold }, {
+        colWidths: [180, CONTENT_WIDTH - 180],
+        fontSize: 8.5,
+        minRowHeight: 18,
+        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+      }));
     }
 
     if (module.module_key === 'RE_03_OCCUPANCY') {
       const occupancyRows = getOccupancyStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + occupancyRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawParagraph(page, yPosition, 'Occupancy Module Inputs', fontBold);
+      yPosition = drawParagraph(page, yPosition, 'Process / Use Overview', fontBold);
+      yPosition = drawParagraph(page, yPosition, formatValue((module.data as any)?.occupancy?.process_overview ?? (module.data as any)?.occupancy?.process_description ?? (module.data as any)?.occupancy?.operations_description ?? (module.data as any)?.occupancy?.occupancy_type), font);
+      yPosition = drawParagraph(page, yPosition, 'Occupancy Structured Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], occupancyRows, { regular: font, bold: fontBold }, {
         colWidths: [170, CONTENT_WIDTH - 170],
         fontSize: 8.75,
@@ -887,7 +955,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }));
     }
 
-    const commentary = getNarrativeCommentary(module);
+    const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
     ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
     yPosition = drawParagraph(page, yPosition, 'Narrative Commentary', fontBold);
     yPosition = drawParagraph(page, yPosition, commentary, font);
@@ -909,6 +977,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     yPosition -= 10;
   }
 
+  sectionStartPages.set('Conclusion', totalPages.length);
   ({ page, yPosition } = ensurePageSpace(130, page, yPosition, pdfDoc, isDraft, totalPages));
   yPosition = drawSectionHeaderBar({
     page,
@@ -930,6 +999,34 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     narrative: conclusion,
     fonts: { regular: font, bold: fontBold },
   }).y;
+
+  contentsPage.drawText('Contents', {
+    x: MARGIN,
+    y: PAGE_TOP_Y,
+    size: 18,
+    font: fontBold,
+    color: rgb(0.08, 0.08, 0.08),
+  });
+  const contentsRows: Array<[string, number | undefined]> = [
+    ['Executive Summary', sectionStartPages.get('Executive Summary')],
+    ['Risk Scoring Summary', sectionStartPages.get('Risk Scoring Summary')],
+    ['Document Control', sectionStartPages.get('Document Control')],
+    ['Construction', sectionStartPages.get('Construction')],
+    ['Occupancy', sectionStartPages.get('Occupancy')],
+    ['Fire Protection', sectionStartPages.get('Fire Protection')],
+    ['Exposures', sectionStartPages.get('Exposures')],
+    ['Utilities & Critical Services', sectionStartPages.get('Utilities & Critical Services')],
+    ['Management Systems', sectionStartPages.get('Management Systems')],
+    ['Loss & Values', sectionStartPages.get('Loss & Values')],
+    ['Conclusion', sectionStartPages.get('Conclusion')],
+  ];
+  let tocY = PAGE_TOP_Y - 34;
+  for (const [label, pageNo] of contentsRows) {
+    const safePage = pageNo ?? '-';
+    contentsPage.drawText(label, { x: MARGIN, y: tocY, size: 11, font, color: rgb(0.15, 0.15, 0.15) });
+    contentsPage.drawText(String(safePage), { x: MARGIN + CONTENT_WIDTH - 20, y: tocY, size: 11, font: fontBold, color: rgb(0.15, 0.15, 0.15) });
+    tocY -= 18;
+  }
 
   for (let i = 0; i < totalPages.length; i++) {
     drawFooter(totalPages[i], document.title, i + 1, totalPages.length, font);
