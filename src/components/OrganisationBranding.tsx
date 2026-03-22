@@ -17,6 +17,25 @@ export default function OrganisationBranding() {
     loadOrganisationBranding();
   }, [user]);
 
+  function normalizeOrgLogoPath(path: string | null | undefined): string | null {
+    const trimmed = path?.trim();
+    if (!trimmed) return null;
+
+    // Do not send full URLs to createSignedUrl; it expects bucket-relative object path.
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return null;
+
+    // Historical/stale rows may store "org-assets/org-logos/...".
+    const withoutBucketPrefix = trimmed.startsWith('org-assets/')
+      ? trimmed.slice('org-assets/'.length)
+      : trimmed;
+
+    // Guard leading slash to avoid malformed object keys.
+    const normalized = withoutBucketPrefix.replace(/^\/+/, '');
+    if (!normalized || normalized === 'org-assets') return null;
+
+    return normalized;
+  }
+
   async function loadOrganisationBranding() {
     if (!user) return;
 
@@ -46,14 +65,25 @@ export default function OrganisationBranding() {
 
       if (orgError) throw orgError;
 
-      if (org?.branding_logo_path) {
-        setLogoPath(org.branding_logo_path);
-        const { data } = await supabase.storage
-          .from('org-assets')
-          .createSignedUrl(org.branding_logo_path, 3600);
+      const normalizedLogoPath = normalizeOrgLogoPath(org?.branding_logo_path);
 
-        if (data?.signedUrl) {
+      if (normalizedLogoPath) {
+        setLogoPath(normalizedLogoPath);
+        const { data, error: signError } = await supabase.storage
+          .from('org-assets')
+          .createSignedUrl(normalizedLogoPath, 3600);
+
+        if (signError) {
+          console.warn('Skipping org logo signed URL generation due to invalid/stale path:', {
+            rawPath: org?.branding_logo_path,
+            normalizedPath: normalizedLogoPath,
+            error: signError.message,
+          });
+          setLogoUrl(null);
+        } else if (data?.signedUrl) {
           setLogoUrl(data.signedUrl);
+        } else {
+          setLogoUrl(null);
         }
       } else {
         setLogoPath(null);
