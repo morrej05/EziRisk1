@@ -189,32 +189,22 @@ export default function OrganisationBranding() {
       setError(null);
       setSuccess(null);
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        throw new Error(`Authentication error: ${sessionError.message}`);
+      // Force user validation before invoking the function so auth state is current.
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError || !authData.user) {
+        throw new Error(authError?.message || 'You must be signed in to remove a logo.');
       }
 
-      if (!session?.access_token) {
-        throw new Error('You must be signed in to remove a logo.');
+      const { data: result, error: invokeError } = await supabase.functions.invoke('delete-org-logo', {
+        body: { organisation_id: organisationId },
+      });
+
+      if (invokeError) {
+        throw new Error(invokeError.message || 'Delete failed');
       }
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-org-logo`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ organisation_id: organisationId }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result?.error || `Delete failed (${response.status})`);
+      if (result?.error) {
+        throw new Error(result.error);
       }
 
       setSuccess('Logo removed successfully');

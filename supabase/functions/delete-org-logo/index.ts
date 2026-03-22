@@ -21,6 +21,7 @@ Deno.serve(async (req: Request) => {
   try {
     const token = getBearerToken(req);
     if (!token) {
+      console.warn("[delete-org-logo] Missing or malformed Authorization header");
       return respond(401, { error: "Missing or malformed Authorization header" });
     }
 
@@ -32,6 +33,7 @@ Deno.serve(async (req: Request) => {
 
     const { user, error: authError } = await requireAuthenticatedUser(supabaseClient, req);
     if (authError || !user) {
+      console.warn("[delete-org-logo] auth.getUser(token) failed", { authError: authError ?? "Unauthorized" });
       return respond(401, { error: authError ?? "Unauthorized" });
     }
 
