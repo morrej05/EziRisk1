@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Menu, X, Shield } from 'lucide-react';
-import { resolveLogoUrl } from '../../lib/pdf/pdfUtils';
+import { resolveLogoUrl } from '../../utils/logo';
 
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);

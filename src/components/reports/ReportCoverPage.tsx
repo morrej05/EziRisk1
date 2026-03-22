@@ -1,6 +1,6 @@
 import { Shield } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { DEFAULT_LOGO } from '../../lib/pdf/pdfUtils';
+import { DEFAULT_LOGO, resolveLogoUrl } from '../../utils/logo';
 
 interface ReportCoverPageProps {
   reportType: 'survey' | 'recommendation';
@@ -23,19 +23,15 @@ export default function ReportCoverPage({
   clientAddress,
   isDraft = false,
 }: ReportCoverPageProps) {
-  const normalizedClientLogoUrl = clientLogoUrl?.trim() || null;
-  const hasClientLogo = Boolean(normalizedClientLogoUrl);
-
-  const [logoSrc, setLogoSrc] = useState<string>(
-    hasClientLogo ? normalizedClientLogoUrl! : DEFAULT_LOGO,
-  );
+  const preferredLogo = resolveLogoUrl(clientLogoUrl);
+  const [logoSrc, setLogoSrc] = useState<string>(preferredLogo);
   const [showTextFallback, setShowTextFallback] = useState(false);
   const isDefaultLogo = logoSrc === DEFAULT_LOGO;
 
   useEffect(() => {
-    setLogoSrc(hasClientLogo ? normalizedClientLogoUrl! : DEFAULT_LOGO);
+    setLogoSrc(resolveLogoUrl(clientLogoUrl));
     setShowTextFallback(false);
-  }, [hasClientLogo, normalizedClientLogoUrl]);
+  }, [clientLogoUrl]);
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return null;
@@ -75,7 +71,7 @@ export default function ReportCoverPage({
           {!showTextFallback ? (
             <div className="w-80 h-24 flex items-center justify-center">
               <img
-                src={isDefaultLogo ? '/ezirisk-logo-primary.svg' : logoSrc}
+                src={logoSrc}
                 alt={isDefaultLogo ? 'EziRisk Logo' : 'Client Logo'}
                 width={320}
                 height={96}
