@@ -198,15 +198,23 @@ export default function OrganisationBranding() {
         throw new Error('You must be signed in to remove a logo.');
       }
 
-      const { data: result, error: invokeError } = await supabase.functions.invoke('delete-org-logo', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: { organisation_id: organisationId },
-      });
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-org-logo`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ organisation_id: organisationId }),
+        }
+      );
 
-      if (invokeError) {
-        throw new Error(result?.error || invokeError.message || 'Delete failed');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || `Delete failed (${response.status})`);
       }
 
       setSuccess('Logo removed successfully');
