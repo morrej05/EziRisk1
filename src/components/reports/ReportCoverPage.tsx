@@ -1,6 +1,6 @@
 import { Shield } from 'lucide-react';
-import { useState } from 'react';
-import { resolveLogoUrl } from '../../lib/pdf/pdfUtils';
+import { useEffect, useMemo, useState } from 'react';
+import { DEFAULT_LOGO } from '../../lib/pdf/pdfUtils';
 
 interface ReportCoverPageProps {
   reportType: 'survey' | 'recommendation';
@@ -23,7 +23,20 @@ export default function ReportCoverPage({
   clientAddress,
   isDraft = false,
 }: ReportCoverPageProps) {
-  const [logoError, setLogoError] = useState(false);
+  const [logoStage, setLogoStage] = useState<'client' | 'default' | 'text'>(
+    clientLogoUrl ? 'client' : 'default',
+  );
+
+  useEffect(() => {
+    setLogoStage(clientLogoUrl ? 'client' : 'default');
+  }, [clientLogoUrl]);
+
+  const logoSrc = useMemo(() => {
+    if (logoStage === 'client') return clientLogoUrl || DEFAULT_LOGO;
+    if (logoStage === 'default') return DEFAULT_LOGO;
+    return null;
+  }, [clientLogoUrl, logoStage]);
+
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return null;
     try {
@@ -59,12 +72,18 @@ export default function ReportCoverPage({
 
       <div className="relative z-10 text-center max-w-2xl space-y-12">
         <div className="flex justify-center mb-8">
-          {!logoError ? (
+          {logoStage !== 'text' && logoSrc ? (
             <img
-              src={resolveLogoUrl(clientLogoUrl)}
-              alt={clientLogoUrl ? 'Client Logo' : 'EziRisk Logo'}
+              src={logoSrc}
+              alt={logoStage === 'client' ? 'Client Logo' : 'EziRisk Logo'}
               className="max-h-24 max-w-xs object-contain"
-              onError={() => setLogoError(true)}
+              onError={() => {
+                if (logoStage === 'client') {
+                  setLogoStage('default');
+                  return;
+                }
+                setLogoStage('text');
+              }}
             />
           ) : (
             <div className="flex items-center gap-3">
