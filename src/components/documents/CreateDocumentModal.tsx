@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { canAccessRiskEngineering } from '../../utils/entitlements';
+import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 import { getStandardsOptions } from '../../lib/jurisdictions';
 
 interface CreateDocumentModalProps {
@@ -140,6 +141,12 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
     setIsSubmitting(true);
 
     try {
+      const creationEntitlement = await getReportCreationEntitlement(organisation.id);
+      if (!creationEntitlement.allowed) {
+        alert(creationEntitlement.reason || 'Your current plan cannot create more reports.');
+        navigate('/upgrade');
+        return;
+      }
       const enabledModules = formData.enabledModules;
       const primaryDocumentType = enabledModules.includes('FRA') ? 'FRA' :
                                   enabledModules.includes('FSD') ? 'FSD' :
@@ -215,7 +222,11 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
       navigate(`/documents/${document.id}`);
     } catch (error) {
       console.error('Error creating document:', error);
-      alert('Failed to create document. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to create document. Please try again.';
+      alert(message);
+      if (message.toLowerCase().includes('upgrade') || message.toLowerCase().includes('trial')) {
+        navigate('/upgrade');
+      }
     } finally {
       setIsSubmitting(false);
     }

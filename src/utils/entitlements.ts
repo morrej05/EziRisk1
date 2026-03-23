@@ -75,6 +75,7 @@ export interface Organisation {
   billing_cycle?: 'monthly' | 'annual' | null;
   created_at?: string;
   updated_at?: string;
+  trial_ends_at?: string | null;
 }
 
 export interface User {
