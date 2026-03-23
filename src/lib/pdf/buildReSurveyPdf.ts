@@ -839,10 +839,16 @@ function getConstructionRoofWallEvidenceRows(module: ModuleInstance): Row[] {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofConstructionEvidence = resolveRoofConstructionEvidence(building, construction);
     const wallsConstructionEvidence = resolveWallConstructionEvidence(building, construction);
+    const compartmentationEvidence =
+      building?.compartmentation_quality ??
+      building?.compartmentation ??
+      building?.fire_compartmentation ??
+      building?.compartmentation_minutes;
     return [
       formatDataValue(refOrName),
       roofConstructionEvidence,
       wallsConstructionEvidence,
+      normalizeCompartmentationLabel(compartmentationEvidence),
     ];
   });
 
@@ -851,10 +857,10 @@ function getConstructionRoofWallEvidenceRows(module: ModuleInstance): Row[] {
   const hasSiteRoofEvidence = siteRoofEvidence !== 'Data not provided';
   const hasSiteWallEvidence = siteWallEvidence !== 'Data not provided';
   if (hasSiteRoofEvidence || hasSiteWallEvidence) {
-    buildingRows.push(['Site-level evidence', siteRoofEvidence, siteWallEvidence]);
+    buildingRows.push(['Site-level evidence', siteRoofEvidence, siteWallEvidence, 'Data not provided']);
   }
 
-  return compactRows(buildingRows, ['roof construction', 'wall construction']);
+  return compactRows(buildingRows, ['roof construction', 'wall construction', 'compartmentation']);
 }
 
 function summarizeMaterialBreakdown(breakdown: unknown): string {
@@ -1675,8 +1681,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         ({ page, yPosition } = ensurePageSpace(100 + roofWallEvidenceRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Building construction evidence', fontBold);
         yPosition = sectionBreak(yPosition, 8);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof construction', 'Wall construction'], roofWallEvidenceRows, { regular: font, bold: fontBold }, {
-          colWidths: [90, 176, CONTENT_WIDTH - 266],
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof construction', 'Wall construction', 'Compartmentation'], roofWallEvidenceRows, { regular: font, bold: fontBold }, {
+          colWidths: [82, 150, 150, CONTENT_WIDTH - 382],
           fontSize: 8.25,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
@@ -1851,11 +1857,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
     }
 
-    const interpretation = buildSectionInterpretation(module, breakdown);
-    ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
-    yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
-    yPosition = drawParagraph(page, yPosition, interpretation, font);
-    yPosition = sectionBreak(yPosition, 44);
+    if (module.module_key !== 'RE_02_CONSTRUCTION') {
+      const interpretation = buildSectionInterpretation(module, breakdown);
+      ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
+      yPosition = drawParagraph(page, yPosition, interpretation, font);
+      yPosition = sectionBreak(yPosition, 44);
+    }
 
     if (module.module_key !== 'RE_02_CONSTRUCTION') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
