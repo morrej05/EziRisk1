@@ -64,6 +64,10 @@ interface ReSurveySitePhoto {
   caption?: string;
   description?: string;
   notes?: string;
+  metadata?: {
+    description?: string;
+    caption?: string;
+  };
   uploaded_at?: string;
 }
 
@@ -77,6 +81,9 @@ interface Action {
   id: string;
   reference_number?: string | null;
   recommended_action: string;
+  action_required_text?: string | null;
+  description?: string | null;
+  title?: string | null;
   priority_band: string;
   status: string;
   completed_at?: string | null;
@@ -1119,9 +1126,6 @@ function getFireProtectionCoverageTable(module: ModuleInstance): { headers: stri
     'Required coverage',
     'System type',
     'Design standard',
-    'Density / area',
-    'Pressure',
-    'No. of heads',
   ];
   const rows = compactRows(Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
     const sprinklerData = buildingData?.sprinklerData || {};
@@ -1133,38 +1137,58 @@ function getFireProtectionCoverageTable(module: ModuleInstance): { headers: stri
       resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_required_pct)),
       resolveFireProtectionField(sprinklerData?.system_type),
       resolveFireProtectionField(sprinklerData?.standard ?? sprinklerData?.sprinkler_standard),
+    ];
+  }), ['sprinklers present', 'installed coverage', 'required coverage']);
+
+  const widthMap: Record<string, number> = {
+    Building: 88,
+    'Sprinklers present': 72,
+    'Installed coverage': 72,
+    'Required coverage': 72,
+    'System type': 88,
+  };
+  const fixedWidth = baseHeaders
+    .filter((header) => header !== 'Design standard')
+    .reduce((sum, header) => sum + (widthMap[header] ?? 70), 0);
+  const colWidths = baseHeaders.map((header) => (
+    header === 'Design standard' ? Math.max(86, CONTENT_WIDTH - fixedWidth) : (widthMap[header] ?? 70)
+  ));
+
+  return { headers: baseHeaders, rows, colWidths };
+}
+
+function getFireProtectionDesignHydraulicTable(module: ModuleInstance): { headers: string[]; rows: Row[]; colWidths: number[] } {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const buildings = fp?.buildings || {};
+  const baseHeaders = ['Building', 'Hazard class', 'Density / area', 'Pressure', 'No. of heads'];
+  const rawRows = Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
+    const sprinklerData = buildingData?.sprinklerData || {};
+    return [
+      formatDataValue(resolveBuildingDisplayName(buildingId, buildingData, index)),
+      resolveFireProtectionField(sprinklerData?.hazard_class),
       resolveFireProtectionField(sprinklerData?.density_area),
       resolveFireProtectionField(sprinklerData?.pressure),
       resolveFireProtectionField(sprinklerData?.number_of_heads),
     ];
-  }), ['sprinklers present', 'installed coverage', 'required coverage']);
-
+  });
+  const rows = compactRows(rawRows, ['density / area', 'pressure', 'no. of heads']);
   const retainedIndexes = baseHeaders
     .map((_, index) => index)
-    .filter((index) => {
-      if (index <= 5) return true;
-      return rows.some((row) => !isNotProvidedValue(row[index]));
-    });
-
-  const widthMap: Record<string, number> = {
-    Building: 72,
-    'Sprinklers present': 57,
-    'Installed coverage': 58,
-    'Required coverage': 58,
-    'System type': 66,
-    'Design standard': 64,
-    'Density / area': 58,
-    Pressure: 48,
-  };
-  const fixedWidth = retainedIndexes.reduce((sum, index) => {
-    const header = baseHeaders[index];
-    if (header === 'No. of heads') return sum;
-    return sum + (widthMap[header] ?? 55);
-  }, 0);
+    .filter((index) => index === 0 || rows.some((row) => !isNotProvidedValue(row[index])));
   const headers = retainedIndexes.map((index) => baseHeaders[index]);
   const rowsByHeader = rows.map((row) => retainedIndexes.map((index) => row[index]) as Row);
+
+  const widthMap: Record<string, number> = {
+    Building: 100,
+    'Hazard class': 90,
+    'Density / area': 108,
+    Pressure: 86,
+  };
+  const fixedWidth = headers
+    .filter((header) => header !== 'No. of heads')
+    .reduce((sum, header) => sum + (widthMap[header] ?? 90), 0);
   const colWidths = headers.map((header) => (
-    header === 'No. of heads' ? Math.max(46, CONTENT_WIDTH - fixedWidth) : (widthMap[header] ?? 55)
+    header === 'No. of heads' ? Math.max(80, CONTENT_WIDTH - fixedWidth) : (widthMap[header] ?? 90)
   ));
 
   return { headers, rows: rowsByHeader, colWidths };
@@ -1226,8 +1250,11 @@ function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
   const required = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.sprinklerData?.sprinkler_coverage_required_pct), 0);
   const count = Math.max(buildings.length, 1);
   const rows: Row[] = [
-    ['Water reliability / supply type', resolveFireProtectionField(water?.water_reliability, water?.supply_type, water?.supply_type_other)],
+    ['Water reliability', resolveFireProtectionField(water?.water_reliability)],
     ['Supports / pumps / arrangement', resolveFireProtectionField(water?.supports, water?.pumps_present, water?.pump_arrangement)],
+    ['Pump rating / pressure / flow / RPM', resolveFireProtectionField(water?.pump_rating, water?.pump_pressure, water?.pump_flow, water?.pump_rpm)],
+    ['Water supply type', resolveFireProtectionField(water?.supply_type, water?.supply_type_other)],
+    ['Capacity', resolveFireProtectionField(water?.capacity)],
     ['Power resilience / testing regime', resolveFireProtectionField(water?.power_resilience, water?.testing_regime)],
     ['Hydrant/fire main/hose reels', resolveFireProtectionField(water?.hydrant_coverage, water?.fire_main_condition, water?.hose_reels_present)],
     ['Flow test evidence / date', resolveFireProtectionField(water?.flow_test_evidence, water?.flow_test_date)],
@@ -1764,34 +1791,70 @@ function isSupportedImagePath(path: string): boolean {
   return /\.(png|jpg|jpeg)$/i.test(path);
 }
 
-async function fetchEvidenceImageBytes(storagePath: string): Promise<Uint8Array | null> {
-  try {
-    const { data, error } = await supabase.storage
-      .from('evidence')
-      .createSignedUrl(storagePath, 300);
-    if (error || !data?.signedUrl) {
-      console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
+async function fetchEvidenceImageBytes(
+  storagePath: string,
+  bytesCache?: Map<string, Promise<Uint8Array | null>>
+): Promise<Uint8Array | null> {
+  const cached = bytesCache?.get(storagePath);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('evidence')
+        .createSignedUrl(storagePath, 300);
+      if (error || !data?.signedUrl) {
+        console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
+        return null;
+      }
+      const response = await fetch(data.signedUrl);
+      if (!response.ok) {
+        console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
+        return null;
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    } catch (error) {
+      console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
       return null;
     }
-    const response = await fetch(data.signedUrl);
-    if (!response.ok) {
-      console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
-      return null;
-    }
-    return new Uint8Array(await response.arrayBuffer());
-  } catch (error) {
-    console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
-    return null;
-  }
+  })();
+
+  if (bytesCache) bytesCache.set(storagePath, promise);
+  return promise;
 }
 
-async function embedEvidenceImage(pdfDoc: PDFDocument, storagePath: string) {
-  const bytes = await fetchEvidenceImageBytes(storagePath);
-  if (!bytes) return null;
-  if (/\.png$/i.test(storagePath)) {
-    return pdfDoc.embedPng(bytes);
+async function embedEvidenceImage(
+  pdfDoc: PDFDocument,
+  storagePath: string,
+  cache?: {
+    bytes: Map<string, Promise<Uint8Array | null>>;
+    embedded: Map<string, Promise<any | null>>;
   }
-  return pdfDoc.embedJpg(bytes);
+) {
+  const cached = cache?.embedded.get(storagePath);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const bytes = await fetchEvidenceImageBytes(storagePath, cache?.bytes);
+    if (!bytes) return null;
+    if (/\.png$/i.test(storagePath)) {
+      return pdfDoc.embedPng(bytes);
+    }
+    return pdfDoc.embedJpg(bytes);
+  })();
+
+  cache?.embedded.set(storagePath, promise);
+  return promise;
+}
+
+function getRecommendationBodyText(action: Action): string {
+  return String(
+    action.action_required_text ||
+    action.recommended_action ||
+    action.description ||
+    action.title ||
+    'Not provided'
+  );
 }
 
 function isCompletedRecommendationStatus(action: Pick<Action, 'status' | 'completed_at' | 'is_complete'>): boolean {
@@ -1837,6 +1900,19 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     : [];
   const sitePlan = ((re10Data.site_plan || null) as ReSurveySitePlan | null);
   const sitePlanPath = sitePlan?.storage_path && isSupportedImagePath(sitePlan.storage_path) ? sitePlan.storage_path : null;
+  const evidenceImageCache = {
+    bytes: new Map<string, Promise<Uint8Array | null>>(),
+    embedded: new Map<string, Promise<any | null>>(),
+  };
+  const evidencePaths = Array.from(
+    new Set([
+      ...sitePhotos.map((photo) => String(photo.storage_path || '')).filter(Boolean),
+      ...(sitePlanPath ? [sitePlanPath] : []),
+    ])
+  );
+  if (evidencePaths.length > 0) {
+    await Promise.all(evidencePaths.map((path) => embedEvidenceImage(pdfDoc, path, evidenceImageCache)));
+  }
   const re01DocControl =
     moduleInstances.find((module) => module.module_key === 'RE_01_DOC_CONTROL') ||
     moduleInstances.find((module) => module.module_key === 'RE_01_DOCUMENT_CONTROL');
@@ -2203,6 +2279,21 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         }
         yPosition = sectionBreak(yPosition);
       }
+      const hydraulicTable = getFireProtectionDesignHydraulicTable(module);
+      const hydraulicRows = cleanFireProtectionRows(hydraulicTable.rows);
+      if (hydraulicRows.length > 0 && hydraulicTable.headers.length > 1) {
+        ({ page, yPosition } = ensurePageSpace(92 + hydraulicRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Fire Protection — Design / Hydraulic Inputs', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, hydraulicTable.headers, hydraulicRows, { regular: font, bold: fontBold }, {
+          colWidths: hydraulicTable.colWidths,
+          fontSize: 7.5,
+          minRowHeight: 18,
+          wrapHeader: true,
+          headerMinRowHeight: 22,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition);
+      }
       const reliabilityRows = cleanFireProtectionRows(getFireProtectionReliabilityRows(module));
       if (reliabilityRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + reliabilityRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2453,7 +2544,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     let column = 0;
 
     for (const photo of sitePhotos) {
-      const image = await embedEvidenceImage(pdfDoc, String(photo.storage_path));
+      const image = await embedEvidenceImage(pdfDoc, String(photo.storage_path), evidenceImageCache);
       if (!image) continue;
 
       if (yPosition < MARGIN + rowHeight) {
@@ -2485,6 +2576,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       const photoDescription = String(
         photo.caption ||
         photo.description ||
+        photo.metadata?.caption ||
+        photo.metadata?.description ||
         (photo as any).caption_text ||
         (photo as any).photo_description ||
         photo.notes ||
@@ -2529,7 +2622,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     });
     yPosition = sectionBreak(yPosition, 12);
 
-    const sitePlanImage = await embedEvidenceImage(pdfDoc, sitePlanPath);
+    const sitePlanImage = await embedEvidenceImage(pdfDoc, sitePlanPath, evidenceImageCache);
     if (sitePlanImage) {
       const maxHeight = PAGE_TOP_Y - MARGIN - 40;
       const scaled = sitePlanImage.scale(Math.min(CONTENT_WIDTH / sitePlanImage.width, maxHeight / sitePlanImage.height));
@@ -2581,7 +2674,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition, 8);
       const tableRows = rows.map((action) => [
         sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
-        sanitizePdfText(String(action.recommended_action || 'Not provided')),
+        sanitizePdfText(getRecommendationBodyText(action)),
         sanitizePdfText(String(action.priority_band || 'Not provided')),
         sanitizePdfText(String(action.owner_display_name || 'Unassigned')),
         sanitizePdfText(formatDate(action.target_date || '')),
