@@ -17,6 +17,25 @@ export default function OrganisationBranding() {
     loadOrganisationBranding();
   }, [user]);
 
+  function normalizeOrgLogoPath(path: string | null | undefined): string | null {
+    const trimmed = path?.trim();
+    if (!trimmed) return null;
+
+    // Do not send full URLs to createSignedUrl; it expects bucket-relative object path.
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return null;
+
+    // Historical/stale rows may store "org-assets/org-logos/...".
+    const withoutBucketPrefix = trimmed.startsWith('org-assets/')
+      ? trimmed.slice('org-assets/'.length)
+      : trimmed;
+
+    // Guard leading slash to avoid malformed object keys.
+    const normalized = withoutBucketPrefix.replace(/^\/+/, '');
+    if (!normalized || normalized === 'org-assets') return null;
+
+    return normalized;
+  }
+
   async function loadOrganisationBranding() {
     if (!user) return;
 
@@ -46,15 +65,29 @@ export default function OrganisationBranding() {
 
       if (orgError) throw orgError;
 
-      if (org?.branding_logo_path) {
-        setLogoPath(org.branding_logo_path);
-        const { data } = await supabase.storage
-          .from('org-assets')
-          .createSignedUrl(org.branding_logo_path, 3600);
+      const normalizedLogoPath = normalizeOrgLogoPath(org?.branding_logo_path);
 
-        if (data?.signedUrl) {
+      if (normalizedLogoPath) {
+        setLogoPath(normalizedLogoPath);
+        const { data, error: signError } = await supabase.storage
+          .from('org-assets')
+          .createSignedUrl(normalizedLogoPath, 3600);
+
+        if (signError) {
+          console.warn('Skipping org logo signed URL generation due to invalid/stale path:', {
+            rawPath: org?.branding_logo_path,
+            normalizedPath: normalizedLogoPath,
+            error: signError.message,
+          });
+          setLogoUrl(null);
+        } else if (data?.signedUrl) {
           setLogoUrl(data.signedUrl);
+        } else {
+          setLogoUrl(null);
         }
+      } else {
+        setLogoPath(null);
+        setLogoUrl(null);
       }
     } catch (err: any) {
       console.error('Error loading branding:', err);
@@ -186,38 +219,22 @@ export default function OrganisationBranding() {
       setError(null);
       setSuccess(null);
 
-      const { data: { session } } = await supabase.auth.getSession();
-if (!session?.access_token) {
-  throw new Error('Not authenticated (no access token)');
-}
+      const { data: result, error: invokeError } = await supabase.functions.invoke('delete-org-logo', {
+        body: { organisation_id: organisationId },
+      });
 
-const response = await fetch(
-  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-org-logo`,
-  {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: formData,
-  }
-);
+      if (invokeError) {
+        throw new Error(invokeError.message || 'Delete failed');
+      }
 
-// ✅ THESE LINES GO AFTER fetch(...) — not inside it
-const text = await response.text();
-console.log('[Logo Upload] status:', response.status);
-console.log('[Logo Upload] body:', text);
-
-if (!response.ok) {
-  throw new Error(`Upload failed (${response.status}): ${text}`);
-}
-
-// if success, you can continue here
-console.log('[Logo Upload] Upload OK');
+      if (result?.error) {
+        throw new Error(result.error);
+      }
 
       setSuccess('Logo removed successfully');
       setLogoUrl(null);
       setLogoPath(null);
+      await loadOrganisationBranding();
     } catch (err: any) {
       console.error('Error deleting logo:', err);
       setError(err.message);

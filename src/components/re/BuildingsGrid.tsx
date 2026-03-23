@@ -43,6 +43,7 @@ const MEZZ_MATERIAL_OPTIONS = [
   { value: 'reinforced_concrete', label: 'Reinforced concrete' },
   { value: 'precast_concrete', label: 'Precast concrete' },
   { value: 'steel_concrete_deck', label: 'Steel + concrete deck' },
+  { value: 'steel_mezzanine_steel_frame', label: 'Steel mezzanine on steel frame' },
   { value: 'steel_timber_deck', label: 'Steel + timber deck' },
   { value: 'timber_joists_deck', label: 'Timber joists / timber deck' },
   { value: 'grp_composite_deck', label: 'Composite / GRP deck' },
@@ -97,6 +98,7 @@ export default function BuildingsGrid({
   // Site notes state
   const [constructionNotes, setConstructionNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [openExplanationForBuildingId, setOpenExplanationForBuildingId] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -433,6 +435,72 @@ async function saveMezz() {
       score: Math.round(siteScore * 10) / 10 // 1 decimal place
     };
   }, [rows, buildingExtras]);
+
+  const siteWeightTotal = useMemo(() => {
+    const weightedBuildings = rows
+      .filter((b) => b.id && buildingExtras[b.id])
+      .map((b) => {
+        let area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
+        if (area <= 0) area = 1;
+        return area;
+      });
+    return weightedBuildings.reduce((sum, area) => sum + area, 0);
+  }, [rows, buildingExtras]);
+
+  useEffect(() => {
+    if (mode === 'fire_protection') return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const { data: moduleInstance, error: moduleError } = await supabase
+          .from('module_instances')
+          .select('id, data')
+          .eq('document_id', documentId)
+          .eq('module_key', 'RE_02_CONSTRUCTION')
+          .maybeSingle();
+
+        if (moduleError) throw moduleError;
+        if (!moduleInstance) return;
+
+        const normalizedBuildings = rows.map((row) => ({
+          id: row.id,
+          ref: row.ref,
+          building_name: row.ref,
+          include_in_scoring: true,
+          frame_type: row.frame_type,
+          roof_area_m2: row.roof_area_m2,
+          mezzanine_area_m2: row.mezzanine_area_m2 ?? 0,
+          compartmentation_minutes: row.compartmentation_minutes,
+          has_extra_construction_split: Boolean(row.id && buildingExtras[row.id]),
+        }));
+
+        const updatedData = {
+          ...(moduleInstance.data || {}),
+          construction: {
+            ...((moduleInstance.data || {}).construction || {}),
+            buildings: normalizedBuildings,
+            site_notes: constructionNotes,
+            completion: {
+              building_count: normalizedBuildings.length,
+              included_building_count: normalizedBuildings.filter((building) => building.include_in_scoring !== false).length,
+              site_score: Number.isFinite(siteMetrics.score) ? siteMetrics.score : null,
+              site_score_computable: Number.isFinite(siteMetrics.score),
+            },
+          },
+        };
+
+        const { error: updateError } = await supabase
+          .from('module_instances')
+          .update({ data: updatedData })
+          .eq('id', moduleInstance.id);
+        if (updateError) throw updateError;
+      } catch (e) {
+        console.error('[RE02 completion snapshot] Failed to persist RE_02 module data:', e);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [documentId, mode, rows, buildingExtras, constructionNotes, siteMetrics.score]);
 
   // Persist site score to RISK_ENGINEERING module (debounced)
   useEffect(() => {
@@ -858,13 +926,56 @@ async function saveMezz() {
                         (R: {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} | W: {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} | M: {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`})
                       </span>
                       <button
+                        type="button"
                         className="ml-auto flex items-center gap-1 text-slate-600 hover:text-slate-900"
-                        title={computed.explanation}
+                        onClick={() => setOpenExplanationForBuildingId((current) => (current === b.id ? null : b.id ?? null))}
+                        title="Show score explanation"
                       >
                         <Info className="w-4 h-4" />
                         <span className="text-xs">Explanation</span>
                       </button>
                     </div>
+                    {openExplanationForBuildingId === b.id && (
+                      <div className="mt-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 space-y-2">
+                        <p className="font-medium text-slate-900">How this RE-02 score was derived</p>
+                        <p>{computed.explanation}</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>Building RE-02 score: <span className="font-semibold">{computed.score}</span></li>
+                          <li>
+                            Building combustible %: <span className="font-semibold">
+                              {isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}
+                            </span>
+                          </li>
+                          <li>
+                            Components (roof / walls / mezz):{' '}
+                            <span className="font-semibold">
+                              {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} /{' '}
+                              {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} /{' '}
+                              {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`}
+                            </span>
+                          </li>
+                          <li>
+                            Area weighting in site score: <span className="font-semibold">
+                              {(() => {
+                                const area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
+                                const effectiveArea = area > 0 ? area : 1;
+                                if (!siteWeightTotal) return '—';
+                                return `${((effectiveArea / siteWeightTotal) * 100).toFixed(1)}%`;
+                              })()}
+                            </span>
+                          </li>
+                          <li>
+                            Site context: score <span className="font-semibold">
+                              {isNaN(siteMetrics.score) ? '—' : siteMetrics.score.toFixed(1)}
+                            </span>{' '}
+                            / combustible{' '}
+                            <span className="font-semibold">
+                              {isNaN(siteMetrics.combustiblePercent) ? '—' : `${siteMetrics.combustiblePercent}%`}
+                            </span>
+                          </li>
+                        </ul>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )}

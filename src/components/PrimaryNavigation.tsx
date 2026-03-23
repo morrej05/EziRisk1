@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LogOut, Shield } from 'lucide-react';
 import { canAccessAdmin, canAccessPlatformSettings, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
+import { resolveLogoUrl } from '../utils/logo';
 
 type AuthUserWithPlatform = { platform?: boolean };
 
@@ -58,9 +59,9 @@ export default function PrimaryNavigation() {
             >
               {!logoError ? (
                 <img
-                  src="/ezirisk-logo-primary.svg"
+                  src={resolveLogoUrl()}
                   alt="EziRisk"
-                  className="h-8"
+                  className="h-9 w-auto"
                   onError={() => setLogoError(true)}
                 />
               ) : (

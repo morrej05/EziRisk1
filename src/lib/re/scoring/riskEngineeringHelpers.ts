@@ -10,7 +10,7 @@ export interface RiskEngineeringData {
 export interface ScoreFactor {
   key: string;
   label: string;
-  rating: number;
+  rating: number | null;
   weight: number;
   score: number;
   maxScore: number;
@@ -30,14 +30,14 @@ export interface RiskEngineeringScoreBreakdown {
   topContributors: ScoreFactor[];
 }
 
+export interface MissingRequiredRatingsResult {
+  missingGlobalPillars: string[];
+  missingOccupancyDrivers: string[];
+  hasMissing: boolean;
+}
+
 export function ensureRatingsObject(data: Partial<RiskEngineeringData>): RiskEngineeringData {
   const ratings: Record<string, number> = { ...(data.ratings || {}) };
-
-  for (const key of HRG_CANONICAL_KEYS) {
-    if (typeof ratings[key] !== 'number') {
-      ratings[key] = 3;
-    }
-  }
 
   return {
     industry_key: data.industry_key || null,
@@ -45,8 +45,9 @@ export function ensureRatingsObject(data: Partial<RiskEngineeringData>): RiskEng
   };
 }
 
-export function getRating(data: Record<string, any>, canonicalKey: string): number {
-  return data?.ratings?.[canonicalKey] ?? 3;
+export function getRating(data: Record<string, any>, canonicalKey: string): number | null {
+  const raw = data?.ratings?.[canonicalKey];
+  return typeof raw === 'number' ? raw : null;
 }
 
 export function setRating(
@@ -71,8 +72,46 @@ export function clamp1to5(n: number): number {
   return Math.max(1, Math.min(5, Number.isFinite(n) ? n : 3));
 }
 
+export function getMissingRequiredRatings(
+  riskEngData: Record<string, any>,
+  sectionGrades: Record<string, any> = {}
+): MissingRequiredRatingsResult {
+  const industryKey = riskEngData?.industry_key || null;
+  const ratings = riskEngData?.ratings || {};
+
+  const missingGlobalPillars: string[] = [];
+
+  for (const key of REQUIRED_GLOBAL_PILLAR_SECTION_KEYS) {
+    if (key === 'construction') {
+      const hasConstruction =
+        typeof riskEngData?.sectionGrades?.construction === 'number'
+        || typeof sectionGrades?.construction === 'number';
+      if (!hasConstruction) {
+        missingGlobalPillars.push(key);
+      }
+      continue;
+    }
+
+    if (typeof sectionGrades?.[key] !== 'number') {
+      missingGlobalPillars.push(key);
+    }
+  }
+
+  const missingOccupancyDrivers = HRG_CANONICAL_KEYS
+    .filter((key) => !GLOBAL_PILLAR_KEYS.includes(key))
+    .filter((canonicalKey) => getHrgConfig(industryKey, canonicalKey).weight > 0)
+    .filter((canonicalKey) => typeof ratings?.[canonicalKey] !== 'number');
+
+  return {
+    missingGlobalPillars,
+    missingOccupancyDrivers,
+    hasMissing: missingGlobalPillars.length > 0 || missingOccupancyDrivers.length > 0,
+  };
+}
+
 // Global pillar keys that should NOT be included in occupancy drivers
 const GLOBAL_PILLAR_KEYS = ['construction', 'fire_protection', 'exposure', 'management'];
+const REQUIRED_GLOBAL_PILLAR_SECTION_KEYS = ['construction', 'fire_protection', 'exposure', 'management'] as const;
 
 const GLOBAL_PILLAR_WEIGHTS: Record<'construction_and_combustibility' | 'fire_protection' | 'exposure' | 'management_systems', number> = {
   construction_and_combustibility: 4,
@@ -117,8 +156,8 @@ export async function buildRiskEngineeringScoreBreakdown(
   const sectionGrades = doc?.section_grades || {};
 
   // Get construction rating and metadata
-  // Priority: 1) riskEngData.sectionGrades.construction, 2) documents.section_grades, 3) computed, 4) default 3
-  let constructionRating = 3;
+  // Priority: 1) riskEngData.sectionGrades.construction, 2) documents.section_grades, 3) computed, 4) null when unavailable
+  let constructionRating: number | null = null;
   let constructionMetadata = riskEngData?.sectionMeta?.construction;
 
   if (riskEngData?.sectionGrades?.construction !== undefined) {
@@ -146,32 +185,32 @@ export async function buildRiskEngineeringScoreBreakdown(
       label: 'Construction & Combustibility',
       rating: constructionRating,
       weight: GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
-      score: constructionRating * GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
+      score: (constructionRating ?? 0) * GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
       maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.construction_and_combustibility,
       metadata: constructionMetadata,
     },
     {
       key: 'fire_protection',
       label: 'Fire Protection',
-      rating: sectionGrades.fire_protection || 1,
+      rating: typeof sectionGrades.fire_protection === 'number' ? sectionGrades.fire_protection : null,
       weight: GLOBAL_PILLAR_WEIGHTS.fire_protection,
-      score: (sectionGrades.fire_protection || 1) * GLOBAL_PILLAR_WEIGHTS.fire_protection,
+      score: (typeof sectionGrades.fire_protection === 'number' ? sectionGrades.fire_protection : 0) * GLOBAL_PILLAR_WEIGHTS.fire_protection,
       maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.fire_protection,
     },
     {
       key: 'exposure',
       label: 'Exposure',
-      rating: sectionGrades.exposure || 3,
+      rating: typeof sectionGrades.exposure === 'number' ? sectionGrades.exposure : null,
       weight: GLOBAL_PILLAR_WEIGHTS.exposure,
-      score: (sectionGrades.exposure || 3) * GLOBAL_PILLAR_WEIGHTS.exposure,
+      score: (typeof sectionGrades.exposure === 'number' ? sectionGrades.exposure : 0) * GLOBAL_PILLAR_WEIGHTS.exposure,
       maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.exposure,
     },
     {
       key: 'management_systems',
       label: 'Management Systems',
-      rating: sectionGrades.management || 3,
+      rating: typeof sectionGrades.management === 'number' ? sectionGrades.management : null,
       weight: GLOBAL_PILLAR_WEIGHTS.management_systems,
-      score: (sectionGrades.management || 3) * GLOBAL_PILLAR_WEIGHTS.management_systems,
+      score: (typeof sectionGrades.management === 'number' ? sectionGrades.management : 0) * GLOBAL_PILLAR_WEIGHTS.management_systems,
       maxScore: 5 * GLOBAL_PILLAR_WEIGHTS.management_systems,
     },
   ];
@@ -183,7 +222,7 @@ export async function buildRiskEngineeringScoreBreakdown(
     .map(canonicalKey => {
       const rating = getRating(riskEngData, canonicalKey);
       const config = getHrgConfig(industryKey, canonicalKey);
-      const score = calculateScore(rating, config.weight);
+      const score = calculateScore(rating ?? 0, config.weight);
       const maxScore = 5 * config.weight;
 
       return {

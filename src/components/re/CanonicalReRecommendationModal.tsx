@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Upload, X } from 'lucide-react';
+import { AlertTriangle, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 interface Photo {
@@ -197,80 +197,242 @@ export default function CanonicalReRecommendationModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-bold text-neutral-900 mb-4">Add Recommendation</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-slate-50 p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Observation</label>
-            <textarea value={observation} onChange={(e) => setObservation(e.target.value)} rows={3} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+            <h3 className="text-xl font-bold text-slate-900">Add Recommendation</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Uses the same editor presentation as RE-09 recommendations.
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              onClose();
+            }}
+            className="rounded-full p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+            aria-label="Close recommendation modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Action Required</label>
-            <textarea value={actionRequired} onChange={(e) => setActionRequired(e.target.value)} rows={3} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Title *</label>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Brief title for this recommendation"
+            />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Hazard/Risk Description</label>
-            <textarea value={hazardDescription} onChange={(e) => setHazardDescription(e.target.value)} rows={3} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Observation</label>
+            <textarea
+              value={observation}
+              onChange={(e) => setObservation(e.target.value)}
+              rows={3}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="What was observed during the assessment?"
+            />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Comments</label>
-            <textarea value={comments} onChange={(e) => setComments(e.target.value)} rows={3} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
+            <label className="mb-1 block text-sm font-medium text-slate-700">Action Required</label>
+            <textarea
+              value={actionRequired}
+              onChange={(e) => setActionRequired(e.target.value)}
+              rows={3}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="What action needs to be taken?"
+            />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Priority</label>
-            <select value={priority} onChange={(e) => setPriority(e.target.value as 'High' | 'Medium' | 'Low')} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              <option>High</option><option>Medium</option><option>Low</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value as 'Open' | 'In Progress' | 'Completed')} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              <option>Open</option><option>In Progress</option><option>Completed</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Target Date</label>
-            <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Owner</label>
-            <input value={owner} onChange={(e) => setOwner(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm" />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Related Module</label>
-            <select value={relatedModule} onChange={(e) => setRelatedModule(e.target.value)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm">
-              {MODULE_SECTIONS.map((module) => <option key={module.key} value={module.key}>{module.label}</option>)}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-neutral-700 mb-1">Supporting Photos ({photos.length}/{MAX_PHOTOS_PER_RECOMMENDATION})</label>
-            <label className="inline-flex items-center gap-2 px-3 py-2 bg-neutral-100 rounded-md cursor-pointer hover:bg-neutral-200 text-sm">
-              <Upload className="w-4 h-4" /> Upload Photo
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleUploadPhoto(file);
-                e.currentTarget.value = '';
-              }} disabled={uploadingPhoto || photos.length >= MAX_PHOTOS_PER_RECOMMENDATION} />
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-              {photos.map((photo) => (
-                <div key={photo.path} className="relative border border-neutral-200 rounded-md overflow-hidden">
-                  {photoUrls[photo.path] ? <img src={photoUrls[photo.path]} alt={photo.file_name} className="w-full h-24 object-cover" /> : <div className="w-full h-24 bg-neutral-100" />}
-                  <button type="button" onClick={() => removePhoto(photo.path)} className="absolute top-1 right-1 bg-white/90 rounded-full p-1"><X className="w-3 h-3" /></button>
-                </div>
-              ))}
+
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="mb-2 flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+              <label className="block text-sm font-medium text-amber-900">
+                Hazard / Risk Description
+              </label>
             </div>
+            <textarea
+              value={hazardDescription}
+              onChange={(e) => setHazardDescription(e.target.value)}
+              rows={2}
+              className="w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
+              placeholder="Describe the hazard or risk associated with this recommendation"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-700">
+              Author Comments (Internal Notes)
+            </label>
+            <textarea
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              rows={2}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Internal notes (not included in report)"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 md:grid-cols-5">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as 'High' | 'Medium' | 'Low')}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'Open' | 'In Progress' | 'Completed')}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Target Date</label>
+              <input
+                type="date"
+                value={targetDate}
+                onChange={(e) => setTargetDate(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Owner</label>
+              <input
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Assigned to"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Related Module</label>
+              <select
+                value={relatedModule}
+                onChange={(e) => setRelatedModule(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                {MODULE_SECTIONS.map((module) => (
+                  <option key={module.key} value={module.key}>
+                    {module.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="border-t border-slate-200 pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <label className="block text-sm font-medium text-slate-700">
+                Supporting Photos ({photos.length}/{MAX_PHOTOS_PER_RECOMMENDATION})
+              </label>
+              {photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700">
+                  <Upload className="h-4 w-4" />
+                  Add Photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleUploadPhoto(file);
+                      e.currentTarget.value = '';
+                    }}
+                    disabled={uploadingPhoto}
+                  />
+                </label>
+              ) : (
+                <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-600">
+                  Maximum {MAX_PHOTOS_PER_RECOMMENDATION} photos
+                </span>
+              )}
+            </div>
+
+            {photos.length > 0 ? (
+              <div className="grid grid-cols-3 gap-4">
+                {photos.map((photo) => (
+                  <div
+                    key={photo.path}
+                    className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                  >
+                    <div className="aspect-video overflow-hidden bg-slate-100">
+                      {photoUrls[photo.path] ? (
+                        <img
+                          src={photoUrls[photo.path]}
+                          alt={photo.file_name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <ImageIcon className="h-8 w-8 text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(photo.path)}
+                      className="absolute right-2 top-2 rounded-full bg-red-600 p-1 text-white hover:bg-red-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                    <div className="p-2 text-xs text-slate-600">
+                      <p className="truncate" title={photo.file_name}>
+                        {photo.file_name}
+                      </p>
+                      <p className="text-slate-500">{(photo.size_bytes / 1024 / 1024).toFixed(1)} MB</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-6 text-center text-sm text-slate-500">
+                No photos attached (max 15MB per photo)
+              </div>
+            )}
+
+            {uploadingPhoto && <div className="mt-2 text-sm text-blue-600">Uploading photo...</div>}
           </div>
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={() => { resetForm(); onClose(); }} className="px-4 py-2 text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors font-medium">Cancel</button>
-          <button type="button" disabled={!title.trim() || isSaving} onClick={handleSave} className="px-4 py-2 bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 transition-colors font-medium disabled:opacity-50">{isSaving ? 'Saving…' : 'Save Recommendation'}</button>
+          <button
+            type="button"
+            onClick={() => {
+              resetForm();
+              onClose();
+            }}
+            className="rounded-lg bg-slate-100 px-4 py-2 font-medium text-slate-700 transition-colors hover:bg-slate-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!title.trim() || isSaving}
+            onClick={handleSave}
+            className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isSaving ? 'Saving…' : 'Save Recommendation'}
+          </button>
         </div>
       </div>
     </div>

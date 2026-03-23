@@ -1,15 +1,16 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { AlertCircle, TrendingUp, FileText, Save, Sparkles, Copy } from 'lucide-react';
-import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
-import { buildRiskEngineeringScoreBreakdown, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
+import { buildRiskEngineeringScoreBreakdown, getMissingRequiredRatings, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
 import { generateRiskEngineeringSummary } from '../../../lib/ai/generateReSummary';
 
 interface Document {
   id: string;
   title: string;
+  assessment_date?: string | null;
+  assessor_name?: string | null;
 }
 
 interface ModuleInstance {
@@ -37,6 +38,20 @@ interface RecommendationSummary {
   highPriorityItems: Array<{ text: string; priority: string }>;
 }
 
+interface SiteMetadata {
+  site_name: string | null;
+  site_address: string | null;
+  assessor_name: string | null;
+  assessment_date: string | null;
+  site_name_source: 're01' | 'document_title' | 'missing';
+}
+
+const toNonEmptyString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 export default function RE14DraftOutputsForm({
   moduleInstance,
   document,
@@ -50,7 +65,7 @@ export default function RE14DraftOutputsForm({
   const [executiveSummaryAi, setExecutiveSummaryAi] = useState('');
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [industryLabel, setIndustryLabel] = useState('No Industry Selected');
-  const [siteMetadata, setSiteMetadata] = useState<any>(null);
+  const [siteMetadata, setSiteMetadata] = useState<SiteMetadata | null>(null);
   const [globalPillars, setGlobalPillars] = useState<ScoreFactor[]>([]);
   const [occupancyDrivers, setOccupancyDrivers] = useState<ScoreFactor[]>([]);
   const [totalScore, setTotalScore] = useState(0);
@@ -62,59 +77,15 @@ export default function RE14DraftOutputsForm({
     highPriorityItems: [],
   });
   const [occupancyMissing, setOccupancyMissing] = useState(false);
-
-  // Lifecycle instrumentation
-  useEffect(() => {
-    const dataHash = JSON.stringify(moduleInstance.data || {}).substring(0, 100);
-    console.log('[RE14] MOUNT', {
-      moduleId: moduleInstance.id,
-      dirty,
-      executiveSummaryLength: executiveSummary.length,
-      dataPreview: dataHash,
-      updatedAt: moduleInstance.updated_at,
-    });
-
-    return () => {
-      console.log('[RE14] UNMOUNT', {
-        moduleId: moduleInstance.id,
-        dirty,
-        executiveSummaryLength: executiveSummary.length,
-      });
-    };
-  }, []); // mount/unmount only
-
-  // Track moduleInstance changes
-  useEffect(() => {
-    const dataHash = JSON.stringify(moduleInstance.data || {}).substring(0, 100);
-    console.log('[RE14] PROPS CHANGE', {
-      moduleId: moduleInstance.id,
-      dirty,
-      executiveSummaryLength: executiveSummary.length,
-      dataPreview: dataHash,
-      updatedAt: moduleInstance.updated_at,
-    });
-  }, [moduleInstance]);
+  const [missingRequiredRatings, setMissingRequiredRatings] = useState<string[]>([]);
 
   // Hydrate only when module ID changes, don't overwrite while user is editing
   useEffect(() => {
-    console.log('[RE14] HYDRATION CHECK', {
-      moduleId: moduleInstance.id,
-      dirty,
-      willHydrate: !dirty,
-      currentLength: executiveSummary.length,
-      incomingLength: (moduleInstance.data?.executive_summary || '').length,
-    });
-
     if (dirty) return; // Don't overwrite user edits
 
     setExecutiveSummary(moduleInstance.data?.executive_summary || '');
     setExecutiveSummaryAi(moduleInstance.data?.executive_summary_ai || '');
     setDirty(false); // Reset dirty flag on module change
-
-    console.log('[RE14] HYDRATED', {
-      moduleId: moduleInstance.id,
-      newLength: (moduleInstance.data?.executive_summary || '').length,
-    });
   }, [moduleInstance.id]);
 
   useEffect(() => {
@@ -125,39 +96,40 @@ export default function RE14DraftOutputsForm({
           .from('module_instances')
           .select('module_key, data')
           .eq('document_id', moduleInstance.document_id)
-          .in('module_key', ['RE_01_DOC_CONTROL', 'RE_01_DOCUMENT_CONTROL', 'RISK_ENGINEERING', 'RE_13_RECOMMENDATIONS']);
+          .in('module_key', ['RE_01_DOC_CONTROL', 'RE_01_DOCUMENT_CONTROL', 'RISK_ENGINEERING']);
 
         if (error) throw error;
 
         const re01 = modules.find(m => m.module_key === 'RE_01_DOC_CONTROL')
           ?? modules.find(m => m.module_key === 'RE_01_DOCUMENT_CONTROL');
         const riskEng = modules.find(m => m.module_key === 'RISK_ENGINEERING');
-        const recommendations = modules.find(m => m.module_key === 'RE_13_RECOMMENDATIONS');
+        const re01Data = re01?.data || {};
 
-        if (re01?.data) {
-          setSiteMetadata({
-            site_name: re01.data.site_name || 'Not specified',
-            site_address: re01.data.site_address || 'Not specified',
-            assessor_name: re01.data.assessor_name || 'Not specified',
-            assessment_date: re01.data.assessment_date || 'Not specified',
-          });
-        }
+        const mappedSiteMetadata: SiteMetadata = {
+          site_name: toNonEmptyString(re01Data?.client_site?.site)
+            ?? toNonEmptyString(re01Data?.site_name)
+            ?? toNonEmptyString(document.title),
+          site_address: toNonEmptyString(re01Data?.client_site?.address)
+            ?? toNonEmptyString(re01Data?.site_address),
+          assessor_name: toNonEmptyString(re01Data?.assessor?.name)
+            ?? toNonEmptyString(re01Data?.assessor_name)
+            ?? toNonEmptyString(document.assessor_name),
+          assessment_date: toNonEmptyString(re01Data?.dates?.assessment_date)
+            ?? toNonEmptyString(re01Data?.assessment_date)
+            ?? toNonEmptyString(document.assessment_date),
+          site_name_source: toNonEmptyString(re01Data?.client_site?.site)
+            ?? toNonEmptyString(re01Data?.site_name)
+            ? 're01'
+            : (toNonEmptyString(document.title) ? 'document_title' : 'missing'),
+        };
+        setSiteMetadata(mappedSiteMetadata);
 
         if (riskEng?.data) {
-          // Debug: log what's in the RISK_ENGINEERING module data
-          console.log('[RE14] sectionGrades.construction', riskEng.data?.sectionGrades?.construction);
-          console.log('[RE14] sectionMeta.construction', riskEng.data?.sectionMeta?.construction);
-
           // Use canonical scoring builder (single source of truth)
           const breakdown = await buildRiskEngineeringScoreBreakdown(
             moduleInstance.document_id,
             riskEng.data
           );
-
-          console.log('[RE-11] industryKey', breakdown.industryKey);
-          console.log('[RE-11] globalPillars len', breakdown.globalPillars.length);
-          console.log('[RE-11] occupancyDrivers len', breakdown.occupancyDrivers.length);
-          console.log('[RE14] Construction factor rating:', breakdown.globalPillars.find(p => p.key === 'construction_and_combustibility')?.rating);
           setIndustryKey(breakdown.industryKey);
           setIndustryLabel(breakdown.industryLabel);
           setOccupancyMissing(!breakdown.industryKey);
@@ -166,24 +138,62 @@ export default function RE14DraftOutputsForm({
           setTotalScore(breakdown.totalScore);
           setMaxScore(breakdown.maxScore);
           setTopContributors(breakdown.topContributors);
+
+          const missing = getMissingRequiredRatings(
+            riskEng.data,
+            Object.fromEntries(
+              breakdown.globalPillars.map((pillar) => {
+                if (pillar.key === 'construction_and_combustibility') return ['construction', pillar.rating];
+                if (pillar.key === 'fire_protection') return ['fire_protection', pillar.rating];
+                if (pillar.key === 'exposure') return ['exposure', pillar.rating];
+                return ['management', pillar.rating];
+              })
+            )
+          );
+          setMissingRequiredRatings([
+            ...missing.missingGlobalPillars.map((key) => `Global pillar: ${key}`),
+            ...missing.missingOccupancyDrivers.map((key) => `Occupancy driver: ${key}`),
+          ]);
         }
 
-        if (recommendations?.data?.recommendations) {
-          const recs = recommendations.data.recommendations;
-          const summary: RecommendationSummary = {
-            total: recs.length,
-            byPriority: {
-              critical: recs.filter((r: any) => r.priority === 'critical').length,
-              high: recs.filter((r: any) => r.priority === 'high').length,
-              medium: recs.filter((r: any) => r.priority === 'medium').length,
-              low: recs.filter((r: any) => r.priority === 'low').length,
-            },
-            highPriorityItems: recs
-              .filter((r: any) => r.priority === 'high' || r.priority === 'critical')
-              .map((r: any) => ({ text: r.text, priority: r.priority })),
-          };
-          setRecSummary(summary);
-        }
+        const { data: recommendations, error: recommendationsError } = await supabase
+          .from('re_recommendations')
+          .select('title, observation_text, action_required_text, priority')
+          .eq('document_id', moduleInstance.document_id)
+          .eq('is_suppressed', false);
+
+        if (recommendationsError) throw recommendationsError;
+
+        const recommendationRows = (recommendations || []) as Array<{
+          title?: string | null;
+          observation_text?: string | null;
+          action_required_text?: string | null;
+          priority?: string | null;
+        }>;
+
+        const summary: RecommendationSummary = {
+          total: recommendationRows.length,
+          byPriority: {
+            critical: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'critical').length,
+            high: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'high').length,
+            medium: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'medium').length,
+            low: recommendationRows.filter((r) => r.priority?.toLowerCase() === 'low').length,
+          },
+          highPriorityItems: recommendationRows
+            .filter((r) => {
+              const normalized = r.priority?.toLowerCase();
+              return normalized === 'high' || normalized === 'critical';
+            })
+            .map((r) => ({
+              text: toNonEmptyString(r.title)
+                ?? toNonEmptyString(r.action_required_text)
+                ?? toNonEmptyString(r.observation_text)
+                ?? 'No description',
+              priority: (r.priority || 'high').toLowerCase(),
+            })),
+        };
+
+        setRecSummary(summary);
       } catch (error) {
         console.error('Error loading summary data:', error);
       } finally {
@@ -201,11 +211,6 @@ export default function RE14DraftOutputsForm({
       executive_summary: executiveSummary,
     };
 
-    console.log('[RE14] SAVING', {
-      moduleId: moduleInstance.id,
-      executiveSummaryLength: executiveSummary.length,
-    });
-
     try {
       const { error } = await supabase
         .from('module_instances')
@@ -215,10 +220,6 @@ export default function RE14DraftOutputsForm({
         .eq('id', moduleInstance.id);
 
       if (error) throw error;
-
-      console.log('[RE14] SAVE SUCCESS', {
-        moduleId: moduleInstance.id,
-      });
 
       setDirty(false); // Reset dirty flag after successful save
 
@@ -233,8 +234,23 @@ export default function RE14DraftOutputsForm({
   };
 
   const handleGenerateAiDraft = async () => {
-    if (!siteMetadata || !industryKey || (globalPillars.length === 0 && occupancyDrivers.length === 0)) {
-      alert('Please ensure all assessment data is complete before generating an AI summary.');
+    const missingFields: string[] = [];
+    if (!siteMetadata?.site_name) missingFields.push('Site Name');
+    if (!siteMetadata?.assessment_date) missingFields.push('Assessment Date');
+    if (!industryKey) missingFields.push('Industry (RE-03 Occupancy)');
+    if (globalPillars.length === 0 && occupancyDrivers.length === 0) {
+      missingFields.push('Risk ratings (RISK_ENGINEERING)');
+    }
+
+    if (
+      !siteMetadata
+      || missingFields.length > 0
+    ) {
+      alert(`Cannot generate auto draft yet. Missing: ${missingFields.join(', ')}.`);
+      return;
+    }
+    if (missingRequiredRatings.length > 0) {
+      alert('Required ratings are incomplete. Complete unrated factors before generating a reportable summary.');
       return;
     }
 
@@ -346,11 +362,17 @@ export default function RE14DraftOutputsForm({
           <div className="flex gap-2">
             <button
               onClick={handleGenerateAiDraft}
-              disabled={generating || !siteMetadata || !industryKey}
+              disabled={
+                generating
+                || !siteMetadata?.site_name
+                || !siteMetadata?.assessment_date
+                || !industryKey
+                || missingRequiredRatings.length > 0
+              }
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
               <Sparkles className="w-4 h-4" />
-              {generating ? 'Generating...' : 'Generate AI draft'}
+              {generating ? 'Generating...' : 'Generate auto draft'}
             </button>
             {executiveSummaryAi && (
               <button
@@ -358,7 +380,7 @@ export default function RE14DraftOutputsForm({
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Copy className="w-4 h-4" />
-                Use AI draft
+                Use auto draft
               </button>
             )}
           </div>
@@ -368,9 +390,14 @@ export default function RE14DraftOutputsForm({
             Generate an AI-assisted draft summary based on assessment data. This summary is deterministic
             and uses only the data entered in other modules (150-250 words, UK English, professional tone).
           </p>
-          {!siteMetadata || !industryKey ? (
+          {!siteMetadata?.site_name || !siteMetadata?.assessment_date || !industryKey ? (
             <p className="text-amber-700 font-medium">
-              Complete RE-01 Document Control and RISK_ENGINEERING modules before generating.
+              Complete required data before generating: Site Name, Assessment Date, Industry (RE-03), and risk ratings.
+            </p>
+          ) : null}
+          {missingRequiredRatings.length > 0 ? (
+            <p className="text-amber-700 font-medium mt-2">
+              Complete all required unrated factors before generating reportable summary content.
             </p>
           ) : null}
         </div>
@@ -380,7 +407,7 @@ export default function RE14DraftOutputsForm({
           </div>
         ) : (
           <div className="bg-white border border-dashed border-violet-300 rounded-lg p-4 text-center">
-            <p className="text-sm text-slate-500 italic">No AI draft generated yet. Click "Generate AI draft" to create one.</p>
+            <p className="text-sm text-slate-500 italic">No auto draft generated yet. Click "Generate auto draft" to create one.</p>
           </div>
         )}
       </div>
@@ -394,19 +421,24 @@ export default function RE14DraftOutputsForm({
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="font-medium text-slate-700">Site Name:</span>
-              <p className="text-slate-900">{siteMetadata.site_name}</p>
+              <p className="text-slate-900">{siteMetadata.site_name || '—'}</p>
+              {siteMetadata.site_name_source === 'document_title' && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Fallback shown from document title. Enter canonical site name in RE-01 Document Control.
+                </p>
+              )}
             </div>
             <div>
               <span className="font-medium text-slate-700">Assessor:</span>
-              <p className="text-slate-900">{siteMetadata.assessor_name}</p>
+              <p className="text-slate-900">{siteMetadata.assessor_name || '—'}</p>
             </div>
             <div>
               <span className="font-medium text-slate-700">Address:</span>
-              <p className="text-slate-900">{siteMetadata.site_address}</p>
+              <p className="text-slate-900">{siteMetadata.site_address || '—'}</p>
             </div>
             <div>
               <span className="font-medium text-slate-700">Assessment Date:</span>
-              <p className="text-slate-900">{siteMetadata.assessment_date}</p>
+              <p className="text-slate-900">{siteMetadata.assessment_date || '—'}</p>
             </div>
           </div>
         ) : (
@@ -426,6 +458,17 @@ export default function RE14DraftOutputsForm({
               <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-amber-900">
                 Occupancy not set — risk factors may be incomplete. Set occupancy in RE-03 Occupancy to see all relevant factors.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {missingRequiredRatings.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="flex gap-2 items-start">
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-900">
+                Reportable scoring is incomplete. Required unrated factors remain.
               </p>
             </div>
           </div>
@@ -566,9 +609,6 @@ export default function RE14DraftOutputsForm({
         )}
       </div>
 
-      {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
-      )}
     </div>
 
       <FloatingSaveBar onSave={handleSaveExecutiveSummary} isSaving={saving} />

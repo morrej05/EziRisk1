@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { AlertTriangle, Info, Droplet, Building as BuildingIcon, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Info, Building as BuildingIcon, TrendingUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import {
   generateFireProtectionRecommendations,
-  getSiteRecommendations,
   getBuildingRecommendations,
 } from '../../../lib/modules/re04FireProtectionRecommendations';
 import {
   calculateSprinklerScore,
-  calculateFinalActiveScore,
   generateAutoFlags,
-  calculateWaterScore,
 } from '../../../lib/re/fireProtectionModel';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
-import RatingButtons from '../../re/RatingButtons';
+import ReEngineeringQuestionCard from '../../re/ReEngineeringQuestionCard';
+import FloatingSaveBar from './FloatingSaveBar';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
+import {
+  RE04_ENGINEERING_QUESTIONS,
+  RE04_ENGINEERING_QUESTIONS_BY_GROUP,
+  RE04_LOCALISED_INSTALLED_FACTOR_KEY,
+  deriveRe04SupplementaryScores,
+} from '../../../lib/re/re04EngineeringModel';
 
 interface Document {
   id: string;
@@ -29,7 +34,7 @@ interface ModuleInstance {
   document_id: string;
   outcome: string | null;
   assessor_notes: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 interface RE06FireProtectionFormProps {
@@ -44,15 +49,6 @@ type PowerResilience = 'Good' | 'Mixed' | 'Poor' | 'Unknown';
 type TestingRegime = 'Documented' | 'Some evidence' | 'None' | 'Unknown';
 type MaintenanceStatus = 'Good' | 'Mixed' | 'Poor' | 'Unknown';
 type SprinklerAdequacy = 'Adequate' | 'Inadequate' | 'Unknown';
-type SupplyType =
-  | 'Town mains'
-  | 'Single tank (on-site)'
-  | 'Dual tank (on-site)'
-  | 'Break tank + mains'
-  | 'Open water (reservoir)'
-  | 'River / canal / open source'
-  | 'Private main / estate main'
-  | 'Other';
 type WaterSupports = 'Sprinklers' | 'Hydrants / fire main / hose reels' | 'Both' | 'Unknown';
 type CoverageQuality = 'Good' | 'Partial' | 'Poor' | 'Unknown';
 type ConditionQuality = 'Good' | 'Concerns' | 'Unknown';
@@ -80,7 +76,8 @@ interface SiteWaterData {
 type SprinklersInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type SystemType = 'Wet pipe' | 'Dry pipe' | 'Pre-action' | 'Deluge' | 'Combination / Mixed' | 'Unknown';
 type SprinklerStandard = 'EN 12845' | 'NFPA 13' | 'FM' | 'LPC Rules' | 'VdS' | 'AS 2118' | 'NZS 4541' | 'SANS 10287' | 'Other…';
-type LocalisedPresent = 'No' | 'Yes' | 'Partial' | 'Unknown';
+type LocalisedRequired = 'Yes' | 'No' | 'Unknown';
+type LocalisedPresent = 'Yes' | 'No' | 'Unknown';
 type DetectionInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
 type AlarmMonitoring = 'Local only' | 'ARC' | 'Fire brigade connection' | 'Unknown';
 type DetectionTestingRegime = 'Documented' | 'Not documented' | 'Unknown';
@@ -92,6 +89,7 @@ interface BuildingSprinklerData {
   system_type?: SystemType;
   standard?: SprinklerStandard;
   standard_other?: string;
+  localised_required?: LocalisedRequired;
   localised_present?: LocalisedPresent;
   localised_type?: string; // Predominant type for now (Gas suppression, Water mist, Foam, Other)
   localised_protected_asset?: string;
@@ -124,6 +122,8 @@ interface Building {
   ref?: string;
   description?: string;
   footprint_m2?: number;
+  roof_area_m2?: number;
+  mezzanine_area_m2?: number;
   floor_area_sqm?: number;
 }
 
@@ -142,7 +142,8 @@ interface FireProtectionModuleData {
   supplementary_assessment?: SupplementaryAssessmentData;
 }
 
-type SupplementaryQuestionGroup = 'adequacy' | 'reliability' | 'localised_special';
+type SupplementaryQuestionGroup = 'adequacy' | 'reliability' | 'localised' | 'evidence';
+
 
 interface SupplementaryQuestionResponse {
   factor_key: string;
@@ -156,82 +157,17 @@ interface SupplementaryAssessmentData {
   questions: SupplementaryQuestionResponse[];
   adequacy_subscore: number | null;
   reliability_subscore: number | null;
-  localised_special_subscore: number | null;
+  localised_subscore: number | null;
+  evidence_subscore: number | null;
   overall_score: number | null;
 }
 
-const SUPPLEMENTARY_FIRE_QUESTIONS: Array<Pick<SupplementaryQuestionResponse, 'factor_key' | 'group' | 'prompt'>> = [
-  {
-    factor_key: 're06_fp_adequacy_sprinkler_coverage',
-    group: 'adequacy',
-    prompt: 'Are sprinkler systems (where required) adequately matched to hazard, storage, and occupancy profile?',
-  },
-  {
-    factor_key: 're06_fp_adequacy_hydrants_fire_main',
-    group: 'adequacy',
-    prompt: 'Are hydrants / ring main / hose reels sufficient in number, reach, and layout for firefighting access?',
-  },
-  {
-    factor_key: 're06_fp_adequacy_water_capacity',
-    group: 'adequacy',
-    prompt: 'Is firewater supply capacity and duration adequate for expected design fire demand?',
-  },
-  {
-    factor_key: 're06_fp_adequacy_detection_alarm',
-    group: 'adequacy',
-    prompt: 'Is detection and alarm coverage adequate for early warning across occupied and high-risk areas?',
-  },
-  {
-    factor_key: 're06_fp_adequacy_passive_protection',
-    group: 'adequacy',
-    prompt: 'Is passive fire protection (compartmentation, fire stopping, structural protection) adequate for containment?',
-  },
-  {
-    factor_key: 're06_fp_reliability_water_supply',
-    group: 'reliability',
-    prompt: 'How reliable is the primary and backup water supply under likely incident and utility-loss conditions?',
-  },
-  {
-    factor_key: 're06_fp_reliability_pumps_power',
-    group: 'reliability',
-    prompt: 'How reliable are pumps, controls, and power resilience arrangements for sustained firefighting support?',
-  },
-  {
-    factor_key: 're06_fp_reliability_system_condition',
-    group: 'reliability',
-    prompt: 'How reliable is current system condition based on maintenance, impairment control, and defect history?',
-  },
-  {
-    factor_key: 're06_fp_reliability_testing',
-    group: 'reliability',
-    prompt: 'How reliable is performance evidence from routine inspection, testing, and flow / functional verification?',
-  },
-  {
-    factor_key: 're06_fp_localised_systems_provided',
-    group: 'localised_special',
-    prompt: 'Are local application or process-specific suppression systems provided where needed?',
-  },
-  {
-    factor_key: 're06_fp_localised_hazard_match',
-    group: 'localised_special',
-    prompt: 'Is the protection matched to the actual hazard/process?',
-  },
-  {
-    factor_key: 're06_fp_localised_coverage_positioning',
-    group: 'localised_special',
-    prompt: 'Is coverage/positioning adequate to protect the hazard effectively?',
-  },
-  {
-    factor_key: 're06_fp_localised_itm_reliability',
-    group: 'localised_special',
-    prompt: 'Is inspection, testing, and maintenance of localised systems reliable?',
-  },
-  {
-    factor_key: 're06_fp_localised_shutdown_response',
-    group: 'localised_special',
-    prompt: 'Are shutdown, isolation, and operator response arrangements adequate for these protected hazards?',
-  },
-];
+const SUPPLEMENTARY_FIRE_QUESTIONS: Array<Pick<SupplementaryQuestionResponse, 'factor_key' | 'group' | 'prompt'>> =
+  RE04_ENGINEERING_QUESTIONS.map((question) => ({
+    factor_key: question.factorKey,
+    group: question.group,
+    prompt: question.prompt,
+  }));
 
 function createDefaultSupplementaryAssessment(): SupplementaryAssessmentData {
   return {
@@ -242,7 +178,8 @@ function createDefaultSupplementaryAssessment(): SupplementaryAssessmentData {
     })),
     adequacy_subscore: null,
     reliability_subscore: null,
-    localised_special_subscore: null,
+    localised_subscore: null,
+    evidence_subscore: null,
     overall_score: null,
   };
 }
@@ -267,34 +204,29 @@ function normalizeSupplementaryAssessment(
   };
 }
 
-function deriveSupplementaryScores(questions: SupplementaryQuestionResponse[]) {
-  const byGroup = {
-    adequacy: questions.filter((q) => q.group === 'adequacy' && q.score_1_5 !== null),
-    reliability: questions.filter((q) => q.group === 'reliability' && q.score_1_5 !== null),
-    localised_special: questions.filter((q) => q.group === 'localised_special' && q.score_1_5 !== null),
-  };
-
-  const average = (items: SupplementaryQuestionResponse[]) => {
-    if (items.length === 0) return null;
-    const sum = items.reduce((acc, item) => acc + Number(item.score_1_5), 0);
-    return Math.round((sum / items.length) * 10) / 10;
-  };
-
-  const adequacy_subscore = average(byGroup.adequacy);
-  const reliability_subscore = average(byGroup.reliability);
-  const ratedQuestions = questions.filter((q) => q.score_1_5 !== null);
-  const localised_special_subscore = average(byGroup.localised_special);
-  const overall_score = average(ratedQuestions);
-
-  return {
-    adequacy_subscore,
-    reliability_subscore,
-    localised_special_subscore,
-    overall_score,
-  };
+function shouldIncludeLocalisedScoring(buildings: Record<string, BuildingFireProtection>): boolean {
+  return Object.values(buildings).some((buildingData) => {
+    const sprinklerData = buildingData?.sprinklerData;
+    if (!sprinklerData) return false;
+    const required = sprinklerData.localised_required === 'Yes';
+    const installed = sprinklerData.localised_present === 'Yes';
+    const requiredButMissing = required && sprinklerData.localised_present === 'No';
+    return (required && installed) || requiredButMissing;
+  });
 }
 
-function parseAreaValue(value: any): number {
+
+
+function initializeAutoRecStates(
+  questions: SupplementaryQuestionResponse[]
+): Record<string, AutoRecommendationLifecycleState> {
+  return questions.reduce((acc, question) => {
+    acc[question.factor_key] = 'none';
+    return acc;
+  }, {} as Record<string, AutoRecommendationLifecycleState>);
+}
+
+function parseAreaValue(value: unknown): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -303,6 +235,22 @@ function parseAreaValue(value: any): number {
     const parsed = parseFloat(cleaned);
     return isNaN(parsed) ? 0 : parsed;
   }
+  return 0;
+}
+
+function resolveBuildingArea(building: Building): number {
+  const footprintArea = parseAreaValue(building.footprint_m2);
+  if (footprintArea > 0) return footprintArea;
+
+  const roofArea = parseAreaValue(building.roof_area_m2);
+  if (roofArea > 0) return roofArea;
+
+  const mezzanineArea = parseAreaValue(building.mezzanine_area_m2);
+  if (mezzanineArea > 0) return mezzanineArea;
+
+  const floorArea = parseAreaValue(building.floor_area_sqm);
+  if (floorArea > 0) return floorArea;
+
   return 0;
 }
 
@@ -321,6 +269,10 @@ function calculateSiteRollup(
   installedCoverage_pct: number;
   requiredCoverage_pct: number;
   buildingsWithArea: number;
+  missingRequiredCoverageCount: number;
+  missingInstalledCoverageCount: number;
+  missingFieldPaths: string[];
+  coverageDataBuildings: number;
 } {
   let totalWeightedScore = 0;
   let totalWeight = 0;
@@ -330,36 +282,74 @@ function calculateSiteRollup(
   let someAreaMissing = false;
   let totalArea_m2 = 0;
   let buildingsWithArea = 0;
+  let missingRequiredCoverageCount = 0;
+  let missingInstalledCoverageCount = 0;
+  let coverageDataBuildings = 0;
+  const missingFieldPaths = new Set<string>();
 
   for (const building of buildings) {
     const buildingFP = fireProtectionData.buildings[building.id];
     if (!buildingFP?.sprinklerData) continue;
+    const sprinklersInstalled = buildingFP.sprinklerData.sprinklers_installed === 'Yes';
 
-    // Include any building where sprinkler coverage is required, even if currently not installed
-    const requiredPct = buildingFP.sprinklerData.sprinkler_coverage_required_pct ?? 0;
-    if (requiredPct <= 0) continue;
+    const area = resolveBuildingArea(building);
+    if (area <= 0) {
+      missingFieldPaths.add(`re_buildings.${building.id}.footprint_m2|roof_area_m2|mezzanine_area_m2|floor_area_sqm`);
+      someAreaMissing = true;
+    }
 
-    const finalScore = buildingFP.sprinklerData.final_active_score_1_5;
-    if (finalScore === null || finalScore === undefined) continue;
-
-    // Parse area robustly (handles strings like "1,200", nulls, etc.)
-    const area = parseAreaValue(building.footprint_m2);
-
-    if (area > 0) {
-      const installedPct = buildingFP.sprinklerData.sprinkler_coverage_installed_pct ?? 0;
-      requiredSprinklerArea += (area * requiredPct) / 100;
-      installedSprinklerArea += (area * installedPct) / 100;
+    // Coverage metrics and missing-data checks apply only where sprinklers are installed
+    if (area > 0 && sprinklersInstalled) {
       totalArea_m2 += area;
       buildingsWithArea++;
 
-      // Use area for weighted scoring
-      totalWeightedScore += finalScore * area;
-      totalWeight += area;
+      const installedPctRaw = buildingFP.sprinklerData.sprinkler_coverage_installed_pct;
+      if (installedPctRaw === null || installedPctRaw === undefined) {
+        missingInstalledCoverageCount++;
+        missingFieldPaths.add(`module_instances.fire_protection.buildings.${building.id}.sprinklerData.sprinkler_coverage_installed_pct`);
+      } else {
+        const installedPct = Math.max(0, Math.min(100, parseAreaValue(installedPctRaw)));
+        installedSprinklerArea += (area * installedPct) / 100;
+        coverageDataBuildings++;
+      }
+
+      const requiredPctRawForCoverage = buildingFP.sprinklerData.sprinkler_coverage_required_pct;
+      if (requiredPctRawForCoverage === null || requiredPctRawForCoverage === undefined) {
+        missingRequiredCoverageCount++;
+        missingFieldPaths.add(`module_instances.fire_protection.buildings.${building.id}.sprinklerData.sprinkler_coverage_required_pct`);
+      } else {
+        const requiredPctForCoverage = Math.max(0, Math.min(100, parseAreaValue(requiredPctRawForCoverage)));
+        requiredSprinklerArea += (area * requiredPctForCoverage) / 100;
+        coverageDataBuildings++;
+      }
+    }
+
+    // Building scoring roll-up remains informational context and only includes required > 0
+    const requiredPctRaw = buildingFP.sprinklerData.sprinkler_coverage_required_pct;
+    if (requiredPctRaw === null || requiredPctRaw === undefined) {
+      continue;
+    }
+
+    // Building scoring roll-up includes only sprinkler-installed buildings with required coverage
+    if (!sprinklersInstalled) continue;
+
+    const requiredPct = requiredPctRaw;
+    if (requiredPct <= 0) continue;
+
+    const finalScore = buildingFP.sprinklerData.final_active_score_1_5;
+
+    if (area > 0) {
+      // Use area for weighted scoring when final score is available
+      if (finalScore !== null && finalScore !== undefined) {
+        totalWeightedScore += finalScore * area;
+        totalWeight += area;
+      }
     } else {
-      // Building has no area - still count for scoring with weight=1, but mark as missing
-      totalWeightedScore += finalScore * 1;
-      totalWeight += 1;
-      someAreaMissing = true;
+      // Building has no area - score weighting falls back only if final score exists
+      if (finalScore !== null && finalScore !== undefined) {
+        totalWeightedScore += finalScore * 1;
+        totalWeight += 1;
+      }
     }
 
     buildingsAssessed++;
@@ -383,6 +373,10 @@ function calculateSiteRollup(
     installedCoverage_pct: Math.round(installedCoverage_pct * 10) / 10,
     requiredCoverage_pct: Math.round(requiredCoverage_pct * 10) / 10,
     buildingsWithArea,
+    missingRequiredCoverageCount,
+    missingInstalledCoverageCount,
+    missingFieldPaths: Array.from(missingFieldPaths),
+    coverageDataBuildings,
   };
 }
 
@@ -411,7 +405,8 @@ function createDefaultBuildingSprinkler(): BuildingSprinklerData {
     system_type: 'Unknown',
     standard: undefined,
     standard_other: '',
-    localised_present: 'No',
+    localised_required: 'Unknown',
+    localised_present: 'Unknown',
     localised_type: '',
     localised_protected_asset: '',
     localised_comments: '',
@@ -447,7 +442,7 @@ export default function RE06FireProtectionForm({
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
 
-  const initialData: FireProtectionModuleData = moduleInstance.data?.fire_protection || {
+  const initialData: FireProtectionModuleData = ((moduleInstance.data as { fire_protection?: FireProtectionModuleData } | null)?.fire_protection) || {
     buildings: {},
     site: {
       water: createDefaultSiteWater(),
@@ -466,8 +461,6 @@ export default function RE06FireProtectionForm({
 
   const [fireProtectionData, setFireProtectionData] = useState<FireProtectionModuleData>(initialData);
 
-  const siteWaterData = fireProtectionData.site.water;
-  const siteWaterComments = fireProtectionData.site.comments || '';
 
   const selectedSprinklerData = selectedBuildingId
     ? fireProtectionData.buildings[selectedBuildingId]?.sprinklerData || createDefaultBuildingSprinkler()
@@ -475,35 +468,63 @@ export default function RE06FireProtectionForm({
   const selectedComments = selectedBuildingId
     ? fireProtectionData.buildings[selectedBuildingId]?.comments || ''
     : '';
+  const isLocalisedRequired = selectedSprinklerData.localised_required === 'Yes';
+  const isLocalisedInstalled = selectedSprinklerData.localised_present === 'Yes';
+  const isLocalisedKnockoutFailed = isLocalisedRequired && selectedSprinklerData.localised_present === 'No';
+  const showLocalisedDetailedAssessment = isLocalisedRequired && isLocalisedInstalled;
 
-  // Suggested score from inputs (always calculated, never null)
-  const suggestedWaterScore = useMemo(() => {
-    return calculateWaterScore(siteWaterData);
-  }, [siteWaterData]);
-
-  // Assessor-set score (can be null = "Not rated")
-  const assessorWaterScore = fireProtectionData.site.water_score_1_5;
-
-  const rawSprinklerScore = useMemo(() => {
-    return calculateSprinklerScore(selectedSprinklerData);
-  }, [selectedSprinklerData]);
-
-  const selectedSprinklerScore = rawSprinklerScore; // Can be null
+  const rawSprinklerScore = useMemo(() => calculateSprinklerScore(selectedSprinklerData), [selectedSprinklerData]);
+  const selectedSprinklerScore = rawSprinklerScore;
   const selectedDetectionScore = selectedSprinklerData.detection_score_1_5 ?? null;
+  const selectedFinalScore = selectedSprinklerData.final_active_score_1_5 ?? rawSprinklerScore;
 
-  const selectedFinalScore = useMemo(() => {
-    return calculateFinalActiveScore(rawSprinklerScore, assessorWaterScore, suggestedWaterScore, selectedDetectionScore);
-  }, [rawSprinklerScore, assessorWaterScore, suggestedWaterScore, selectedDetectionScore]);
-
-  // Use assessor score if set, otherwise suggested for flags/rollup
-  const effectiveWaterScore = assessorWaterScore ?? suggestedWaterScore;
-  const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, effectiveWaterScore);
+  const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, 3);
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
+  const installedCoverageUnavailableReason = siteRollup.totalArea_m2 > 0
+    ? null
+    : siteRollup.missingInstalledCoverageCount > 0
+      ? 'Installed coverage not provided'
+      : 'Coverage data unavailable';
+  const requiredCoverageUnavailableReason = siteRollup.totalArea_m2 > 0
+    ? null
+    : siteRollup.missingRequiredCoverageCount > 0
+      ? 'Required coverage not provided'
+      : 'Coverage data unavailable';
   const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
-  const supplementaryScores = deriveSupplementaryScores(supplementaryAssessment.questions);
+  const supplementaryScores = deriveRe04SupplementaryScores(supplementaryAssessment.questions, {
+    includeLocalisedGroup: showLocalisedDetailedAssessment || isLocalisedKnockoutFailed,
+  });
+  const [supplementaryAutoRecStates, setSupplementaryAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>(
+    () => initializeAutoRecStates(supplementaryAssessment.questions)
+  );
+  const [localisedKnockoutAutoRecStates, setLocalisedKnockoutAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
+
+
+  useEffect(() => {
+    setSupplementaryAutoRecStates((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      for (const question of supplementaryAssessment.questions) {
+        if (!(question.factor_key in next)) {
+          next[question.factor_key] = 'none';
+          changed = true;
+        }
+      }
+
+      for (const key of Object.keys(next)) {
+        if (!supplementaryAssessment.questions.some((question) => question.factor_key === key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [supplementaryAssessment.questions]);
 
   const derivedRecommendations = useMemo(() => {
-    const buildingsForRecs: Record<string, any> = {};
+    const buildingsForRecs: Record<string, unknown> = {};
 
     Object.entries(fireProtectionData.buildings).forEach(([buildingId, buildingFP]) => {
       if (!buildingFP.sprinklerData) return;
@@ -513,6 +534,8 @@ export default function RE06FireProtectionForm({
             rating: buildingFP.sprinklerData.sprinkler_score_1_5,
             provided_pct: buildingFP.sprinklerData.sprinkler_coverage_installed_pct,
             required_pct: buildingFP.sprinklerData.sprinkler_coverage_required_pct,
+            localised_required: buildingFP.sprinklerData.localised_required?.toLowerCase(),
+            localised_present: buildingFP.sprinklerData.localised_present?.toLowerCase(),
           },
         },
       };
@@ -521,12 +544,13 @@ export default function RE06FireProtectionForm({
     const fpModule = {
       buildings: buildingsForRecs,
       site: {
-        water_supply_reliability: siteWaterData.water_reliability?.toLowerCase() as any,
       },
     };
 
     return generateFireProtectionRecommendations(fpModule);
-  }, [fireProtectionData.buildings, siteWaterData.water_reliability]);
+  }, [fireProtectionData.buildings]);
+
+  const hasSufficientSiteRollupData = siteRollup.totalArea_m2 > 0 && siteRollup.coverageDataBuildings > 0;
 
   useEffect(() => {
     async function loadBuildings() {
@@ -576,7 +600,15 @@ export default function RE06FireProtectionForm({
     setSaveError(null);
     try {
       const supplementaryToSave = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
-      const supplementaryScoresToSave = deriveSupplementaryScores(supplementaryToSave.questions);
+      const includeLocalisedGroupForSave =
+        showLocalisedDetailedAssessment ||
+        Object.values(fireProtectionData.buildings || {}).some((buildingData) => {
+          const sprinklerData = buildingData?.sprinklerData;
+          return sprinklerData?.localised_required === 'Yes' && sprinklerData?.localised_present === 'No';
+        });
+      const supplementaryScoresToSave = deriveRe04SupplementaryScores(supplementaryToSave.questions, {
+        includeLocalisedGroup: includeLocalisedGroupForSave,
+      });
       const payload: FireProtectionModuleData = {
         ...fireProtectionData,
         supplementary_assessment: {
@@ -599,21 +631,62 @@ export default function RE06FireProtectionForm({
         .eq('module_key', 'RISK_ENGINEERING')
         .maybeSingle();
 
-      const industryKey = (riskEngInstance?.data as any)?.industry || null;
+      const industryKey = (riskEngInstance?.data as { industry?: string } | null)?.industry || null;
       const allSupplementaryQuestions = payload.supplementary_assessment?.questions || [];
 
-      void Promise.allSettled(
-        allSupplementaryQuestions.map((question) =>
-          syncAutoRecToRegister({
-            documentId: moduleInstance.document_id,
-            moduleKey: 'RE_06_FIRE_PROTECTION',
-            canonicalKey: question.factor_key,
-            moduleInstanceId: moduleInstance.id,
-            rating_1_5: question.score_1_5 === null ? 5 : Number(question.score_1_5),
-            industryKey,
-          })
-        )
-      );
+      const supplementarySyncOps = allSupplementaryQuestions.map(async (question) => {
+        const lifecycleState = await syncAutoRecToRegister({
+          documentId: moduleInstance.document_id,
+          moduleKey: 'RE_06_FIRE_PROTECTION',
+          canonicalKey: question.factor_key,
+          moduleInstanceId: moduleInstance.id,
+          rating_1_5: question.score_1_5 === null ? 5 : Number(question.score_1_5),
+          industryKey,
+        });
+
+        return { factorKey: question.factor_key, lifecycleState };
+      });
+
+      const localisedKnockoutSyncOps = Object.entries(payload.buildings || {}).map(([buildingId, buildingData]) => {
+        const sprinklerData = buildingData?.sprinklerData;
+        const knockoutFailed = sprinklerData?.localised_required === 'Yes' && sprinklerData?.localised_present === 'No';
+
+        return syncAutoRecToRegister({
+          documentId: moduleInstance.document_id,
+          moduleKey: 'RE_06_FIRE_PROTECTION',
+          canonicalKey: `re06_fp_localised_required_installation:${buildingId}`,
+          moduleInstanceId: moduleInstance.id,
+          rating_1_5: knockoutFailed ? 1 : 5,
+          industryKey,
+        }).then((lifecycleState) => ({ buildingId, lifecycleState }));
+      });
+
+      const [supplementarySyncResults, localisedKnockoutSyncResults] = await Promise.all([
+        Promise.allSettled(supplementarySyncOps),
+        Promise.allSettled(localisedKnockoutSyncOps),
+      ]);
+
+      setSupplementaryAutoRecStates((prev) => {
+        const next = { ...prev };
+
+        for (const result of supplementarySyncResults) {
+          if (result.status !== 'fulfilled') continue;
+          next[result.value.factorKey] = result.value.lifecycleState;
+        }
+
+        return next;
+      });
+
+      setLocalisedKnockoutAutoRecStates((prev) => {
+        const next = { ...prev };
+
+        for (const result of localisedKnockoutSyncResults) {
+          if (result.status !== 'fulfilled') continue;
+          next[result.value.buildingId] = result.value.lifecycleState;
+        }
+
+        return next;
+      });
 
       setLastSavedAt(new Date());
       onSaved();
@@ -636,45 +709,7 @@ export default function RE06FireProtectionForm({
   }, [saving, fireProtectionData, moduleInstance.id, moduleInstance.document_id, onSaved]);
 
 
-  const updateSiteWater = (field: keyof SiteWaterData, value: any) => {
-    setFireProtectionData((prev) => ({
-      ...prev,
-      site: {
-        ...prev.site,
-        water: {
-          ...prev.site.water,
-          [field]: value,
-        },
-        // Don't auto-calculate score anymore - assessor must explicitly set it
-      },
-    }));
-  };
-
-  const setAssessorWaterScore = (score: number | null) => {
-    setFireProtectionData((prev) => ({
-      ...prev,
-      site: {
-        ...prev.site,
-        water_score_1_5: score,
-      },
-    }));
-  };
-
-  const applySuggestedScore = () => {
-    setAssessorWaterScore(suggestedWaterScore);
-  };
-
-  const updateSiteComments = (comments: string) => {
-    setFireProtectionData((prev) => ({
-      ...prev,
-      site: {
-        ...prev.site,
-        comments,
-      },
-    }));
-  };
-
-  const updateBuildingSprinkler = (field: keyof BuildingSprinklerData, value: any) => {
+  const updateBuildingSprinkler = (field: keyof BuildingSprinklerData, value: unknown) => {
     if (!selectedBuildingId) return;
 
     setFireProtectionData((prev) => {
@@ -689,12 +724,8 @@ export default function RE06FireProtectionForm({
       };
 
       const sprinklerScore = calculateSprinklerScore(updatedData);
-      const waterScore = prev.site.water_score_1_5;
-      const suggestedWater = calculateWaterScore(prev.site.water);
-      const detectionScore = updatedData.detection_score_1_5 ?? null;
-
-      updatedData.sprinkler_score_1_5 = sprinklerScore; // Can be null
-      updatedData.final_active_score_1_5 = calculateFinalActiveScore(sprinklerScore, waterScore, suggestedWater, detectionScore);
+      updatedData.sprinkler_score_1_5 = sprinklerScore;
+      updatedData.final_active_score_1_5 = sprinklerScore;
 
       return {
         ...prev,
@@ -704,6 +735,52 @@ export default function RE06FireProtectionForm({
             ...building,
             sprinklerData: updatedData,
           },
+        },
+      };
+    });
+  };
+
+  const updateLocalisedKnockout = (
+    field: 'localised_required' | 'localised_present',
+    value: LocalisedRequired | LocalisedPresent
+  ) => {
+    if (!selectedBuildingId) return;
+
+    setFireProtectionData((prev) => {
+      const building = prev.buildings[selectedBuildingId] || {
+        sprinklerData: createDefaultBuildingSprinkler(),
+        comments: '',
+      };
+
+      const sprinklerData = {
+        ...building.sprinklerData,
+        [field]: value,
+      };
+
+      if (field === 'localised_required' && value !== 'Yes') {
+        sprinklerData.localised_present = 'Unknown';
+      }
+
+      const currentSupplementary = normalizeSupplementaryAssessment(prev.supplementary_assessment);
+      const updatedBuildings = {
+        ...prev.buildings,
+        [selectedBuildingId]: {
+          ...building,
+          sprinklerData,
+        },
+      };
+      const includeLocalisedGroup = shouldIncludeLocalisedScoring(updatedBuildings);
+      const updatedQuestions = currentSupplementary.questions.map((question) =>
+        question.factor_key === RE04_LOCALISED_INSTALLED_FACTOR_KEY ? { ...question, score_1_5: null } : question
+      );
+
+      return {
+        ...prev,
+        buildings: updatedBuildings,
+        supplementary_assessment: {
+          ...currentSupplementary,
+          ...deriveRe04SupplementaryScores(updatedQuestions, { includeLocalisedGroup }),
+          questions: updatedQuestions,
         },
       };
     });
@@ -739,7 +816,9 @@ export default function RE06FireProtectionForm({
         ...prev,
         supplementary_assessment: {
           ...current,
-          ...deriveSupplementaryScores(questions),
+          ...deriveRe04SupplementaryScores(questions, {
+            includeLocalisedGroup: shouldIncludeLocalisedScoring(prev.buildings),
+          }),
           questions,
         },
       };
@@ -772,282 +851,210 @@ export default function RE06FireProtectionForm({
   }
 
   return (
+    <>
     <div className="pb-24">
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 mb-6">
-        <div className="flex items-center gap-3 mb-4">
+
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
+        <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
-            <Droplet className="w-5 h-5 text-risk-info-fg" />
+            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
           </div>
           <div className="flex-1">
-            <h2 className="text-lg font-semibold text-slate-900">Site Water & Fire Pumps</h2>
-            <p className="text-sm text-slate-600">Site-level water supply reliability assessment</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-600">Water indicator:</span>
-            {assessorWaterScore !== null && assessorWaterScore !== undefined ? (
-              <>
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                      key={i}
-                      className={`w-6 h-6 rounded ${i <= assessorWaterScore ? 'bg-risk-info-fg' : 'bg-slate-200'}`}
-                    />
-                  ))}
-                </div>
-                <span className="text-sm font-medium text-slate-900">{assessorWaterScore}/5</span>
-              </>
-            ) : (
-              <span className="text-sm font-medium text-slate-500">Not rated</span>
-            )}
+            <h3 className="text-lg font-semibold text-slate-900">Engineering Assessment (Primary)</h3>
+            <p className="text-sm text-slate-600">This is the only scoring layer that drives RE-04 overall score. Scores of 4 are intended to be realistically achievable for well-managed normal risks, while 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {/* Water supply supports - New field at top */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Water supply supports</label>
-            <select
-              value={siteWaterData.supports || 'Unknown'}
-              onChange={(e) => updateSiteWater('supports', e.target.value as WaterSupports)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="Unknown">Unknown</option>
-              <option value="Sprinklers">Sprinklers</option>
-              <option value="Hydrants / fire main / hose reels">Hydrants / fire main / hose reels</option>
-              <option value="Both">Both</option>
-            </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Adequacy</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
           </div>
-
-          {/* Supply Type - Now dropdown with Other option */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Supply Type</label>
-            <select
-              value={siteWaterData.supply_type || ''}
-              onChange={(e) => updateSiteWater('supply_type', e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="">Select...</option>
-              <option value="Town mains">Town mains</option>
-              <option value="Single tank (on-site)">Single tank (on-site)</option>
-              <option value="Dual tank (on-site)">Dual tank (on-site)</option>
-              <option value="Break tank + mains">Break tank + mains</option>
-              <option value="Open water (reservoir)">Open water (reservoir)</option>
-              <option value="River / canal / open source">River / canal / open source</option>
-              <option value="Private main / estate main">Private main / estate main</option>
-              <option value="Other">Other...</option>
-            </select>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Reliability</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
           </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Localised / Special</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Evidence / Confidence</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.evidence_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
+            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score</div>
+            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
+          </div>
+        </div>
 
-          {/* Supply Type Other - Conditional */}
-          {siteWaterData.supply_type === 'Other' && (
-            <div className="col-span-2 md:col-span-2 xl:col-span-3">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Supply Type Details (Other)
-              </label>
-              <input
-                type="text"
-                value={siteWaterData.supply_type_other || ''}
-                onChange={(e) => updateSiteWater('supply_type_other', e.target.value)}
-                placeholder="Describe the supply type..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-              />
+        <div className="space-y-6">
+          <div>
+            <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q4)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.adequacy.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
             </div>
-          )}
+          </div>
 
-          {/* Conditional hydrant/hose fields */}
-          {(siteWaterData.supports === 'Hydrants / fire main / hose reels' || siteWaterData.supports === 'Both') && (
-            <>
-              <div className="md:col-span-2 xl:col-span-3 pt-4 border-t border-slate-200">
-                <h4 className="font-semibold text-slate-900 mb-4">Hydrant / fire main / hose reels</h4>
-              </div>
+          <div>
+            <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q5–Q7)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.reliability.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
+            </div>
+          </div>
 
+          <div className="border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
+            <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">External hydrant coverage</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?</label>
                 <select
-                  value={siteWaterData.hydrant_coverage || 'Unknown'}
-                  onChange={(e) => updateSiteWater('hydrant_coverage', e.target.value as CoverageQuality)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                >
-                  <option value="Unknown">Unknown</option>
-                  <option value="Good">Good</option>
-                  <option value="Partial">Partial</option>
-                  <option value="Poor">Poor</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Fire main / ring main condition</label>
-                <select
-                  value={siteWaterData.fire_main_condition || 'Unknown'}
-                  onChange={(e) => updateSiteWater('fire_main_condition', e.target.value as ConditionQuality)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                >
-                  <option value="Unknown">Unknown</option>
-                  <option value="Good">Good</option>
-                  <option value="Concerns">Concerns</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Hose reels present</label>
-                <select
-                  value={siteWaterData.hose_reels_present || 'Unknown'}
-                  onChange={(e) => updateSiteWater('hose_reels_present', e.target.value as YesNoUnknown)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                  value={selectedSprinklerData.localised_required || 'Unknown'}
+                  onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 >
                   <option value="Unknown">Unknown</option>
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </select>
               </div>
+              {selectedSprinklerData.localised_required === 'Yes' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">If yes, is it installed?</label>
+                  <select
+                    value={selectedSprinklerData.localised_present || 'Unknown'}
+                    onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="Unknown">Unknown</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+              )}
+            </div>
+            {(() => {
+              const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
+              const hasActiveRecommendation = currentState === 'created' || currentState === 'updated' || currentState === 'restored';
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Flow/pressure test evidence</label>
-                <select
-                  value={siteWaterData.flow_test_evidence || 'Unknown'}
-                  onChange={(e) => updateSiteWater('flow_test_evidence', e.target.value as TestEvidence)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                >
-                  <option value="Unknown">Unknown</option>
-                  <option value="Documented">Documented</option>
-                  <option value="Not documented">Not documented</option>
-                </select>
+              if (isLocalisedKnockoutFailed) {
+                return (
+                  <p className="mt-3 text-sm text-risk-high-fg">
+                    {hasActiveRecommendation ? 'Localised protection knockout recommendation is active.' : 'Localised protection knockout recommendation will be created on save.'}
+                  </p>
+                );
+              }
+
+              if (hasActiveRecommendation) {
+                return (
+                  <p className="mt-3 text-sm text-risk-info-fg">
+                    Localised protection knockout recommendation will be suppressed on save.
+                  </p>
+                );
+              }
+
+              return null;
+            })()}
+            {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q8–Q9 are shown only when localised protection is required and installed.</p>}
+          </div>
+
+
+
+          {showLocalisedDetailedAssessment && (
+            <div>
+              <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
+                  const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                  if (!question) return null;
+                  return (
+                    <ReEngineeringQuestionCard
+                      key={definition.factorKey}
+                      questionId={definition.id}
+                      factorKey={definition.factorKey}
+                      title={definition.uiLabel}
+                      prompt={definition.prompt}
+                      weight={definition.weight}
+                      answerStates={definition.answerStates}
+                      rating={question.score_1_5}
+                      notes={question.notes}
+                      autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                      onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                      onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                      onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                    />
+                  );
+                })}
               </div>
-
-              <div className="col-span-2 md:col-span-2 xl:col-span-3">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Last test date (optional)</label>
-                <input
-                  type="date"
-                  value={siteWaterData.flow_test_date || ''}
-                  onChange={(e) => updateSiteWater('flow_test_date', e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                />
-              </div>
-
-              <div className="col-span-2 border-t border-slate-200 pt-4"></div>
-            </>
+            </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Pumps Present</label>
-            <select
-              value={siteWaterData.pumps_present ? 'true' : 'false'}
-              onChange={(e) => updateSiteWater('pumps_present', e.target.value === 'true')}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="false">No</option>
-              <option value="true">Yes</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Pump Arrangement</label>
-            <select
-              value={siteWaterData.pump_arrangement || 'Unknown'}
-              onChange={(e) => updateSiteWater('pump_arrangement', e.target.value as PumpArrangement)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="Unknown">Unknown</option>
-              <option value="None">None</option>
-              <option value="Single">Single</option>
-              <option value="Duty+Standby">Duty + Standby</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Power Resilience</label>
-            <select
-              value={siteWaterData.power_resilience || 'Unknown'}
-              onChange={(e) => updateSiteWater('power_resilience', e.target.value as PowerResilience)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="Unknown">Unknown</option>
-              <option value="Good">Good</option>
-              <option value="Mixed">Mixed</option>
-              <option value="Poor">Poor</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Testing Regime</label>
-            <select
-              value={siteWaterData.testing_regime || 'Unknown'}
-              onChange={(e) => updateSiteWater('testing_regime', e.target.value as TestingRegime)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="Unknown">Unknown</option>
-              <option value="Documented">Documented</option>
-              <option value="Some evidence">Some evidence</option>
-              <option value="None">None</option>
-            </select>
-          </div>
-
-          <div className="col-span-2 md:col-span-2 xl:col-span-3">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Key Weaknesses</label>
-            <textarea
-              value={siteWaterData.key_weaknesses || ''}
-              onChange={(e) => updateSiteWater('key_weaknesses', e.target.value)}
-              placeholder="Describe any key vulnerabilities or concerns..."
-              rows={2}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-            />
-          </div>
-
-          <div className="col-span-2 md:col-span-2 xl:col-span-3">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
-            <textarea
-              value={siteWaterComments}
-              onChange={(e) => updateSiteComments(e.target.value)}
-              placeholder="Additional notes on water supply and pumps..."
-              rows={2}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-            />
-          </div>
-
-          {/* Site water score - Assessor judgment */}
-          <div className="md:col-span-2 xl:col-span-3 pt-4 border-t border-slate-200">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Site Water Score (assessor judgement)
-                </label>
-                <p className="text-xs text-slate-500">
-                  Based on the inputs above, the suggested score is <strong>{suggestedWaterScore}/5</strong>
-                </p>
-              </div>
-              <button
-                onClick={applySuggestedScore}
-                className="ml-3 px-3 py-1.5 text-sm bg-risk-info-bg text-risk-info-fg rounded-lg hover:bg-risk-info-border transition-colors"
-              >
-                Apply suggested score
-              </button>
+            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
             </div>
-            <select
-              value={assessorWaterScore === null || assessorWaterScore === undefined ? '' : assessorWaterScore}
-              onChange={(e) => setAssessorWaterScore(e.target.value === '' ? null : Number(e.target.value))}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-            >
-              <option value="">Not rated</option>
-              <option value="1">1 – Very Poor (Highly unreliable)</option>
-              <option value="2">2 – Poor (Unreliable)</option>
-              <option value="3">3 – Fair (Limited reliability)</option>
-              <option value="4">4 – Good (Generally reliable)</option>
-              <option value="5">5 – Excellent (Highly reliable)</option>
-            </select>
           </div>
-        </div>
-
-        <div className="mt-4 p-3 bg-risk-info-bg rounded-lg">
-          <p className="text-sm text-risk-info-fg">
-            <strong>Guidance:</strong> A rating of 3 may be acceptable when evidence is limited, but please select a rating explicitly. The suggested score is calculated from your inputs above.
-          </p>
-        </div>
-
-        <div className="mt-6 pt-6 border-t border-slate-200">
-          <FireProtectionRecommendations
-            recommendations={getSiteRecommendations(derivedRecommendations)}
-            title="Site Water Supply Recommendations"
-          />
         </div>
       </div>
 
@@ -1087,7 +1094,7 @@ export default function RE06FireProtectionForm({
                     </div>
                     {buildingFP?.sprinklerData && (
                       <div className="ml-2">
-                        <div className="text-xs text-slate-600">Final</div>
+                        <div className="text-xs text-slate-600">Supporting</div>
                         <div className="text-sm font-bold text-slate-900">
                           {buildingFP.sprinklerData.final_active_score_1_5 !== null &&
                           buildingFP.sprinklerData.final_active_score_1_5 !== undefined
@@ -1146,35 +1153,16 @@ export default function RE06FireProtectionForm({
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2 ml-4">
-                  <button
-                    type="button"
-                    onClick={() => void saveData()}
-                    disabled={saving}
-                    className="px-3 py-1.5 rounded-md text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {saving ? 'Saving…' : 'Save'}
-                  </button>
-                </div>
-
                 <div className="text-right">
                   <div className="text-sm text-slate-600 flex items-center gap-1 justify-end">
-                    Final Active Score
-                    {(assessorWaterScore === null || assessorWaterScore === undefined) && (
-                      <span className="text-xs bg-risk-medium-bg text-risk-medium-fg px-2 py-0.5 rounded">provisional</span>
-                    )}
+                    Building Active Score (supporting only)
                   </div>
                   <div className="text-3xl font-bold text-slate-900">
                     {selectedFinalScore !== null && selectedFinalScore !== undefined ? `${selectedFinalScore}/5` : 'Not rated'}
                   </div>
                   <div className="text-xs text-slate-500 mt-1">
                     Sprinklers: {selectedSprinklerScore !== null && selectedSprinklerScore !== undefined ? `${selectedSprinklerScore}/5` : 'Not rated'} • Detection:{' '}
-                    {selectedDetectionScore !== null && selectedDetectionScore !== undefined ? `${selectedDetectionScore}/5` : 'Not rated'} • Water:{' '}
-                    {assessorWaterScore !== null && assessorWaterScore !== undefined ? (
-                      `${assessorWaterScore}/5`
-                    ) : (
-                      <span className="text-risk-medium-fg">~{suggestedWaterScore}/5</span>
-                    )}
+                    {selectedDetectionScore !== null && selectedDetectionScore !== undefined ? `${selectedDetectionScore}/5` : 'Not rated'}
                   </div>
                 </div>
               </div>
@@ -1216,7 +1204,7 @@ export default function RE06FireProtectionForm({
                     onChange={(e) =>
                       updateBuildingSprinkler('sprinklers_installed', e.target.value as SprinklersInstalled)
                     }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="Unknown">Unknown</option>
                     <option value="Yes">Yes</option>
@@ -1256,7 +1244,7 @@ export default function RE06FireProtectionForm({
                               e.target.select();
                             }
                           }}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
 
@@ -1281,7 +1269,7 @@ export default function RE06FireProtectionForm({
                               e.target.select();
                             }
                           }}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
 
@@ -1314,7 +1302,7 @@ export default function RE06FireProtectionForm({
                       <select
                         value={selectedSprinklerData.system_type || 'Unknown'}
                         onChange={(e) => updateBuildingSprinkler('system_type', e.target.value as SystemType)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="Unknown">Unknown</option>
                         <option value="Wet pipe">Wet pipe</option>
@@ -1332,7 +1320,7 @@ export default function RE06FireProtectionForm({
                         <select
                           value={selectedSprinklerData.standard || ''}
                           onChange={(e) => updateBuildingSprinkler('standard', e.target.value)}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="">Select...</option>
                           <option value="EN 12845">EN 12845</option>
@@ -1357,7 +1345,7 @@ export default function RE06FireProtectionForm({
                             value={selectedSprinklerData.standard_other || ''}
                             onChange={(e) => updateBuildingSprinkler('standard_other', e.target.value)}
                             placeholder="Specify standard..."
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
                       )}
@@ -1369,7 +1357,7 @@ export default function RE06FireProtectionForm({
                           value={selectedSprinklerData.hazard_class || ''}
                           onChange={(e) => updateBuildingSprinkler('hazard_class', e.target.value)}
                           placeholder="e.g., OH1, OH2, OH3, LH, HHP"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
                     </div>
@@ -1383,7 +1371,7 @@ export default function RE06FireProtectionForm({
                           onChange={(e) =>
                             updateBuildingSprinkler('maintenance_status', e.target.value as MaintenanceStatus)
                           }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="Unknown">Unknown</option>
                           <option value="Good">Good</option>
@@ -1399,7 +1387,7 @@ export default function RE06FireProtectionForm({
                           onChange={(e) =>
                             updateBuildingSprinkler('sprinkler_adequacy', e.target.value as SprinklerAdequacy)
                           }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           <option value="Unknown">Unknown</option>
                           <option value="Adequate">Adequate</option>
@@ -1409,78 +1397,6 @@ export default function RE06FireProtectionForm({
                     </div>
                   </>
                 )}
-
-                {/* Localised / Special Fire Protection - Always visible regardless of sprinklers */}
-                <div className="pt-4 border-t border-slate-200">
-                  <h4 className="font-semibold text-slate-900 mb-3">Localised / Special fire protection</h4>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Localised protection installed?
-                      </label>
-                      <select
-                        value={selectedSprinklerData.localised_present || 'No'}
-                        onChange={(e) =>
-                          updateBuildingSprinkler('localised_present', e.target.value as LocalisedPresent)
-                        }
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                      >
-                        <option value="No">No</option>
-                        <option value="Yes">Yes</option>
-                        <option value="Partial">Partial</option>
-                        <option value="Unknown">Unknown</option>
-                      </select>
-                    </div>
-
-                    {(selectedSprinklerData.localised_present === 'Yes' ||
-                      selectedSprinklerData.localised_present === 'Partial') && (
-                      <>
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Protection type (predominant)
-                          </label>
-                          <select
-                            value={selectedSprinklerData.localised_type || ''}
-                            onChange={(e) => updateBuildingSprinkler('localised_type', e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                          >
-                            <option value="">Select...</option>
-                            <option value="Gas suppression">Gas suppression</option>
-                            <option value="Water mist">Water mist</option>
-                            <option value="Foam">Foam</option>
-                            <option value="Other">Other</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">
-                            Protected asset / area
-                          </label>
-                          <input
-                            type="text"
-                            value={selectedSprinklerData.localised_protected_asset || ''}
-                            onChange={(e) => updateBuildingSprinkler('localised_protected_asset', e.target.value)}
-                            placeholder="e.g., Server room, Paint store, Battery room"
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
-                          <textarea
-                            value={selectedSprinklerData.localised_comments || ''}
-                            onChange={(e) => updateBuildingSprinkler('localised_comments', e.target.value)}
-                            placeholder="Additional details on localised protection..."
-                            rows={2}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
                 {/* Fire Detection & Alarm - Always visible regardless of sprinklers */}
                 <div className="pt-4 border-t border-slate-200">
                   <h4 className="font-semibold text-slate-900 mb-3">Fire Detection & Alarm</h4>
@@ -1495,7 +1411,7 @@ export default function RE06FireProtectionForm({
                         onChange={(e) =>
                           updateBuildingSprinkler('detection_installed', e.target.value as DetectionInstalled)
                         }
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="Unknown">Unknown</option>
                         <option value="No">No</option>
@@ -1550,7 +1466,7 @@ export default function RE06FireProtectionForm({
                               value={selectedSprinklerData.detection_type_other || ''}
                               onChange={(e) => updateBuildingSprinkler('detection_type_other', e.target.value)}
                               placeholder="Specify other detection type..."
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                           </div>
                         )}
@@ -1562,7 +1478,7 @@ export default function RE06FireProtectionForm({
                             onChange={(e) =>
                               updateBuildingSprinkler('alarm_monitoring', e.target.value as AlarmMonitoring)
                             }
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             <option value="Unknown">Unknown</option>
                             <option value="Local only">Local only</option>
@@ -1581,7 +1497,7 @@ export default function RE06FireProtectionForm({
                                 e.target.value as DetectionTestingRegime
                               )
                             }
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             <option value="Unknown">Unknown</option>
                             <option value="Documented">Documented</option>
@@ -1601,7 +1517,7 @@ export default function RE06FireProtectionForm({
                                 e.target.value as DetectionMaintenanceStatus
                               )
                             }
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             <option value="Unknown">Unknown</option>
                             <option value="Good">Good</option>
@@ -1616,7 +1532,7 @@ export default function RE06FireProtectionForm({
                             onChange={(e) => updateBuildingSprinkler('detection_comments', e.target.value)}
                             placeholder="Additional details on fire detection system..."
                             rows={2}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                           />
                         </div>
                       </>
@@ -1637,7 +1553,7 @@ export default function RE06FireProtectionForm({
                           const val = e.target.value === 'null' ? null : Number(e.target.value);
                           updateBuildingSprinkler('detection_score_1_5', val);
                         }}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass}"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="null">Not rated</option>
                         <option value="1">1 - Very Poor</option>
@@ -1664,7 +1580,7 @@ export default function RE06FireProtectionForm({
                         }
                         placeholder="Explain why full coverage is not required..."
                         rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       />
                     </div>
                   )}
@@ -1676,7 +1592,7 @@ export default function RE06FireProtectionForm({
                     onChange={(e) => updateBuildingComments(e.target.value)}
                     placeholder="Additional notes on sprinkler system..."
                     rows={2}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   />
                 </div>
 
@@ -1702,188 +1618,101 @@ export default function RE06FireProtectionForm({
         </div>
       </div>
 
-      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Supplementary Engineering Assessment (Primary Fire Protection Score)</h3>
-            <p className="text-sm text-slate-600">Primary module scoring driver. Factual table capture remains unchanged above.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-3">
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Adequacy Subscore</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Reliability Subscore</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Localised / Special Subscore</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_special_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
-            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score (drives RE-06)</div>
-            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
-          </div>
-        </div>
-        <p className="text-xs text-slate-500 mb-6">
-          Overall score is the average of all rated supplementary questions across adequacy, reliability, and localised/special protection.
-        </p>
-
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {(['adequacy', 'reliability', 'localised_special'] as const).map((group) => (
-            <div key={group} className="border border-slate-200 rounded-lg p-4 space-y-4">
-              <h4 className="font-semibold text-slate-900">{group === 'localised_special' ? 'Localised / Special Protection Assessment' : group.charAt(0).toUpperCase() + group.slice(1)}</h4>
-              {supplementaryAssessment.questions
-                .filter((question) => question.group === group)
-                .map((question) => (
-                  <div key={question.factor_key} className="rounded-md border border-slate-200 p-3">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">{question.prompt}</label>
-                    <div className="space-y-3">
-                      <RatingButtons
-                        value={question.score_1_5}
-                        onChange={(rating) => updateSupplementaryQuestion(question.factor_key, 'score_1_5', rating)}
-                        labels={{
-                          1: 'Inadequate',
-                          2: 'Deficient',
-                          3: 'Marginal',
-                          4: 'Adequate',
-                          5: 'Robust',
-                        }}
-                        size="sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => updateSupplementaryQuestion(question.factor_key, 'score_1_5', null)}
-                        className="text-xs text-slate-500 hover:text-slate-700 underline"
-                      >
-                        Clear rating
-                      </button>
-                      <div>
-                        <textarea
-                          rows={2}
-                          value={question.notes}
-                          onChange={(e) => updateSupplementaryQuestion(question.factor_key, 'notes', e.target.value)}
-                          placeholder="Optional assessor notes"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 ${focusRingClass} resize-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+      {hasSufficientSiteRollupData ? (
+        <div className="mt-6 bg-slate-50 rounded-lg border border-slate-200 p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-4 h-4 text-slate-600" />
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-risk-low-bg rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-risk-low-fg" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Site Fire Protection Roll-up (Informational Indicator)</h3>
-            <p className="text-sm text-slate-600">
-              Area-weighted average across buildings where sprinklers are required
-            </p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-6">
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Average Score</div>
-            <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.buildingsAssessed > 0 ? siteRollup.averageScore.toFixed(1) : 'Not rated'}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">Out of 5.0</div>
-          </div>
-
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Buildings Assessed</div>
-            <div className="text-3xl font-bold text-slate-900">{siteRollup.buildingsAssessed}</div>
-            <div className="text-xs text-slate-500 mt-1">With required sprinklers</div>
-          </div>
-
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Installed sprinkler coverage</div>
-            <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.totalArea_m2 > 0 ? siteRollup.installedSprinklerArea.toLocaleString() : '—'}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">m²</div>
-            {siteRollup.totalArea_m2 > 0 && (
-              <div className="mt-2 text-sm text-slate-700">
-                {siteRollup.installedCoverage_pct.toFixed(1)}% of total area
-              </div>
-            )}
-            {siteRollup.totalArea_m2 === 0 && (
-              <div className="mt-2 text-xs text-slate-500">
-                —%
-              </div>
-            )}
-          </div>
-
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Required sprinkler coverage</div>
-            <div className="text-3xl font-bold text-slate-900">
-              {siteRollup.totalArea_m2 > 0 ? siteRollup.requiredSprinklerArea.toLocaleString() : '—'}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">m²</div>
-            {siteRollup.totalArea_m2 > 0 && (
-              <div className="mt-2 text-sm text-slate-700">
-                {siteRollup.requiredCoverage_pct.toFixed(1)}% of total area
-              </div>
-            )}
-            {siteRollup.totalArea_m2 === 0 && (
-              <div className="mt-2 text-xs text-slate-500">
-                —%
-              </div>
-            )}
-          </div>
-        </div>
-
-        {siteRollup.someAreaMissing && siteRollup.buildingsAssessed > 0 && (
-          <div className="mt-4 p-3 bg-risk-info-bg rounded-lg border border-risk-info-border">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-risk-info-fg mt-0.5" />
-              <p className="text-sm text-risk-info-fg">
-                Some buildings missing area; coverage based on {siteRollup.buildingsWithArea} building{siteRollup.buildingsWithArea !== 1 ? 's' : ''} with area data.
+            <div className="flex-1">
+              <h3 className="text-base font-semibold text-slate-800">Site coverage roll-up (secondary indicator)</h3>
+              <p className="text-xs text-slate-600">
+                Informational building-coverage context only. Engineering assessment above remains the scoring driver.
               </p>
             </div>
           </div>
-        )}
 
-        {siteRollup.buildingsAssessed === 0 && (
-          <div className="mt-4 p-3 bg-risk-medium-bg rounded-lg border border-risk-medium-border">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-risk-medium-fg mt-0.5" />
-              <p className="text-sm text-risk-medium-fg">
-                No buildings with required sprinklers found. Mark buildings with required_pct {'>'} 0 to include
-                in roll-up.
-              </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-lg p-4 border border-slate-200">
+              <div className="text-sm text-slate-600 mb-1">Buildings with required coverage</div>
+              <div className="text-2xl font-semibold text-slate-900">{siteRollup.buildingsAssessed}</div>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-slate-200">
+              <div className="text-sm text-slate-600 mb-1">Installed sprinkler coverage</div>
+              <div className="text-2xl font-semibold text-slate-900">{siteRollup.installedSprinklerArea.toLocaleString()} m²</div>
+              <div className="mt-1 text-sm text-slate-700">{siteRollup.installedCoverage_pct.toFixed(1)}% of total area</div>
+            </div>
+
+            <div className="bg-white rounded-lg p-4 border border-slate-200">
+              <div className="text-sm text-slate-600 mb-1">Required sprinkler coverage</div>
+              <div className="text-2xl font-semibold text-slate-900">{siteRollup.requiredSprinklerArea.toLocaleString()} m²</div>
+              <div className="mt-1 text-sm text-slate-700">{siteRollup.requiredCoverage_pct.toFixed(1)}% of total area</div>
             </div>
           </div>
-        )}
-      </div>
+
+          {siteRollup.someAreaMissing && siteRollup.buildingsAssessed > 0 && (
+            <div className="mt-4 p-3 bg-risk-info-bg rounded-lg border border-risk-info-border">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-risk-info-fg mt-0.5" />
+                <p className="text-sm text-risk-info-fg">
+                  Some buildings missing area; coverage based on {siteRollup.buildingsWithArea} building{siteRollup.buildingsWithArea !== 1 ? 's' : ''} with area data.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {(siteRollup.missingRequiredCoverageCount > 0 || siteRollup.missingInstalledCoverageCount > 0) && (
+            <div className="mt-4 p-3 bg-risk-medium-bg rounded-lg border border-risk-medium-border">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-risk-medium-fg mt-0.5" />
+                <p className="text-sm text-risk-medium-fg">
+                  Coverage roll-up is partial due to missing source data:
+                  {siteRollup.missingRequiredCoverageCount > 0
+                    ? ` required sprinkler coverage missing for ${siteRollup.missingRequiredCoverageCount} building${siteRollup.missingRequiredCoverageCount === 1 ? '' : 's'}`
+                    : ''}
+                  {siteRollup.missingRequiredCoverageCount > 0 && siteRollup.missingInstalledCoverageCount > 0 ? '; ' : ''}
+                  {siteRollup.missingInstalledCoverageCount > 0
+                    ? ` installed sprinkler coverage missing for ${siteRollup.missingInstalledCoverageCount} building${siteRollup.missingInstalledCoverageCount === 1 ? '' : 's'}`
+                    : ''}
+                  .
+                </p>
+              </div>
+              {siteRollup.missingFieldPaths.length > 0 && (
+                <div className="mt-2 text-xs text-risk-medium-fg">
+                  Missing field paths: {siteRollup.missingFieldPaths.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-6 border border-slate-200 rounded-lg bg-slate-50 p-4">
+          <p className="text-sm text-slate-600">
+            Site coverage roll-up is hidden until sufficient building coverage data is available.
+            {installedCoverageUnavailableReason ? ` Installed coverage: ${installedCoverageUnavailableReason}.` : ''}
+            {requiredCoverageUnavailableReason ? ` Required coverage: ${requiredCoverageUnavailableReason}.` : ''}
+          </p>
+        </div>
+      )}
 
 
       {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} buttonLabel="Add Recommendation" />
-      )}
-
-
-      {saving && (
-        <div className="fixed bottom-4 right-4 bg-white shadow-lg rounded-lg p-4 border border-slate-200">
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-            Saving...
-          </div>
-        </div>
+        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} buttonLabel="Add Recommendation" useInPlaceReRecommendationModal />
       )}
     </div>
+
+      <FloatingSaveBar
+        onSave={() => void saveData()}
+        isSaving={saving}
+        statusText={
+          saving
+            ? 'Saving fire protection assessment…'
+            : lastSavedAt
+            ? `Last saved at ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+            : 'Save to persist RE-04 fire protection updates and recommendation lifecycle changes.'
+        }
+      />
+    </>
   );
 }

@@ -157,7 +157,9 @@ export function drawRiskSignificanceBlock(args: {
   const badgeW = badgeTextWidth + 14;
   const badgeH = 14;
   const badgeX = x + w - badgeW;
-  const badgeY = titleY + 2;
+  const levelLabel = `${badgeText}:`;
+  const labelY = titleY - 18;
+  const badgeY = labelY + badgeH - 3;
 
   page.drawRectangle({
     x: badgeX,
@@ -178,12 +180,23 @@ export function drawRiskSignificanceBlock(args: {
     color: colour.fg,
   });
 
-  const lines = wrapText(sanitizePdfText(narrative), w, 10, fonts.regular);
-  let cursorY = titleY - 18;
+  const narrativeX = x;
+  const narrativeWidth = w;
+  const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
+  let cursorY = labelY;
+
+  page.drawText(levelLabel, {
+    x,
+    y: cursorY,
+    size: 10,
+    font: fonts.bold,
+    color: colour.fg,
+  });
+  cursorY -= 12;
 
   for (const line of lines) {
     page.drawText(line, {
-      x,
+      x: narrativeX,
       y: cursorY,
       size: 10,
       font: fonts.regular,

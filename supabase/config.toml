@@ -1,2 +1,5 @@
 [functions.upload-org-logo]
 verify_jwt = false
+
+[functions.delete-org-logo]
+verify_jwt = false

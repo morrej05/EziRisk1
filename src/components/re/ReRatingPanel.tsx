@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { humanizeCanonicalKey } from '../../lib/re/reference/hrgMasterMap';
 import { calculateScore } from '../../lib/re/scoring/riskEngineeringHelpers';
@@ -6,14 +6,16 @@ import type { AutoRecommendationLifecycleState } from '../../lib/re/recommendati
 
 interface ReRatingPanelProps {
   canonicalKey: string;
+  title?: string | null;
   industryKey: string | null;
-  rating: number;
+  rating: number | null;
   onChangeRating: (next: number) => void;
   helpText: string;
   weight: number;
   defaultCollapsed?: boolean;
   hasAutoRecommendation?: boolean;
   autoRecommendationState?: AutoRecommendationLifecycleState;
+  alwaysExpanded?: boolean;
 }
 
 const RATING_LABELS: Record<number, string> = {
@@ -41,7 +43,8 @@ function getRatingButtonStyles(value: number, isSelected: boolean): string {
 
 export default function ReRatingPanel({
   canonicalKey,
-  industryKey: _industryKey,
+  title,
+  industryKey,
   rating,
   onChangeRating,
   helpText,
@@ -49,27 +52,36 @@ export default function ReRatingPanel({
   defaultCollapsed = false,
   hasAutoRecommendation = false,
   autoRecommendationState = 'none',
+  alwaysExpanded = false,
 }: ReRatingPanelProps) {
+  void industryKey;
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
-  const score = calculateScore(rating, weight);
-  const label = humanizeCanonicalKey(canonicalKey);
+  const score = calculateScore(rating ?? 0, weight);
+  const label = title === undefined ? humanizeCanonicalKey(canonicalKey) : title;
   const showAutoRecIndicator = hasAutoRecommendation;
-  const autoStateLabel: Record<AutoRecommendationLifecycleState, string> = {
-    none: 'No recommendation created',
-    created: 'Auto recommendation created',
-    updated: 'Auto recommendation updated',
-    restored: 'Auto recommendation restored',
-    suppressed: 'Auto recommendation suppressed after reassessment',
-  };
+  const autoStateLabel = useMemo(() => {
+    const lowScore = typeof rating === 'number' && rating <= 2;
 
-  return (
-    <div className="bg-white rounded-lg border border-slate-200">
-      {/* Compact Header - Always Visible */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors"
-      >
+    if (lowScore) {
+      if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+        return 'Auto recommendation active';
+      }
+      if (autoRecommendationState === 'suppressed') {
+        return 'Recommendation will be reactivated on save';
+      }
+      return 'Recommendation will be created on save';
+    }
+
+    if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
+      return 'Recommendation will be suppressed on save';
+    }
+
+    return 'No active recommendation';
+  }, [autoRecommendationState, rating]);
+
+  const headerContent = (
+    <>
+      {!alwaysExpanded && (
         <div className="flex-shrink-0">
           {isExpanded ? (
             <ChevronDown className="w-5 h-5 text-slate-600" />
@@ -77,42 +89,59 @@ export default function ReRatingPanel({
             <ChevronRight className="w-5 h-5 text-slate-600" />
           )}
         </div>
+      )}
 
-        <div className="flex-1 flex items-center gap-4 text-left">
-          <h3 className="font-semibold text-slate-900 flex-1">{label}</h3>
+      <div className="flex-1 text-left">
+        {label ? <h3 className="font-semibold text-slate-900">{label}</h3> : null}
 
-          <div className="flex items-center gap-3 text-sm">
-            <div className="text-center">
-              <div className="text-xs text-slate-500">Rating</div>
-              <div className="text-lg font-bold text-slate-900">{rating}</div>
+        <div className={`${label ? 'mt-3' : ''} grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,auto))_minmax(220px,1fr)] gap-x-4 gap-y-2 items-center text-sm`}>
+          <div className="text-left sm:text-center">
+            <div className="text-xs text-slate-500">Rating</div>
+            <div className="text-lg font-bold text-slate-900">{rating ?? '—'}</div>
+          </div>
+
+          <div className="text-left sm:text-center">
+            <div className="text-xs text-slate-500">Weight</div>
+            <div className="text-lg font-bold text-slate-900">{weight}</div>
+          </div>
+
+          <div className="text-left sm:text-center">
+            <div className="text-xs text-slate-500">Score</div>
+            <div className="text-lg font-bold text-blue-600">{score}</div>
+          </div>
+
+          {showAutoRecIndicator && (
+            <div className="inline-flex items-center justify-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium w-fit">
+              <AlertCircle className="w-3 h-3" />
+              Auto-rec
             </div>
+          )}
 
-            <div className="text-center">
-              <div className="text-xs text-slate-500">Weight</div>
-              <div className="text-lg font-bold text-slate-900">{weight}</div>
-            </div>
-
-            <div className="text-center">
-              <div className="text-xs text-slate-500">Score</div>
-              <div className="text-lg font-bold text-blue-600">{score}</div>
-            </div>
-
-            {showAutoRecIndicator && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium">
-                <AlertCircle className="w-3 h-3" />
-                Auto-rec
-              </div>
-            )}
-
-            <div className="text-xs text-slate-500 max-w-[200px] text-right">
-              {autoStateLabel[autoRecommendationState]}
-            </div>
+          <div className="text-xs text-slate-500 xl:text-right col-span-2 sm:col-span-4 xl:col-span-1">
+            {autoStateLabel}
           </div>
         </div>
-      </button>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="bg-white rounded-lg border border-slate-200">
+      {/* Compact Header - Always Visible */}
+      {alwaysExpanded ? (
+        <div className="w-full px-4 py-3 flex items-start gap-3">{headerContent}</div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full px-4 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors"
+        >
+          {headerContent}
+        </button>
+      )}
 
       {/* Expanded Body */}
-      {isExpanded && (
+      {(alwaysExpanded || isExpanded) && (
         <div className="px-4 pb-4 border-t border-slate-200">
           <div className="mt-4">
             <p className="text-sm text-slate-600 mb-4">{helpText}</p>
@@ -127,9 +156,7 @@ export default function ReRatingPanel({
                     key={value}
                     type="button"
                     onClick={() => onChangeRating(value)}
-                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-center ${
-                      getRatingButtonStyles(value, rating === value)
-                    }`}
+                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-center ${getRatingButtonStyles(value, rating === value)}`}
                   >
                     <div className="text-lg font-bold">{value}</div>
                     <div className="text-xs mt-0.5">{RATING_LABELS[value]}</div>
@@ -138,7 +165,7 @@ export default function ReRatingPanel({
               </div>
             </div>
 
-            {rating <= 2 && (
+            {typeof rating === 'number' && rating <= 2 && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <p className="text-sm text-amber-900">
                   <strong>Note:</strong> This rating will generate an automatic recommendation for improvement.

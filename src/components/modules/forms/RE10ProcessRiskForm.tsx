@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
-import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
 import ReRatingPanel from '../../re/ReRatingPanel';
 import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
@@ -39,7 +38,6 @@ const CANONICAL_KEYS = [
 
 export default function RE10ProcessRiskForm({
   moduleInstance,
-  document,
   onSaved,
 }: RE10ProcessRiskFormProps) {
   const [isSaving, setIsSaving] = useState(false);
@@ -197,9 +195,6 @@ export default function RE10ProcessRiskForm({
         isSaving={isSaving}
       />
 
-      {document?.id && moduleInstance?.id && (
-        <ModuleActions documentId={document.id} moduleInstanceId={moduleInstance.id} />
-      )}
     </div>
 
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />

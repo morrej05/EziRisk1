@@ -24,6 +24,8 @@ interface BuildingSuppressionData {
     rating?: Rating;
     provided_pct?: number;
     required_pct?: number;
+    localised_required?: 'yes' | 'no' | 'unknown';
+    localised_present?: 'yes' | 'no' | 'partial' | 'unknown';
   };
   water_mist?: {
     rating?: Rating;
@@ -159,6 +161,25 @@ function generateBuildingSuppressionRecommendations(
         code,
         trigger: `water_mist_provided=${waterMist.provided_pct}%_required=${waterMist.required_pct}%`,
         text: `Extend water mist coverage from ${waterMist.provided_pct}% to ${waterMist.required_pct}% to meet requirements (${gap}% gap).`,
+      });
+    }
+  }
+
+
+  // Localised / special protection knockout: required but not installed
+  if (sprinklers?.localised_required === 'yes' && sprinklers?.localised_present === 'no') {
+    const code = 'LOCALISED_REQUIRED_NOT_INSTALLED';
+    if (!generatedCodes.has(code)) {
+      generatedCodes.add(code);
+      recommendations.push({
+        id: generateRecommendationId('building', code, buildingId),
+        scope: 'building',
+        buildingId,
+        category: 'suppression',
+        priority: 'high',
+        code,
+        trigger: 'localised_required=yes_localised_present=no',
+        text: 'Install localised/special suppression where required for process-specific hazards currently lacking protection.',
       });
     }
   }
