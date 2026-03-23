@@ -398,9 +398,7 @@ export default function DocumentPreviewPage() {
               target_date,
               module_instance_id,
               rec_number,
-              created_at,
-              completed_at,
-              is_complete
+              created_at
             `)
             .eq('document_id', document.id)
             .eq('is_suppressed', false)
