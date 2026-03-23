@@ -382,8 +382,77 @@ export default function DocumentPreviewPage() {
       if (isReDocument) {
         // RE documents
         if (reActiveTab === 're_survey') {
+          let reSurveyModuleInstances = moduleInstances;
+          try {
+            const re02Module = moduleInstances.find((instance: any) => instance.module_key === 'RE_02_CONSTRUCTION');
+            if (re02Module) {
+              const [{ data: reBuildings }, { data: reBuildingExtras }, { data: reSiteNotes }] = await Promise.all([
+                supabase
+                  .from('re_buildings')
+                  .select('*')
+                  .eq('document_id', document.id)
+                  .order('created_at', { ascending: true }),
+                supabase
+                  .from('re_building_extra')
+                  .select('building_id, data'),
+                supabase
+                  .from('re_site_notes')
+                  .select('construction_notes')
+                  .eq('document_id', document.id)
+                  .maybeSingle(),
+              ]);
+
+              const extrasByBuildingId = new Map<string, any>(
+                (reBuildingExtras || []).map((extra: any) => [extra.building_id, extra.data || {}])
+              );
+
+              const enrichedBuildings = (reBuildings || []).map((building: any) => {
+                const extra = extrasByBuildingId.get(building.id) || {};
+                return {
+                  ...building,
+                  roof_construction_percent: extra?.roof_construction_percent ?? building?.roof_construction_percent ?? null,
+                  wall_construction_percent: extra?.wall_construction_percent ?? building?.wall_construction_percent ?? null,
+                  mezzanine_construction_percent: extra?.mezzanine_construction_percent ?? building?.mezzanine_construction_percent ?? null,
+                  roof: {
+                    ...(building?.roof || {}),
+                    construction_percent: extra?.roof_construction_percent ?? building?.roof?.construction_percent ?? null,
+                  },
+                  walls: {
+                    ...(building?.walls || {}),
+                    construction_percent: extra?.wall_construction_percent ?? building?.walls?.construction_percent ?? null,
+                  },
+                  upper_floors_mezzanine: {
+                    ...(building?.upper_floors_mezzanine || {}),
+                    construction_percent: extra?.mezzanine_construction_percent ?? building?.upper_floors_mezzanine?.construction_percent ?? null,
+                  },
+                };
+              });
+
+              reSurveyModuleInstances = moduleInstances.map((instance: any) => {
+                if (instance.module_key !== 'RE_02_CONSTRUCTION') return instance;
+                const root = (instance.data || {}) as any;
+                const construction = root.construction || root;
+                const nextConstruction = {
+                  ...construction,
+                  buildings: enrichedBuildings,
+                  site_notes: construction?.site_notes || reSiteNotes?.construction_notes || '',
+                };
+                return {
+                  ...instance,
+                  data: {
+                    ...root,
+                    construction: nextConstruction,
+                  },
+                };
+              });
+            }
+          } catch (reEnrichmentError) {
+            console.warn('[PDF Preview] RE construction enrichment failed; continuing with module snapshot only:', reEnrichmentError);
+          }
+
           pdfBytes = await buildReSurveyPdf({
             ...pdfOptions,
+            moduleInstances: reSurveyModuleInstances,
             selectedModules: reSelectedModules,
           });
           reportKind = 're_survey';
