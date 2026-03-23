@@ -1252,9 +1252,8 @@ function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
   const rows: Row[] = [
     ['Water reliability', resolveFireProtectionField(water?.water_reliability)],
     ['Supports / pumps / arrangement', resolveFireProtectionField(water?.supports, water?.pumps_present, water?.pump_arrangement)],
-    ['Pump rating / pressure / flow / RPM', resolveFireProtectionField(water?.pump_rating, water?.pump_pressure, water?.pump_flow, water?.pump_rpm)],
     ['Water supply type', resolveFireProtectionField(water?.supply_type, water?.supply_type_other)],
-    ['Capacity', resolveFireProtectionField(water?.capacity)],
+    ['Capacity (m³)', resolveFireProtectionField(water?.capacity)],
     ['Power resilience / testing regime', resolveFireProtectionField(water?.power_resilience, water?.testing_regime)],
     ['Hydrant/fire main/hose reels', resolveFireProtectionField(water?.hydrant_coverage, water?.fire_main_condition, water?.hose_reels_present)],
     ['Flow test evidence / date', resolveFireProtectionField(water?.flow_test_evidence, water?.flow_test_date)],
@@ -1268,6 +1267,32 @@ function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
     if (lowerLabel === 'site water score (1-5)' || lowerLabel === 'building totals and averages') return true;
     return !isNotProvidedValue(value);
   });
+}
+
+function getFireProtectionPumpRows(module: ModuleInstance): Row[] {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const water = fp?.site?.water || {};
+  const pumps = Array.isArray(water?.pumps) ? water.pumps : [];
+  if (pumps.length > 0) {
+    return compactRows(
+      pumps.map((pump: any, index: number): Row => [
+        `Pump ${index + 1}`,
+        resolveFireProtectionField(pump?.rated_flow),
+        resolveFireProtectionField(pump?.rated_pressure),
+        resolveFireProtectionField(pump?.rated_rpm),
+      ]),
+      ['rated flow', 'rated pressure', 'rated rpm']
+    );
+  }
+
+  const legacyFlow = water?.pump_flow ?? water?.pump_rating;
+  const legacyPressure = water?.pump_pressure;
+  const legacyRpm = water?.pump_rpm;
+  const hasLegacyPump = [legacyFlow, legacyPressure, legacyRpm].some((value) => !isNotProvidedValue(value));
+  if (!hasLegacyPump) return [];
+  return compactRows([
+    ['Pump 1', resolveFireProtectionField(legacyFlow), resolveFireProtectionField(legacyPressure), resolveFireProtectionField(legacyRpm)],
+  ], ['rated flow', 'rated pressure', 'rated rpm']);
 }
 
 function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
@@ -2345,6 +2370,18 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      const firePumpRows = cleanFireProtectionRows(getFireProtectionPumpRows(module));
+      if (firePumpRows.length > 0) {
+        yPosition = sectionBreak(yPosition, 8);
+        yPosition = drawBlockHeading(page, yPosition, 'Fire Pump Details', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Pump', 'Rated flow (m³/h)', 'Rated pressure (bar)', 'Rated RPM'], firePumpRows, { regular: font, bold: fontBold }, {
+          colWidths: [70, 140, 140, CONTENT_WIDTH - 350],
+          fontSize: 8,
+          minRowHeight: 18,
+          wrapHeader: true,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+      }
       if (hasWaterSupplyDataUncertainty(module)) {
         yPosition = sectionBreak(yPosition, 8);
         yPosition = drawParagraph(
