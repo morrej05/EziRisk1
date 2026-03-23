@@ -213,6 +213,19 @@ function formatIdentifierLabel(value: unknown): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function pickFirstProvided(...values: unknown[]): unknown {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    return value;
+  }
+  return null;
+}
+
+function formatWeightedScore(value: unknown, maxValue: unknown): string {
+  return `${formatScore(value)} of ${formatScore(maxValue)}`;
+}
+
 function numericOrZero(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -435,7 +448,7 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
       ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
       ['Supplementary assessment (questions rated)', `${scoredQuestions.length}`],
       ['Supplementary engineering overall score', formatScoreOutOfFive(supplementary.overall_score)],
-      ['Fire protection weighted contribution', pillar ? `${pillar.score.toFixed(1)} of ${pillar.maxScore.toFixed(1)}` : 'Not stated'],
+      ['Fire protection weighted contribution', pillar ? formatWeightedScore(pillar.score, pillar.maxScore) : 'Not stated'],
       ['Linked recommendations', `${options.linkedRecommendationCount ?? 0}`],
     ]);
   }
@@ -760,22 +773,24 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
-    const storeys =
-      building?.storeys ??
-      building?.geometry?.floors ??
+    const storeys = pickFirstProvided(
+      building?.geometry?.floors,
       building?.geometry?.storeys ??
+      building?.storeys ??
       building?.floors ??
       building?.number_of_storeys ??
       building?.number_of_floors ??
       building?.floors_above_ground ??
-      building?.storeys_above_ground;
-    const basements =
-      building?.basements ??
-      building?.geometry?.basements ??
+      building?.storeys_above_ground
+    );
+    const basements = pickFirstProvided(
+      building?.geometry?.basements,
       building?.geometry?.basement_levels ??
+      building?.basements ??
       building?.basement_levels ??
       building?.number_of_basements ??
-      building?.basement_count;
+      building?.basement_count
+    );
     return [
       formatDataValue(refOrName),
       formatDataValue(roofArea),
@@ -794,15 +809,19 @@ function formatConstructionPercent(value: unknown, source: 'explicit' | 'derived
 }
 
 function resolveCladdingDescriptor(building: any): string {
-  const claddingPresentRaw =
-    building?.combustible_cladding?.present ??
-    building?.cladding_present ??
-    building?.has_combustible_cladding ??
-    building?.cladding_combustible;
+  const claddingPresentRaw = pickFirstProvided(
+    building?.combustible_cladding?.present,
+    building?.cladding_present,
+    building?.has_combustible_cladding,
+    building?.cladding_combustible
+  );
   const claddingType = building?.combustible_cladding?.details || building?.cladding_system || building?.cladding_type;
+  const normalizedString = typeof claddingPresentRaw === 'string' ? claddingPresentRaw.trim().toLowerCase() : null;
+  const claddingPresent = claddingPresentRaw === true || normalizedString === 'yes' || normalizedString === 'true';
+  const claddingAbsent = claddingPresentRaw === false || normalizedString === 'no' || normalizedString === 'false';
 
-  if (claddingPresentRaw === true) return `Yes${claddingType ? ` - ${claddingType}` : ''}`;
-  if (claddingPresentRaw === false) return claddingType ? `No - ${claddingType}` : 'No';
+  if (claddingPresent) return `Yes${claddingType ? ` - ${claddingType}` : ''}`;
+  if (claddingAbsent) return claddingType ? `No - ${claddingType}` : 'No';
   if (claddingType) return `Data not provided - ${claddingType}`;
   return 'Data not provided';
 }
@@ -813,23 +832,25 @@ function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: B
   void breakdown;
   return compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
-    const wallsCombPctExplicit =
-      building?.walls?.combustibility_percent ??
+    const wallsCombPctExplicit = pickFirstProvided(
+      building?.walls?.total_percent,
+      building?.walls?.combustibility_percent,
       building?.walls_combustible_percent ??
       building?.walls_combustibility_percent ??
       building?.wall_combustibility_percent ??
       building?.wall_construction_percent_combustible ??
       building?.walls_percent ??
       building?.walls_pct ??
-      building?.walls?.total_percent ??
-      null;
-    const combustibilityExplicit =
-      building?.calculated?.combustibility_percent ??
+      null
+    );
+    const combustibilityExplicit = pickFirstProvided(
       building?.calculated?.combustible_percent ??
+      building?.calculated?.combustibility_percent,
       building?.combustibility_percent ??
       building?.area_weighted_combustible_percent ??
       building?.combustible_percent ??
-      building?.calculated?.overall_combustible_percent;
+      building?.calculated?.overall_combustible_percent
+    );
 
     return [
       formatDataValue(refOrName),
@@ -845,11 +866,6 @@ function getConstructionScoringRows(module: ModuleInstance): Row[] {
   const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
   const buildingRows = compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
-    const primaryConstructionType =
-      building?.primary_construction_type ??
-      building?.frame_type ??
-      building?.structure?.frame_type ??
-      building?.construction_frame;
     const compartmentationQuality =
       building?.compartmentation_quality ??
       building?.compartmentation ??
@@ -863,17 +879,13 @@ function getConstructionScoringRows(module: ModuleInstance): Row[] {
       building?.construction_rating;
     return [
       formatDataValue(refOrName),
-      formatIdentifierLabel(primaryConstructionType),
       formatDataValue(compartmentationQuality),
       Number.isFinite(Number(score)) ? formatScoreOutOfFive(score) : 'Data not provided',
     ];
-  }), ['primary construction type', 'compartmentation quality', 'building construction score']);
+  }), ['compartmentation quality', 'building construction score']);
 
   if (buildingRows.length > 0) return buildingRows;
 
-  const sitePrimaryType =
-    construction?.primary_construction_type ??
-    construction?.construction_type;
   const siteCompartmentation =
     construction?.compartmentation_quality ??
     construction?.compartmentation;
@@ -885,11 +897,10 @@ function getConstructionScoringRows(module: ModuleInstance): Row[] {
   return compactRows([
     [
       'Site aggregate',
-      formatIdentifierLabel(sitePrimaryType),
       formatDataValue(siteCompartmentation),
       Number.isFinite(Number(siteScore)) ? formatScoreOutOfFive(siteScore) : 'Data not provided',
     ],
-  ], ['primary construction type', 'compartmentation quality', 'building construction score']);
+  ], ['compartmentation quality', 'building construction score']);
 }
 
 function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Breakdown): Row[] {
@@ -897,11 +908,13 @@ function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Break
   const context = getConstructionContext(module, breakdown);
   const pillarScore = breakdown.globalPillars.find((p) => p.key === 'construction_and_combustibility');
   const siteScore = construction?.site_re02_score ?? construction?.calculated?.site_construction_rating ?? construction?.site_totals?.site_re02_score ?? pillarScore?.rating;
-  const siteCombustiblePercent =
-    construction?.site_combustible_percent ??
-    construction?.calculated?.site_combustible_percent ??
-    construction?.site_totals?.site_combustible_percent ??
-    context.explicitCombustiblePct;
+  const siteCombustiblePercent = pickFirstProvided(
+    construction?.site_combustible_percent,
+    construction?.calculated?.site_combustible_percent,
+    construction?.site_totals?.site_combustible_percent,
+    pillarScore?.metadata?.site_combustible_percent,
+    context.explicitCombustiblePct
+  );
   const combustibleText = Number.isFinite(Number(siteCombustiblePercent))
     ? `${Number(siteCombustiblePercent)}%`
     : context.combustibilityText !== 'Data not provided'
@@ -1197,6 +1210,28 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
   return `Engineering Interpretation: Building-level fixed protection records show ${sprinklerInstalledCount} building(s) with installed sprinkler coverage against ${sprinklerRequiredCount} building(s) showing a stated requirement. ${reliabilityNarrative}. Localised/special protection gaps are identified in ${localisedMissing} building(s), and should be prioritised where high-value or high-challenge hazards are present. Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.`;
 }
 
+function getConstructionScoringBasisRows(module: ModuleInstance): Row[] {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  return compactRows(buildings.map((building: any): Row => {
+    const refOrName = building.ref || building.building_name || building.name || building.id;
+    const roofPct = pickFirstProvided(building?.roof?.total_percent, building?.roof_total_percent);
+    const wallsPct = pickFirstProvided(building?.walls?.total_percent, building?.walls_total_percent, building?.walls_percent);
+    const mezzPct = pickFirstProvided(
+      building?.upper_floors_mezzanine?.total_percent,
+      building?.mezzanine?.total_percent,
+      building?.upper_floors_mezzanine_total_percent
+    );
+    return [
+      formatDataValue(refOrName),
+      formatConstructionPercent(roofPct, roofPct !== null ? 'explicit' : 'none'),
+      formatConstructionPercent(wallsPct, wallsPct !== null ? 'explicit' : 'none'),
+      formatConstructionPercent(mezzPct, mezzPct !== null ? 'explicit' : 'none'),
+      formatDataValue(resolveCladdingDescriptor(building)),
+    ];
+  }), ['roof %', 'walls %', 'mezz %', 'cladding']);
+}
+
 function buildConstructionScoringBasisText(module: ModuleInstance): string {
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
@@ -1400,7 +1435,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
   ));
 
-  yPosition -= 22;
+  yPosition -= 34;
 
   yPosition = drawSectionHeaderBar({
     page,
@@ -1494,7 +1529,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     page,
     yPosition,
     ['Pillar', 'Rating', 'Weighted Score'],
-    breakdown.globalPillars.map(p => [p.label, formatScoreOutOfFive(p.rating), `${p.score.toFixed(1)} of ${p.maxScore.toFixed(1)}`]),
+    breakdown.globalPillars.map(p => [p.label, formatScoreOutOfFive(p.rating), formatWeightedScore(p.score, p.maxScore)]),
     { regular: font, bold: fontBold },
     {
       fontSize: 8.25,
@@ -1514,8 +1549,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
 
   const driverRows: Row[] = [
-    ...breakdown.occupancyDrivers.slice(0, 5).map((d): Row => [d.label, formatScoreOutOfFive(d.rating), `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
-    ...breakdown.topContributors.map((c): Row => [`Top contributor: ${c.label}`, formatScoreOutOfFive(c.rating), `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
+    ...breakdown.occupancyDrivers.slice(0, 5).map((d): Row => [d.label, formatScoreOutOfFive(d.rating), formatWeightedScore(d.score, d.maxScore)]),
+    ...breakdown.topContributors.map((c): Row => [`Top contributor: ${c.label}`, formatScoreOutOfFive(c.rating), formatWeightedScore(c.score, c.maxScore)]),
   ];
   ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Driver', 'Rating', 'Weighted Score'], driverRows, { regular: font, bold: fontBold }, {
     fontSize: 8.25,
@@ -1595,8 +1630,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         ({ page, yPosition } = ensurePageSpace(100 + characteristicRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Inputs — Construction characteristics', fontBold);
         yPosition = sectionBreak(yPosition, 8);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Walls %', 'Cladding', 'Combustibility'], characteristicRows, { regular: font, bold: fontBold }, {
-          colWidths: [150, 86, 134, CONTENT_WIDTH - 370],
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Walls %', 'Cladding', 'Combustibility %'], characteristicRows, { regular: font, bold: fontBold }, {
+          colWidths: [145, 80, 118, CONTENT_WIDTH - 343],
           fontSize: 8,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
@@ -1614,12 +1649,22 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }));
       yPosition = sectionBreak(yPosition, 44);
       const scoringRows = getConstructionScoringRows(module);
+      const scoringBasisRows = getConstructionScoringBasisRows(module);
       const scoringBasis = buildConstructionScoringBasisText(module);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawBlockHeading(page, yPosition, 'Inputs — Construction scoring basis', fontBold);
       if (scoringRows.length > 0) {
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Primary construction type', 'Compartmentation quality', 'Construction score'], scoringRows, { regular: font, bold: fontBold }, {
-          colWidths: [120, 125, 122, CONTENT_WIDTH - 367],
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Compartmentation quality', 'Construction score'], scoringRows, { regular: font, bold: fontBold }, {
+          colWidths: [150, 188, CONTENT_WIDTH - 338],
+          fontSize: 8,
+          minRowHeight: 18,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition, 12);
+      }
+      if (scoringBasisRows.length > 0) {
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof %', 'Walls %', 'Mezz %', 'Cladding'], scoringBasisRows, { regular: font, bold: fontBold }, {
+          colWidths: [120, 68, 68, 68, CONTENT_WIDTH - 324],
           fontSize: 8,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
