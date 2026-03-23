@@ -157,7 +157,9 @@ export function drawRiskSignificanceBlock(args: {
   const badgeW = badgeTextWidth + 14;
   const badgeH = 14;
   const badgeX = x + w - badgeW;
-  const badgeY = titleY + 2;
+  const levelLabel = `${badgeText}:`;
+  const labelY = titleY - 18;
+  const badgeY = labelY + badgeH - 3;
 
   page.drawRectangle({
     x: badgeX,
@@ -178,13 +180,10 @@ export function drawRiskSignificanceBlock(args: {
     color: colour.fg,
   });
 
-  const levelLabel = `${badgeText}:`;
-  const levelLabelWidth = fonts.bold.widthOfTextAtSize(levelLabel, 10);
-  const labelGap = 20;
-  const narrativeX = x + levelLabelWidth + labelGap;
-  const narrativeWidth = Math.max(60, w - levelLabelWidth - labelGap);
+  const narrativeX = x;
+  const narrativeWidth = w;
   const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
-  let cursorY = titleY - 18;
+  let cursorY = labelY;
 
   page.drawText(levelLabel, {
     x,
@@ -193,16 +192,9 @@ export function drawRiskSignificanceBlock(args: {
     font: fonts.bold,
     color: colour.fg,
   });
-  page.drawText(lines[0] || '', {
-    x: narrativeX,
-    y: cursorY,
-    size: 10,
-    font: fonts.regular,
-    color: PDF_THEME.colours.text,
-  });
-  cursorY -= 13;
+  cursorY -= 12;
 
-  for (const line of lines.slice(1)) {
+  for (const line of lines) {
     page.drawText(line, {
       x: narrativeX,
       y: cursorY,
