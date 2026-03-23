@@ -125,8 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       id: organisationId,
       name: 'Your Organisation',
-      plan_type: profile.plan || 'free',
-      plan_id: profile.plan || 'free',
+      plan_type: profile.plan || 'trial',
+      plan_id: profile.plan || 'trial',
       discipline_type: (profile.discipline_type as DisciplineType) || 'FIRE',
       enabled_addons: Array.isArray(profile.bolt_ons) ? profile.bolt_ons : [],
       max_editors: profile.max_editors || 0,
@@ -377,8 +377,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOrganisation({
           id: healedOrg.id,
           name: healedOrg.name,
-          plan_type: healedOrg.plan_type || healedOrg.plan_id || 'free',
-          plan_id: healedOrg.plan_id || healedOrg.plan_type || 'free',
+          plan_type: healedOrg.plan_id || 'trial',
+          plan_id: healedOrg.plan_id || 'trial',
           discipline_type: healedOrg.discipline_type,
           enabled_addons: Array.isArray(healedOrg.enabled_addons) ? healedOrg.enabled_addons : [],
           max_editors: healedOrg.max_editors || 0,
@@ -432,8 +432,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const orgData = {
           id: org.id,
           name: org.name,
-          plan_type: org.plan_type || org.plan_id || 'free',
-          plan_id: org.plan_id || org.plan_type || 'free',
+          plan_type: org.plan_id || 'trial',
+          plan_id: org.plan_id || 'trial',
           discipline_type: org.discipline_type,
           enabled_addons: Array.isArray(org.enabled_addons) ? org.enabled_addons : [],
           max_editors: org.max_editors || 0,

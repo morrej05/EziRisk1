@@ -2,9 +2,12 @@ import { Users, Database } from 'lucide-react';
 import { useTenant } from '../hooks/useTenant';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { getPlan, getPlanConfig } from '../utils/entitlements';
 
 export default function PlanUsageWidget() {
   const { tenant } = useTenant();
+  const { organisation } = useAuth();
   const [userCount, setUserCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -34,12 +37,13 @@ export default function PlanUsageWidget() {
     fetchUserCount();
   }, [tenant?.id]);
 
-  if (isLoading || !tenant || !tenant.plan) {
+  if (isLoading || !tenant || !organisation || !tenant.plan) {
     return null;
   }
 
+  const planConfig = getPlanConfig(organisation);
   const storagePercent = (tenant.storage_used_mb / tenant.plan.max_storage_mb) * 100;
-  const usersPercent = (userCount / tenant.plan.max_users) * 100;
+  const usersPercent = (userCount / planConfig.userLimit) * 100;
 
   const getStorageColor = () => {
     if (storagePercent >= 100) return 'bg-red-500';
@@ -79,7 +83,7 @@ export default function PlanUsageWidget() {
 
         <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
           <div className="text-sm font-medium text-slate-600 mb-1">Current Plan</div>
-          <div className="text-xl font-bold text-slate-900">{tenant.plan.name}</div>
+          <div className="text-xl font-bold text-slate-900">{getPlan(organisation)}</div>
         </div>
 
         <div>
@@ -89,7 +93,7 @@ export default function PlanUsageWidget() {
               <span className="text-sm font-medium text-slate-700">Users</span>
             </div>
             <span className="text-sm font-semibold text-slate-900">
-              {userCount} / {tenant.plan.max_users}
+              {userCount} / {planConfig.userLimit}
             </span>
           </div>
           <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
