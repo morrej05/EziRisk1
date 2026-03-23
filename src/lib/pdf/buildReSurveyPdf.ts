@@ -15,6 +15,7 @@ import { drawSectionHeaderBar, drawRiskSignificanceBlock, SignificanceLevel } fr
 import { buildRiskEngineeringScoreBreakdown } from '../re/scoring/riskEngineeringHelpers';
 import { getModuleDisplayName } from '../modules/moduleDisplay';
 import { addIssuedReportPages } from './issuedPdfPages';
+import { supabase } from '../supabase';
 
 interface DocumentMeta {
   client?: { name?: string };
@@ -55,6 +56,19 @@ interface ModuleInstance {
   data: Record<string, unknown>;
   completed_at: string | null;
   updated_at: string;
+}
+
+interface ReSurveySitePhoto {
+  id?: string;
+  storage_path?: string;
+  caption?: string;
+  uploaded_at?: string;
+}
+
+interface ReSurveySitePlan {
+  storage_path?: string;
+  description?: string;
+  uploaded_at?: string;
 }
 
 interface Action {
@@ -1577,6 +1591,40 @@ function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { le
   return null;
 }
 
+function isSupportedImagePath(path: string): boolean {
+  return /\.(png|jpg|jpeg)$/i.test(path);
+}
+
+async function fetchEvidenceImageBytes(storagePath: string): Promise<Uint8Array | null> {
+  try {
+    const { data, error } = await supabase.storage
+      .from('evidence')
+      .createSignedUrl(storagePath, 300);
+    if (error || !data?.signedUrl) {
+      console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
+      return null;
+    }
+    const response = await fetch(data.signedUrl);
+    if (!response.ok) {
+      console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
+      return null;
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
+    return null;
+  }
+}
+
+async function embedEvidenceImage(pdfDoc: PDFDocument, storagePath: string) {
+  const bytes = await fetchEvidenceImageBytes(storagePath);
+  if (!bytes) return null;
+  if (/\.png$/i.test(storagePath)) {
+    return pdfDoc.embedPng(bytes);
+  }
+  return pdfDoc.embedJpg(bytes);
+}
+
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
   console.log('[PDF RE Survey] Starting RE Survey PDF build');
   const { document, moduleInstances, actions, organisation, renderMode, selectedModules } = options;
@@ -1596,6 +1644,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     : moduleInstances;
 
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
+  const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
+  const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
+  const sitePhotos = Array.isArray(re10Data.photos)
+    ? (re10Data.photos as ReSurveySitePhoto[]).filter((photo) => !!photo?.storage_path && isSupportedImagePath(String(photo.storage_path)))
+    : [];
+  const sitePlan = ((re10Data.site_plan || null) as ReSurveySitePlan | null);
+  const sitePlanPath = sitePlan?.storage_path && isSupportedImagePath(sitePlan.storage_path) ? sitePlan.storage_path : null;
   const re01DocControl =
     moduleInstances.find((module) => module.module_key === 'RE_01_DOC_CONTROL') ||
     moduleInstances.find((module) => module.module_key === 'RE_01_DOCUMENT_CONTROL');
@@ -2163,6 +2218,125 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     fonts: { regular: font, bold: fontBold },
   }).y;
 
+  if (sitePhotos.length > 0) {
+    ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+    yPosition = PAGE_TOP_Y;
+    sectionStartPages.set('Appendix A — Site Photographs', totalPages.length);
+    yPosition = drawSectionHeaderBar({
+      page,
+      x: MARGIN,
+      y: yPosition,
+      w: CONTENT_WIDTH,
+      title: 'Appendix A — Site Photographs',
+      product: 're',
+      fonts: { regular: font, bold: fontBold },
+    });
+    yPosition = sectionBreak(yPosition, 12);
+
+    const columnGap = 14;
+    const itemWidth = (CONTENT_WIDTH - columnGap) / 2;
+    const rowHeight = 184;
+    let column = 0;
+
+    for (const photo of sitePhotos) {
+      const image = await embedEvidenceImage(pdfDoc, String(photo.storage_path));
+      if (!image) continue;
+
+      if (yPosition < MARGIN + rowHeight) {
+        ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+        yPosition = PAGE_TOP_Y;
+      }
+
+      const x = MARGIN + (column * (itemWidth + columnGap));
+      const availableHeight = 150;
+      const scaled = image.scale(Math.min(itemWidth / image.width, availableHeight / image.height));
+      const imageX = x + (itemWidth - scaled.width) / 2;
+      const imageY = yPosition - scaled.height;
+
+      page.drawRectangle({
+        x,
+        y: yPosition - availableHeight,
+        width: itemWidth,
+        height: availableHeight,
+        borderWidth: 0.5,
+        borderColor: rgb(0.82, 0.84, 0.88),
+      });
+      page.drawImage(image, {
+        x: imageX,
+        y: imageY,
+        width: scaled.width,
+        height: scaled.height,
+      });
+
+      if (photo.caption?.trim()) {
+        const caption = sanitizePdfText(photo.caption.trim());
+        const captionLines = wrapText(caption, itemWidth - 8, 8.5, font).slice(0, 2);
+        let captionY = yPosition - availableHeight - 12;
+        for (const line of captionLines) {
+          page.drawText(line, {
+            x: x + 4,
+            y: captionY,
+            size: 8.5,
+            font,
+            color: rgb(0.18, 0.18, 0.18),
+          });
+          captionY -= 10;
+        }
+      }
+
+      if (column === 0) {
+        column = 1;
+      } else {
+        column = 0;
+        yPosition -= rowHeight;
+      }
+    }
+  }
+
+  if (sitePlanPath) {
+    ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+    yPosition = PAGE_TOP_Y;
+    sectionStartPages.set('Appendix B — Site Plan', totalPages.length);
+    yPosition = drawSectionHeaderBar({
+      page,
+      x: MARGIN,
+      y: yPosition,
+      w: CONTENT_WIDTH,
+      title: 'Appendix B — Site Plan',
+      product: 're',
+      fonts: { regular: font, bold: fontBold },
+    });
+    yPosition = sectionBreak(yPosition, 12);
+
+    const sitePlanImage = await embedEvidenceImage(pdfDoc, sitePlanPath);
+    if (sitePlanImage) {
+      const maxHeight = PAGE_TOP_Y - MARGIN - 40;
+      const scaled = sitePlanImage.scale(Math.min(CONTENT_WIDTH / sitePlanImage.width, maxHeight / sitePlanImage.height));
+      const imageX = MARGIN + (CONTENT_WIDTH - scaled.width) / 2;
+      const imageY = yPosition - scaled.height;
+      page.drawImage(sitePlanImage, {
+        x: imageX,
+        y: imageY,
+        width: scaled.width,
+        height: scaled.height,
+      });
+      if (sitePlan?.description?.trim()) {
+        const descriptionLines = wrapText(sanitizePdfText(sitePlan.description.trim()), CONTENT_WIDTH, 9, font);
+        let descriptionY = imageY - 14;
+        for (const line of descriptionLines.slice(0, 3)) {
+          page.drawText(line, {
+            x: MARGIN,
+            y: descriptionY,
+            size: 9,
+            font,
+            color: rgb(0.18, 0.18, 0.18),
+          });
+          descriptionY -= 11;
+        }
+      }
+    }
+  }
+
   contentsPage.drawText('Contents', {
     x: MARGIN,
     y: PAGE_TOP_Y,
@@ -2183,6 +2357,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ['Management Systems', sectionStartPages.get('Management Systems')],
     ['Loss & Values', sectionStartPages.get('Loss & Values')],
     ['Conclusion', sectionStartPages.get('Conclusion')],
+    ['Appendix A — Site Photographs', sectionStartPages.get('Appendix A — Site Photographs')],
+    ['Appendix B — Site Plan', sectionStartPages.get('Appendix B — Site Plan')],
   ];
   let tocY = PAGE_TOP_Y - 34;
   for (const [label, pageNo] of contentsRows) {
