@@ -610,12 +610,7 @@ function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: 
   }
 
   if (module.module_key === 'RE_03_OCCUPANCY') {
-    const occupancy = (module.data as any)?.occupancy || module.data || {};
-    const hazards = Array.isArray(occupancy.hazards) ? occupancy.hazards : [];
-    const hazardSignals = describeOccupancyHazardSignals(hazards, occupancy);
-    const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
-    const base = `Occupancy score: ${scoreText} (${scoreBand.label}). ${scoreBand.occupancyImplication} Observed hazards (${hazardSignals.hazardSummary}) indicate ${hazardSignals.ignitionLikelihood}, ${hazardSignals.fireLoadSeverity}, and ${hazardSignals.controlsDependency}. ${hazardSignals.processSpecificNarrative}`;
-    return notes ? `${base} Additional assessor notes: ${notes}` : base;
+    return notes;
   }
 
   if (notes) return notes;
@@ -1000,17 +995,14 @@ function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
       const assessment = hazard?.assessment ? ` (${hazard.assessment})` : '';
       const detail = hazard?.free_text || hazard?.description;
       const formattedLabel = String(label).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
-      return detail ? `- ${formattedLabel}${assessment}:\n  - ${String(detail).trim()}` : `- ${formattedLabel}${assessment}`;
+      return detail
+        ? `- ${formattedLabel}${assessment} — ${String(detail).trim().replace(/\s+/g, ' ')}`
+        : `- ${formattedLabel}${assessment}`;
     })
     .filter(Boolean)
     .filter((value: string, index: number, arr: string[]) => arr.indexOf(value) === index);
 
-  const occupancyType =
-    occupancy.occupancy_type ??
-    occupancy.primary_occupancy ??
-    occupancy.occupancy ??
-    occupancy.type ??
-    (module.data as any)?.primaryOccupancy;
+  const occupancyType = occupancy.occupancy_type;
   const processOverview =
     occupancy.process_overview ??
     occupancy.process_description ??
@@ -1155,7 +1147,7 @@ function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
 
 function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
   if (module.module_key === 'RE_02_CONSTRUCTION') return buildConstructionEngineeringInterpretation(module, breakdown);
-  if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation(module);
+  if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation();
   if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module);
 
   const rating = resolveSectionRating(module, breakdown);
@@ -1301,11 +1293,8 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText}`;
 }
 
-function buildOccupancyEngineeringInterpretation(module: ModuleInstance): string {
-  const occupancy = (module.data as any)?.occupancy || module.data || {};
-  const hazards = Array.isArray(occupancy.hazards) ? occupancy.hazards : [];
-  const hazardSignals = describeOccupancyHazardSignals(hazards, occupancy);
-  return `Engineering Interpretation: Current hazard profile indicates ${hazardSignals.ignitionLikelihood}, ${hazardSignals.fireLoadSeverity}, and ${hazardSignals.controlsDependency}. ${hazardSignals.processSpecificNarrative}`;
+function buildOccupancyEngineeringInterpretation(): string {
+  return '';
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -1396,6 +1385,21 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     : moduleInstances;
 
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
+  const re01DocControl =
+    moduleInstances.find((module) => module.module_key === 'RE_01_DOC_CONTROL') ||
+    moduleInstances.find((module) => module.module_key === 'RE_01_DOCUMENT_CONTROL');
+  const siteContact = Array.isArray((re01DocControl?.data as any)?.site_contacts)
+    ? (re01DocControl?.data as any).site_contacts
+      .map((contact: any) => String(contact?.name || '').trim())
+      .filter(Boolean)
+      .join(', ')
+    : '';
+  const personsPresent = Array.isArray((re01DocControl?.data as any)?.present_during_survey)
+    ? (re01DocControl?.data as any).present_during_survey
+      .map((attendee: any) => String(attendee?.name || '').trim())
+      .filter(Boolean)
+      .join(', ')
+    : '';
   const riskEngineeringData = modulesByKey.get('RISK_ENGINEERING')?.data || {};
   const breakdown = options.scoreBreakdownOverride || await buildRiskEngineeringScoreBreakdown(document.id, riskEngineeringData);
   const sectionStartPages = new Map<string, number>();
@@ -1463,14 +1467,16 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     page,
     yPosition,
     ['Item', 'Detail'],
-    [
+    compactRows([
       ['Report', formatValue(document.title || 'Risk Engineering Survey')],
       ['Organisation', formatValue(organisation.name)],
       ['Client', formatValue(document.meta?.client?.name || document.responsible_person)],
       ['Site', formatValue(document.meta?.site?.name || document.scope_description)],
+      ['Site contact', formatValue(siteContact)],
+      ['Persons present', formatValue(personsPresent)],
       ['Assessment date', formatValue(formatDate(document.assessment_date || null))],
       ['Version / status', `v${Number(document.version_number || document.version || 1)} - ${isIssuedMode ? 'Issued' : 'Draft'}`],
-    ],
+    ], ['site contact', 'persons present']),
     { regular: font, bold: fontBold },
     {
       onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
@@ -1859,18 +1865,22 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
     if (module.module_key !== 'RE_02_CONSTRUCTION') {
       const interpretation = buildSectionInterpretation(module, breakdown);
-      ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
-      yPosition = drawParagraph(page, yPosition, interpretation, font);
-      yPosition = sectionBreak(yPosition, 44);
+      if (interpretation) {
+        ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
+        yPosition = drawParagraph(page, yPosition, interpretation, font);
+        yPosition = sectionBreak(yPosition, 44);
+      }
     }
 
     if (module.module_key !== 'RE_02_CONSTRUCTION') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
-      ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Narrative Commentary', fontBold);
-      yPosition = drawParagraph(page, yPosition, commentary, font);
-      yPosition = sectionBreak(yPosition, 44);
+      if (commentary) {
+        ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Narrative Commentary', fontBold);
+        yPosition = drawParagraph(page, yPosition, commentary, font);
+        yPosition = sectionBreak(yPosition, 44);
+      }
     }
 
     const significance = sectionSignificance(module, breakdown);
