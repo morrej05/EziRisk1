@@ -71,6 +71,17 @@ interface ReSurveySitePhoto {
   uploaded_at?: string;
 }
 
+function getPhotoCaptionText(photo: ReSurveySitePhoto): string {
+  return String(
+    photo.caption ||
+    photo.description ||
+    photo.notes ||
+    photo.metadata?.description ||
+    photo.metadata?.caption ||
+    ''
+  ).trim();
+}
+
 interface ReSurveySitePlan {
   storage_path?: string;
   description?: string;
@@ -1716,35 +1727,27 @@ function getExposuresStructuredRows(module: ModuleInstance): Row[] {
 
 function getUtilitiesStructuredRows(module: ModuleInstance): Row[] {
   const d = module.data || {};
-  const power = (d as any).power_resilience || (d as any).power || {};
+  const power = (d as any).power_resilience || {};
   const services = Array.isArray((d as any).critical_services) ? (d as any).critical_services : [];
   const equipment = Array.isArray((d as any).critical_equipment) ? (d as any).critical_equipment : [];
-  const spof = Array.isArray((d as any).single_points_of_failure) ? (d as any).single_points_of_failure : [];
-  return [
-    ['Backup power present / capacity', `${formatDataValue(power?.backup_power_present ?? power?.resilience_level)} / ${formatDataValue(power?.generator_capacity_notes ?? power?.backup_generation)}`],
+  return compactRows([
+    ['Backup power present', formatDataValue(power?.backup_power_present)],
+    ['Generator capacity notes', formatDataValue(power?.generator_capacity_notes)],
     ['Power resilience notes', formatDataValue(power?.notes)],
-    ['Critical dependencies', formatDataValue((d as any).critical_dependencies)],
     ['Critical services', services.length ? services.map((item: any) => `${formatDataValue(item?.custom_label ?? item?.service_name ?? item?.service_type ?? item?.name ?? item)} | present ${formatDataValue(item?.present)} | criticality ${formatDataValue(item?.criticality)} | backup ${formatDataValue(item?.backup_available)} | notes ${formatDataValue(item?.notes)}`).join('\n') : 'Data not provided'],
     ['Critical equipment', equipment.length ? equipment.map((item: any) => `${formatDataValue(item?.custom_label ?? item?.equipment_name ?? item?.equipment_type ?? item?.name ?? item)} (${formatDataValue(item?.tag_or_name)}) | criticality ${formatDataValue(item?.criticality)} | redundancy ${formatDataValue(item?.redundancy)} | spares ${formatDataValue(item?.spares_strategy)} | maintenance ${formatDataValue(item?.maintenance_adequacy_rating)} | condition ${formatDataValue(item?.condition_notes ?? item?.known_issues)} | notes ${formatDataValue(item?.notes)}`).join('\n') : 'Data not provided'],
-    ['Single points of failure', spof.length ? spof.map((item: any) => `- ${formatDataValue(item)}`).join('\n') : 'Data not provided'],
-  ];
+  ]);
 }
 
-function getManagementStructuredRows(module: ModuleInstance): Row[] {
+function getManagementCategoryRows(module: ModuleInstance): Row[] {
   const management = (module.data as any)?.management || module.data || {};
   const categories = Array.isArray(management?.categories) ? management.categories : [];
-  const categoryRows = categories
-    .map((category: any) => `${formatDataValue(category?.label ?? category?.key)}: ${formatDataValue(category?.rating_1_5)} (${formatDataValue(category?.notes)})`)
-    .join('\n');
-  return [
-    ['Formal management system', formatDataValue(management?.formal_risk_management_system)],
-    ['Hot work controls', formatDataValue(management?.hot_work_permit_process)],
-    ['Housekeeping standard', formatDataValue(management?.housekeeping_standard)],
-    ['Emergency response planning', formatDataValue(management?.emergency_response_plan)],
-    ['Impairment controls', formatDataValue(management?.impairment_management ?? management?.impairment_management_notes)],
-    ['Category ratings and notes', formatDataValue(categoryRows)],
-    ['Recommendations / actions', Array.isArray(management?.recommendations) ? management.recommendations.map((rec: any) => formatDataValue(rec?.action || rec?.text || rec)).join('\n') : 'Data not provided'],
-  ];
+  const rows = categories.map((category: any): Row => ([
+    formatDataValue(category?.label ?? category?.key),
+    formatDataValue(category?.rating_1_5),
+    formatDataValue(category?.notes),
+  ]));
+  return compactRows(rows, []);
 }
 
 function getLossValuesStructuredRows(module: ModuleInstance): Row[] {
@@ -1768,13 +1771,15 @@ function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle'): Ro
   const expectancy = (d as any)?.[event] || {};
   const bi = expectancy?.business_interruption || {};
   const estimate = expectancy?.estimated_total ?? expectancy?.estimated_total_loss;
+  const description = expectancy?.scenario_description;
   const commentary = expectancy?.commentary ?? expectancy?.notes ?? expectancy?.scenario_commentary;
   const estimateAndCommentary = estimate || commentary
     ? `${formatDataValue(estimate)} | ${formatDataValue(commentary)}`
     : 'Data not provided';
 
-  return [
-    ['Scenario title', formatDataValue(expectancy?.scenario_summary ?? expectancy?.scenario_description ?? expectancy?.title)],
+  return compactRows([
+    ['Scenario title', formatDataValue(expectancy?.scenario_summary ?? expectancy?.title)],
+    ['Scenario description', formatDataValue(description)],
     ['Building damage %', formatDataPercent(expectancy?.property_damage?.buildings_improvements_pct)],
     ['Plant & machinery damage %', formatDataPercent(expectancy?.property_damage?.plant_machinery_contents_pct)],
     ['Stock damage %', formatDataPercent(expectancy?.property_damage?.stock_wip_pct)],
@@ -1782,7 +1787,7 @@ function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle'): Ro
     ['BI interruption duration', formatDataValue(bi?.outage_duration_months !== undefined ? `${bi?.outage_duration_months} months` : undefined)],
     ['BI severity input', formatDataPercent(bi?.gross_profit_pct ?? bi?.severity_pct)],
     ['Estimate / commentary', estimateAndCommentary],
-  ];
+  ], ['scenario title', 'scenario description']);
 }
 
 function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): string {
@@ -1870,16 +1875,29 @@ function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { le
 
   if (module.module_key === 'RE_08_UTILITIES') {
     const rating = getRatingFromModule(module);
-    const spofCount = Array.isArray(module.data?.single_points_of_failure) ? module.data.single_points_of_failure.length : 0;
-    const level = spofCount >= 2 ? 'High' : levelFromRating(rating);
-    const narrative = `Utilities resilience is rated ${rating ?? 'N/A'}/5 with ${spofCount} identified single-point failure${spofCount === 1 ? '' : 's'}. Utilities reliability is a direct determinant of business interruption duration, restart capability and contingent loss.`;
+    const data = module.data as any;
+    const services = Array.isArray(data?.critical_services) ? data.critical_services : [];
+    const equipment = Array.isArray(data?.critical_equipment) ? data.critical_equipment : [];
+    const noBackupPower = data?.power_resilience?.backup_power_present === false;
+    const highCriticalityServices = services.filter((entry: any) => String(entry?.criticality || '').toLowerCase() === 'high').length;
+    const weakCriticalityEquipment = equipment.filter((entry: any) => (
+      String(entry?.criticality || '').toLowerCase() === 'high' &&
+      (String(entry?.redundancy || '').toLowerCase() === 'n+0' || String(entry?.redundancy || '').toLowerCase() === 'unknown')
+    )).length;
+    const level: SignificanceLevel = (noBackupPower || weakCriticalityEquipment > 0) ? 'High' : levelFromRating(rating);
+    const narrative = `Utilities resilience is informed by ${services.length} critical service record(s) and ${equipment.length} critical equipment record(s), with ${highCriticalityServices} service(s) and ${weakCriticalityEquipment} equipment item(s) recorded as high criticality with limited/uncertain redundancy. Backup power is ${formatDataValue(data?.power_resilience?.backup_power_present).toLowerCase()}. This profile is a direct indicator of restart dependence and interruption duration following a major incident.`;
     return { level, narrative };
   }
 
   if (module.module_key === 'RE_09_MANAGEMENT') {
     const rating = getRatingFromModule(module) ?? breakdown.globalPillars.find(p => p.key === 'management_systems')?.rating;
+    const management = (module.data as any)?.management || module.data || {};
+    const categories = Array.isArray(management.categories) ? management.categories : [];
+    const weakerControls = categories
+      .filter((category: any) => Number(category?.rating_1_5) > 0 && Number(category?.rating_1_5) <= 2)
+      .map((category: any) => formatDataValue(category?.label ?? category?.key));
     const level = levelFromRating(rating);
-    const narrative = `Management systems are rated ${rating ?? 'N/A'}/5. Governance quality controls how consistently impairment, hot work, housekeeping and emergency processes reduce both incident likelihood and post-loss severity.`;
+    const narrative = `Management systems are rated ${formatScoreOutOfFive(rating)} across ${categories.length} category assessment(s). ${weakerControls.length > 0 ? `Lower-scored controls are concentrated in ${weakerControls.slice(0, 3).join(', ')}.` : 'No materially weak management category ratings are recorded.'} Governance quality controls how consistently permitting, impairment, housekeeping and emergency processes reduce both incident likelihood and post-loss severity.`;
     return { level, narrative };
   }
 
@@ -2003,7 +2021,15 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
   const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
   const sitePhotos = Array.isArray(re10Data.photos)
-    ? (re10Data.photos as ReSurveySitePhoto[]).filter((photo) => !!photo?.storage_path && isSupportedImagePath(String(photo.storage_path)))
+    ? (re10Data.photos as ReSurveySitePhoto[])
+      .map((photo) => ({
+        storage_path: photo?.storage_path,
+        caption: typeof photo?.caption === 'string' ? photo.caption : '',
+        description: typeof photo?.description === 'string' ? photo.description : '',
+        notes: typeof photo?.notes === 'string' ? photo.notes : '',
+        metadata: photo?.metadata,
+      }))
+      .filter((photo) => !!photo?.storage_path && isSupportedImagePath(String(photo.storage_path)))
     : [];
   const sitePlan = ((re10Data.site_plan || null) as ReSurveySitePlan | null);
   const sitePlanPath = sitePlan?.storage_path && isSupportedImagePath(sitePlan.storage_path) ? sitePlan.storage_path : null;
@@ -2281,7 +2307,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     // Survey report currently consumes recommendation metadata via action rows (module_instance_id linkage).
     // This is the integration point to keep for future extraction into a dedicated LP/recommendations PDF builder.
     const linkedRecommendationCount = actions.filter((action) => action.module_instance_id === module.id).length;
-    const tableRows = getSectionTableRows(module, { breakdown, linkedRecommendationCount });
+    const suppressSectionSnapshot = module.module_key === 'RE_08_UTILITIES' || module.module_key === 'RE_09_MANAGEMENT' || module.module_key === 'RE_12_LOSS_VALUES';
+    const tableRows = suppressSectionSnapshot ? [] : getSectionTableRows(module, { breakdown, linkedRecommendationCount });
     if (tableRows.length > 0) {
       ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawBlockHeading(page, yPosition, 'Section Snapshot', fontBold);
@@ -2551,11 +2578,11 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_09_MANAGEMENT') {
-      const managementRows = getManagementStructuredRows(module);
+      const managementRows = getManagementCategoryRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + managementRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Inputs — Management structured fields', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], managementRows, { regular: font, bold: fontBold }, {
-        colWidths: [180, CONTENT_WIDTH - 180],
+      yPosition = drawBlockHeading(page, yPosition, 'Category ratings and notes', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Category', 'Rating (1-5)', 'Notes'], managementRows, { regular: font, bold: fontBold }, {
+        colWidths: [130, 80, CONTENT_WIDTH - 210],
         fontSize: 8.5,
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
@@ -2598,7 +2625,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS' && module.module_key !== 'RE_08_UTILITIES' && module.module_key !== 'RE_09_MANAGEMENT' && module.module_key !== 'RE_12_LOSS_VALUES') {
       const interpretation = buildSectionInterpretation(module, breakdown);
       if (interpretation) {
         ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2608,7 +2635,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS' && module.module_key !== 'RE_08_UTILITIES' && module.module_key !== 'RE_09_MANAGEMENT' && module.module_key !== 'RE_12_LOSS_VALUES') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
       if (commentary) {
         ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2675,7 +2702,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
     const columnGap = 14;
     const itemWidth = (CONTENT_WIDTH - columnGap) / 2;
-    const rowHeight = 184;
+    const rowHeight = 196;
     let column = 0;
 
     for (const photo of sitePhotos) {
@@ -2688,7 +2715,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
 
       const x = MARGIN + (column * (itemWidth + columnGap));
-      const availableHeight = 150;
+      const availableHeight = 140;
       const scaled = image.scale(Math.min(itemWidth / image.width, availableHeight / image.height));
       const imageX = x + (itemWidth - scaled.width) / 2;
       const imageY = yPosition - scaled.height;
@@ -2708,19 +2735,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         height: scaled.height,
       });
 
-      const photoDescription = String(
-        photo.caption ||
-        photo.description ||
-        photo.metadata?.caption ||
-        photo.metadata?.description ||
-        (photo as any).caption_text ||
-        (photo as any).photo_description ||
-        photo.notes ||
-        ''
-      ).trim();
+      const photoDescription = getPhotoCaptionText(photo);
       if (photoDescription) {
         const captionLines = wrapText(sanitizePdfText(photoDescription), itemWidth - 8, 8, font).slice(0, 3);
-        let captionY = yPosition - availableHeight - 10;
+        let captionY = yPosition - availableHeight - 14;
         for (const line of captionLines) {
           page.drawText(line, {
             x: x + 4,
@@ -2818,11 +2836,11 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       ({ page, yPosition } = drawSimpleTable(
         page,
         yPosition,
-        ['Ref / ID', 'Recommendation', 'Priority', 'Owner', 'Target date', 'Status'],
+        ['Ref / ID', 'Recommendation', 'Pri.', 'Owner', 'Target', 'Status'],
         tableRows,
         { regular: font, bold: fontBold },
         {
-          colWidths: [62, 206, 56, 78, 70, CONTENT_WIDTH - 472],
+          colWidths: [52, 208, 36, 70, 54, CONTENT_WIDTH - 420],
           fontSize: 8.25,
           minRowHeight: 18,
           wrapHeader: true,
