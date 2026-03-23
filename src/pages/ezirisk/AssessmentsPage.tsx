@@ -5,7 +5,9 @@ import { useAssessments, AssessmentViewModel } from '../../hooks/useAssessments'
 import { useAuth } from '../../contexts/AuthContext';
 import { canCreateSurveys, isSubscriptionActive, type User } from '../../utils/entitlements';
 import { DeleteDocumentModal } from '../../components/DeleteDocumentModal';
+import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
+import { inferReportUpgradeReason, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
 import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 
 export default function AssessmentsPage() {
@@ -18,7 +20,9 @@ export default function AssessmentsPage() {
 
   const hasBaselineCreateAccess = user && organisation && canCreateSurveys(user as User, organisation) && isSubscriptionActive(organisation);
   const [creationBlockedReason, setCreationBlockedReason] = useState<string | null>(null);
+  const [creationBlockedCode, setCreationBlockedCode] = useState<UpgradeBlockReason>('report_limit');
   const [canCreate, setCanCreate] = useState(Boolean(hasBaselineCreateAccess));
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState('All');
@@ -88,6 +92,7 @@ export default function AssessmentsPage() {
       if (!organisation?.id || !hasBaselineCreateAccess) {
         if (!cancelled) {
           setCanCreate(false);
+          setCreationBlockedCode('report_limit');
           setCreationBlockedReason('Upgrade required to create assessments');
         }
         return;
@@ -97,12 +102,14 @@ export default function AssessmentsPage() {
         const entitlement = await getReportCreationEntitlement(organisation.id);
         if (!cancelled) {
           setCanCreate(entitlement.allowed);
+          setCreationBlockedCode(inferReportUpgradeReason(entitlement));
           setCreationBlockedReason(entitlement.allowed ? null : (entitlement.reason || 'Upgrade required to create assessments'));
         }
       } catch (error) {
         console.error('[AssessmentsPage] Failed to fetch report creation entitlement:', error);
         if (!cancelled) {
           setCanCreate(Boolean(hasBaselineCreateAccess));
+          setCreationBlockedCode('report_limit');
           setCreationBlockedReason('Unable to verify plan limits. Try again.');
         }
       }
@@ -121,11 +128,7 @@ export default function AssessmentsPage() {
       return;
     }
 
-    if (creationBlockedReason) {
-      alert(creationBlockedReason);
-    }
-
-    navigate('/upgrade');
+    setShowUpgradeModal(true);
   };
 
   useEffect(() => {
@@ -673,6 +676,13 @@ export default function AssessmentsPage() {
           onConfirm={handleDeleteConfirm}
           documentTitle={documentToDelete?.title || ''}
           requireConfirmation={true}
+        />
+        <UpgradeBlockModal
+          open={showUpgradeModal}
+          reason={creationBlockedCode}
+          detail={creationBlockedReason}
+          onClose={() => setShowUpgradeModal(false)}
+          onUpgrade={() => navigate('/upgrade')}
         />
       </div>
   );

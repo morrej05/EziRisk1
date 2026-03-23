@@ -5,10 +5,12 @@ import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import {
   type PortfolioAiInsights,
   type PortfolioAiPayload,
 } from '../../lib/ai/generatePortfolioInsights';
+import { canAccessPortfolio } from '../../utils/entitlements';
 import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
 import {
   generatePortfolioMarkdown,
@@ -186,6 +188,15 @@ export default function PortfolioPage() {
   const [savedViewsError, setSavedViewsError] = useState<string | null>(null);
   const [savedViewsNotice, setSavedViewsNotice] = useState<string | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const portfolioLocked = Boolean(organisation) && !isPlatformAdmin && !canAccessPortfolio(organisation);
+
+  useEffect(() => {
+    if (portfolioLocked) {
+      setShowUpgradeModal(true);
+    }
+  }, [portfolioLocked]);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -223,6 +234,30 @@ export default function PortfolioPage() {
     setSelectedSavedViewId('');
     setSavedViewsNotice(null);
   };
+
+  if (portfolioLocked) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <h1 className="text-2xl font-semibold text-slate-900">Portfolio is locked on your current plan</h1>
+          <p className="mt-2 text-slate-600">Upgrade to unlock portfolio analytics and exports.</p>
+          <button
+            onClick={() => navigate('/upgrade')}
+            className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Upgrade plan
+          </button>
+        </div>
+        <UpgradeBlockModal
+          open={showUpgradeModal}
+          reason="portfolio_locked"
+          detail="Portfolio analytics are only available on plans with portfolio access."
+          onClose={() => setShowUpgradeModal(false)}
+          onUpgrade={() => navigate('/upgrade')}
+        />
+      </div>
+    );
+  }
 
   const loadSavedViews = useCallback(async () => {
     if (!organisation?.id) {

@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import { canAccessRiskEngineering, canAccessExplosionSafety } from '../../utils/entitlements';
 import { createDocument, ReportCreationBlockedError } from '../../utils/documentCreation';
 import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
+import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
 
 interface AssessmentType {
   id: string;
@@ -20,6 +22,9 @@ export default function NewAssessmentPage() {
   const { user, organisation } = useAuth();
 
   const [creatingType, setCreatingType] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('report_limit');
+  const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
 
   // Guard: Wait for auth to load
   if (!user || !organisation) {
@@ -96,14 +101,16 @@ export default function NewAssessmentPage() {
 
     // Double-check entitlements at submit time to prevent bypass
     if (typeId === 'property' && !hasRiskEngineering) {
-      alert('This assessment type requires an upgrade to your plan.');
-      navigate('/upgrade');
+      setUpgradeReason('report_limit');
+      setUpgradeDetail('This assessment type requires an upgrade to your plan.');
+      setShowUpgradeModal(true);
       return;
     }
 
     if ((typeId === 'dsear' || typeId === 'fire_explosion') && !hasExplosion) {
-      alert('This assessment type requires an upgrade to your plan.');
-      navigate('/upgrade');
+      setUpgradeReason('report_limit');
+      setUpgradeDetail('This assessment type requires an upgrade to your plan.');
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -117,8 +124,9 @@ export default function NewAssessmentPage() {
     }
 
     if (!creationEntitlement.allowed) {
-      alert(creationEntitlement.reason || 'Your current plan cannot create more reports.');
-      navigate('/upgrade');
+      setUpgradeReason(inferReportUpgradeReason(creationEntitlement));
+      setUpgradeDetail(creationEntitlement.reason || 'Your current plan cannot create more reports.');
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -206,9 +214,12 @@ export default function NewAssessmentPage() {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const displayMessage = `Failed to create assessment: ${errorMessage}`;
 
-      alert(displayMessage);
       if (error instanceof ReportCreationBlockedError) {
-        navigate('/upgrade');
+        setUpgradeReason(inferReportUpgradeReasonFromMessage(error.message));
+        setUpgradeDetail(error.message);
+        setShowUpgradeModal(true);
+      } else {
+        alert(displayMessage);
       }
       setCreatingType(null);
     }
@@ -281,6 +292,13 @@ export default function NewAssessmentPage() {
             </div>
           </div>
         </div>
+        <UpgradeBlockModal
+          open={showUpgradeModal}
+          reason={upgradeReason}
+          detail={upgradeDetail}
+          onClose={() => setShowUpgradeModal(false)}
+          onUpgrade={() => navigate('/upgrade')}
+        />
       </div>
   );
 }
