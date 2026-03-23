@@ -86,8 +86,8 @@ export default function UpgradeSubscription() {
         throw new Error(errorData.error || 'Failed to create checkout session');
       }
 
-      const { sessionUrl } = await response.json();
-      window.location.href = sessionUrl;
+      const { sessionUrl, url } = await response.json();
+      window.location.href = sessionUrl || url;
     } catch (err) {
       console.error('Upgrade error:', err);
       setError(err instanceof Error ? err.message : 'Failed to start upgrade process');

@@ -6,6 +6,11 @@ import { ArrowLeft, Check, Zap, Lock, Users, AlertCircle, CheckCircle } from 'lu
 import { PLAN_LABELS } from '../utils/permissions';
 import { supabase } from '../lib/supabase';
 
+const STRIPE_PRICE_CORE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+const STRIPE_PRICE_CORE_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+const STRIPE_PRICE_PRO_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
+const STRIPE_PRICE_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
+
 export default function UpgradePage() {
   const { user, userPlan } = useAuth();
   const { organisation } = useTenant();
@@ -46,8 +51,8 @@ export default function UpgradePage() {
       name: 'Core',
       priceMonthly: 49,
       priceAnnual: 490,
-      stripePriceIdMonthly: 'price_core_monthly',
-      stripePriceIdAnnual: 'price_core_annual',
+      stripePriceIdMonthly: STRIPE_PRICE_CORE_MONTHLY,
+      stripePriceIdAnnual: STRIPE_PRICE_CORE_ANNUAL,
       description: 'Essential features for small teams',
       features: [
         'Everything in Free',
@@ -72,8 +77,8 @@ export default function UpgradePage() {
       name: 'Professional',
       priceMonthly: 149,
       priceAnnual: 1490,
-      stripePriceIdMonthly: 'price_professional_monthly',
-      stripePriceIdAnnual: 'price_professional_annual',
+      stripePriceIdMonthly: STRIPE_PRICE_PRO_MONTHLY,
+      stripePriceIdAnnual: STRIPE_PRICE_PRO_ANNUAL,
       description: 'Advanced features for growing teams',
       features: [
         'Everything in Core',
@@ -166,6 +171,11 @@ export default function UpgradePage() {
     setIsProcessing(true);
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        throw new Error('Not authenticated');
+      }
+
       const priceIdKey = billingCycle === 'monthly'
         ? 'stripePriceIdMonthly'
         : 'stripePriceIdAnnual';
@@ -177,7 +187,7 @@ export default function UpgradePage() {
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${sessionData.session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -190,8 +200,8 @@ export default function UpgradePage() {
 
       const data = await response.json();
 
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.sessionUrl || data.url) {
+        window.location.href = data.sessionUrl || data.url;
       } else {
         throw new Error(data.error || 'No checkout URL returned');
       }

@@ -8,19 +8,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, stripe-signature",
 };
 
-type PlanType = 'core' | 'professional';
+type PlanId = "standard" | "professional";
 type PlanInterval = 'month' | 'year';
 
 interface StripePlanMapping {
-  planType: PlanType;
+  planId: PlanId;
   interval: PlanInterval;
 }
 
 const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
-  [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY") || ""]: { planType: "core", interval: "month" },
-  [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL") || ""]: { planType: "core", interval: "year" },
-  [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || ""]: { planType: "professional", interval: "month" },
-  [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") || ""]: { planType: "professional", interval: "year" },
+  [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY") || ""]: { planId: "standard", interval: "month" },
+  [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL") || ""]: { planId: "standard", interval: "year" },
+  [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || ""]: { planId: "professional", interval: "month" },
+  [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") || ""]: { planId: "professional", interval: "year" },
 };
 
 function getPlanFromPriceId(priceId: string): StripePlanMapping | null {
@@ -148,9 +148,9 @@ Deno.serve(async (req: Request) => {
       };
 
       if (subscription.status === 'active' || subscription.status === 'trialing') {
-        updateData.plan_type = planMapping.planType;
+        updateData.plan_id = planMapping.planId;
       } else if (subscription.status === 'canceled' || subscription.status === 'unpaid') {
-        updateData.plan_type = 'core';
+        updateData.plan_id = "trial";
       }
 
       await supabase
@@ -158,7 +158,7 @@ Deno.serve(async (req: Request) => {
         .update(updateData)
         .eq("id", orgId);
 
-      console.log(`Updated org ${orgId}: plan=${updateData.plan_type}, status=${subscription.status}`);
+      console.log(`Updated org ${orgId}: plan_id=${updateData.plan_id}, status=${subscription.status}`);
     }
 
     switch (event.type) {
@@ -238,7 +238,7 @@ Deno.serve(async (req: Request) => {
         await supabase
           .from("organisations")
           .update({
-            plan_type: "core",
+            plan_id: "trial",
             subscription_status: "canceled",
             stripe_subscription_id: null,
             cancel_at_period_end: false,

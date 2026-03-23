@@ -16,6 +16,15 @@ interface CheckoutRequest {
   cancelUrl: string;
 }
 
+const ALLOWED_PRICE_IDS = new Set(
+  [
+    Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
+  ].filter((value): value is string => Boolean(value)),
+);
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -55,6 +64,10 @@ Deno.serve(async (req: Request) => {
 
     if (!priceId || !organisationId) {
       throw new Error("Missing required parameters");
+    }
+
+    if (!ALLOWED_PRICE_IDS.has(priceId)) {
+      throw new Error("Unsupported Stripe price ID");
     }
 
     const { data: organisation, error: orgError } = await supabase
@@ -121,7 +134,7 @@ Deno.serve(async (req: Request) => {
     });
 
     return new Response(
-      JSON.stringify({ sessionUrl: session.url }),
+      JSON.stringify({ sessionUrl: session.url, url: session.url }),
       {
         headers: {
           ...corsHeaders,
