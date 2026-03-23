@@ -981,6 +981,7 @@ function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Break
     ['Site totals (roof m² / mezz m²)', `${formatDataValue(context.totalRoofArea)} / ${formatDataValue(context.totalMezzArea)}`],
     ['Site construction score', `${formatDataValue(siteScore)}`],
     ['Site combustible %', combustibleText ?? 'Data not provided'],
+    ['Site-level construction notes', formatDataValue(construction?.site_notes)],
   ], ['site construction score', 'site combustible %']);
 }
 
@@ -1266,12 +1267,32 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
   return `Engineering Interpretation: Building-level fixed protection records show ${sprinklerInstalledCount} building(s) with installed sprinkler coverage against ${sprinklerRequiredCount} building(s) showing a stated requirement. ${reliabilityNarrative}. Localised/special protection gaps are identified in ${localisedMissing} building(s), and should be prioritised where high-value or high-challenge hazards are present. Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.`;
 }
 
-function buildConstructionEngineeringInterpretation(_module: ModuleInstance, _breakdown: Breakdown): string {
-  return `The buildings are of predominantly non-combustible construction, with protected steel framing and non-combustible roof and wall systems. Structural fire resistance is supported by 120-minute compartmentation, which should limit fire spread between major areas.
-
-A mezzanine level is present within the main building, introducing localised fire load and vertical spread considerations. One building incorporates cladding, which should be verified to ensure it does not contribute to external fire spread.
-
-Overall site combustibility is moderate (52%), indicating that fire severity will be driven more by internal contents, storage and external exposures than by structural elements. Fire development is therefore likely to be controlled initially but may escalate where combustible loading is concentrated.`;
+function buildConstructionEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const context = getConstructionContext(module, breakdown);
+  const scoreBand = getScoreBand(context.rating);
+  const pillarScore = breakdown.globalPillars.find((p) => p.key === 'construction_and_combustibility');
+  const siteScore = construction?.site_re02_score ?? construction?.calculated?.site_construction_rating ?? construction?.site_totals?.site_re02_score ?? pillarScore?.rating;
+  const scoreText = formatScoreOutOfFive(siteScore);
+  const combustibleValue = pickFirstProvided(
+    construction?.site_combustible_percent,
+    construction?.calculated?.site_combustible_percent,
+    construction?.site_totals?.site_combustible_percent,
+    pillarScore?.metadata?.site_combustible_percent,
+    context.explicitCombustiblePct
+  );
+  const combustibleText = Number.isFinite(Number(combustibleValue))
+    ? `${Number(combustibleValue)}%`
+    : context.combustibilityText;
+  const buildings = context.buildings;
+  const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
+  const claddingText = claddingPresentCount > 0
+    ? `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s).`
+    : context.buildingCount > 0
+      ? 'No combustible cladding is identified in submitted building records.'
+      : 'Building-level cladding records are not available.';
+  const geometryText = `Recorded geometry totals are roof ${formatDataValue(context.totalRoofArea)} m² and mezz ${formatDataValue(context.totalMezzArea)} m² across ${context.buildingCount} building(s).`;
+  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText}`;
 }
 
 function buildOccupancyEngineeringInterpretation(module: ModuleInstance): string {
@@ -1858,7 +1879,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }).y;
     }
 
-    yPosition -= 10;
+    yPosition -= 20;
   }
 
   sectionStartPages.set('Conclusion', totalPages.length);
