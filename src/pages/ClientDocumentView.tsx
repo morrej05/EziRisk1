@@ -11,6 +11,8 @@ import { getLockedPdfInfo, downloadLockedPdf } from '../utils/pdfLocking';
 import { migrateLegacyFraActions } from '../lib/modules/fra/migrateLegacyFraActions';
 import type { FraContext } from '../lib/modules/fra/severityEngine';
 import { migrateLegacyDsearActions } from '../lib/dsear/migrateLegacyDsearActions';
+import { buildPdfIdentityOptions } from '../utils/pdfIdentity';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Document {
   id: string;
@@ -31,6 +33,7 @@ interface Document {
 export default function ClientDocumentView() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +156,7 @@ export default function ClientDocumentView() {
         actionRatings: {},
         organisation: { ...org, branding_logo_path: org.branding_logo_path },
         renderMode: 'issued' as const,
+        ...buildPdfIdentityOptions(org, user),
       };
 
       if (document.document_type === 'FRA') {
