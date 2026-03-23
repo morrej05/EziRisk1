@@ -47,6 +47,7 @@ import {
   getExplosiveAtmospheresReferences,
   type Jurisdiction,
 } from '../reportText';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -430,7 +431,7 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
   const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
   let attachments: Attachment[] = [];
