@@ -8,6 +8,7 @@ import {
   formatDate,
   addNewPage,
   drawFooter,
+  drawPlanWatermark,
   addSupersededWatermark,
   addExecutiveSummaryPages,
   ensurePageSpace,
@@ -74,6 +75,8 @@ interface BuildPdfOptions {
   actions: Action[];
   organisation: Organisation;
   renderMode?: 'preview' | 'issued';
+  applyTrialWatermark?: boolean;
+  preparedByName?: string | null;
 }
 
 type LpPriority = 'P1' | 'P2' | 'P3' | 'P4';
@@ -236,7 +239,11 @@ function getTopPriorityRows(recommendations: LpRecommendation[]): string[][] {
 
 export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array> {
   console.log('[PDF RE LP] Starting RE Loss Prevention PDF build');
-  const { document, moduleInstances, actions, organisation, renderMode } = options;
+  const { moduleInstances, actions, organisation, renderMode, applyTrialWatermark } = options;
+  const document = {
+    ...options.document,
+    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+  };
 
   const recommendations = toLpRecommendations(actions, moduleInstances);
   const pdfDoc = await PDFDocument.create();
@@ -422,6 +429,10 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
 
   for (let i = 0; i < totalPages.length; i++) {
     drawFooter(totalPages[i], 'Loss Prevention Report', i + 1, totalPages.length, font);
+  }
+
+  if (applyTrialWatermark) {
+    totalPages.forEach((p) => drawPlanWatermark(p, 'TRIAL'));
   }
 
   if (issueStatus === 'superseded') {

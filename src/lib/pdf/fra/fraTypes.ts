@@ -69,6 +69,8 @@ export interface BuildPdfOptions {
   actionRatings: ActionRating[];
   organisation: Organisation;
   renderMode?: 'preview' | 'issued';
+  applyTrialWatermark?: boolean;
+  preparedByName?: string | null;
 }
 
 export interface Cursor {

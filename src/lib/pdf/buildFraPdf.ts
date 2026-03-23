@@ -34,6 +34,7 @@ import {
   getOutcomeLabel,
   getPriorityColor,
   drawDraftWatermark,
+  drawPlanWatermark,
   addNewPage,
   drawFooter,
   addSupersededWatermark,
@@ -168,7 +169,11 @@ async function renderStandardSection(
 }
 
 export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  const { document, moduleInstances, actions, actionRatings, organisation, renderMode } = options;
+  const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
+  const document = {
+    ...options.document,
+    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+  };
   let attachments: Attachment[] = [];
   try {
     attachments = await listAttachments(document.id);
@@ -940,6 +945,10 @@ if (attachments.length > 0) {
   const startPageForFooters = isIssuedMode ? 2 : 1;
   for (let i = startPageForFooters; i < totalPages.length; i++) {
     drawFooter(totalPages[i], footerText, i, totalPages.length - 1, font);
+  }
+
+  if (applyTrialWatermark) {
+    totalPages.forEach((p) => drawPlanWatermark(p, 'TRIAL'));
   }
 
   if ((document as any).issue_status === 'superseded') {
