@@ -440,11 +440,23 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
   if (module.module_key === 'RE_02_CONSTRUCTION') {
     const construction = (d as any).construction || d;
     const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+    const firstBuilding = buildings[0] || {};
+    const primaryConstructionType =
+      construction.primary_construction_type ??
+      construction.construction_type ??
+      firstBuilding?.primary_construction_type ??
+      firstBuilding?.frame_type ??
+      firstBuilding?.structure?.frame_type;
+    const compartmentationQuality =
+      construction.compartmentation_quality ??
+      firstBuilding?.compartmentation_quality ??
+      firstBuilding?.compartmentation ??
+      firstBuilding?.fire_compartmentation;
     return compactRows([
       ['Buildings recorded', formatValue(buildings.length || '')],
       ['Site notes', formatValue(construction.site_notes)],
-      ['Primary construction type', formatValue(construction.primary_construction_type ?? construction.construction_type)],
-      ['Compartmentation quality', formatValue(construction.compartmentation_quality)],
+      ['Primary construction type', formatValue(primaryConstructionType)],
+      ['Compartmentation quality', formatValue(compartmentationQuality)],
     ], ['buildings recorded']);
   }
 
@@ -534,7 +546,7 @@ function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: 
       ? 'reinstatement complexity is likely elevated due to site scale and internal vertical interfaces'
       : 'reinstatement complexity is expected to be moderate';
     const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
-    const base = `Construction score: ${scoreText} (${scoreBand.label}). This score reflects construction combustibility, structural system resilience, and envelope escalation potential. The current site includes ${context.buildingCount} building(s), total roof area ${formatDataValue(context.totalRoofArea)} m², and mezzanine area ${formatDataValue(context.totalMezzArea)} m². Combustible proportion is ${context.combustibilityText} (${context.combustibilitySource === 'explicit' ? 'from submitted site totals' : context.combustibilitySource === 'derived' ? 'derived from building-level data' : 'data not provided'}). This indicates ${fireSpreadRisk}, ${structuralResilience}, ${lossScale}, and ${reinstatementComplexity}.${context.partialData ? ' Interpretation is based on partial construction data.' : ''}`;
+    const base = `Construction score: ${scoreText} (${scoreBand.label}). This score reflects construction combustibility, structural system resilience, and envelope escalation potential. The current site includes ${context.buildingCount} building(s), total roof area ${formatDataValue(context.totalRoofArea)} m², and mezzanine area ${formatDataValue(context.totalMezzArea)} m². Combustible proportion is ${context.combustibilityText} (${context.combustibilitySource === 'explicit' ? 'from submitted site totals' : 'data not provided'}). This indicates ${fireSpreadRisk}, ${structuralResilience}, ${lossScale}, and ${reinstatementComplexity}.${context.partialData ? ' Interpretation is based on partial construction data.' : ''}`;
     return notes ? `${base} Additional assessor notes: ${notes}` : base;
   }
 
@@ -626,8 +638,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
   hasMezzanine: boolean;
   hasMultipleBuildings: boolean;
   explicitCombustiblePct: number | null;
-  derivedCombustiblePct: number | null;
-  combustibilitySource: 'explicit' | 'derived' | 'none';
+  combustibilitySource: 'explicit' | 'none';
   combustibilityText: string;
   partialData: boolean;
 } {
@@ -642,20 +653,23 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
       construction?.site_totals?.site_combustible_percent
   );
   const explicitCombustiblePct = Number.isFinite(explicitCombustible) ? explicitCombustible : null;
-  const combustibleValues = buildings
-    .map((building: any) => Number(building?.calculated?.combustible_percent))
-    .filter((value: number) => Number.isFinite(value));
-  const derivedCombustiblePct = combustibleValues.length
-    ? Math.round((combustibleValues.reduce((sum: number, value: number) => sum + value, 0) / combustibleValues.length) * 10) / 10
-    : null;
-  const combustibilitySource = explicitCombustiblePct !== null ? 'explicit' : derivedCombustiblePct !== null ? 'derived' : 'none';
-  const combustibilityValue = explicitCombustiblePct ?? derivedCombustiblePct;
+  const combustibilitySource = explicitCombustiblePct !== null ? 'explicit' : 'none';
+  const combustibilityValue = explicitCombustiblePct;
   const buildingCount = buildings.length;
   const hasMezzanine = buildings.some((building: any) => numericOrZero(building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2) > 0);
   const hasMultipleBuildings = buildingCount > 1;
   const partialData = combustibilitySource === 'none' || buildings.some((building: any) => {
     const hasRoofArea = Number.isFinite(Number(building?.roof?.area_sqm ?? building?.roof_area_m2));
-    const hasStoreys = Number.isFinite(Number(building?.geometry?.floors ?? building?.storeys ?? building?.floors ?? building?.number_of_storeys));
+    const hasStoreys = Number.isFinite(Number(
+      building?.geometry?.floors ??
+      building?.geometry?.storeys ??
+      building?.storeys ??
+      building?.floors ??
+      building?.number_of_storeys ??
+      building?.number_of_floors ??
+      building?.floors_above_ground ??
+      building?.storeys_above_ground
+    ));
     return !hasRoofArea || !hasStoreys;
   });
 
@@ -668,7 +682,6 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
     hasMezzanine,
     hasMultipleBuildings,
     explicitCombustiblePct,
-    derivedCombustiblePct,
     combustibilitySource,
     combustibilityText: combustibilityValue !== null ? `${combustibilityValue}%` : 'Data not provided',
     partialData,
@@ -703,22 +716,6 @@ function describeOccupancyHazardSignals(hazards: any[], occupancy: any): {
   return { hazardSummary, ignitionLikelihood, fireLoadSeverity, controlsDependency, processSpecificNarrative };
 }
 
-function getMaterialPercent(
-  breakdown: Array<{ material?: string; percent?: number | null }> | undefined,
-  includeCombustible: boolean
-): number | null {
-  if (!Array.isArray(breakdown) || breakdown.length === 0) return null;
-  let total = 0;
-  for (const item of breakdown) {
-    const material = String(item?.material || '').toLowerCase();
-    const percent = Number(item?.percent);
-    if (!Number.isFinite(percent)) continue;
-    const isCombustible = material.includes('combustible') || material.includes('foam plastic') || material.includes('timber');
-    if ((includeCombustible && isCombustible) || (!includeCombustible && !isCombustible)) total += percent;
-  }
-  return Math.max(0, Math.min(100, Math.round(total * 10) / 10));
-}
-
 function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
@@ -726,8 +723,22 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
-    const storeys = building?.geometry?.floors ?? building?.storeys ?? building?.floors ?? building?.number_of_storeys;
-    const basements = building?.geometry?.basements ?? building?.basements ?? building?.basement_levels ?? building?.number_of_basements;
+    const storeys =
+      building?.geometry?.floors ??
+      building?.geometry?.storeys ??
+      building?.storeys ??
+      building?.floors ??
+      building?.number_of_storeys ??
+      building?.number_of_floors ??
+      building?.floors_above_ground ??
+      building?.storeys_above_ground;
+    const basements =
+      building?.geometry?.basements ??
+      building?.geometry?.basement_levels ??
+      building?.basements ??
+      building?.basement_levels ??
+      building?.number_of_basements ??
+      building?.basement_count;
     return [
       formatDataValue(refOrName),
       formatDataValue(roofArea),
@@ -767,29 +778,31 @@ function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: B
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const wallsCombPctExplicit =
       building?.walls?.combustibility_percent ??
+      building?.walls_combustible_percent ??
       building?.walls_combustibility_percent ??
+      building?.wall_combustibility_percent ??
+      building?.wall_construction_percent_combustible ??
       null;
-    const wallsCombPctDerived = wallsCombPctExplicit === null ? getMaterialPercent(building?.walls?.breakdown, true) : null;
-    const wallsCombPct = wallsCombPctExplicit ?? wallsCombPctDerived;
-    const wallsCombSource = wallsCombPctExplicit !== null ? 'explicit' : wallsCombPctDerived !== null ? 'derived' : 'none';
     const frameType = building?.frame_type ?? building?.structure?.frame_type ?? building?.construction_frame;
     const score =
       building?.calculated?.construction_rating ??
+      building?.calculated?.construction_score ??
       building?.calculated?.re02 ??
       building?.re02_score ??
       building?.re02_construction_score ??
       building?.construction_rating;
     const combustibilityExplicit =
       building?.calculated?.combustible_percent ??
+      building?.combustibility_percent ??
       building?.area_weighted_combustible_percent ??
       building?.combustible_percent;
 
     return [
       formatDataValue(refOrName),
-      formatConstructionPercent(wallsCombPct, wallsCombSource),
+      formatConstructionPercent(wallsCombPctExplicit, wallsCombPctExplicit !== null ? 'explicit' : 'none'),
       sanitizePdfText(resolveCladdingDescriptor(building)),
       formatDataValue(frameType),
-      Number.isFinite(Number(score)) ? `${Number(score)}/5` : 'Data not provided',
+      Number.isFinite(Number(score)) ? `${Number(score)}${Number(score) <= 5 ? '/5' : ''}` : 'Data not provided',
       formatConstructionPercent(combustibilityExplicit, combustibilityExplicit !== undefined && combustibilityExplicit !== null ? 'explicit' : 'none'),
     ];
   }), ['walls %', 'cladding', 'building construction score', 'combustibility %']);
@@ -811,6 +824,7 @@ function getConstructionScoringRows(module: ModuleInstance): Row[] {
       building?.fire_compartmentation;
     const score =
       building?.calculated?.construction_rating ??
+      building?.calculated?.construction_score ??
       building?.calculated?.re02 ??
       building?.re02_score ??
       building?.re02_construction_score ??
@@ -819,7 +833,7 @@ function getConstructionScoringRows(module: ModuleInstance): Row[] {
       formatDataValue(refOrName),
       formatDataValue(primaryConstructionType),
       formatDataValue(compartmentationQuality),
-      Number.isFinite(Number(score)) ? `${Number(score)}/5` : 'Data not provided',
+      Number.isFinite(Number(score)) ? `${Number(score)}${Number(score) <= 5 ? '/5' : ''}` : 'Data not provided',
     ];
   }), ['primary construction type', 'compartmentation quality', 'building construction score']);
 }
@@ -829,10 +843,15 @@ function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Break
   const context = getConstructionContext(module, breakdown);
   const pillarScore = breakdown.globalPillars.find((p) => p.key === 'construction_and_combustibility');
   const siteScore = construction?.site_re02_score ?? construction?.calculated?.site_construction_rating ?? construction?.site_totals?.site_re02_score ?? pillarScore?.rating;
+  const siteCombustiblePercent =
+    construction?.site_combustible_percent ??
+    construction?.calculated?.site_combustible_percent ??
+    construction?.site_totals?.site_combustible_percent;
+  const combustibleText = Number.isFinite(Number(siteCombustiblePercent)) ? `${Number(siteCombustiblePercent)}%` : null;
   return compactRows([
     ['Site totals (roof m² / mezz m²)', `${formatDataValue(context.totalRoofArea)} / ${formatDataValue(context.totalMezzArea)}`],
     ['Site construction score', `${formatDataValue(siteScore)}`],
-    ['Site combustible %', context.combustibilityText],
+    ['Site combustible %', combustibleText ?? 'Data not provided'],
     ['Site-level construction notes', formatDataValue(construction.site_notes)],
   ], ['site construction score', 'site combustible %']);
 }
@@ -1144,7 +1163,7 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     context.totalRoofArea >= 3000 ? 'large floor area increases probable maximum loss scale' : '',
   ].filter(Boolean).join('; ');
   const reinstatementComplexity = context.totalRoofArea >= 3000 || context.hasMezzanine || (context.rating ?? 0) <= 2.5 ? 'elevated reinstatement complexity' : 'moderate reinstatement complexity';
-  return `Engineering Interpretation: Combustible proportion (${context.combustibilityText}; ${context.combustibilitySource === 'explicit' ? 'site totals provided' : context.combustibilitySource === 'derived' ? 'derived from building records' : 'data not provided'}) and building mix (${buildingMix}) with construction score (${Number.isFinite(context.rating as number) ? `${context.rating}/5` : 'unavailable'}) indicate ${fireSpreadRisk}, ${structuralResilience}, and ${reinstatementComplexity}.${conditionalDrivers ? ` Site-specific drivers: ${conditionalDrivers}.` : ''}${context.partialData ? ' Interpretation is based on partial data and should be refined once missing construction fields are completed.' : ''}`;
+  return `Engineering Interpretation: Combustible proportion (${context.combustibilityText}; ${context.combustibilitySource === 'explicit' ? 'site totals provided' : 'data not provided'}) and building mix (${buildingMix}) with construction score (${Number.isFinite(context.rating as number) ? `${context.rating}/5` : 'unavailable'}) indicate ${fireSpreadRisk}, ${structuralResilience}, and ${reinstatementComplexity}.${conditionalDrivers ? ` Site-specific drivers: ${conditionalDrivers}.` : ''}${context.partialData ? ' Interpretation is based on partial data and should be refined once missing construction fields are completed.' : ''}`;
 }
 
 function buildOccupancyEngineeringInterpretation(module: ModuleInstance): string {
@@ -1476,7 +1495,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       product: 're',
       fonts: { regular: font, bold: fontBold },
     });
-    yPosition = sectionBreak(yPosition, 8);
+    yPosition = sectionBreak(yPosition, 18);
 
     // NOTE (report separation readiness):
     // Survey report currently consumes recommendation metadata via action rows (module_instance_id linkage).
@@ -1486,13 +1505,14 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     if (tableRows.length > 0) {
       ({ page, yPosition } = ensurePageSpace(100 + tableRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawBlockHeading(page, yPosition, 'Section Snapshot', fontBold);
+      yPosition = sectionBreak(yPosition, 8);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Detail'], tableRows, { regular: font, bold: fontBold }, {
         colWidths: [195, CONTENT_WIDTH - 195],
         fontSize: 9,
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
-      yPosition = sectionBreak(yPosition);
+      yPosition = sectionBreak(yPosition, 42);
     }
 
     if (module.module_key === 'RE_02_CONSTRUCTION') {
@@ -1500,25 +1520,27 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       if (geometryRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + geometryRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Inputs — Geometry', fontBold);
+        yPosition = sectionBreak(yPosition, 8);
         ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof (m²)', 'Mezz (m²)', 'Storeys', 'Basements'], geometryRows, { regular: font, bold: fontBold }, {
           colWidths: [145, 88, 88, 90, 104],
           fontSize: 8.5,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
-        yPosition = sectionBreak(yPosition);
+        yPosition = sectionBreak(yPosition, 44);
       }
       const characteristicRows = getConstructionCharacteristicsRows(module, breakdown);
       if (characteristicRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + characteristicRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Inputs — Construction characteristics', fontBold);
+        yPosition = sectionBreak(yPosition, 8);
         ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Walls %', 'Cladding', 'Frame type', 'Combustibility %'], characteristicRows.map((row) => [row[0], row[1], row[2], row[3], row[5]]), { regular: font, bold: fontBold }, {
           colWidths: [130, 78, 130, 98, CONTENT_WIDTH - 436],
           fontSize: 7.5,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
-        yPosition = sectionBreak(yPosition);
+        yPosition = sectionBreak(yPosition, 44);
       }
       const siteTotals = getConstructionSiteSummaryRows(module, breakdown);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -1529,7 +1551,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
-      yPosition = sectionBreak(yPosition);
+      yPosition = sectionBreak(yPosition, 44);
       const scoringRows = getConstructionScoringRows(module);
       const scoringBasis = buildConstructionScoringBasisText(module);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -1700,13 +1722,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
     yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
     yPosition = drawParagraph(page, yPosition, interpretation, font);
-    yPosition = sectionBreak(yPosition);
+    yPosition = sectionBreak(yPosition, 44);
 
     const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
     ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
     yPosition = drawBlockHeading(page, yPosition, 'Narrative Commentary', fontBold);
     yPosition = drawParagraph(page, yPosition, commentary, font);
-    yPosition = sectionBreak(yPosition);
+    yPosition = sectionBreak(yPosition, 44);
 
     const significance = sectionSignificance(module, breakdown);
     if (significance) {
