@@ -3,12 +3,14 @@ import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle } from 'luc
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../utils/permissions';
+import UpgradeBlockModal from './UpgradeBlockModal';
 import {
   getUserSeatEntitlement,
   getUserSeatUpgradeMessage,
   normalizeSeatLimitErrorMessage,
   type UserSeatEntitlement,
 } from '../utils/userSeatEntitlements';
+import { inferUserUpgradeReason, type UpgradeBlockReason } from '../utils/upgradeBlocks';
 
 interface UserProfile {
   id: string;
@@ -38,6 +40,9 @@ export default function UserManagement() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<UserRole>('viewer');
   const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('user_limit');
+  const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
 
   const atSeatLimit = useMemo(() => {
     if (!seatEntitlement) return false;
@@ -135,7 +140,9 @@ export default function UserManagement() {
       setSeatEntitlement(entitlement);
 
       if (!entitlement.allowed) {
-        alert(entitlement.reason || getUserSeatUpgradeMessage(organisation));
+        setUpgradeReason(inferUserUpgradeReason());
+        setUpgradeDetail(entitlement.reason || getUserSeatUpgradeMessage(organisation));
+        setShowUpgradeModal(true);
         return;
       }
 
@@ -167,7 +174,14 @@ export default function UserManagement() {
       await fetchUsers();
     } catch (error: unknown) {
       console.error('Error adding user:', error);
-      alert(normalizeSeatLimitErrorMessage(error));
+      const message = normalizeSeatLimitErrorMessage(error);
+      if (message.toLowerCase().includes('seat limit') || message.toLowerCase().includes('upgrade')) {
+        setUpgradeReason(inferUserUpgradeReason());
+        setUpgradeDetail(message);
+        setShowUpgradeModal(true);
+      } else {
+        alert(message);
+      }
     } finally {
       setIsAddingUser(false);
     }
@@ -557,6 +571,13 @@ export default function UserManagement() {
           </div>
         </div>
       )}
+      <UpgradeBlockModal
+        open={showUpgradeModal}
+        reason={upgradeReason}
+        detail={upgradeDetail}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={() => window.location.assign('/upgrade')}
+      />
     </div>
   );
 }
