@@ -1,4 +1,4 @@
-export type PlanType = 'core' | 'professional';
+export type PlanType = 'standard' | 'professional';
 export type PlanInterval = 'month' | 'year';
 
 export interface StripePlanMapping {
@@ -8,11 +8,11 @@ export interface StripePlanMapping {
 
 export const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
   [import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY || '']: {
-    planType: 'core',
+    planType: 'standard',
     interval: 'month'
   },
   [import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL || '']: {
-    planType: 'core',
+    planType: 'standard',
     interval: 'year'
   },
   [import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY || '']: {
@@ -30,5 +30,5 @@ export function getPlanFromPriceId(priceId: string): StripePlanMapping | null {
 }
 
 export function getDefaultPlan(): PlanType {
-  return 'core';
+  return 'standard';
 }
