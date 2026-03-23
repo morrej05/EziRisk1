@@ -1109,10 +1109,21 @@ function resolveBuildingDisplayName(buildingId: string, buildingData: any, index
   return `Building ${index + 1}`;
 }
 
-function getFireProtectionCoverageRows(module: ModuleInstance): Row[] {
+function getFireProtectionCoverageTable(module: ModuleInstance): { headers: string[]; rows: Row[]; colWidths: number[] } {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const buildings = fp?.buildings || {};
-  return compactRows(Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
+  const baseHeaders = [
+    'Building',
+    'Sprinklers present',
+    'Installed coverage',
+    'Required coverage',
+    'System type',
+    'Design standard',
+    'Density / area',
+    'Pressure',
+    'No. of heads',
+  ];
+  const rows = compactRows(Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
     const sprinklerData = buildingData?.sprinklerData || {};
     const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
     return [
@@ -1122,8 +1133,41 @@ function getFireProtectionCoverageRows(module: ModuleInstance): Row[] {
       resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_required_pct)),
       resolveFireProtectionField(sprinklerData?.system_type),
       resolveFireProtectionField(sprinklerData?.standard ?? sprinklerData?.sprinkler_standard),
+      resolveFireProtectionField(sprinklerData?.density_area),
+      resolveFireProtectionField(sprinklerData?.pressure),
+      resolveFireProtectionField(sprinklerData?.number_of_heads),
     ];
   }), ['sprinklers present', 'installed coverage', 'required coverage']);
+
+  const retainedIndexes = baseHeaders
+    .map((_, index) => index)
+    .filter((index) => {
+      if (index <= 5) return true;
+      return rows.some((row) => !isNotProvidedValue(row[index]));
+    });
+
+  const widthMap: Record<string, number> = {
+    Building: 72,
+    'Sprinklers present': 57,
+    'Installed coverage': 58,
+    'Required coverage': 58,
+    'System type': 66,
+    'Design standard': 64,
+    'Density / area': 58,
+    Pressure: 48,
+  };
+  const fixedWidth = retainedIndexes.reduce((sum, index) => {
+    const header = baseHeaders[index];
+    if (header === 'No. of heads') return sum;
+    return sum + (widthMap[header] ?? 55);
+  }, 0);
+  const headers = retainedIndexes.map((index) => baseHeaders[index]);
+  const rowsByHeader = rows.map((row) => retainedIndexes.map((index) => row[index]) as Row);
+  const colWidths = headers.map((header) => (
+    header === 'No. of heads' ? Math.max(46, CONTENT_WIDTH - fixedWidth) : (widthMap[header] ?? 55)
+  ));
+
+  return { headers, rows: rowsByHeader, colWidths };
 }
 
 function getFireProtectionReliabilityRows(module: ModuleInstance): Row[] {
@@ -2139,12 +2183,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_06_FIRE_PROTECTION') {
-      const coverageRows = cleanFireProtectionRows(getFireProtectionCoverageRows(module));
+      const coverageTable = getFireProtectionCoverageTable(module);
+      const coverageRows = cleanFireProtectionRows(coverageTable.rows);
       if (coverageRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + coverageRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Fire Protection — Coverage', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Sprinklers present', 'Installed coverage', 'Required coverage', 'System type', 'Design standard'], coverageRows, { regular: font, bold: fontBold }, {
-          colWidths: [95, 72, 78, 78, 82, CONTENT_WIDTH - 405],
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, coverageTable.headers, coverageRows, { regular: font, bold: fontBold }, {
+          colWidths: coverageTable.colWidths,
           fontSize: 7.5,
           minRowHeight: 18,
           wrapHeader: true,
@@ -2437,7 +2482,14 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         height: scaled.height,
       });
 
-      const photoDescription = String(photo.description || photo.caption || photo.notes || '').trim();
+      const photoDescription = String(
+        photo.caption ||
+        photo.description ||
+        (photo as any).caption_text ||
+        (photo as any).photo_description ||
+        photo.notes ||
+        ''
+      ).trim();
       if (photoDescription) {
         const captionLines = wrapText(sanitizePdfText(photoDescription), itemWidth - 8, 8, font).slice(0, 3);
         let captionY = yPosition - availableHeight - 10;

@@ -383,6 +383,56 @@ export default function DocumentPreviewPage() {
         // RE documents
         if (reActiveTab === 're_survey') {
           let reSurveyModuleInstances = moduleInstances;
+          let reSurveyRecommendations = actions;
+
+          const { data: reRecommendations, error: reRecommendationsError } = await supabase
+            .from('re_recommendations')
+            .select(`
+              id,
+              document_id,
+              title,
+              action_required_text,
+              priority,
+              status,
+              owner,
+              target_date,
+              module_instance_id,
+              rec_number,
+              created_at,
+              completed_at,
+              is_complete
+            `)
+            .eq('document_id', document.id)
+            .eq('is_suppressed', false)
+            .order('created_at', { ascending: true });
+
+          if (reRecommendationsError) {
+            throw reRecommendationsError;
+          }
+
+          const priorityToBand: Record<string, string> = {
+            critical: 'P1',
+            high: 'P1',
+            medium: 'P2',
+            low: 'P3',
+          };
+
+          reSurveyRecommendations = (reRecommendations || []).map((rec: any, index: number) => ({
+            id: rec.id,
+            document_id: rec.document_id,
+            recommended_action: rec.title || rec.action_required_text || `Recommendation ${index + 1}`,
+            priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
+            status: rec.status || 'Open',
+            owner_user_id: null,
+            owner_display_name: rec.owner || null,
+            target_date: rec.target_date || null,
+            module_instance_id: rec.module_instance_id,
+            created_at: rec.created_at,
+            reference_number: rec.rec_number || null,
+            completed_at: rec.completed_at || null,
+            is_complete: rec.is_complete ?? null,
+          }));
+
           try {
             const re02Module = moduleInstances.find((instance: any) => instance.module_key === 'RE_02_CONSTRUCTION');
             if (re02Module) {
@@ -452,6 +502,7 @@ export default function DocumentPreviewPage() {
 
           pdfBytes = await buildReSurveyPdf({
             ...pdfOptions,
+            actions: reSurveyRecommendations,
             moduleInstances: reSurveyModuleInstances,
             selectedModules: reSelectedModules,
           });

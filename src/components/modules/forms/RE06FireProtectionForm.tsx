@@ -100,6 +100,9 @@ interface BuildingSprinklerData {
   sprinkler_coverage_required_pct?: number | null;
   sprinkler_standard?: string; // Legacy field - will migrate to 'standard'
   hazard_class?: string;
+  density_area?: string;
+  pressure?: string;
+  number_of_heads?: string;
   maintenance_status?: MaintenanceStatus;
   sprinkler_adequacy?: SprinklerAdequacy;
   justification_if_required_lt_100?: string;
@@ -414,6 +417,9 @@ function createDefaultBuildingSprinkler(): BuildingSprinklerData {
     sprinkler_coverage_required_pct: null,
     sprinkler_standard: '',
     hazard_class: '',
+    density_area: '',
+    pressure: '',
+    number_of_heads: '',
     maintenance_status: 'Unknown',
     sprinkler_adequacy: 'Unknown',
     justification_if_required_lt_100: '',
@@ -1357,6 +1363,39 @@ export default function RE06FireProtectionForm({
                           value={selectedSprinklerData.hazard_class || ''}
                           onChange={(e) => updateBuildingSprinkler('hazard_class', e.target.value)}
                           placeholder="e.g., OH1, OH2, OH3, LH, HHP"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Density / area</label>
+                        <input
+                          type="text"
+                          value={selectedSprinklerData.density_area || ''}
+                          onChange={(e) => updateBuildingSprinkler('density_area', e.target.value)}
+                          placeholder="Enter as specified"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Pressure</label>
+                        <input
+                          type="text"
+                          value={selectedSprinklerData.pressure || ''}
+                          onChange={(e) => updateBuildingSprinkler('pressure', e.target.value)}
+                          placeholder="Enter as specified"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">No. of heads</label>
+                        <input
+                          type="text"
+                          value={selectedSprinklerData.number_of_heads || ''}
+                          onChange={(e) => updateBuildingSprinkler('number_of_heads', e.target.value)}
+                          placeholder="Enter as specified"
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
