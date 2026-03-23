@@ -19,6 +19,7 @@ import { migrateLegacyFraActions } from '../../lib/modules/fra/migrateLegacyFraA
 import type { FraContext } from '../../lib/modules/fra/severityEngine';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { normalizeJurisdiction } from '../../lib/jurisdictions';
+import { buildPdfIdentityOptions } from '../../utils/pdfIdentity';
 
 type OutputMode = 'FRA' | 'FSD' | 'DSEAR' | 'COMBINED' | 'FIRE_EXPLOSION_COMBINED';
 type ReReportTab = 're_survey' | 're_lp';
@@ -26,7 +27,7 @@ type ReReportTab = 're_survey' | 're_lp';
 export default function DocumentPreviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { organisation } = useAuth();
+  const { organisation, user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -374,6 +375,7 @@ export default function DocumentPreviewPage() {
           branding_logo_path: freshOrg.branding_logo_path,
         },
         renderMode: (document.issue_status === 'issued' || document.issue_status === 'superseded') ? 'issued' as const : 'preview' as const,
+        ...buildPdfIdentityOptions(organisation, user),
       };
 
       let pdfBytes: Uint8Array;

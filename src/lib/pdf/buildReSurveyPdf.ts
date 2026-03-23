@@ -7,6 +7,7 @@ import {
   wrapText,
   addNewPage,
   drawFooter,
+  drawPlanWatermark,
   addSupersededWatermark,
   ensurePageSpace,
   formatDate,
@@ -122,6 +123,8 @@ interface BuildPdfOptions {
   renderMode?: 'preview' | 'issued';
   selectedModules?: string[];
   scoreBreakdownOverride?: Breakdown;
+  applyTrialWatermark?: boolean;
+  preparedByName?: string | null;
 }
 
 type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
@@ -1993,7 +1996,11 @@ function isCompletedRecommendationStatus(action: Pick<Action, 'status' | 'comple
 
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
   console.log('[PDF RE Survey] Starting RE Survey PDF build');
-  const { document, moduleInstances, actions, organisation, renderMode, selectedModules } = options;
+  const { moduleInstances, actions, organisation, renderMode, selectedModules, applyTrialWatermark } = options;
+  const document = {
+    ...options.document,
+    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+  };
 
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -2893,6 +2900,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
   for (let i = 0; i < totalPages.length; i++) {
     drawFooter(totalPages[i], document.title, i + 1, totalPages.length, font);
+  }
+
+  if (applyTrialWatermark) {
+    totalPages.forEach((p) => drawPlanWatermark(p, 'TRIAL'));
   }
 
   if (document.issue_status === 'superseded') {

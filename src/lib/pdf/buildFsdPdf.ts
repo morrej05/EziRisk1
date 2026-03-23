@@ -20,6 +20,7 @@ import {
   getPriorityColor,
   addNewPage,
   drawFooter,
+  drawPlanWatermark,
   addExecutiveSummaryPages,
   addSupersededWatermark,
   ensurePageSpace,
@@ -102,6 +103,8 @@ interface BuildFsdPdfOptions {
   actionRatings: ActionRating[];
   organisation: Organisation;
   renderMode?: 'preview' | 'issued';
+  applyTrialWatermark?: boolean;
+  preparedByName?: string | null;
 }
 
 const MODULE_ORDER = [
@@ -250,7 +253,11 @@ function drawTableOfContents(
 }
 
 export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Array> {
-  const { document, moduleInstances, actions, organisation, renderMode } = options;
+  const { moduleInstances, actions, organisation, renderMode, applyTrialWatermark } = options;
+  const document = {
+    ...options.document,
+    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+  };
   const jurisdiction = normalizeFsdJurisdiction(document.jurisdiction || (document as any).meta?.jurisdiction || null);
 
   let attachments: Attachment[] = [];
@@ -388,6 +395,10 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   const footerReportTitle = getReportFooterTitle('FSD', document.title);
   for (let i = 0; i < totalPages.length; i++) {
     drawFooter(totalPages[i], footerReportTitle, i + 1, totalPages.length, font);
+  }
+
+  if (applyTrialWatermark) {
+    totalPages.forEach((p) => drawPlanWatermark(p, 'TRIAL'));
   }
 
   if (document.issue_status === 'superseded') {

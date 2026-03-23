@@ -421,6 +421,20 @@ export function drawDraftWatermark(page: PDFPage) {
   });
 }
 
+export function drawPlanWatermark(page: PDFPage, watermarkText: string = 'TRIAL') {
+  const width = page.getWidth();
+  const height = page.getHeight();
+
+  page.drawText(watermarkText, {
+    x: width / 2 - 90,
+    y: height / 2,
+    size: 64,
+    color: rgb(0.9, 0.9, 0.9),
+    opacity: 0.24,
+    rotate: { type: 'degrees', angle: -45 },
+  });
+}
+
 /**
  * Draw a key/value row with proper column widths and text wrapping
  * Prevents label/value text overlap by constraining both to fixed widths

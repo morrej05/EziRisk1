@@ -42,6 +42,7 @@ import {
 import { Button, Badge, Card, Callout, PageHeader } from '../../components/ui/DesignSystem';
 import { getActionRegisterSiteLevel, type ActionRegisterEntry } from '../../utils/actionRegister';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
+import { buildPdfIdentityOptions } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -794,6 +795,7 @@ try {
         actionRatings,
         organisation: { id: organisation.id, name: organisation.name, branding_logo_path: organisation.branding_logo_path },
         renderMode: (document.issue_status === 'issued' || document.issue_status === 'superseded') ? 'issued' as const : 'preview' as const,
+        ...buildPdfIdentityOptions(organisation, user),
       };
 
       console.log('[PDF Download] Starting PDF generation');
