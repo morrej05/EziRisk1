@@ -190,6 +190,29 @@ function formatDataPercent(value: unknown): string {
   return `${numeric}%`;
 }
 
+function formatScore(value: unknown): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'N/A';
+  return Number.isInteger(numeric) ? `${numeric}` : `${Math.round(numeric * 10) / 10}`;
+}
+
+function formatScoreOutOfFive(value: unknown): string {
+  const score = formatScore(value);
+  return score === 'N/A' ? 'N/A' : `${score}/5`;
+}
+
+function formatIdentifierLabel(value: unknown): string {
+  if (value === null || value === undefined) return 'Data not provided';
+  const text = String(value).trim();
+  if (!text) return 'Data not provided';
+  if (text.toLowerCase() === 'data not provided' || text.toLowerCase() === 'not stated') return 'Data not provided';
+  return text
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 function numericOrZero(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -411,7 +434,7 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
       ['Avg sprinkler installed coverage', `${Math.round((installed / count) * 10) / 10}%`],
       ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
       ['Supplementary assessment (questions rated)', `${scoredQuestions.length}`],
-      ['Supplementary engineering overall score', `${formatValue(supplementary.overall_score)}/5`],
+      ['Supplementary engineering overall score', formatScoreOutOfFive(supplementary.overall_score)],
       ['Fire protection weighted contribution', pillar ? `${pillar.score.toFixed(1)} of ${pillar.maxScore.toFixed(1)}` : 'Not stated'],
       ['Linked recommendations', `${options.linkedRecommendationCount ?? 0}`],
     ]);
@@ -455,7 +478,7 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
     return compactRows([
       ['Buildings recorded', formatValue(buildings.length || '')],
       ['Site notes', formatValue(construction.site_notes)],
-      ['Primary construction type', formatValue(primaryConstructionType)],
+      ['Primary construction type', formatIdentifierLabel(primaryConstructionType)],
       ['Compartmentation quality', formatValue(compartmentationQuality)],
     ], ['buildings recorded']);
   }
@@ -638,6 +661,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
   hasMezzanine: boolean;
   hasMultipleBuildings: boolean;
   explicitCombustiblePct: number | null;
+  derivedCombustiblePct: number | null;
   combustibilitySource: 'explicit' | 'none';
   combustibilityText: string;
   partialData: boolean;
@@ -653,8 +677,20 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
       construction?.site_totals?.site_combustible_percent
   );
   const explicitCombustiblePct = Number.isFinite(explicitCombustible) ? explicitCombustible : null;
+  const buildingCombustibleValues = buildings
+    .map((building: any) => Number(
+      building?.calculated?.combustibility_percent ??
+      building?.calculated?.combustible_percent ??
+      building?.combustibility_percent ??
+      building?.area_weighted_combustible_percent ??
+      building?.combustible_percent
+    ))
+    .filter((value: number) => Number.isFinite(value));
+  const derivedCombustiblePct = buildingCombustibleValues.length
+    ? Math.round((buildingCombustibleValues.reduce((sum: number, value: number) => sum + value, 0) / buildingCombustibleValues.length) * 10) / 10
+    : null;
   const combustibilitySource = explicitCombustiblePct !== null ? 'explicit' : 'none';
-  const combustibilityValue = explicitCombustiblePct;
+  const combustibilityValue = explicitCombustiblePct ?? derivedCombustiblePct;
   const buildingCount = buildings.length;
   const hasMezzanine = buildings.some((building: any) => numericOrZero(building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2) > 0);
   const hasMultipleBuildings = buildingCount > 1;
@@ -682,6 +718,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
     hasMezzanine,
     hasMultipleBuildings,
     explicitCombustiblePct,
+    derivedCombustiblePct,
     combustibilitySource,
     combustibilityText: combustibilityValue !== null ? `${combustibilityValue}%` : 'Data not provided',
     partialData,
@@ -724,18 +761,18 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
     const storeys =
+      building?.storeys ??
       building?.geometry?.floors ??
       building?.geometry?.storeys ??
-      building?.storeys ??
       building?.floors ??
       building?.number_of_storeys ??
       building?.number_of_floors ??
       building?.floors_above_ground ??
       building?.storeys_above_ground;
     const basements =
+      building?.basements ??
       building?.geometry?.basements ??
       building?.geometry?.basement_levels ??
-      building?.basements ??
       building?.basement_levels ??
       building?.number_of_basements ??
       building?.basement_count;
@@ -782,36 +819,31 @@ function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: B
       building?.walls_combustibility_percent ??
       building?.wall_combustibility_percent ??
       building?.wall_construction_percent_combustible ??
+      building?.walls_percent ??
+      building?.walls_pct ??
+      building?.walls?.total_percent ??
       null;
-    const frameType = building?.frame_type ?? building?.structure?.frame_type ?? building?.construction_frame;
-    const score =
-      building?.calculated?.construction_rating ??
-      building?.calculated?.construction_score ??
-      building?.calculated?.re02 ??
-      building?.re02_score ??
-      building?.re02_construction_score ??
-      building?.construction_rating;
     const combustibilityExplicit =
+      building?.calculated?.combustibility_percent ??
       building?.calculated?.combustible_percent ??
       building?.combustibility_percent ??
       building?.area_weighted_combustible_percent ??
-      building?.combustible_percent;
+      building?.combustible_percent ??
+      building?.calculated?.overall_combustible_percent;
 
     return [
       formatDataValue(refOrName),
       formatConstructionPercent(wallsCombPctExplicit, wallsCombPctExplicit !== null ? 'explicit' : 'none'),
       sanitizePdfText(resolveCladdingDescriptor(building)),
-      formatDataValue(frameType),
-      Number.isFinite(Number(score)) ? `${Number(score)}${Number(score) <= 5 ? '/5' : ''}` : 'Data not provided',
       formatConstructionPercent(combustibilityExplicit, combustibilityExplicit !== undefined && combustibilityExplicit !== null ? 'explicit' : 'none'),
     ];
-  }), ['walls %', 'cladding', 'building construction score', 'combustibility %']);
+  }), ['walls %', 'cladding', 'combustibility %']);
 }
 
 function getConstructionScoringRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
-  return compactRows(buildings.map((building: any): Row => {
+  const buildingRows = compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const primaryConstructionType =
       building?.primary_construction_type ??
@@ -831,11 +863,33 @@ function getConstructionScoringRows(module: ModuleInstance): Row[] {
       building?.construction_rating;
     return [
       formatDataValue(refOrName),
-      formatDataValue(primaryConstructionType),
+      formatIdentifierLabel(primaryConstructionType),
       formatDataValue(compartmentationQuality),
-      Number.isFinite(Number(score)) ? `${Number(score)}${Number(score) <= 5 ? '/5' : ''}` : 'Data not provided',
+      Number.isFinite(Number(score)) ? formatScoreOutOfFive(score) : 'Data not provided',
     ];
   }), ['primary construction type', 'compartmentation quality', 'building construction score']);
+
+  if (buildingRows.length > 0) return buildingRows;
+
+  const sitePrimaryType =
+    construction?.primary_construction_type ??
+    construction?.construction_type;
+  const siteCompartmentation =
+    construction?.compartmentation_quality ??
+    construction?.compartmentation;
+  const siteScore =
+    construction?.site_re02_score ??
+    construction?.calculated?.site_construction_rating ??
+    construction?.site_totals?.site_re02_score;
+
+  return compactRows([
+    [
+      'Site aggregate',
+      formatIdentifierLabel(sitePrimaryType),
+      formatDataValue(siteCompartmentation),
+      Number.isFinite(Number(siteScore)) ? formatScoreOutOfFive(siteScore) : 'Data not provided',
+    ],
+  ], ['primary construction type', 'compartmentation quality', 'building construction score']);
 }
 
 function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Breakdown): Row[] {
@@ -846,8 +900,13 @@ function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Break
   const siteCombustiblePercent =
     construction?.site_combustible_percent ??
     construction?.calculated?.site_combustible_percent ??
-    construction?.site_totals?.site_combustible_percent;
-  const combustibleText = Number.isFinite(Number(siteCombustiblePercent)) ? `${Number(siteCombustiblePercent)}%` : null;
+    construction?.site_totals?.site_combustible_percent ??
+    context.explicitCombustiblePct;
+  const combustibleText = Number.isFinite(Number(siteCombustiblePercent))
+    ? `${Number(siteCombustiblePercent)}%`
+    : context.combustibilityText !== 'Data not provided'
+      ? context.combustibilityText
+      : null;
   return compactRows([
     ['Site totals (roof m² / mezz m²)', `${formatDataValue(context.totalRoofArea)} / ${formatDataValue(context.totalMezzArea)}`],
     ['Site construction score', `${formatDataValue(siteScore)}`],
@@ -1367,7 +1426,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   yPosition = drawParagraph(
     page,
     yPosition,
-    `This report summarises risk engineering findings for ${document.meta?.site?.name || document.scope_description || 'the assessed site'} in ${breakdown.industryLabel} context. Weighted total score is ${breakdown.totalScore.toFixed(1)} of ${breakdown.maxScore.toFixed(1)} (${performanceRatio.toFixed(0)}%) with an overall ${overallRating} rating.`,
+    `This report summarises risk engineering findings for ${document.meta?.site?.name || document.scope_description || 'the assessed site'} in ${breakdown.industryLabel} context. Weighted total score is ${formatScore(breakdown.totalScore)} of ${formatScore(breakdown.maxScore)} (${performanceRatio.toFixed(0)}%) with an overall ${overallRating} rating.`,
     font
   );
 
@@ -1376,7 +1435,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     yPosition,
     ['Executive indicator', 'Assessment'],
     [
-      ['Overall score', `${breakdown.totalScore.toFixed(1)} / ${breakdown.maxScore.toFixed(1)} (${performanceRatio.toFixed(0)}%)`],
+      ['Overall score', `${formatScore(breakdown.totalScore)} / ${formatScore(breakdown.maxScore)} (${performanceRatio.toFixed(0)}%)`],
       ['Overall rating', overallRating],
       ['Key risk drivers', breakdown.topContributors.slice(0, 3).map(driver => driver.label).join('; ') || 'Not stated'],
       ['Overall engineering opinion', engineeringOpinion],
@@ -1420,7 +1479,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ['Metric', 'Value'],
     [
       ['Industry label', breakdown.industryLabel],
-      ['Total weighted score', `${breakdown.totalScore.toFixed(1)} / ${breakdown.maxScore.toFixed(1)}`],
+      ['Total weighted score', `${formatScore(breakdown.totalScore)} / ${formatScore(breakdown.maxScore)}`],
       ['Performance ratio', `${((breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100).toFixed(0)}%`],
     ],
     { regular: font, bold: fontBold },
@@ -1435,7 +1494,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     page,
     yPosition,
     ['Pillar', 'Rating', 'Weighted Score'],
-    breakdown.globalPillars.map(p => [p.label, `${p.rating ?? 'N/A'}/5`, `${p.score.toFixed(1)} of ${p.maxScore.toFixed(1)}`]),
+    breakdown.globalPillars.map(p => [p.label, formatScoreOutOfFive(p.rating), `${p.score.toFixed(1)} of ${p.maxScore.toFixed(1)}`]),
     { regular: font, bold: fontBold },
     {
       fontSize: 8.25,
@@ -1455,8 +1514,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   });
 
   const driverRows: Row[] = [
-    ...breakdown.occupancyDrivers.slice(0, 5).map((d): Row => [d.label, `${d.rating ?? 'N/A'}/5`, `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
-    ...breakdown.topContributors.map((c): Row => [`Top contributor: ${c.label}`, `${c.rating ?? 'N/A'}/5`, `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
+    ...breakdown.occupancyDrivers.slice(0, 5).map((d): Row => [d.label, formatScoreOutOfFive(d.rating), `${d.score.toFixed(1)} of ${d.maxScore.toFixed(1)}`]),
+    ...breakdown.topContributors.map((c): Row => [`Top contributor: ${c.label}`, formatScoreOutOfFive(c.rating), `${c.score.toFixed(1)} of ${c.maxScore.toFixed(1)}`]),
   ];
   ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Driver', 'Rating', 'Weighted Score'], driverRows, { regular: font, bold: fontBold }, {
     fontSize: 8.25,
@@ -1536,9 +1595,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         ({ page, yPosition } = ensurePageSpace(100 + characteristicRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Inputs — Construction characteristics', fontBold);
         yPosition = sectionBreak(yPosition, 8);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Walls %', 'Cladding', 'Frame type', 'Combustibility %'], characteristicRows.map((row) => [row[0], row[1], row[2], row[3], row[5]]), { regular: font, bold: fontBold }, {
-          colWidths: [130, 78, 130, 98, CONTENT_WIDTH - 436],
-          fontSize: 7.5,
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Walls %', 'Cladding', 'Combustibility'], characteristicRows, { regular: font, bold: fontBold }, {
+          colWidths: [150, 86, 134, CONTENT_WIDTH - 370],
+          fontSize: 8,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));

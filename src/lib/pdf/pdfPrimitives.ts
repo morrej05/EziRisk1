@@ -157,6 +157,7 @@ export function drawRiskSignificanceBlock(args: {
   const badgeW = badgeTextWidth + 14;
   const badgeH = 14;
   const badgeX = x + w - badgeW;
+  const badgeTextGap = 14;
   const levelLabel = `${badgeText}:`;
   const labelY = titleY - 18;
   const badgeY = labelY + badgeH - 3;
@@ -181,7 +182,7 @@ export function drawRiskSignificanceBlock(args: {
   });
 
   const narrativeX = x;
-  const narrativeWidth = w;
+  const narrativeWidth = Math.max(120, w - badgeW - badgeTextGap);
   const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
   let cursorY = labelY;
 
