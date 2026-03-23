@@ -1341,6 +1341,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
   ));
 
+  yPosition -= 22;
+
   yPosition = drawSectionHeaderBar({
     page,
     x: MARGIN,
