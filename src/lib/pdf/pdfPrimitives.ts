@@ -178,12 +178,33 @@ export function drawRiskSignificanceBlock(args: {
     color: colour.fg,
   });
 
-  const lines = wrapText(sanitizePdfText(narrative), w, 10, fonts.regular);
+  const levelLabel = `${badgeText}:`;
+  const levelLabelWidth = fonts.bold.widthOfTextAtSize(levelLabel, 10);
+  const labelGap = 12;
+  const narrativeX = x + levelLabelWidth + labelGap;
+  const narrativeWidth = Math.max(60, w - levelLabelWidth - labelGap);
+  const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
   let cursorY = titleY - 18;
 
-  for (const line of lines) {
+  page.drawText(levelLabel, {
+    x,
+    y: cursorY,
+    size: 10,
+    font: fonts.bold,
+    color: colour.fg,
+  });
+  page.drawText(lines[0] || '', {
+    x: narrativeX,
+    y: cursorY,
+    size: 10,
+    font: fonts.regular,
+    color: PDF_THEME.colours.text,
+  });
+  cursorY -= 13;
+
+  for (const line of lines.slice(1)) {
     page.drawText(line, {
-      x,
+      x: narrativeX,
       y: cursorY,
       size: 10,
       font: fonts.regular,
