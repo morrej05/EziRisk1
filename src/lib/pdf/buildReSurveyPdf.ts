@@ -73,6 +73,7 @@ interface ReSurveySitePlan {
 
 interface Action {
   id: string;
+  reference_number?: string | null;
   recommended_action: string;
   priority_band: string;
   status: string;
@@ -1625,6 +1626,11 @@ async function embedEvidenceImage(pdfDoc: PDFDocument, storagePath: string) {
   return pdfDoc.embedJpg(bytes);
 }
 
+function isCompletedRecommendationStatus(status: string | null | undefined): boolean {
+  const normalized = String(status || '').trim().toLowerCase();
+  return normalized === 'closed' || normalized === 'completed' || normalized === 'complete' || normalized === 'resolved';
+}
+
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
   console.log('[PDF RE Survey] Starting RE Survey PDF build');
   const { document, moduleInstances, actions, organisation, renderMode, selectedModules } = options;
@@ -1643,6 +1649,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ? moduleInstances.filter(m => selectedModules.includes(m.module_key))
     : moduleInstances;
 
+  const moduleInstanceIdSet = new Set(moduleInstances.map((module) => module.id));
+  const currentSurveyRecommendations = actions.filter((action) => moduleInstanceIdSet.has(action.module_instance_id));
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
   const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
   const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
@@ -2337,6 +2345,61 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
   }
 
+  if (currentSurveyRecommendations.length > 0) {
+    const outstandingRecommendations = currentSurveyRecommendations.filter((action) => !isCompletedRecommendationStatus(action.status));
+    const completedRecommendations = currentSurveyRecommendations.filter((action) => isCompletedRecommendationStatus(action.status));
+
+    ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+    yPosition = PAGE_TOP_Y;
+    sectionStartPages.set('Appendix C — Recommendations Register', totalPages.length);
+    yPosition = drawSectionHeaderBar({
+      page,
+      x: MARGIN,
+      y: yPosition,
+      w: CONTENT_WIDTH,
+      title: 'Appendix C — Recommendations Register',
+      product: 're',
+      fonts: { regular: font, bold: fontBold },
+    });
+    yPosition = sectionBreak(yPosition, 12);
+
+    const drawRecommendationSection = (heading: string, rows: Action[]) => {
+      yPosition = drawBlockHeading(page, yPosition, heading, fontBold);
+      yPosition = sectionBreak(yPosition, 8);
+      const tableRows = rows.map((action) => [
+        sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
+        sanitizePdfText(String(action.recommended_action || 'Not provided')),
+        sanitizePdfText(String(action.priority_band || 'Not provided')),
+        sanitizePdfText(String(action.owner_display_name || 'Unassigned')),
+        sanitizePdfText(formatDate(action.target_date || '')),
+        sanitizePdfText(String(action.status || 'Not provided')),
+      ]);
+      ({ page, yPosition } = drawSimpleTable(
+        page,
+        yPosition,
+        ['Ref / ID', 'Recommendation', 'Priority', 'Owner', 'Target date', 'Status'],
+        tableRows,
+        { regular: font, bold: fontBold },
+        {
+          colWidths: [62, 206, 56, 78, 70, CONTENT_WIDTH - 472],
+          fontSize: 8.25,
+          minRowHeight: 18,
+          wrapHeader: true,
+          headerMinRowHeight: 22,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }
+      ));
+      yPosition = sectionBreak(yPosition, 12);
+    };
+
+    if (outstandingRecommendations.length > 0) {
+      drawRecommendationSection('Outstanding recommendations', outstandingRecommendations);
+    }
+    if (completedRecommendations.length > 0) {
+      drawRecommendationSection('Completed recommendations', completedRecommendations);
+    }
+  }
+
   contentsPage.drawText('Contents', {
     x: MARGIN,
     y: PAGE_TOP_Y,
@@ -2359,6 +2422,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     ['Conclusion', sectionStartPages.get('Conclusion')],
     ['Appendix A — Site Photographs', sectionStartPages.get('Appendix A — Site Photographs')],
     ['Appendix B — Site Plan', sectionStartPages.get('Appendix B — Site Plan')],
+    ['Appendix C — Recommendations Register', sectionStartPages.get('Appendix C — Recommendations Register')],
   ];
   let tocY = PAGE_TOP_Y - 34;
   for (const [label, pageNo] of contentsRows) {
