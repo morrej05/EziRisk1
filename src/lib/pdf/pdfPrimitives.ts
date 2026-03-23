@@ -180,7 +180,7 @@ export function drawRiskSignificanceBlock(args: {
 
   const levelLabel = `${badgeText}:`;
   const levelLabelWidth = fonts.bold.widthOfTextAtSize(levelLabel, 10);
-  const labelGap = 12;
+  const labelGap = 20;
   const narrativeX = x + levelLabelWidth + labelGap;
   const narrativeWidth = Math.max(60, w - levelLabelWidth - labelGap);
   const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
