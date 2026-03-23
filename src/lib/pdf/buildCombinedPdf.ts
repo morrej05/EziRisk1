@@ -35,6 +35,7 @@ import {
 } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
 import { drawSectionHeaderBar } from './pdfPrimitives';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -160,7 +161,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
   console.log('[Combined PDF] Building combined FRA + FSD PDF with:', {

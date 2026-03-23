@@ -17,6 +17,7 @@ import { buildRiskEngineeringScoreBreakdown } from '../re/scoring/riskEngineerin
 import { getModuleDisplayName } from '../modules/moduleDisplay';
 import { addIssuedReportPages } from './issuedPdfPages';
 import { supabase } from '../supabase';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface DocumentMeta {
   client?: { name?: string };
@@ -1999,7 +2000,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   const { moduleInstances, actions, organisation, renderMode, selectedModules, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
   const pdfDoc = await PDFDocument.create();

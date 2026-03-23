@@ -42,14 +42,13 @@ export default function A1DocumentControlForm({
   document,
   onSaved,
 }: A1DocumentControlFormProps) {
-  const { organisation } = useAuth();
+  const { user } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   const [documentFields, setDocumentFields] = useState({
     title: document.title || '',
     assessmentDate: document.assessment_date || '',
-    assessorName: document.assessor_name || '',
     assessorRole: document.assessor_role || '',
     responsiblePerson: document.responsible_person || '',
     scopeDescription: document.scope_description || '',
@@ -99,7 +98,6 @@ export default function A1DocumentControlForm({
     setDocumentFields({
       title: document.title || '',
       assessmentDate: document.assessment_date || '',
-      assessorName: document.assessor_name || '',
       assessorRole: document.assessor_role || '',
       responsiblePerson: document.responsible_person || '',
       scopeDescription: document.scope_description || '',
@@ -127,7 +125,6 @@ export default function A1DocumentControlForm({
         .update({
           title: documentFields.title || 'Untitled Assessment',
           assessment_date: documentFields.assessmentDate,
-          assessor_name: documentFields.assessorName || null,
           assessor_role: documentFields.assessorRole || null,
           responsible_person: documentFields.responsiblePerson || null,
           scope_description: documentFields.scopeDescription || null,
@@ -259,17 +256,17 @@ export default function A1DocumentControlForm({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Assessor Name
+                  Prepared By (Authenticated User)
                 </label>
                 <input
                   type="text"
-                  value={documentFields.assessorName}
-                  onChange={(e) =>
-                    setDocumentFields({ ...documentFields, assessorName: e.target.value })
-                  }
-                  placeholder="John Smith"
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+                  value={user?.name || user?.email || 'Authenticated User'}
+                  disabled
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg bg-neutral-100 text-neutral-700"
                 />
+                <p className="mt-1 text-xs text-neutral-500">
+                  Prepared-by identity in generated PDFs is derived from your authenticated account and is not editable here.
+                </p>
               </div>
 
               <div>

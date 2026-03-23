@@ -16,6 +16,7 @@ import {
 } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
 import { getModuleDisplayName } from '../modules/moduleDisplay';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -242,7 +243,7 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   const { moduleInstances, actions, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
   const recommendations = toLpRecommendations(actions, moduleInstances);

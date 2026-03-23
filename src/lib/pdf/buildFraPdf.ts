@@ -2,6 +2,7 @@ import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { getModuleName } from '../modules/moduleCatalog';
 import { listAttachments, type Attachment } from '../supabase/attachments';
 import { type Jurisdiction, getJurisdictionConfig, getJurisdictionLabel } from '../jurisdictions';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 import {
   deriveExecutiveOutcome,
   checkMaterialDeficiency,
@@ -172,7 +173,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
   const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
   let attachments: Attachment[] = [];
   try {

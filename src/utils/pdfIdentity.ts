@@ -15,12 +15,25 @@ export function resolvePreparedByName(user: AuthLikeUser): string | null {
   return null;
 }
 
+export function resolvePdfPreparedByName(
+  preparedByName: string | null | undefined,
+  organisationName: string | null | undefined
+): string {
+  const authPreparedByName = preparedByName?.trim();
+  if (authPreparedByName) return authPreparedByName;
+
+  const authOrganisationName = organisationName?.trim();
+  if (authOrganisationName) return authOrganisationName;
+
+  return 'Authenticated User';
+}
+
 export function buildPdfIdentityOptions(
   organisation: Organisation | null | undefined,
   user: AuthLikeUser
-): { applyTrialWatermark: boolean; preparedByName: string | null } {
+): { applyTrialWatermark: boolean; preparedByName: string } {
   return {
     applyTrialWatermark: isWatermarked(organisation),
-    preparedByName: resolvePreparedByName(user),
+    preparedByName: resolvePdfPreparedByName(resolvePreparedByName(user), organisation?.name),
   };
 }

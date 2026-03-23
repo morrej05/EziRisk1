@@ -36,6 +36,7 @@ import {
   REPORT_TITLE_TO_BODY_GAP,
 } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 import {
   drawSectionHeaderBar,
   drawPageTitle,
@@ -250,7 +251,7 @@ export async function buildDsearPdf(options: BuildPdfOptions): Promise<Uint8Arra
   const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
   let attachments: Attachment[] = [];

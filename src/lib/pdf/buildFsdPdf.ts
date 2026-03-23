@@ -32,6 +32,7 @@ import { drawSectionHeaderBar, drawOutcomeBadge, drawPageTitle } from './pdfPrim
 import { PDF_THEME } from './pdfStyles';
 import { compareActionsByDisplayReference } from './actionContracts';
 import { deriveFsdProfessionalActionText } from '../fsd/fsdActionWording';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -256,7 +257,7 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   const { moduleInstances, actions, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
-    assessor_name: options.preparedByName?.trim() || options.document.assessor_name,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
   const jurisdiction = normalizeFsdJurisdiction(document.jurisdiction || (document as any).meta?.jurisdiction || null);
 
