@@ -68,6 +68,14 @@ function sum(nums: Array<number | null | undefined>) {
   return nums.reduce((acc, n) => acc + (typeof n === 'number' ? n : 0), 0);
 }
 
+function sumPercentObject(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, pct]) => typeof pct === 'number' && Number.isFinite(pct));
+  if (entries.length === 0) return null;
+  return Math.round(entries.reduce((acc, [, pct]) => acc + Number(pct), 0) * 10) / 10;
+}
+
 export default function BuildingsGrid({
   documentId,
   mode = 'all',
@@ -462,17 +470,57 @@ async function saveMezz() {
         if (moduleError) throw moduleError;
         if (!moduleInstance) return;
 
-        const normalizedBuildings = rows.map((row) => ({
-          id: row.id,
-          ref: row.ref,
-          building_name: row.ref,
-          include_in_scoring: true,
-          frame_type: row.frame_type,
-          roof_area_m2: row.roof_area_m2,
-          mezzanine_area_m2: row.mezzanine_area_m2 ?? 0,
-          compartmentation_minutes: row.compartmentation_minutes,
-          has_extra_construction_split: Boolean(row.id && buildingExtras[row.id]),
-        }));
+        const normalizedBuildings = rows.map((row) => {
+          const extra = row.id ? buildingExtras[row.id] : null;
+          const constructionComputed = computeConstruction(row, extra);
+          const roofTotalPercent = sumPercentObject(extra?.roof_construction_percent);
+          const wallsTotalPercent = sumPercentObject(extra?.wall_construction_percent);
+          const mezzTotalPercent = sumPercentObject(extra?.mezzanine_construction_percent);
+          return {
+            id: row.id,
+            ref: row.ref,
+            building_name: row.ref,
+            include_in_scoring: true,
+            frame_type: row.frame_type,
+            roof_area_m2: row.roof_area_m2,
+            mezzanine_area_m2: row.mezzanine_area_m2 ?? 0,
+            storeys: row.storeys,
+            basements: row.basements,
+            geometry: {
+              floors: row.storeys,
+              basements: row.basements,
+              height_m: row.height_m,
+            },
+            cladding_present: row.cladding_present,
+            cladding_combustible: row.cladding_combustible,
+            cladding_system: row.cladding_system,
+            combustible_cladding: {
+              present: Boolean(row.cladding_present && row.cladding_combustible === true),
+              details: row.cladding_system || '',
+            },
+            compartmentation_minutes: row.compartmentation_minutes,
+            has_extra_construction_split: Boolean(row.id && buildingExtras[row.id]),
+            roof: {
+              total_percent: roofTotalPercent,
+            },
+            walls: {
+              total_percent: wallsTotalPercent,
+            },
+            upper_floors_mezzanine: {
+              total_percent: mezzTotalPercent,
+              area_sqm: row.mezzanine_area_m2 ?? 0,
+            },
+            calculated: {
+              construction_score: constructionComputed.score,
+              construction_rating: constructionComputed.score,
+              combustible_percent: Number.isFinite(constructionComputed.combustiblePercent) ? constructionComputed.combustiblePercent : null,
+              combustibility_percent: Number.isFinite(constructionComputed.combustiblePercent) ? constructionComputed.combustiblePercent : null,
+              roof_combustible_percent: Number.isFinite(constructionComputed.roofCombustiblePercent) ? constructionComputed.roofCombustiblePercent : null,
+              wall_combustible_percent: Number.isFinite(constructionComputed.wallCombustiblePercent) ? constructionComputed.wallCombustiblePercent : null,
+              mezz_combustible_percent: Number.isFinite(constructionComputed.mezzCombustiblePercent) ? constructionComputed.mezzCombustiblePercent : null,
+            },
+          };
+        });
 
         const updatedData = {
           ...(moduleInstance.data || {}),
@@ -486,6 +534,7 @@ async function saveMezz() {
               site_score: Number.isFinite(siteMetrics.score) ? siteMetrics.score : null,
               site_score_computable: Number.isFinite(siteMetrics.score),
             },
+            site_combustible_percent: Number.isFinite(siteMetrics.combustiblePercent) ? siteMetrics.combustiblePercent : null,
           },
         };
 

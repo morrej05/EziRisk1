@@ -154,11 +154,12 @@ export function drawRiskSignificanceBlock(args: {
   const badgeText = level.toUpperCase();
   const badgeFontSize = 9;
   const badgeTextWidth = fonts.bold.widthOfTextAtSize(badgeText, badgeFontSize);
-  const badgeW = badgeTextWidth + 14;
+  const badgeW = badgeTextWidth + 10;
   const badgeH = 14;
   const badgeX = x + w - badgeW;
+  const badgeTextGap = 26;
   const levelLabel = `${badgeText}:`;
-  const labelY = titleY - 18;
+  const labelY = titleY - 24;
   const badgeY = labelY + badgeH - 3;
 
   page.drawRectangle({
@@ -181,7 +182,7 @@ export function drawRiskSignificanceBlock(args: {
   });
 
   const narrativeX = x;
-  const narrativeWidth = w;
+  const narrativeWidth = Math.max(120, w - badgeW - badgeTextGap);
   const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
   let cursorY = labelY;
 
