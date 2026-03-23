@@ -1245,54 +1245,88 @@ function getFireProtectionLocalisedTable(module: ModuleInstance): { headers: str
 function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const water = fp?.site?.water || {};
-  const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
-  const installed = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.sprinklerData?.sprinkler_coverage_installed_pct), 0);
-  const required = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.sprinklerData?.sprinkler_coverage_required_pct), 0);
-  const count = Math.max(buildings.length, 1);
+  const waterSupplies = Array.isArray(water?.water_supplies) ? water.water_supplies : [];
   const rows: Row[] = [
     ['Water reliability', resolveFireProtectionField(water?.water_reliability)],
-    ['Supports / pumps / arrangement', resolveFireProtectionField(water?.supports, water?.pumps_present, water?.pump_arrangement)],
-    ['Water supply type', resolveFireProtectionField(water?.supply_type, water?.supply_type_other)],
-    ['Capacity (m³)', resolveFireProtectionField(water?.capacity)],
+    ['Water supplies recorded', resolveFireProtectionField(waterSupplies.length ? waterSupplies.length : '')],
+    ...(waterSupplies.length <= 1 ? [
+      ['Water supply type', resolveFireProtectionField(waterSupplies[0]?.type, water?.supply_type, water?.supply_type_other)],
+      ['Capacity (m³)', resolveFireProtectionField(waterSupplies[0]?.capacity_m3, water?.capacity)],
+    ] : []),
     ['Power resilience / testing regime', resolveFireProtectionField(water?.power_resilience, water?.testing_regime)],
     ['Hydrant/fire main/hose reels', resolveFireProtectionField(water?.hydrant_coverage, water?.fire_main_condition, water?.hose_reels_present)],
     ['Flow test evidence / date', resolveFireProtectionField(water?.flow_test_evidence, water?.flow_test_date)],
     ['Water weaknesses / site comments', resolveFireProtectionField(water?.key_weaknesses, fp?.site?.comments)],
     ['Site water score (1-5)', resolveFireProtectionField(fp?.site?.water_score_1_5)],
     ['Impairment management notes', resolveFireProtectionField((module.data as any)?.management?.impairment_management, (module.data as any)?.management?.impairment_management_notes)],
-    ['Building totals and averages', `${formatDataValue(buildings.length || '')} buildings; avg installed ${Math.round((installed / count) * 10) / 10}% vs avg required ${Math.round((required / count) * 10) / 10}%`],
   ];
   return rows.filter(([label, value]) => {
     const lowerLabel = label.toLowerCase();
-    if (lowerLabel === 'site water score (1-5)' || lowerLabel === 'building totals and averages') return true;
+    if (lowerLabel === 'site water score (1-5)') return true;
     return !isNotProvidedValue(value);
   });
 }
 
-function getFireProtectionPumpRows(module: ModuleInstance): Row[] {
+function getFireProtectionWaterSupplyRows(module: ModuleInstance): Row[] {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const water = fp?.site?.water || {};
+  const waterSupplies = Array.isArray(water?.water_supplies) ? water.water_supplies : [];
+
+  if (waterSupplies.length > 0) {
+    return compactRows(
+      waterSupplies.map((supply: any, index: number): Row => [
+        `Supply ${index + 1}`,
+        resolveFireProtectionField(supply?.type),
+        resolveFireProtectionField(supply?.capacity_m3),
+      ]),
+      ['type', 'capacity']
+    );
+  }
+
+  const legacyType = water?.supply_type;
+  const legacyCapacity = water?.capacity;
+  if (isNotProvidedValue(legacyType) && isNotProvidedValue(legacyCapacity)) return [];
+  return compactRows([
+    ['Supply 1', resolveFireProtectionField(legacyType, water?.supply_type_other), resolveFireProtectionField(legacyCapacity)],
+  ], ['type', 'capacity']);
+}
+
+function getFireProtectionPumpTable(module: ModuleInstance): { headers: string[]; rows: Row[] } {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const water = fp?.site?.water || {};
   const pumps = Array.isArray(water?.pumps) ? water.pumps : [];
   if (pumps.length > 0) {
-    return compactRows(
+    const rows = compactRows(
       pumps.map((pump: any, index: number): Row => [
         `Pump ${index + 1}`,
+        resolveFireProtectionField(pump?.driver_type),
         resolveFireProtectionField(pump?.rated_flow),
         resolveFireProtectionField(pump?.rated_pressure),
         resolveFireProtectionField(pump?.rated_rpm),
       ]),
-      ['rated flow', 'rated pressure', 'rated rpm']
+      ['driver type', 'rated flow', 'rated pressure', 'rated rpm']
     );
+    const hasDriverType = rows.some((row) => !isNotProvidedValue(row[1]));
+    const headers = hasDriverType
+      ? ['Pump', 'Driver type', 'Rated flow (m³/h)', 'Rated pressure (bar)', 'Rated RPM']
+      : ['Pump', 'Rated flow (m³/h)', 'Rated pressure (bar)', 'Rated RPM'];
+    return {
+      headers,
+      rows: hasDriverType ? rows : rows.map((row) => [row[0], row[2], row[3], row[4]] as Row),
+    };
   }
 
   const legacyFlow = water?.pump_flow ?? water?.pump_rating;
   const legacyPressure = water?.pump_pressure;
   const legacyRpm = water?.pump_rpm;
   const hasLegacyPump = [legacyFlow, legacyPressure, legacyRpm].some((value) => !isNotProvidedValue(value));
-  if (!hasLegacyPump) return [];
-  return compactRows([
-    ['Pump 1', resolveFireProtectionField(legacyFlow), resolveFireProtectionField(legacyPressure), resolveFireProtectionField(legacyRpm)],
-  ], ['rated flow', 'rated pressure', 'rated rpm']);
+  if (!hasLegacyPump) return { headers: [], rows: [] };
+  return {
+    headers: ['Pump', 'Rated flow (m³/h)', 'Rated pressure (bar)', 'Rated RPM'],
+    rows: compactRows([
+      ['Pump 1', resolveFireProtectionField(legacyFlow), resolveFireProtectionField(legacyPressure), resolveFireProtectionField(legacyRpm)],
+    ], ['rated flow', 'rated pressure', 'rated rpm']),
+  };
 }
 
 function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
@@ -1456,33 +1490,42 @@ function getFireProtectionPillarNarrative(module: ModuleInstance, group: 'adequa
     .filter((entry) => Number.isFinite(entry.score));
   if (!scored.length) return '';
 
-  const majorityAdequate = scored.filter((entry) => entry.score >= 3).length >= Math.ceil(scored.length / 2);
-  const strongItems = scored
-    .filter((entry) => entry.score >= 4)
-    .slice(0, 2)
-    .map((entry) => sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''));
-  const lowItems = scored
-    .filter((entry) => entry.score <= 2)
-    .slice(0, 2)
+  const averageScore = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length;
+  const lowCount = scored.filter((entry) => entry.score <= 2).length;
+  const opening = averageScore >= 4
+    ? `${group === 'adequacy' ? 'Adequacy appears strong overall' : 'Reliability appears strong overall'} based on the current Q${group === 'adequacy' ? '1–Q4' : '5–Q7'} scoring pattern.`
+    : averageScore >= 3
+      ? `${group === 'adequacy' ? 'Adequacy is generally acceptable but mixed' : 'Reliability is generally acceptable but mixed'} across the current Q${group === 'adequacy' ? '1–Q4' : '5–Q7'} scoring profile.`
+      : `${group === 'adequacy' ? 'Adequacy is constrained by low-scoring controls' : 'Reliability is constrained by low-scoring controls'} in the current dataset.`;
+
+  const strongest = [...scored]
+    .sort((a, b) => b.score - a.score)
     .map((entry) => ({
       label: sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''),
       note: String(entry.question?.notes ?? entry.question?.comment ?? '').trim(),
-    }));
+      score: entry.score,
+    }))
+    .find((entry) => entry.score >= 4) || null;
+  const supporting = strongest
+    ? `Best evidence is in ${strongest.label}${strongest.note ? ` (${sanitizePdfText(strongest.note)})` : ''}.`
+    : '';
 
-  const overall = majorityAdequate
-    ? `${group === 'adequacy' ? 'Overall adequacy is broadly adequate' : 'Overall reliability is broadly adequate'} based on the current Q${group === 'adequacy' ? '1–Q4' : '5–Q7'} scoring profile.`
-    : `${group === 'adequacy' ? 'Adequacy is constrained by low-scoring controls' : 'Reliability is constrained by low-scoring controls'} in the current dataset.`;
-  const strengths = strongItems.length > 0
-    ? `Strengths are most evident in ${strongItems.join(' and ')}.`
+  const caveatEntry = [...scored]
+    .sort((a, b) => a.score - b.score)
+    .map((entry) => ({
+      label: sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''),
+      note: String(entry.question?.notes ?? entry.question?.comment ?? '').trim(),
+      score: entry.score,
+    }))
+    .find((entry) => entry.score <= 2 || (entry.score <= 3 && entry.note.length > 0)) || null;
+  const caveat = caveatEntry
+    ? `Key caveat: ${caveatEntry.label} remains weaker (score ${formatScore(caveatEntry.score)}/5)${caveatEntry.note ? ` — ${sanitizePdfText(caveatEntry.note)}` : ''}.`
     : '';
-  const weaknesses = lowItems.length > 0
-    ? `Weaknesses are recorded in ${lowItems.map((item) => item.label).join(' and ')}${lowItems.some((item) => item.note) ? ` (${sanitizePdfText(lowItems.map((item) => item.note).filter(Boolean).join('; '))})` : ''}.`
-    : '';
-  const uncertainty = group === 'reliability' && hasWaterSupplyDataUncertainty(module)
+  const uncertainty = group === 'reliability' && hasWaterSupplyDataUncertainty(module) && (lowCount > 0 || !caveatEntry)
     ? 'Water supply reliability cannot be confirmed due to limited available information.'
     : '';
 
-  return [overall, strengths, weaknesses, uncertainty].filter(Boolean).join(' ');
+  return [opening, supporting, caveat, uncertainty].filter(Boolean).join(' ');
 }
 
 interface OccupancyScoredFactor {
@@ -2370,12 +2413,26 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
-      const firePumpRows = cleanFireProtectionRows(getFireProtectionPumpRows(module));
+      const waterSupplyRows = cleanFireProtectionRows(getFireProtectionWaterSupplyRows(module));
+      if (waterSupplyRows.length > 0) {
+        yPosition = sectionBreak(yPosition, 8);
+        yPosition = drawBlockHeading(page, yPosition, 'Water Supply Details', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Supply', 'Type', 'Capacity (m³)'], waterSupplyRows, { regular: font, bold: fontBold }, {
+          colWidths: [70, 220, CONTENT_WIDTH - 290],
+          fontSize: 8,
+          minRowHeight: 18,
+          wrapHeader: true,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+      }
+      const firePumpTable = getFireProtectionPumpTable(module);
+      const firePumpRows = cleanFireProtectionRows(firePumpTable.rows);
       if (firePumpRows.length > 0) {
         yPosition = sectionBreak(yPosition, 8);
         yPosition = drawBlockHeading(page, yPosition, 'Fire Pump Details', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Pump', 'Rated flow (m³/h)', 'Rated pressure (bar)', 'Rated RPM'], firePumpRows, { regular: font, bold: fontBold }, {
-          colWidths: [70, 140, 140, CONTENT_WIDTH - 350],
+        const hasDriverType = firePumpTable.headers.includes('Driver type');
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, firePumpTable.headers, firePumpRows, { regular: font, bold: fontBold }, {
+          colWidths: hasDriverType ? [55, 90, 115, 110, CONTENT_WIDTH - 370] : [70, 140, 140, CONTENT_WIDTH - 350],
           fontSize: 8,
           minRowHeight: 18,
           wrapHeader: true,
