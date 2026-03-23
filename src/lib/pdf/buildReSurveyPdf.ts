@@ -780,11 +780,16 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
-    const totalFloorArea = numericOrZero(roofArea) + numericOrZero(mezzArea);
-    // Active RE_02 save model fields (RE02ConstructionForm normalizeConstructionForSave):
-    //   storeys => building.geometry.floors
-    //   basements => building.geometry.basements
-    const storeys = building?.geometry?.floors;
+    const hasRoofArea = Number.isFinite(Number(roofArea));
+    const hasMezzArea = Number.isFinite(Number(mezzArea));
+    const totalFloorArea = hasRoofArea || hasMezzArea
+      ? numericOrZero(roofArea) + numericOrZero(mezzArea)
+      : null;
+    // Active RE_02 save model field for this record:
+    //   storeys => construction.buildings[].geometry.floors
+    const storeys = Object.prototype.hasOwnProperty.call(building?.geometry ?? {}, 'floors')
+      ? building?.geometry?.floors
+      : null;
     const basements = building?.geometry?.basements;
     return [
       formatDataValue(refOrName),
@@ -800,20 +805,52 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
 function getConstructionGeometryTotalsRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = getConstructionBuildings(construction);
-  const totals = buildings.reduce((acc: { roof: number; mezz: number; floor: number }, building: any) => {
-    const roof = numericOrZero(building?.roof?.area_sqm ?? building?.roof_area_m2);
-    const mezz = numericOrZero(building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2);
-    acc.roof += roof;
-    acc.mezz += mezz;
-    acc.floor += roof + mezz;
+  const totals = buildings.reduce((acc: { roof: number; mezz: number; floor: number; hasRoof: boolean; hasMezz: boolean; hasFloor: boolean }, building: any) => {
+    const roofRaw = building?.roof?.area_sqm ?? building?.roof_area_m2;
+    const mezzRaw = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
+    const hasRoof = Number.isFinite(Number(roofRaw));
+    const hasMezz = Number.isFinite(Number(mezzRaw));
+    const roof = hasRoof ? numericOrZero(roofRaw) : 0;
+    const mezz = hasMezz ? numericOrZero(mezzRaw) : 0;
+    acc.hasRoof = acc.hasRoof || hasRoof;
+    acc.hasMezz = acc.hasMezz || hasMezz;
+    acc.hasFloor = acc.hasFloor || hasRoof || hasMezz;
+    if (hasRoof) acc.roof += roof;
+    if (hasMezz) acc.mezz += mezz;
+    if (hasRoof || hasMezz) acc.floor += roof + mezz;
     return acc;
-  }, { roof: 0, mezz: 0, floor: 0 });
+  }, { roof: 0, mezz: 0, floor: 0, hasRoof: false, hasMezz: false, hasFloor: false });
 
   return [
-    ['Total roof area (m²)', formatDataValue(totals.roof)],
-    ['Total mezz area (m²)', formatDataValue(totals.mezz)],
-    ['Total floor area (m²)', formatDataValue(totals.floor)],
+    ['Total roof area (m²)', formatDataValue(totals.hasRoof ? totals.roof : null)],
+    ['Total mezz area (m²)', formatDataValue(totals.hasMezz ? totals.mezz : null)],
+    ['Total floor area (m²)', formatDataValue(totals.hasFloor ? totals.floor : null)],
   ];
+}
+
+function getConstructionRoofWallEvidenceRows(module: ModuleInstance): Row[] {
+  const construction = (module.data as any)?.construction || module.data || {};
+  const buildings = getConstructionBuildings(construction);
+  const buildingRows = buildings.map((building: any): Row => {
+    const refOrName = building.ref || building.building_name || building.name || building.id;
+    const roofConstructionEvidence = summarizeMaterialBreakdown(building?.roof?.breakdown);
+    const wallsConstructionEvidence = summarizeMaterialBreakdown(building?.walls?.breakdown);
+    return [
+      formatDataValue(refOrName),
+      sanitizePdfText(roofConstructionEvidence),
+      sanitizePdfText(wallsConstructionEvidence),
+    ];
+  });
+
+  const siteRoofEvidence = sanitizePdfText(formatDataValue(construction?.roof_construction));
+  const siteWallEvidence = sanitizePdfText(formatDataValue(construction?.wall_construction));
+  const hasSiteRoofEvidence = siteRoofEvidence !== 'Data not provided';
+  const hasSiteWallEvidence = siteWallEvidence !== 'Data not provided';
+  if (hasSiteRoofEvidence || hasSiteWallEvidence) {
+    buildingRows.push(['Site-level evidence', siteRoofEvidence, siteWallEvidence]);
+  }
+
+  return compactRows(buildingRows, ['roof construction', 'wall construction']);
 }
 
 function summarizeMaterialBreakdown(breakdown: unknown): string {
@@ -1649,7 +1686,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         ({ page, yPosition } = ensurePageSpace(180 + geometryRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Inputs — Geometry', fontBold);
         yPosition = sectionBreak(yPosition, 8);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof (m²)', 'Upper floors / mezz (m²)', 'Total floor area (m²)', 'Storeys', 'Basements'], geometryRows, { regular: font, bold: fontBold }, {
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof', 'Mezz', 'Total floor area', 'Storeys', 'Basements'], geometryRows, { regular: font, bold: fontBold }, {
           colWidths: [97, 66, 86, 86, 60, 60],
           fontSize: 8.5,
           minRowHeight: 18,
@@ -1663,7 +1700,20 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
-        yPosition = sectionBreak(yPosition, 24);
+        yPosition = sectionBreak(yPosition, 20);
+      }
+      const roofWallEvidenceRows = getConstructionRoofWallEvidenceRows(module);
+      if (roofWallEvidenceRows.length > 0) {
+        ({ page, yPosition } = ensurePageSpace(100 + roofWallEvidenceRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Roof / wall construction evidence', fontBold);
+        yPosition = sectionBreak(yPosition, 8);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof construction', 'Wall construction'], roofWallEvidenceRows, { regular: font, bold: fontBold }, {
+          colWidths: [90, 176, CONTENT_WIDTH - 266],
+          fontSize: 8.25,
+          minRowHeight: 18,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition, 26);
       }
       const characteristicRows = getConstructionCharacteristicsRows(module, breakdown);
       if (characteristicRows.length > 0) {
@@ -1676,7 +1726,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
-        yPosition = sectionBreak(yPosition, 44);
+        yPosition = sectionBreak(yPosition, 30);
       }
       const siteTotals = getConstructionSiteSummaryRows(module, breakdown);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
