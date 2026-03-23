@@ -222,6 +222,13 @@ function pickFirstProvided(...values: unknown[]): unknown {
   return null;
 }
 
+function getConstructionBuildings(construction: any): any[] {
+  const rawBuildings = construction?.buildings;
+  if (Array.isArray(rawBuildings)) return rawBuildings;
+  if (rawBuildings && typeof rawBuildings === 'object') return Object.values(rawBuildings as Record<string, any>);
+  return [];
+}
+
 function formatWeightedScore(value: unknown, maxValue: unknown): string {
   return `${formatScore(value)} of ${formatScore(maxValue)}`;
 }
@@ -475,7 +482,7 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
     const construction = (d as any).construction || d;
-    const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+    const buildings = getConstructionBuildings(construction);
     const firstBuilding = buildings[0] || {};
     const primaryConstructionType =
       construction.primary_construction_type ??
@@ -680,7 +687,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
   partialData: boolean;
 } {
   const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildings = getConstructionBuildings(construction);
   const rating = resolveSectionRating(module, breakdown);
   const totalRoofArea = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.roof?.area_sqm ?? b?.roof_area_m2), 0);
   const totalMezzArea = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.upper_floors_mezzanine?.area_sqm ?? b?.mezzanine_area_m2), 0);
@@ -768,7 +775,7 @@ function describeOccupancyHazardSignals(hazards: any[], occupancy: any): {
 
 function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildings = getConstructionBuildings(construction);
   return compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
@@ -828,7 +835,7 @@ function resolveCladdingDescriptor(building: any): string {
 
 function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: Breakdown): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildings = getConstructionBuildings(construction);
   void breakdown;
   return compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
@@ -863,7 +870,7 @@ function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: B
 
 function getConstructionScoringRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildings = getConstructionBuildings(construction);
   const buildingRows = compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const compartmentationQuality =
@@ -1212,7 +1219,7 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
 
 function getConstructionScoringBasisRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildings = getConstructionBuildings(construction);
   return compactRows(buildings.map((building: any): Row => {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofPct = pickFirstProvided(building?.roof?.total_percent, building?.roof_total_percent);
@@ -1234,7 +1241,7 @@ function getConstructionScoringBasisRows(module: ModuleInstance): Row[] {
 
 function buildConstructionScoringBasisText(module: ModuleInstance): string {
   const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = Array.isArray(construction.buildings) ? construction.buildings : [];
+  const buildings = getConstructionBuildings(construction);
   const buildingCount = buildings.length;
   return `Construction scoring measures physical fire performance of the built asset: combustible proportion in roof/wall/mezzanine assemblies, structural system robustness, and external envelope/cladding escalation pathways. Higher scores are driven by lower combustible percentages, resilient non-combustible structural assemblies, and absence of combustible cladding. Lower scores are driven by high combustible fractions, vulnerable mixed assemblies, weak compartmentation, and combustible envelope elements. Current dataset includes ${buildingCount} building record${buildingCount === 1 ? '' : 's'} for this assessment.`;
 }
