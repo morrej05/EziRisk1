@@ -88,6 +88,7 @@ interface BuildPdfOptions {
 type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
 
 type Row = [string, string, string?];
+type FireQuestionGroup = 'adequacy' | 'reliability' | 'localised' | 'evidence';
 
 interface LossValuesSummary {
   buildings: number;
@@ -182,6 +183,45 @@ function formatDataValue(value: unknown): string {
   if (typeof value === 'number') return Number.isFinite(value) ? value.toLocaleString() : 'Data not provided';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   return String(value);
+}
+
+function isMissingDataValue(value: unknown): boolean {
+  const text = String(value ?? '')
+    .replace(/\(data not provided\)/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return !text || text === 'data not provided' || text === 'not provided' || text === 'not stated' || text === 'unknown' || text === 'n/a';
+}
+
+function normaliseFireProtectionValue(parts: unknown[]): string {
+  const knownParts: string[] = [];
+  for (const part of parts) {
+    if (part === null || part === undefined) continue;
+    const raw = String(part)
+      .replace(/\(data not provided\)/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!raw) continue;
+    const splitParts = raw.split(/\s*\/\s*/g).map((entry) => entry.trim()).filter(Boolean);
+    for (const splitPart of splitParts) {
+      const clean = splitPart.replace(/\(([^)]+)\)\s*$/g, '').trim();
+      if (!clean || isMissingDataValue(clean)) continue;
+      if (!knownParts.some((entry) => entry.toLowerCase() === clean.toLowerCase())) {
+        knownParts.push(clean);
+      }
+    }
+  }
+  return knownParts.length ? knownParts.join(' / ') : 'Not provided';
+}
+
+function isNotProvidedValue(value: unknown): boolean {
+  const text = String(value ?? '').trim().toLowerCase();
+  return !text || text === 'not provided' || text === 'data not provided' || text === 'not stated' || text === 'unknown';
+}
+
+function resolveFireProtectionField(...fields: unknown[]): string {
+  return normaliseFireProtectionValue(fields);
 }
 
 function formatDataPercent(value: unknown): string {
@@ -1074,30 +1114,43 @@ function getFireProtectionReliabilityRows(module: ModuleInstance): Row[] {
     const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
     return [
       formatDataValue(displayName),
-      formatDataValue(sprinklerData?.detection_installed),
-      formatDataValue(detectionTypes || sprinklerData?.detection_type_other),
-      formatDataValue(sprinklerData?.alarm_monitoring),
-      `${formatDataValue(sprinklerData?.detection_testing_regime)} / ${formatDataValue(sprinklerData?.detection_maintenance_status)}`,
-      formatDataValue(buildingData?.comments ?? sprinklerData?.detection_comments ?? sprinklerData?.maintenance_status),
+      resolveFireProtectionField(sprinklerData?.detection_installed),
+      resolveFireProtectionField(detectionTypes, sprinklerData?.detection_type_other),
+      resolveFireProtectionField(sprinklerData?.alarm_monitoring),
+      resolveFireProtectionField(sprinklerData?.detection_testing_regime, sprinklerData?.detection_maintenance_status),
+      resolveFireProtectionField(buildingData?.comments, sprinklerData?.detection_comments, sprinklerData?.maintenance_status),
     ];
   }), ['detection installed']);
 }
 
-function getFireProtectionLocalisedRows(module: ModuleInstance): Row[] {
+function getFireProtectionLocalisedTable(module: ModuleInstance): { headers: string[]; rows: Row[] } {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const buildings = fp?.buildings || {};
-  return compactRows(Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
+  const baseHeaders = ['Building', 'Localised protection required', 'Localised protection present', 'Localised type', 'Protected asset / area', 'Comments'];
+  const rows = compactRows(Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
     const sprinklerData = buildingData?.sprinklerData || {};
     const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
     return [
       formatDataValue(displayName),
-      formatDataValue(sprinklerData?.localised_required),
-      formatDataValue(sprinklerData?.localised_present),
-      formatDataValue(sprinklerData?.localised_type),
-      formatDataValue(sprinklerData?.localised_protected_asset),
-      formatDataValue(sprinklerData?.localised_comments ?? sprinklerData?.justification_if_required_lt_100),
+      resolveFireProtectionField(sprinklerData?.localised_required),
+      resolveFireProtectionField(sprinklerData?.localised_present),
+      resolveFireProtectionField(sprinklerData?.localised_type),
+      resolveFireProtectionField(sprinklerData?.localised_protected_asset),
+      resolveFireProtectionField(sprinklerData?.localised_comments, sprinklerData?.justification_if_required_lt_100),
     ];
   }), ['localised protection required', 'localised protection present']);
+
+  const retainedIndexes = baseHeaders
+    .map((_, index) => index)
+    .filter((index) => {
+      if (index <= 2) return true;
+      return rows.some((row) => !isNotProvidedValue(row[index]));
+    });
+
+  return {
+    headers: retainedIndexes.map((index) => baseHeaders[index]),
+    rows: rows.map((row) => retainedIndexes.map((index) => row[index]) as Row),
+  };
 }
 
 function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
@@ -1107,17 +1160,22 @@ function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
   const installed = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.sprinklerData?.sprinkler_coverage_installed_pct), 0);
   const required = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.sprinklerData?.sprinkler_coverage_required_pct), 0);
   const count = Math.max(buildings.length, 1);
-  return compactRows([
-    ['Water reliability / supply type', `${formatDataValue(water?.water_reliability)} / ${formatDataValue(water?.supply_type)} (${formatDataValue(water?.supply_type_other)})`],
-    ['Supports / pumps / arrangement', `${formatDataValue(water?.supports)} / ${formatDataValue(water?.pumps_present)} / ${formatDataValue(water?.pump_arrangement)}`],
-    ['Power resilience / testing regime', `${formatDataValue(water?.power_resilience)} / ${formatDataValue(water?.testing_regime)}`],
-    ['Hydrant/fire main/hose reels', `${formatDataValue(water?.hydrant_coverage)} / ${formatDataValue(water?.fire_main_condition)} / ${formatDataValue(water?.hose_reels_present)}`],
-    ['Flow test evidence / date', `${formatDataValue(water?.flow_test_evidence)} / ${formatDataValue(water?.flow_test_date)}`],
-    ['Water weaknesses / site comments', `${formatDataValue(water?.key_weaknesses)} / ${formatDataValue(fp?.site?.comments)}`],
-    ['Site water score (1-5)', formatDataValue(fp?.site?.water_score_1_5)],
-    ['Impairment management notes', formatDataValue((module.data as any)?.management?.impairment_management ?? (module.data as any)?.management?.impairment_management_notes)],
+  const rows: Row[] = [
+    ['Water reliability / supply type', resolveFireProtectionField(water?.water_reliability, water?.supply_type, water?.supply_type_other)],
+    ['Supports / pumps / arrangement', resolveFireProtectionField(water?.supports, water?.pumps_present, water?.pump_arrangement)],
+    ['Power resilience / testing regime', resolveFireProtectionField(water?.power_resilience, water?.testing_regime)],
+    ['Hydrant/fire main/hose reels', resolveFireProtectionField(water?.hydrant_coverage, water?.fire_main_condition, water?.hose_reels_present)],
+    ['Flow test evidence / date', resolveFireProtectionField(water?.flow_test_evidence, water?.flow_test_date)],
+    ['Water weaknesses / site comments', resolveFireProtectionField(water?.key_weaknesses, fp?.site?.comments)],
+    ['Site water score (1-5)', resolveFireProtectionField(fp?.site?.water_score_1_5)],
+    ['Impairment management notes', resolveFireProtectionField((module.data as any)?.management?.impairment_management, (module.data as any)?.management?.impairment_management_notes)],
     ['Building totals and averages', `${formatDataValue(buildings.length || '')} buildings; avg installed ${Math.round((installed / count) * 10) / 10}% vs avg required ${Math.round((required / count) * 10) / 10}%`],
-  ], ['water reliability / supply type', 'site water score (1-5)']);
+  ];
+  return rows.filter(([label, value]) => {
+    const lowerLabel = label.toLowerCase();
+    if (lowerLabel === 'site water score (1-5)' || lowerLabel === 'building totals and averages') return true;
+    return !isNotProvidedValue(value);
+  });
 }
 
 function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
@@ -1126,28 +1184,70 @@ function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
   const questions = Array.isArray(supplementary?.questions) ? supplementary.questions : [];
   const scored = questions.filter((q: any) => Number.isFinite(Number(q?.score_1_5)));
   const notesPresent = scored.filter((q: any) => String(q?.notes || '').trim().length > 0).length;
+  const adequacyScored = getFireProtectionQuestionsByGroup(module, 'adequacy').filter((q: any) => Number.isFinite(Number(q?.score_1_5))).length;
+  const reliabilityScored = getFireProtectionQuestionsByGroup(module, 'reliability').filter((q: any) => Number.isFinite(Number(q?.score_1_5))).length;
   const headlineRows: Row[] = [
     ['Questions scored', `${scored.length} of ${questions.length || 0}`],
+    ['Adequacy questions scored (Q1–Q4)', `${adequacyScored}`],
+    ['Reliability questions scored (Q5–Q7)', `${reliabilityScored}`],
     ['Adequacy / reliability subscore', `${formatDataValue(supplementary?.adequacy_subscore)} / ${formatDataValue(supplementary?.reliability_subscore)}`],
     ['Localised / evidence subscore', `${formatDataValue(supplementary?.localised_subscore)} / ${formatDataValue(supplementary?.evidence_subscore)}`],
     ['Overall supplementary score', formatDataValue(supplementary?.overall_score)],
     ['Question notes captured', formatDataValue(notesPresent || '')],
   ];
-  const groupLabel: Record<string, string> = {
-    adequacy: 'Adequacy',
-    reliability: 'Reliability',
-    localised: 'Localised protection',
-    evidence: 'Evidence quality',
-  };
-  const questionRows: Row[] = questions.map((q: any, index: number) => {
-    const group = groupLabel[String(q?.group || '').toLowerCase()] || 'Assessment';
-    const notes = String(q?.notes || '').trim();
-    return [
-      `${group} — Q${index + 1}: ${formatDataValue(q?.prompt ?? q?.factor_key)}`,
-      notes ? `Score ${formatDataValue(q?.score_1_5)} / Notes: ${notes}` : `Score ${formatDataValue(q?.score_1_5)}`,
-    ];
+  return compactRows(headlineRows, ['questions scored', 'overall supplementary score']);
+}
+
+function getFireProtectionQuestionsByGroup(module: ModuleInstance, group: FireQuestionGroup): any[] {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const questions = Array.isArray(fp?.supplementary_assessment?.questions) ? fp.supplementary_assessment.questions : [];
+  return questions.filter((question: any, index: number) => {
+    const questionGroup = String(question?.group || '').trim().toLowerCase();
+    if (questionGroup) return questionGroup === group;
+    if (group === 'adequacy') return index <= 3;
+    if (group === 'reliability') return index >= 4 && index <= 6;
+    return false;
   });
-  return compactRows([...headlineRows, ...questionRows], ['questions scored', 'overall supplementary score']);
+}
+
+function getFireProtectionPillarNarrative(module: ModuleInstance, group: 'adequacy' | 'reliability'): string {
+  const questions = getFireProtectionQuestionsByGroup(module, group);
+  if (!questions.length) return '';
+  const scored = questions
+    .map((question) => ({ score: Number(question?.score_1_5), question }))
+    .filter((entry) => Number.isFinite(entry.score));
+  if (!scored.length) return '';
+
+  const averageScore = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length;
+  const strongItems = scored
+    .filter((entry) => entry.score >= 4)
+    .slice(0, 2)
+    .map((entry) => sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''));
+  const weakItems = scored
+    .filter((entry) => entry.score <= 2)
+    .slice(0, 2)
+    .map((entry) => sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''));
+  const lowScoreNotes = scored
+    .filter((entry) => entry.score <= 2)
+    .map((entry) => String(entry.question?.notes ?? entry.question?.comment ?? '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+
+  const pillarLabel = group === 'adequacy' ? 'Adequacy' : 'Reliability';
+  const conclusion =
+    averageScore >= 4
+      ? `${pillarLabel} is strong overall based on consistently high question scores.`
+      : averageScore >= 3
+        ? `${pillarLabel} is broadly satisfactory, with evidence of suitable controls across the scored factors.`
+        : `${pillarLabel} is constrained by low-scoring factors and should be treated as a current limitation.`;
+  const strengths = strongItems.length
+    ? `Key strengths are in ${strongItems.join(' and ')}, both rated in the upper score band.`
+    : `No material strengths were rated in the upper score band within this pillar.`;
+  const weakness = weakItems.length
+    ? `Weaknesses remain in ${weakItems.join(' and ')}${lowScoreNotes.length ? ` (${sanitizePdfText(lowScoreNotes.join('; '))})` : ''}.`
+    : '';
+
+  return [conclusion, strengths, weakness].filter(Boolean).join(' ');
 }
 
 interface OccupancyScoredFactor {
@@ -1850,6 +1950,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           colWidths: [95, 72, 78, 78, 82, CONTENT_WIDTH - 405],
           fontSize: 7.5,
           minRowHeight: 18,
+          wrapHeader: true,
+          headerMinRowHeight: 22,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
         yPosition = sectionBreak(yPosition);
@@ -1862,18 +1964,35 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           colWidths: [85, 76, 84, 72, 95, CONTENT_WIDTH - 412],
           fontSize: 7.25,
           minRowHeight: 18,
+          wrapHeader: true,
+          headerMinRowHeight: 22,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
         yPosition = sectionBreak(yPosition);
       }
-      const localisedRows = getFireProtectionLocalisedRows(module);
-      if (localisedRows.length > 0) {
-        ({ page, yPosition } = ensurePageSpace(100 + localisedRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      const localisedTable = getFireProtectionLocalisedTable(module);
+      if (localisedTable.rows.length > 0) {
+        const localisedColWidthsByHeader: Record<string, number> = {
+          Building: 80,
+          'Localised protection required': 92,
+          'Localised protection present': 92,
+          'Localised type': 72,
+          'Protected asset / area': 90,
+        };
+        const localisedFixedWidth = localisedTable.headers
+          .filter((header) => header !== 'Comments')
+          .reduce((sum, header) => sum + (localisedColWidthsByHeader[header] ?? 0), 0);
+        const localisedColWidths = localisedTable.headers.map((header) => (
+          header === 'Comments' ? Math.max(70, CONTENT_WIDTH - localisedFixedWidth) : (localisedColWidthsByHeader[header] ?? 80)
+        ));
+        ({ page, yPosition } = ensurePageSpace(100 + localisedTable.rows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Fire Protection — Localised / Special Protection', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Localised protection required', 'Localised protection present', 'Localised type', 'Protected asset / area', 'Comments'], localisedRows, { regular: font, bold: fontBold }, {
-          colWidths: [80, 92, 92, 72, 90, CONTENT_WIDTH - 426],
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, localisedTable.headers, localisedTable.rows, { regular: font, bold: fontBold }, {
+          colWidths: localisedColWidths,
           fontSize: 7,
           minRowHeight: 18,
+          wrapHeader: true,
+          headerMinRowHeight: 24,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
         yPosition = sectionBreak(yPosition);
@@ -1897,6 +2016,16 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      const adequacyNarrative = getFireProtectionPillarNarrative(module, 'adequacy');
+      if (adequacyNarrative) {
+        yPosition = sectionBreak(yPosition, 10);
+        yPosition = drawParagraph(page, yPosition, `Adequacy (Q1–Q4): ${adequacyNarrative}`, font);
+      }
+      const reliabilityNarrative = getFireProtectionPillarNarrative(module, 'reliability');
+      if (reliabilityNarrative) {
+        yPosition = sectionBreak(yPosition, 8);
+        yPosition = drawParagraph(page, yPosition, `Reliability (Q5–Q7): ${reliabilityNarrative}`, font);
+      }
       yPosition = sectionBreak(yPosition);
     }
 
