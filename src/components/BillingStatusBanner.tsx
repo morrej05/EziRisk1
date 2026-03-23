@@ -7,7 +7,7 @@ export default function BillingStatusBanner() {
 
   if (!organisation) return null;
 
-  const { subscription_status, cancel_at_period_end, stripe_current_period_end, plan_type } = organisation;
+  const { subscription_status, cancel_at_period_end, stripe_current_period_end } = organisation;
 
   const isPastDue = subscription_status === 'past_due';
   const willCancel = cancel_at_period_end && stripe_current_period_end;

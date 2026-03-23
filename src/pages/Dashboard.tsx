@@ -503,16 +503,16 @@ export default function Dashboard() {
                 <label className="flex items-center gap-2 px-3 py-1.5 bg-risk-medium-bg border border-risk-medium-border rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={tenant?.plan_id === 'team'}
+                    checked={tenant?.plan_id === 'professional'}
                     onChange={handleToggleDevForcePro}
                     className="rounded border-risk-medium-border text-risk-medium-fg focus:ring-risk-medium-fg"
                   />
                   <span className="text-xs font-medium text-risk-medium-fg">
-                    DEV: Toggle Team Plan
+                    DEV: Toggle Professional Plan
                   </span>
-                  {tenant?.plan_id === 'team' && (
+                  {tenant?.plan_id === 'professional' && (
                     <span className="px-1.5 py-0.5 bg-risk-medium-border text-risk-medium-fg text-xs font-bold rounded">
-                      TEAM
+                      PRO
                     </span>
                   )}
                 </label>

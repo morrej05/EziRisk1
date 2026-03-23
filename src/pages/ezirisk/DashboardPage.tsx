@@ -127,7 +127,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
           <p className="text-sm text-slate-500">Plan</p>
           <p className="text-base font-semibold text-slate-900 mt-1">
-            {organisation ? `${getPlanDisplayName(organisation.plan_type)} / ${getSubscriptionStatusDisplayName(organisation.subscription_status)}` : 'N/A'}
+            {organisation ? `${getPlanDisplayName(organisation.plan_id || 'trial')} / ${getSubscriptionStatusDisplayName(organisation.subscription_status)}` : 'N/A'}
           </p>
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">

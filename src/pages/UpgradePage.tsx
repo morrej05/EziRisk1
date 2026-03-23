@@ -132,13 +132,13 @@ export default function UpgradePage() {
     const poll = async () => {
       const { data } = await supabase
         .from('organisations')
-        .select('plan_type, subscription_status')
+        .select('plan_id, subscription_status')
         .eq('id', organisation.id)
         .single();
 
-      if (data?.subscription_status === 'active' && data?.plan_type !== userPlan) {
+      if (data?.subscription_status === 'active' && data?.plan_id !== userPlan) {
         setIsPending(false);
-        setPendingMessage(`You are now on ${PLAN_LABELS[data.plan_type as keyof typeof PLAN_LABELS]}.`);
+        setPendingMessage(`You are now on ${(data?.plan_id || 'trial').toString()}.`);
         setTimeout(() => {
           navigate('/dashboard');
         }, 2000);

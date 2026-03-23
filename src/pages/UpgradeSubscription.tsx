@@ -123,16 +123,16 @@ export default function UpgradeSubscription() {
                 <label className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={tenant.plan_id === 'team'}
+                    checked={tenant.plan_id === 'professional'}
                     onChange={handleToggleDevForcePro}
                     className="rounded border-amber-300 text-amber-600 focus:ring-amber-500"
                   />
                   <span className="text-xs font-medium text-amber-900">
-                    DEV: Toggle Team Plan
+                    DEV: Toggle Professional Plan
                   </span>
-                  {tenant.plan_id === 'team' && (
+                  {tenant.plan_id === 'professional' && (
                     <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 text-xs font-bold rounded">
-                      TEAM
+                      PRO
                     </span>
                   )}
                 </label>
@@ -173,8 +173,8 @@ export default function UpgradeSubscription() {
         {organisation && (
           <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
-              Current Plan: <strong>{getPlanDisplayName(organisation.plan_type)}</strong>
-              {organisation.subscription_status !== 'active' && organisation.plan_type !== 'enterprise' && (
+              Current Plan: <strong>{getPlanDisplayName(organisation.plan_id || 'trial')}</strong>
+              {organisation.subscription_status !== 'active' && (organisation.plan_id || 'trial') !== 'professional' && (
                 <span className="ml-2 text-blue-600">
                   (Status: {organisation.subscription_status})
                 </span>
