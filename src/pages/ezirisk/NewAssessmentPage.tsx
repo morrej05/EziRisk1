@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { canAccessRiskEngineering, canAccessExplosionSafety } from '../../utils/entitlements';
-import { createDocument } from '../../utils/documentCreation';
+import { createDocument, ReportCreationBlockedError } from '../../utils/documentCreation';
+import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 
 interface AssessmentType {
   id: string;
@@ -106,6 +107,21 @@ export default function NewAssessmentPage() {
       return;
     }
 
+    let creationEntitlement;
+    try {
+      creationEntitlement = await getReportCreationEntitlement(organisation.id);
+    } catch (error) {
+      console.error('[NewAssessment] Failed to check report creation entitlement:', error);
+      alert('Unable to verify report creation limits right now. Please try again.');
+      return;
+    }
+
+    if (!creationEntitlement.allowed) {
+      alert(creationEntitlement.reason || 'Your current plan cannot create more reports.');
+      navigate('/upgrade');
+      return;
+    }
+
     setCreatingType(typeId);
 
     try {
@@ -191,6 +207,9 @@ export default function NewAssessmentPage() {
       const displayMessage = `Failed to create assessment: ${errorMessage}`;
 
       alert(displayMessage);
+      if (error instanceof ReportCreationBlockedError) {
+        navigate('/upgrade');
+      }
       setCreatingType(null);
     }
   };

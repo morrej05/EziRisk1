@@ -5,6 +5,7 @@ import { useAssessments, AssessmentViewModel } from '../../hooks/useAssessments'
 import { useAuth } from '../../contexts/AuthContext';
 import { canCreateSurveys, isSubscriptionActive, type User } from '../../utils/entitlements';
 import { DeleteDocumentModal } from '../../components/DeleteDocumentModal';
+import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 
 export default function AssessmentsPage() {
@@ -15,7 +16,9 @@ export default function AssessmentsPage() {
   const { assessments, loading } = useAssessments({ refreshKey });
   const { user, organisation } = useAuth();
 
-  const canCreate = user && organisation && canCreateSurveys(user as User, organisation) && isSubscriptionActive(organisation);
+  const hasBaselineCreateAccess = user && organisation && canCreateSurveys(user as User, organisation) && isSubscriptionActive(organisation);
+  const [creationBlockedReason, setCreationBlockedReason] = useState<string | null>(null);
+  const [canCreate, setCanCreate] = useState(Boolean(hasBaselineCreateAccess));
 
   const [searchTerm, setSearchTerm] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState('All');
@@ -77,6 +80,53 @@ export default function AssessmentsPage() {
       setSortBy('created');
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkEntitlement() {
+      if (!organisation?.id || !hasBaselineCreateAccess) {
+        if (!cancelled) {
+          setCanCreate(false);
+          setCreationBlockedReason('Upgrade required to create assessments');
+        }
+        return;
+      }
+
+      try {
+        const entitlement = await getReportCreationEntitlement(organisation.id);
+        if (!cancelled) {
+          setCanCreate(entitlement.allowed);
+          setCreationBlockedReason(entitlement.allowed ? null : (entitlement.reason || 'Upgrade required to create assessments'));
+        }
+      } catch (error) {
+        console.error('[AssessmentsPage] Failed to fetch report creation entitlement:', error);
+        if (!cancelled) {
+          setCanCreate(Boolean(hasBaselineCreateAccess));
+          setCreationBlockedReason('Unable to verify plan limits. Try again.');
+        }
+      }
+    }
+
+    void checkEntitlement();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organisation?.id, hasBaselineCreateAccess]);
+
+  const handleCreateAssessment = () => {
+    if (canCreate) {
+      navigate('/assessments/new');
+      return;
+    }
+
+    if (creationBlockedReason) {
+      alert(creationBlockedReason);
+    }
+
+    navigate('/upgrade');
+  };
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -339,10 +389,10 @@ export default function AssessmentsPage() {
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-bold text-slate-900">Assessments</h1>
           <button
-            onClick={() => navigate(canCreate ? '/assessments/new' : '/upgrade')}
+            onClick={handleCreateAssessment}
             className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={!canCreate && !organisation}
-            title={!canCreate ? 'Upgrade required to create assessments' : ''}
+            title={!canCreate ? (creationBlockedReason || 'Upgrade required to create assessments') : ''}
           >
             <Plus className="w-4 h-4" />
             {canCreate ? 'New Assessment' : 'Upgrade to Create'}
@@ -515,10 +565,10 @@ export default function AssessmentsPage() {
                       </div>
                       {assessments.length === 0 && (
                         <button
-                          onClick={() => navigate(canCreate ? '/assessments/new' : '/upgrade')}
+                          onClick={handleCreateAssessment}
                           className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           disabled={!canCreate && !organisation}
-                          title={!canCreate ? 'Upgrade required to create assessments' : ''}
+                          title={!canCreate ? (creationBlockedReason || 'Upgrade required to create assessments') : ''}
                         >
                           <Plus className="w-4 h-4" />
                           {canCreate ? 'New Assessment' : 'Upgrade to Create'}

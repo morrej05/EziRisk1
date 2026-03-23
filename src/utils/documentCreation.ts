@@ -1,8 +1,17 @@
 import { supabase } from '../lib/supabase';
 import { getModuleKeysForDocType } from '../lib/modules/moduleCatalog';
+import { getReportCreationEntitlement } from './reportCreationEntitlements';
 
 export type DocumentType = 'FRA' | 'FSD' | 'DSEAR' | 'RE';
 
+
+
+export class ReportCreationBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReportCreationBlockedError';
+  }
+}
 interface CreateDocumentParams {
   organisationId: string;
   documentType: DocumentType;
@@ -20,6 +29,11 @@ export async function createDocument({
 }: CreateDocumentParams): Promise<string> {
   const documentTitle = title || `New ${documentType}`;
   const assessmentDate = new Date().toISOString().split('T')[0];
+
+  const entitlement = await getReportCreationEntitlement(organisationId);
+  if (!entitlement.allowed) {
+    throw new ReportCreationBlockedError(entitlement.reason || 'Report creation is blocked for your current plan.');
+  }
 
   // Initialize section grades for RE documents with fire_protection defaulting to 1
   const sectionGrades = documentType === 'RE' ? {
