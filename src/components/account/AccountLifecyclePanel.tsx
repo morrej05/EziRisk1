@@ -3,6 +3,7 @@ import { AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
+import { getUserSeatEntitlement, type UserSeatEntitlement } from '../../utils/userSeatEntitlements';
 
 type MemberRole = 'admin' | 'surveyor' | 'viewer';
 
@@ -47,6 +48,7 @@ export default function AccountLifecyclePanel() {
   const [selfDeleteTransferOrgId, setSelfDeleteTransferOrgId] = useState<string>('');
   const [selfDeleteTransferToUserId, setSelfDeleteTransferToUserId] = useState<string>('');
   const [working, setWorking] = useState(false);
+  const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
   const [soloFlowStarted, setSoloFlowStarted] = useState(false);
   const [soloFlowAcknowledgedAccountDelete, setSoloFlowAcknowledgedAccountDelete] = useState(false);
   const [soloFlowAcknowledgedOrgClose, setSoloFlowAcknowledgedOrgClose] = useState(false);
@@ -86,6 +88,7 @@ export default function AccountLifecyclePanel() {
         setMembers([]);
         setCurrentRole(null);
         setOrganisationId(null);
+        setSeatEntitlement(null);
         setLoading(false);
         return;
       }
@@ -123,6 +126,9 @@ export default function AccountLifecyclePanel() {
           user_profile: profileMap.get(member.user_id) ?? null,
         }))
       );
+
+      const entitlement = await getUserSeatEntitlement(selfMembership.organisation_id);
+      setSeatEntitlement(entitlement);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load organisation members');
     } finally {
@@ -306,6 +312,12 @@ export default function AccountLifecyclePanel() {
 
       <section className="space-y-3">
         <h3 className="text-base font-semibold text-slate-900">Organisation Members</h3>
+        {seatEntitlement?.is_over_limit && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            Your organisation is currently over its plan user seat limit ({seatEntitlement.active_member_count}/{seatEntitlement.user_limit} active users).
+            Existing users keep access, but adding new users is blocked until you remove members or upgrade.
+          </div>
+        )}
         {loading ? (
           <p className="text-sm text-slate-600">Loading members…</p>
         ) : members.length === 0 ? (
