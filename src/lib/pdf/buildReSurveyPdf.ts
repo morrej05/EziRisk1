@@ -1246,13 +1246,10 @@ function getFireProtectionSiteRows(module: ModuleInstance): Row[] {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const water = fp?.site?.water || {};
   const waterSupplies = Array.isArray(water?.water_supplies) ? water.water_supplies : [];
+  const hasMultipleSupplies = waterSupplies.length > 1;
   const rows: Row[] = [
     ['Water reliability', resolveFireProtectionField(water?.water_reliability)],
-    ['Water supplies recorded', resolveFireProtectionField(waterSupplies.length ? waterSupplies.length : '')],
-    ...(waterSupplies.length <= 1 ? [
-      ['Water supply type', resolveFireProtectionField(waterSupplies[0]?.type, water?.supply_type, water?.supply_type_other)],
-      ['Capacity (m³)', resolveFireProtectionField(waterSupplies[0]?.capacity_m3, water?.capacity)],
-    ] : []),
+    ...(hasMultipleSupplies ? [['Water supplies recorded', resolveFireProtectionField(waterSupplies.length)]] : []),
     ['Power resilience / testing regime', resolveFireProtectionField(water?.power_resilience, water?.testing_regime)],
     ['Hydrant/fire main/hose reels', resolveFireProtectionField(water?.hydrant_coverage, water?.fire_main_condition, water?.hose_reels_present)],
     ['Flow test evidence / date', resolveFireProtectionField(water?.flow_test_evidence, water?.flow_test_date)],
@@ -1653,26 +1650,68 @@ function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown
 function getExposuresStructuredRows(module: ModuleInstance): Row[] {
   const exposures = (module.data as any)?.exposures || module.data || {};
   const perils = exposures?.environmental?.perils || {};
+  const rows: Row[] = [];
+
   const environmental = [
     ['Flood', perils?.flood?.rating, perils?.flood?.notes],
     ['Windstorm', perils?.wind?.rating, perils?.wind?.notes],
+    ['Earthquake', perils?.earthquake?.rating, perils?.earthquake?.notes],
     ['Wildfire', perils?.wildfire?.rating, perils?.wildfire?.notes],
-    ['Seismic', perils?.seismic?.rating, perils?.seismic?.notes],
-    ['Freeze', perils?.freeze?.rating, perils?.freeze?.notes],
   ]
-    .filter((item) => item[1] !== undefined || item[2])
-    .map((item) => `${item[0]}: ${formatDataValue(item[1])}${item[2] ? ` (${formatDataValue(item[2])})` : ''}`)
+    .map(([label, rating, notes]) => {
+      const details = [
+        !isMissingDataValue(rating) ? `Rating ${formatDataValue(rating)}` : '',
+        !isMissingDataValue(notes) ? `${formatDataValue(notes)}` : '',
+      ].filter(Boolean).join(' — ');
+      return details ? `${label}: ${details}` : '';
+    })
+    .filter(Boolean)
     .join('\n');
 
-  return [
-    ['Environmental perils', formatDataValue(environmental || exposures?.flood_exposure_level || exposures?.windstorm_exposure_level || exposures?.wildfire_exposure_level)],
-    ['Other peril', `${formatDataValue(perils?.other?.label)} / ${formatDataValue(perils?.other?.rating)} / ${formatDataValue(perils?.other?.notes)}`],
-    ['Human exposure / adjoining risk', `${formatDataValue(exposures?.human_exposure?.rating)} / ${formatDataValue(exposures?.adjoining_risk)}`],
-    ['Human exposure notes', formatDataValue(exposures?.human_exposure?.notes)],
-    ['Security / arson controls', formatDataValue(exposures?.security?.notes ?? exposures?.arson_controls)],
-    ['Drainage / site topography notes', formatDataValue(exposures?.drainage_notes ?? exposures?.site_topography_notes)],
-    ['Mitigation / resilience notes', formatDataValue(exposures?.resilience_measures ?? exposures?.mitigation_notes)],
+  const legacyEnvironmental = [
+    exposures?.flood_exposure_level,
+    exposures?.windstorm_exposure_level,
+    exposures?.wildfire_exposure_level,
+  ].find((value) => !isMissingDataValue(value));
+
+  const environmentalValue = !isMissingDataValue(environmental) ? environmental : formatDataValue(legacyEnvironmental);
+  if (!isMissingDataValue(environmentalValue)) {
+    rows.push(['Environmental perils', environmentalValue]);
+  }
+
+  const otherPerilParts = [
+    perils?.other?.label,
+    perils?.other?.rating !== undefined ? `Rating ${formatDataValue(perils?.other?.rating)}` : undefined,
+    perils?.other?.notes,
+  ]
+    .map((value) => formatDataValue(value))
+    .filter((value) => !isMissingDataValue(value));
+  if (otherPerilParts.length > 0) {
+    rows.push(['Other peril', otherPerilParts.join(' | ')]);
+  }
+
+  const humanExposureRating = formatDataValue(exposures?.human_exposure?.rating);
+  if (!isMissingDataValue(humanExposureRating)) {
+    rows.push(['Human exposure rating', humanExposureRating]);
+  }
+  const humanExposureNotes = formatDataValue(exposures?.human_exposure?.notes);
+  if (!isMissingDataValue(humanExposureNotes)) {
+    rows.push(['Human exposure notes', humanExposureNotes]);
+  }
+
+  const optionalLegacyRows: Array<[string, unknown]> = [
+    ['Security / arson controls', exposures?.security?.notes ?? exposures?.arson_controls],
+    ['Drainage / site topography notes', exposures?.drainage_notes ?? exposures?.site_topography_notes],
+    ['Mitigation / resilience notes', exposures?.resilience_measures ?? exposures?.mitigation_notes],
   ];
+  for (const [label, value] of optionalLegacyRows) {
+    const formatted = formatDataValue(value);
+    if (!isMissingDataValue(formatted)) {
+      rows.push([label, formatted]);
+    }
+  }
+
+  return compactRows(rows);
 }
 
 function getUtilitiesStructuredRows(module: ModuleInstance): Row[] {
@@ -2485,15 +2524,17 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
     if (module.module_key === 'RE_07_NATURAL_HAZARDS') {
       const exposuresRows = getExposuresStructuredRows(module);
-      ({ page, yPosition } = ensurePageSpace(100 + exposuresRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Inputs — Exposures structured fields', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], exposuresRows, { regular: font, bold: fontBold }, {
-        colWidths: [190, CONTENT_WIDTH - 190],
-        fontSize: 8.5,
-        minRowHeight: 18,
-        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
-      }));
-      yPosition = sectionBreak(yPosition);
+      if (exposuresRows.length > 0) {
+        ({ page, yPosition } = ensurePageSpace(100 + exposuresRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Inputs — Exposures structured fields', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], exposuresRows, { regular: font, bold: fontBold }, {
+          colWidths: [190, CONTENT_WIDTH - 190],
+          fontSize: 8.5,
+          minRowHeight: 18,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition);
+      }
     }
 
     if (module.module_key === 'RE_08_UTILITIES') {
@@ -2557,7 +2598,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_06_FIRE_PROTECTION') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS') {
       const interpretation = buildSectionInterpretation(module, breakdown);
       if (interpretation) {
         ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2567,7 +2608,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY' && module.module_key !== 'RE_06_FIRE_PROTECTION') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
       if (commentary) {
         ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
