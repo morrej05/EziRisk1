@@ -418,7 +418,7 @@ export default function DocumentPreviewPage() {
           reSurveyRecommendations = (reRecommendations || []).map((rec: any, index: number) => ({
             id: rec.id,
             document_id: rec.document_id,
-            recommended_action: rec.title || rec.action_required_text || `Recommendation ${index + 1}`,
+            recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
             priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
             status: rec.status || 'Open',
             owner_user_id: null,
@@ -543,7 +543,7 @@ export default function DocumentPreviewPage() {
 
           const lpActions = (reRecommendations || []).map((rec: any, index: number) => ({
             id: rec.id,
-            recommended_action: rec.title || rec.action_required_text || `Recommendation ${index + 1}`,
+            recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
             priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
             status: statusMap[rec.status] || 'open',
             owner_user_id: null,
