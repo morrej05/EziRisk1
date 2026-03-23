@@ -598,15 +598,14 @@ function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: 
     const context = getConstructionContext(module, breakdown);
     const construction = (module.data as any)?.construction || module.data || {};
     const buildings = getConstructionBuildings(construction);
-    const trace = getConstructionPayloadTrace(module, breakdown);
     const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
     const combustibleValue = context.explicitCombustiblePct ?? context.derivedCombustiblePct;
-    const fireSpreadRisk = combustibleValue === null ? 'fire spread potential cannot be quantified from saved combustibility data' : combustibleValue >= 40 ? 'elevated fire spread potential' : combustibleValue >= 20 ? 'moderate fire spread potential' : 'generally controlled fire spread potential';
-    const structuralResilience = rating && rating >= 4 ? 'strong structural resilience' : rating && rating >= 3 ? 'mixed structural resilience (protected primary frame with combustible envelope contribution)' : 'heightened structural vulnerability';
-    const lossScale = context.totalRoofArea >= 3000 ? 'material loss scale potential across the combined footprint' : 'moderate loss scale potential';
-    const reinstatementComplexity = context.totalRoofArea >= 3000 || context.hasMezzanine || (rating ?? 0) <= 2.5 ? 'reinstatement complexity is likely elevated due to scale and mezzanine interfaces' : 'reinstatement complexity is expected to be moderate';
+    const fireSpreadRisk = combustibleValue === null ? 'uncertain fire spread potential' : combustibleValue >= 40 ? 'elevated fire spread potential' : combustibleValue >= 20 ? 'moderate fire spread potential' : 'more contained fire spread potential';
+    const interruptionSeverity = context.hasMezzanine || context.hasMultipleBuildings || context.totalRoofArea >= 3000
+      ? 'material interruption severity'
+      : 'moderate interruption severity';
     const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
-    const base = `Construction score: ${scoreText} (${scoreBand.label}). Site evidence shows ${context.buildingCount} buildings with total roof ${formatDataValue(context.totalRoofArea)} m² and mezzanine ${formatDataValue(context.totalMezzArea)} m², primary frame type Protected Steel, and cladding flagged on ${claddingPresentCount} building(s). Site combustible proportion is ${context.combustibilityText} (${trace.siteCombustible.source ? `source: ${trace.siteCombustible.source}` : 'source not provided'}). Practical meaning: protected steel improves time-to-failure versus unprotected steel, but a ${context.combustibilityText} combustible share still supports sustained fire growth, wider smoke spread, and longer strip-out/reinstatement periods after control. This profile indicates ${fireSpreadRisk}, ${structuralResilience}, ${lossScale}, and ${reinstatementComplexity}. Roof descriptor: ${trace.roof.value} (${trace.roof.source ?? 'no saved key found'}). Wall descriptor: ${trace.wall.value} (${trace.wall.source ?? 'no saved key found'}).`;
+    const base = `Construction score: ${scoreText} (${scoreBand.label}). The mixed profile means a fire is more likely to spread through combustible envelope/contents even where primary framing is protected steel. With ${context.buildingCount} buildings, roof area ${formatDataValue(context.totalRoofArea)} m² and mezzanine area ${formatDataValue(context.totalMezzArea)} m², a severe event can produce staged shutdown and phased reinstatement rather than a single quick restart. Cladding is identified on ${claddingPresentCount} building(s), supporting ${fireSpreadRisk}. Expected outcome is ${interruptionSeverity}, with longer strip-out, smoke remediation and programme risk than a fully non-combustible site profile.`;
     return notes ? `${base} Additional assessor notes: ${notes}` : base;
   }
 
@@ -676,17 +675,6 @@ function getScoreBand(rating: number | null): {
     constructionImplication: 'An excellent rating indicates strong construction resilience and robust resistance to rapid fire propagation.',
     occupancyImplication: 'An excellent rating indicates robust occupancy/process controls and strong resilience against severe fire/explosion scenarios.',
   };
-}
-
-function describeConstructionBuildingMix(buildings: any[]): string {
-  if (!buildings.length) return 'no building-level mix data';
-  const frameTypes = new Set<string>();
-  for (const building of buildings) {
-    const frame = String(building?.frame_type || '').trim();
-    if (frame) frameTypes.add(frame.replace(/_/g, ' '));
-  }
-  if (frameTypes.size === 0) return `${buildings.length} building(s) with unspecified frame mix`;
-  return `${buildings.length} building(s) across ${frameTypes.size} frame type(s): ${Array.from(frameTypes).join(', ')}`;
 }
 
 function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
@@ -802,12 +790,11 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const totalFloorArea = hasRoofArea || hasMezzArea
       ? numericOrZero(roofArea) + numericOrZero(mezzArea)
       : null;
-    // Active RE_02 save model field for this record:
-    //   storeys => construction.buildings[].geometry.floors
-    const storeys = Object.prototype.hasOwnProperty.call(building?.geometry ?? {}, 'floors')
-      ? building?.geometry?.floors
-      : null;
-    const basements = building?.geometry?.basements;
+    // Active RE_02 completion snapshot persists these geometry fields directly:
+    //   construction.buildings[].storeys
+    //   construction.buildings[].basements
+    const storeys = building?.storeys;
+    const basements = building?.basements;
     return [
       formatDataValue(refOrName),
       formatDataValue(roofArea),
@@ -1031,44 +1018,6 @@ function getConstructionPayloadTrace(module: ModuleInstance, breakdown: Breakdow
     'construction.buildings[].upper_floors_mezzanine.total_percent',
   ];
   return { roof, wall, compartmentation, siteCombustible, perBuildingCombustibleSources };
-}
-
-function getConstructionCharacteristicsRows(module: ModuleInstance, breakdown: Breakdown): Row[] {
-  const construction = (module.data as any)?.construction || module.data || {};
-  const buildings = getConstructionBuildings(construction);
-  const siteCombustibility = pickFirstProvided(
-    construction?.site_totals?.combustible_percent,
-    construction?.site_totals?.combustibility_percent,
-    construction?.combustibility_percent
-  );
-  void breakdown;
-  return compactRows(buildings.map((building: any): Row => {
-    const refOrName = building.ref || building.building_name || building.name || building.id;
-    const roofConstructionEvidence = resolveRoofConstructionEvidence(building, construction);
-    const wallsConstructionEvidence = resolveWallConstructionEvidence(building, construction);
-    const roofCombustiblePct = building?.roof?.total_percent;
-    const wallsCombustiblePct = building?.walls?.total_percent;
-    const constructionScore = building?.calculated?.construction_rating ?? building?.calculated?.construction_score;
-    const siteCombustibilityForRow = pickFirstProvided(
-      building?.calculated?.combustible_percent,
-      building?.calculated?.combustibility_percent,
-      siteCombustibility
-    );
-
-    return [
-      formatDataValue(refOrName),
-      roofConstructionEvidence,
-      formatConstructionPercent(roofCombustiblePct, roofCombustiblePct !== null ? 'explicit' : 'none'),
-      wallsConstructionEvidence,
-      formatConstructionPercent(wallsCombustiblePct, wallsCombustiblePct !== null ? 'explicit' : 'none'),
-      sanitizePdfText(resolveCladdingDescriptor(building)),
-      Number.isFinite(Number(constructionScore)) ? formatScoreOutOfFive(constructionScore) : 'Data not provided',
-      formatConstructionPercent(
-        siteCombustibilityForRow,
-        siteCombustibilityForRow !== undefined && siteCombustibilityForRow !== null ? 'explicit' : 'none'
-      ),
-    ];
-  }), ['roof evidence', 'roof %', 'walls evidence', 'walls %', 'cladding', 'construction score', 'site combustible %']);
 }
 
 function getConstructionScoringRows(module: ModuleInstance): Row[] {
@@ -1435,8 +1384,8 @@ function buildConstructionScoringBasisText(module: ModuleInstance): string {
     Number.isFinite(Number(building?.upper_floors_mezzanine?.total_percent))
   );
   return hasPerBuildingPct
-    ? 'Construction basis note: per-building Roof/Walls/Mezz % values are composition totals within each building element (they typically sum to 100% by definition and are not site combustibility). Site combustible % is a separate site-level area-weighted combustibility indicator and should be interpreted as the cross-site fire spread proxy.'
-    : 'Construction basis note: per-building roof/wall/mezz composition percentages are not available in the saved payload, so interpretation is based on site-level combustibility and structural/cladding indicators.';
+    ? 'Construction score reflects combined judgement across frame resilience, roof/wall/mezz combustibility, cladding indicators, and compartmentation quality. Building layout and connected floor area are also considered when assessing expected fire spread and loss development potential.'
+    : 'Construction score reflects frame resilience, available combustibility evidence, cladding indicators, compartmentation quality, and building layout effects on spread potential.';
 }
 
 function buildConstructionEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
@@ -1444,25 +1393,22 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = getConstructionBuildings(construction);
   const trace = getConstructionPayloadTrace(module, breakdown);
-  const buildingMix = describeConstructionBuildingMix(context.buildings);
   const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
   const combustibleValue = context.explicitCombustiblePct ?? context.derivedCombustiblePct;
   const fireSpreadRisk = combustibleValue === null
-    ? 'fire spread risk cannot be quantified from provided combustibility data'
+    ? 'fire spread potential is uncertain from combustibility data'
     : combustibleValue >= 40
-      ? 'high fire spread risk'
+      ? 'fire spread potential remains elevated'
       : combustibleValue >= 20
-        ? 'moderate fire spread risk'
-        : 'lower fire spread risk';
-  const structuralResilience = context.rating && context.rating >= 4 ? 'strong structural resilience' : context.rating && context.rating >= 3 ? 'intermediate structural resilience' : 'limited structural resilience';
-  const conditionalDrivers = [
-    context.hasMezzanine ? 'mezzanine levels increase vertical fire spread pathways' : '',
-    context.hasMultipleBuildings ? 'multiple buildings introduce inter-building fire spread potential' : '',
-    claddingPresentCount > 0 ? `${claddingPresentCount} building(s) show combustible cladding indicators` : '',
-    context.totalRoofArea >= 3000 ? 'large floor area increases probable maximum loss scale' : '',
-  ].filter(Boolean).join('; ');
-  const reinstatementComplexity = context.totalRoofArea >= 3000 || context.hasMezzanine || (context.rating ?? 0) <= 2.5 ? 'elevated reinstatement complexity' : 'moderate reinstatement complexity';
-  return `Engineering Interpretation: Construction score ${Number.isFinite(context.rating as number) ? `${context.rating}/5` : 'unavailable'} reflects a mixed profile. Protected steel framing improves structural endurance under fire heating, but does not remove envelope/contents-driven fire growth risk. Site combustible proportion is ${context.combustibilityText} (${trace.siteCombustible.source ? `from ${trace.siteCombustible.source}` : 'source key not found'}), while per-building roof/wall/mezz values that read 100% are element composition totals rather than the site combustible metric. Building mix is ${buildingMix}. ${conditionalDrivers ? `Key drivers: ${conditionalDrivers}. ` : ''}With two buildings and mezzanine areas present, loss development can include vertical channeling, smoke spread through interconnected high-level voids, and staged reinstatement by building/zone. Roof descriptor trace: ${trace.roof.value} (${trace.roof.source ?? 'missing in saved payload'}). Wall descriptor trace: ${trace.wall.value} (${trace.wall.source ?? 'missing in saved payload'}). Compartmentation trace: ${trace.compartmentation.value} (${trace.compartmentation.source ?? 'missing in saved payload'}). Overall, this supports ${fireSpreadRisk}, ${structuralResilience}, and ${reinstatementComplexity}.`;
+        ? 'fire spread potential is moderate'
+        : 'fire spread potential is comparatively lower';
+  const claddingText = claddingPresentCount > 0
+    ? `Cladding is identified on ${claddingPresentCount} building(s), which increases envelope-related contribution.`
+    : 'No combustible cladding indicator is recorded in the submitted building evidence.';
+  const compartmentationText = trace.compartmentation.value !== 'Data not provided'
+    ? `Compartmentation at ${trace.compartmentation.value} provides a meaningful delay to escalation, but is not a complete control where combustible envelope or contents are involved.`
+    : 'Compartmentation evidence is not stated, so containment confidence is limited.';
+  return `Engineering Interpretation: Construction score ${Number.isFinite(context.rating as number) ? `${context.rating}/5` : 'unavailable'} indicates a moderate mixed profile. Protected steel framing supports better structural endurance in fire, but combustible roof/wall elements and a site combustible share of ${context.combustibilityText} still allow sustained fire and smoke development. Mezzanine areas create additional vertical spread pathways, and the multi-building layout can support staged lateral escalation and longer reinstatement sequencing. ${claddingText} ${compartmentationText} Overall, ${fireSpreadRisk}, so the construction profile remains moderate rather than low risk.`;
 }
 
 function buildOccupancyEngineeringInterpretation(module: ModuleInstance): string {
@@ -1843,7 +1789,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       const roofWallEvidenceRows = getConstructionRoofWallEvidenceRows(module);
       if (roofWallEvidenceRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + roofWallEvidenceRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-        yPosition = drawBlockHeading(page, yPosition, 'Roof / wall construction evidence', fontBold);
+        yPosition = drawBlockHeading(page, yPosition, 'Building construction evidence', fontBold);
         yPosition = sectionBreak(yPosition, 8);
         ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof construction', 'Wall construction'], roofWallEvidenceRows, { regular: font, bold: fontBold }, {
           colWidths: [90, 176, CONTENT_WIDTH - 266],
@@ -1852,22 +1798,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
         yPosition = sectionBreak(yPosition, 26);
-      }
-      const characteristicRows = getConstructionCharacteristicsRows(module, breakdown);
-      if (characteristicRows.length > 0) {
-        ({ page, yPosition } = ensurePageSpace(100 + characteristicRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-        yPosition = drawBlockHeading(page, yPosition, 'Construction characteristics / evidence', fontBold);
-        yPosition = sectionBreak(yPosition, 8);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Building', 'Roof construction', 'Roof combustible %', 'Wall construction', 'Wall combustible %', 'Cladding', 'Construction score', 'Site combustible %'], characteristicRows, { regular: font, bold: fontBold }, {
-          colWidths: [60, 89, 58, 89, 58, 50, 50, 46],
-          fontSize: 7.2,
-          minRowHeight: 20,
-          wrapHeader: true,
-          headerMinRowHeight: 36,
-          headerFontSize: 7,
-          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
-        }));
-        yPosition = sectionBreak(yPosition, 30);
       }
       const siteTotals = getConstructionSiteSummaryRows(module, breakdown);
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -1878,6 +1808,12 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      yPosition = drawParagraph(
+        page,
+        yPosition,
+        'Site combustible % is an area-weighted site-wide indicator and is not a direct repeat of the per-building roof/wall composition descriptors.',
+        font
+      );
       yPosition = sectionBreak(yPosition, 44);
       const scoringRows = getConstructionScoringRows(module);
       const scoringBasis = buildConstructionScoringBasisText(module);
