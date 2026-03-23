@@ -62,6 +62,8 @@ interface ReSurveySitePhoto {
   id?: string;
   storage_path?: string;
   caption?: string;
+  description?: string;
+  notes?: string;
   uploaded_at?: string;
 }
 
@@ -77,6 +79,10 @@ interface Action {
   recommended_action: string;
   priority_band: string;
   status: string;
+  completed_at?: string | null;
+  is_complete?: boolean | null;
+  document_id?: string | null;
+  survey_id?: string | null;
   owner_user_id: string | null;
   owner_display_name?: string;
   target_date: string | null;
@@ -1111,11 +1117,11 @@ function getFireProtectionCoverageRows(module: ModuleInstance): Row[] {
     const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
     return [
       formatDataValue(displayName),
-      formatDataValue(sprinklerData?.sprinklers_installed),
-      formatDataPercent(sprinklerData?.sprinkler_coverage_installed_pct),
-      formatDataPercent(sprinklerData?.sprinkler_coverage_required_pct),
-      formatDataValue(sprinklerData?.system_type),
-      formatDataValue(sprinklerData?.standard ?? sprinklerData?.sprinkler_standard),
+      resolveFireProtectionField(sprinklerData?.sprinklers_installed),
+      resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_installed_pct)),
+      resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_required_pct)),
+      resolveFireProtectionField(sprinklerData?.system_type),
+      resolveFireProtectionField(sprinklerData?.standard ?? sprinklerData?.sprinkler_standard),
     ];
   }), ['sprinklers present', 'installed coverage', 'required coverage']);
 }
@@ -1213,6 +1219,127 @@ function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
   return compactRows(headlineRows, ['questions scored', 'overall supplementary score']);
 }
 
+function cleanFireProtectionRows(rows: Row[]): Row[] {
+  return rows
+    .map((row) => row.map((cell, index) => (
+      index === 0 ? cell : resolveFireProtectionField(cell)
+    )) as Row)
+    .filter((row) => row.slice(1).some((cell) => !isNotProvidedValue(cell)));
+}
+
+function getCoverageInterpretation(module: ModuleInstance): string {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
+  if (buildings.length === 0) return '';
+  const mismatchedCoverage = buildings.some((building: any) => {
+    const installed = Number(building?.sprinklerData?.sprinkler_coverage_installed_pct);
+    const required = Number(building?.sprinklerData?.sprinkler_coverage_required_pct);
+    return Number.isFinite(installed) && Number.isFinite(required) && Math.abs(installed - required) > 0.01;
+  });
+  return mismatchedCoverage
+    ? 'Overall installed sprinkler coverage exceeds required levels; however, coverage is not consistent across all buildings.'
+    : 'Installed sprinkler coverage is broadly aligned with stated required levels across recorded buildings.';
+}
+
+function hasWaterSupplyDataUncertainty(module: ModuleInstance): boolean {
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const water = fp?.site?.water || {};
+  const keyFields = [
+    water?.water_reliability,
+    water?.supply_type,
+    water?.flow_test_evidence,
+    water?.flow_test_date,
+    water?.pumps_present,
+    water?.testing_regime,
+  ];
+  const availableCount = keyFields.filter((value) => !isMissingDataValue(value)).length;
+  return availableCount < 3;
+}
+
+function getFireProtectionKeyFindings(module: ModuleInstance): string[] {
+  const findings: string[] = [];
+  const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
+  const buildingsById = fp?.buildings || {};
+  const buildings = Object.entries(buildingsById) as Array<[string, any]>;
+  const supplementaryQuestions = Array.isArray(fp?.supplementary_assessment?.questions)
+    ? fp.supplementary_assessment.questions
+    : [];
+
+  const lowScoringQuestions = supplementaryQuestions
+    .map((question: any, index: number) => ({
+      score: Number(question?.score_1_5),
+      label: sanitizePdfText(formatDataValue(question?.prompt ?? question?.factor_key ?? `Question ${index + 1}`)).replace(/^Q\d+\s*[-:]\s*/i, ''),
+      note: String(question?.notes ?? question?.comment ?? '').trim(),
+    }))
+    .filter((entry: any) => Number.isFinite(entry.score))
+    .sort((a: any, b: any) => a.score - b.score)
+    .slice(0, 2);
+  for (const entry of lowScoringQuestions) {
+    if (entry.score <= 2) {
+      findings.push(`${entry.label} is a current weakness (score ${formatScore(entry.score)}/5)${entry.note ? `: ${sanitizePdfText(entry.note)}` : ''}.`);
+    }
+  }
+
+  const coverageGaps = buildings
+    .map(([buildingId, buildingData], index) => {
+      const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
+      const required = Number(buildingData?.sprinklerData?.sprinkler_coverage_required_pct);
+      const installed = Number(buildingData?.sprinklerData?.sprinkler_coverage_installed_pct);
+      if (Number.isFinite(required) && Number.isFinite(installed) && installed + 0.01 < required) {
+        return `${displayName} (${Math.round(installed)}% installed vs ${Math.round(required)}% required)`;
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+  if (coverageGaps.length > 0) {
+    findings.push(`Coverage shortfalls are recorded in ${coverageGaps.join(' and ')}.`);
+  }
+
+  if (hasWaterSupplyDataUncertainty(module)) {
+    findings.push('Water supply reliability cannot be confirmed from available records, creating uncertainty in expected suppression performance.');
+  }
+
+  const inconsistentDetection = buildings
+    .map(([buildingId, buildingData], index) => {
+      const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
+      const detectionInstalled = String(buildingData?.sprinklerData?.detection_installed || '').trim();
+      return detectionInstalled ? `${displayName}: ${detectionInstalled}` : null;
+    })
+    .filter(Boolean);
+  const uniqueDetectionStates = new Set(inconsistentDetection.map((entry) => entry?.split(':')[1]?.trim().toLowerCase()));
+  if (uniqueDetectionStates.size > 1) {
+    findings.push('Detection and monitoring controls are inconsistent between buildings, indicating uneven reliability performance across the site.');
+  }
+
+  const localisedMissing = buildings
+    .map(([buildingId, buildingData], index) => {
+      const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
+      if (String(buildingData?.sprinklerData?.localised_required || '').toLowerCase() === 'yes'
+        && String(buildingData?.sprinklerData?.localised_present || '').toLowerCase() === 'no') {
+        return displayName;
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .slice(0, 2);
+  if (localisedMissing.length > 0) {
+    findings.push(`Localised/special protection is missing where required in ${localisedMissing.join(' and ')}.`);
+  }
+
+  if (findings.length < 3) {
+    const scoredCount = supplementaryQuestions.filter((question: any) => Number.isFinite(Number(question?.score_1_5))).length;
+    findings.push(`${scoredCount} of ${supplementaryQuestions.length || 0} supplementary fire protection questions are currently scored.`);
+  }
+  if (findings.length < 3) {
+    const requiredCount = buildings.filter(([, buildingData]) => Number(buildingData?.sprinklerData?.sprinkler_coverage_required_pct) > 0).length;
+    const installedCount = buildings.filter(([, buildingData]) => Number(buildingData?.sprinklerData?.sprinkler_coverage_installed_pct) > 0).length;
+    findings.push(`Sprinkler coverage is recorded as installed in ${installedCount} building(s) against stated requirement in ${requiredCount} building(s).`);
+  }
+
+  return findings.slice(0, 5);
+}
+
 function getFireProtectionQuestionsByGroup(module: ModuleInstance, group: FireQuestionGroup): any[] {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const questions = Array.isArray(fp?.supplementary_assessment?.questions) ? fp.supplementary_assessment.questions : [];
@@ -1233,36 +1360,33 @@ function getFireProtectionPillarNarrative(module: ModuleInstance, group: 'adequa
     .filter((entry) => Number.isFinite(entry.score));
   if (!scored.length) return '';
 
-  const averageScore = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length;
+  const majorityAdequate = scored.filter((entry) => entry.score >= 3).length >= Math.ceil(scored.length / 2);
   const strongItems = scored
     .filter((entry) => entry.score >= 4)
     .slice(0, 2)
     .map((entry) => sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''));
-  const weakItems = scored
+  const lowItems = scored
     .filter((entry) => entry.score <= 2)
     .slice(0, 2)
-    .map((entry) => sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''));
-  const lowScoreNotes = scored
-    .filter((entry) => entry.score <= 2)
-    .map((entry) => String(entry.question?.notes ?? entry.question?.comment ?? '').trim())
-    .filter(Boolean)
-    .slice(0, 2);
+    .map((entry) => ({
+      label: sanitizePdfText(formatDataValue(entry.question?.prompt ?? entry.question?.factor_key)).replace(/^Q\d+\s*[-:]\s*/i, ''),
+      note: String(entry.question?.notes ?? entry.question?.comment ?? '').trim(),
+    }));
 
-  const pillarLabel = group === 'adequacy' ? 'Adequacy' : 'Reliability';
-  const conclusion =
-    averageScore >= 4
-      ? `${pillarLabel} is strong overall based on consistently high question scores.`
-      : averageScore >= 3
-        ? `${pillarLabel} is broadly satisfactory, with evidence of suitable controls across the scored factors.`
-        : `${pillarLabel} is constrained by low-scoring factors and should be treated as a current limitation.`;
-  const strengths = strongItems.length
-    ? `Key strengths are in ${strongItems.join(' and ')}, both rated in the upper score band.`
-    : `No material strengths were rated in the upper score band within this pillar.`;
-  const weakness = weakItems.length
-    ? `Weaknesses remain in ${weakItems.join(' and ')}${lowScoreNotes.length ? ` (${sanitizePdfText(lowScoreNotes.join('; '))})` : ''}.`
+  const overall = majorityAdequate
+    ? `${group === 'adequacy' ? 'Overall adequacy is broadly adequate' : 'Overall reliability is broadly adequate'} based on the current Q${group === 'adequacy' ? '1–Q4' : '5–Q7'} scoring profile.`
+    : `${group === 'adequacy' ? 'Adequacy is constrained by low-scoring controls' : 'Reliability is constrained by low-scoring controls'} in the current dataset.`;
+  const strengths = strongItems.length > 0
+    ? `Strengths are most evident in ${strongItems.join(' and ')}.`
+    : '';
+  const weaknesses = lowItems.length > 0
+    ? `Weaknesses are recorded in ${lowItems.map((item) => item.label).join(' and ')}${lowItems.some((item) => item.note) ? ` (${sanitizePdfText(lowItems.map((item) => item.note).filter(Boolean).join('; '))})` : ''}.`
+    : '';
+  const uncertainty = group === 'reliability' && hasWaterSupplyDataUncertainty(module)
+    ? 'Water supply reliability cannot be confirmed due to limited available information.'
     : '';
 
-  return [conclusion, strengths, weakness].filter(Boolean).join(' ');
+  return [overall, strengths, weaknesses, uncertainty].filter(Boolean).join(' ');
 }
 
 interface OccupancyScoredFactor {
@@ -1626,9 +1750,13 @@ async function embedEvidenceImage(pdfDoc: PDFDocument, storagePath: string) {
   return pdfDoc.embedJpg(bytes);
 }
 
-function isCompletedRecommendationStatus(status: string | null | undefined): boolean {
-  const normalized = String(status || '').trim().toLowerCase();
-  return normalized === 'closed' || normalized === 'completed' || normalized === 'complete' || normalized === 'resolved';
+function isCompletedRecommendationStatus(action: Pick<Action, 'status' | 'completed_at' | 'is_complete'>): boolean {
+  const normalized = String(action.status || '').trim().toLowerCase();
+  if (normalized === 'closed' || normalized === 'completed' || normalized === 'complete' || normalized === 'resolved') {
+    return true;
+  }
+  if (action.is_complete) return true;
+  return !!action.completed_at;
 }
 
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
@@ -1650,7 +1778,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     : moduleInstances;
 
   const moduleInstanceIdSet = new Set(moduleInstances.map((module) => module.id));
-  const currentSurveyRecommendations = actions.filter((action) => moduleInstanceIdSet.has(action.module_instance_id));
+  const currentSurveyRecommendations = actions.filter((action) => {
+    const actionSurveyId = action.document_id || action.survey_id;
+    if (actionSurveyId) {
+      return actionSurveyId === document.id;
+    }
+    return moduleInstanceIdSet.has(action.module_instance_id);
+  });
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
   const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
   const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
@@ -2005,7 +2139,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_06_FIRE_PROTECTION') {
-      const coverageRows = getFireProtectionCoverageRows(module);
+      const coverageRows = cleanFireProtectionRows(getFireProtectionCoverageRows(module));
       if (coverageRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + coverageRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Fire Protection — Coverage', fontBold);
@@ -2017,9 +2151,14 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           headerMinRowHeight: 22,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
+        const coverageInterpretation = getCoverageInterpretation(module);
+        if (coverageInterpretation) {
+          yPosition = sectionBreak(yPosition, 8);
+          yPosition = drawParagraph(page, yPosition, coverageInterpretation, font);
+        }
         yPosition = sectionBreak(yPosition);
       }
-      const reliabilityRows = getFireProtectionReliabilityRows(module);
+      const reliabilityRows = cleanFireProtectionRows(getFireProtectionReliabilityRows(module));
       if (reliabilityRows.length > 0) {
         ({ page, yPosition } = ensurePageSpace(100 + reliabilityRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Fire Protection — Reliability and Detection', fontBold);
@@ -2034,7 +2173,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         yPosition = sectionBreak(yPosition);
       }
       const localisedTable = getFireProtectionLocalisedTable(module);
-      if (localisedTable.rows.length > 0) {
+      const cleanedLocalisedRows = cleanFireProtectionRows(localisedTable.rows);
+      if (cleanedLocalisedRows.length > 0) {
         const localisedColWidthsByHeader: Record<string, number> = {
           Building: 80,
           'Localised protection required': 92,
@@ -2048,9 +2188,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         const localisedColWidths = localisedTable.headers.map((header) => (
           header === 'Comments' ? Math.max(70, CONTENT_WIDTH - localisedFixedWidth) : (localisedColWidthsByHeader[header] ?? 80)
         ));
-        ({ page, yPosition } = ensurePageSpace(100 + localisedTable.rows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        ({ page, yPosition } = ensurePageSpace(100 + cleanedLocalisedRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Fire Protection — Localised / Special Protection', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, localisedTable.headers, localisedTable.rows, { regular: font, bold: fontBold }, {
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, localisedTable.headers, cleanedLocalisedRows, { regular: font, bold: fontBold }, {
           colWidths: localisedColWidths,
           fontSize: 7,
           minRowHeight: 18,
@@ -2060,7 +2200,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         }));
         yPosition = sectionBreak(yPosition);
       }
-      const siteRows = getFireProtectionSiteRows(module);
+      const siteRows = cleanFireProtectionRows(getFireProtectionSiteRows(module));
       ({ page, yPosition } = ensurePageSpace(105 + siteRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawBlockHeading(page, yPosition, 'Site / Water Supply / Reliability Inputs', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], siteRows, { regular: font, bold: fontBold }, {
@@ -2069,16 +2209,37 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      if (hasWaterSupplyDataUncertainty(module)) {
+        yPosition = sectionBreak(yPosition, 8);
+        yPosition = drawParagraph(
+          page,
+          yPosition,
+          'Water supply reliability cannot be confirmed due to limited available information. This represents a key uncertainty in system performance.',
+          font
+        );
+      }
       yPosition = sectionBreak(yPosition);
-      const supplementaryRows = getFireProtectionSupplementaryRows(module);
-      ({ page, yPosition } = ensurePageSpace(95 + supplementaryRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Supplementary Engineering Assessment', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], supplementaryRows, { regular: font, bold: fontBold }, {
-        colWidths: [205, CONTENT_WIDTH - 205],
-        fontSize: 8.5,
-        minRowHeight: 18,
-        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
-      }));
+      const keyFindings = getFireProtectionKeyFindings(module);
+      if (keyFindings.length > 0) {
+        yPosition = sectionBreak(yPosition, 10);
+        yPosition = drawBlockHeading(page, yPosition, 'Key Findings', fontBold);
+        yPosition = sectionBreak(yPosition, 6);
+        for (const finding of keyFindings) {
+          const lines = wrapText(`• ${sanitizePdfText(finding)}`, CONTENT_WIDTH - 4, 9, font);
+          for (const line of lines) {
+            ({ page, yPosition } = ensurePageSpace(18, page, yPosition, pdfDoc, isDraft, totalPages));
+            page.drawText(line, {
+              x: MARGIN + 2,
+              y: yPosition,
+              size: 9,
+              font,
+              color: rgb(0.14, 0.14, 0.14),
+            });
+            yPosition -= 11;
+          }
+          yPosition -= 2;
+        }
+      }
       const adequacyNarrative = getFireProtectionPillarNarrative(module, 'adequacy');
       if (adequacyNarrative) {
         yPosition = sectionBreak(yPosition, 10);
@@ -2166,7 +2327,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       yPosition = sectionBreak(yPosition);
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_06_FIRE_PROTECTION') {
       const interpretation = buildSectionInterpretation(module, breakdown);
       if (interpretation) {
         ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2176,7 +2337,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY' && module.module_key !== 'RE_06_FIRE_PROTECTION') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
       if (commentary) {
         ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2276,19 +2437,19 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         height: scaled.height,
       });
 
-      if (photo.caption?.trim()) {
-        const caption = sanitizePdfText(photo.caption.trim());
-        const captionLines = wrapText(caption, itemWidth - 8, 8.5, font).slice(0, 2);
-        let captionY = yPosition - availableHeight - 12;
+      const photoDescription = String(photo.description || photo.caption || photo.notes || '').trim();
+      if (photoDescription) {
+        const captionLines = wrapText(sanitizePdfText(photoDescription), itemWidth - 8, 8, font).slice(0, 3);
+        let captionY = yPosition - availableHeight - 10;
         for (const line of captionLines) {
           page.drawText(line, {
             x: x + 4,
             y: captionY,
-            size: 8.5,
+            size: 8,
             font,
-            color: rgb(0.18, 0.18, 0.18),
+            color: rgb(0.43, 0.45, 0.5),
           });
-          captionY -= 10;
+          captionY -= 9;
         }
       }
 
@@ -2346,8 +2507,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   }
 
   if (currentSurveyRecommendations.length > 0) {
-    const outstandingRecommendations = currentSurveyRecommendations.filter((action) => !isCompletedRecommendationStatus(action.status));
-    const completedRecommendations = currentSurveyRecommendations.filter((action) => isCompletedRecommendationStatus(action.status));
+    const outstandingRecommendations = currentSurveyRecommendations.filter((action) => !isCompletedRecommendationStatus(action));
+    const completedRecommendations = currentSurveyRecommendations.filter((action) => isCompletedRecommendationStatus(action));
 
     ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
     yPosition = PAGE_TOP_Y;
@@ -2393,10 +2554,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     };
 
     if (outstandingRecommendations.length > 0) {
-      drawRecommendationSection('Outstanding recommendations', outstandingRecommendations);
+      drawRecommendationSection('Section 1: Outstanding', outstandingRecommendations);
     }
     if (completedRecommendations.length > 0) {
-      drawRecommendationSection('Completed recommendations', completedRecommendations);
+      drawRecommendationSection('Section 2: Completed', completedRecommendations);
     }
   }
 
