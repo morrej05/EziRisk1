@@ -71,6 +71,12 @@ interface SiteWaterData {
   hose_reels_present?: YesNoUnknown;
   flow_test_evidence?: TestEvidence;
   flow_test_date?: string;
+  pumps?: Array<{
+    rated_flow?: string;
+    rated_pressure?: string;
+    rated_rpm?: string;
+  }>;
+  // Legacy fields retained for migration only
   pump_rating?: string;
   pump_pressure?: string;
   pump_flow?: string;
@@ -404,6 +410,7 @@ function createDefaultSiteWater(): SiteWaterData {
     hose_reels_present: 'Unknown',
     flow_test_evidence: 'Unknown',
     flow_test_date: '',
+    pumps: [],
     pump_rating: '',
     pump_pressure: '',
     pump_flow: '',
@@ -471,6 +478,20 @@ export default function RE06FireProtectionForm({
   // Data migration: Map sentinel value 0 or undefined to null for "Not rated"
   if (initialData.site.water_score_1_5 === 0 || initialData.site.water_score_1_5 === undefined) {
     initialData.site.water_score_1_5 = null;
+  }
+  initialData.site = initialData.site || { water: createDefaultSiteWater(), water_score_1_5: null, comments: '' };
+  initialData.site.water = {
+    ...createDefaultSiteWater(),
+    ...(initialData.site.water || {}),
+  };
+  if (!Array.isArray(initialData.site.water.pumps)) {
+    const legacyRatedFlow = initialData.site.water.pump_flow || initialData.site.water.pump_rating;
+    const legacyRatedPressure = initialData.site.water.pump_pressure;
+    const legacyRatedRpm = initialData.site.water.pump_rpm;
+    const hasLegacyPump = [legacyRatedFlow, legacyRatedPressure, legacyRatedRpm].some((value) => String(value || '').trim().length > 0);
+    initialData.site.water.pumps = hasLegacyPump
+      ? [{ rated_flow: legacyRatedFlow || '', rated_pressure: legacyRatedPressure || '', rated_rpm: legacyRatedRpm || '' }]
+      : [];
   }
 
   initialData.supplementary_assessment = normalizeSupplementaryAssessment(initialData.supplementary_assessment);
@@ -765,6 +786,53 @@ export default function RE06FireProtectionForm({
           ...createDefaultSiteWater(),
           ...(prev.site?.water || {}),
           [field]: value,
+        },
+      },
+    }));
+  };
+
+  const updateSitePump = (index: number, field: 'rated_flow' | 'rated_pressure' | 'rated_rpm', value: string) => {
+    setFireProtectionData((prev) => {
+      const currentPumps = Array.isArray(prev.site?.water?.pumps) ? [...(prev.site?.water?.pumps || [])] : [];
+      const current = currentPumps[index] || {};
+      currentPumps[index] = { ...current, [field]: value };
+      return {
+        ...prev,
+        site: {
+          ...prev.site,
+          water: {
+            ...createDefaultSiteWater(),
+            ...(prev.site?.water || {}),
+            pumps: currentPumps,
+          },
+        },
+      };
+    });
+  };
+
+  const addSitePump = () => {
+    setFireProtectionData((prev) => ({
+      ...prev,
+      site: {
+        ...prev.site,
+        water: {
+          ...createDefaultSiteWater(),
+          ...(prev.site?.water || {}),
+          pumps: [...(prev.site?.water?.pumps || []), { rated_flow: '', rated_pressure: '', rated_rpm: '' }],
+        },
+      },
+    }));
+  };
+
+  const removeSitePump = (index: number) => {
+    setFireProtectionData((prev) => ({
+      ...prev,
+      site: {
+        ...prev.site,
+        water: {
+          ...createDefaultSiteWater(),
+          ...(prev.site?.water || {}),
+          pumps: (prev.site?.water?.pumps || []).filter((_, pumpIndex) => pumpIndex !== index),
         },
       },
     }));
@@ -1659,82 +1727,6 @@ export default function RE06FireProtectionForm({
                   />
                 </div>
 
-                <div className="pt-4 border-t border-slate-200 space-y-4">
-                  <h4 className="font-semibold text-slate-900">Site Water Supply Inputs</h4>
-
-                  <div>
-                    <h5 className="text-sm font-medium text-slate-700 mb-2">Fire pumps</h5>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Pump rating</label>
-                        <input
-                          type="text"
-                          value={fireProtectionData.site?.water?.pump_rating || ''}
-                          onChange={(e) => updateSiteWater('pump_rating', e.target.value)}
-                          placeholder="Enter as specified"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Pump pressure</label>
-                        <input
-                          type="text"
-                          value={fireProtectionData.site?.water?.pump_pressure || ''}
-                          onChange={(e) => updateSiteWater('pump_pressure', e.target.value)}
-                          placeholder="Enter as specified"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Pump flow</label>
-                        <input
-                          type="text"
-                          value={fireProtectionData.site?.water?.pump_flow || ''}
-                          onChange={(e) => updateSiteWater('pump_flow', e.target.value)}
-                          placeholder="Enter as specified"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Pump RPM</label>
-                        <input
-                          type="text"
-                          value={fireProtectionData.site?.water?.pump_rpm || ''}
-                          onChange={(e) => updateSiteWater('pump_rpm', e.target.value)}
-                          placeholder="Enter as specified"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h5 className="text-sm font-medium text-slate-700 mb-2">Water supply details</h5>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Water supply type</label>
-                        <input
-                          type="text"
-                          value={fireProtectionData.site?.water?.supply_type || ''}
-                          onChange={(e) => updateSiteWater('supply_type', e.target.value)}
-                          placeholder="Tank / open water / other"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Capacity</label>
-                        <input
-                          type="text"
-                          value={fireProtectionData.site?.water?.capacity || ''}
-                          onChange={(e) => updateSiteWater('capacity', e.target.value)}
-                          placeholder="Enter as specified"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
                 {selectedBuilding && (
                   <div className="pt-6 border-t border-slate-200">
                     <FireProtectionRecommendations
@@ -1753,6 +1745,103 @@ export default function RE06FireProtectionForm({
                 </div>
               </div>
             </>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 className="text-base font-semibold text-slate-900">Site Water Supply Inputs</h3>
+        <p className="text-xs text-slate-600">Site-level inputs apply across all buildings in this RE-04 assessment.</p>
+
+        <div>
+          <h4 className="text-sm font-medium text-slate-700 mb-2">Water supply details</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Water supply type</label>
+              <input
+                type="text"
+                value={fireProtectionData.site?.water?.supply_type || ''}
+                onChange={(e) => updateSiteWater('supply_type', e.target.value)}
+                placeholder="Tank / open water / other"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Capacity (m³)</label>
+              <input
+                type="text"
+                value={fireProtectionData.site?.water?.capacity || ''}
+                onChange={(e) => updateSiteWater('capacity', e.target.value)}
+                placeholder="Enter storage volume"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-medium text-slate-700">Fire pump details</h4>
+            <button
+              type="button"
+              onClick={addSitePump}
+              className="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              Add pump
+            </button>
+          </div>
+
+          {(fireProtectionData.site?.water?.pumps || []).length === 0 ? (
+            <p className="text-xs text-slate-500">No pumps added.</p>
+          ) : (
+            <div className="space-y-3">
+              {(fireProtectionData.site?.water?.pumps || []).map((pump, index) => (
+                <div key={`pump-${index}`} className="border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-slate-600">Pump {index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => removeSitePump(index)}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Rated flow (m³/h)</label>
+                      <input
+                        type="text"
+                        value={pump?.rated_flow || ''}
+                        onChange={(e) => updateSitePump(index, 'rated_flow', e.target.value)}
+                        placeholder="Enter rated flow"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Rated pressure (bar)</label>
+                      <input
+                        type="text"
+                        value={pump?.rated_pressure || ''}
+                        onChange={(e) => updateSitePump(index, 'rated_pressure', e.target.value)}
+                        placeholder="Enter rated pressure"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Rated RPM</label>
+                      <input
+                        type="text"
+                        value={pump?.rated_rpm || ''}
+                        onChange={(e) => updateSitePump(index, 'rated_rpm', e.target.value)}
+                        placeholder="Enter rated RPM"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

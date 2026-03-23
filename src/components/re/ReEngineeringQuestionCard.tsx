@@ -45,9 +45,9 @@ export default function ReEngineeringQuestionCard({
         : 'No active recommendation';
 
   return (
-    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3 h-full">
-      <p className="text-sm font-semibold text-slate-900">{questionId}. {title || prompt}</p>
-      <p className="text-xs text-slate-600">{prompt}</p>
+    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3 h-full min-h-0">
+      <p className="text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">{questionId}. {title || prompt}</p>
+      <p className="text-xs text-slate-600 whitespace-pre-wrap break-words">{prompt}</p>
 
       <div className="text-xs text-slate-500">Answer scale: 0–4 (observable state based)</div>
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
@@ -65,12 +65,12 @@ export default function ReEngineeringQuestionCard({
       </div>
 
       {typeof rating === 'number' && (
-        <div className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700">
+        <div className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 whitespace-pre-wrap break-words">
           {answerStates.find((s) => s.score === rating)?.description}
         </div>
       )}
 
-      <p className="text-xs text-slate-500">{autoRecHint}</p>
+      <p className="text-xs text-slate-500 whitespace-pre-wrap break-words">{autoRecHint}</p>
       <button
         type="button"
         onClick={onClearRating}
@@ -79,11 +79,11 @@ export default function ReEngineeringQuestionCard({
         Clear rating
       </button>
       <textarea
-        rows={2}
+        rows={3}
         value={notes}
         onChange={(e) => onNotesChange(e.target.value)}
         placeholder="Optional assessor notes / evidence observed"
-        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y whitespace-pre-wrap"
       />
     </div>
   );
