@@ -1002,7 +1002,12 @@ function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
     .filter(Boolean)
     .filter((value: string, index: number, arr: string[]) => arr.indexOf(value) === index);
 
-  const occupancyType = occupancy.occupancy_type;
+  const occupancyType = pickFirstProvided(
+    occupancy.occupancy_type,
+    occupancy.occupancyType,
+    (module.data as any)?.occupancy_type,
+    (module.data as any)?.occupancyType
+  );
   const processOverview =
     occupancy.process_overview ??
     occupancy.process_description ??
@@ -1022,7 +1027,7 @@ function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
     ['Combustible loading profile', formatDataValue(combustibleLoading)],
     ['Industry-specific special hazards', formatDataValue(occupancy.industry_special_hazards_notes ?? occupancy.special_hazards ?? occupancy.industry_specific_special_hazards)],
     ['Industry fire / explosion features', formatDataValue(occupancy.fire_explosion_features ?? occupancy.industry_fire_explosion_features ?? occupancy.special_fire_explosion_features)],
-    ['Selected hazards / descriptors', hazardList.length ? hazardList.join('\n') : 'Data not provided'],
+    ['Selected hazards / descriptors', hazardList.length ? hazardList.map((item) => `- ${item.replace(/^-\s*/, '')}`).join('\n') : 'Data not provided'],
     ['User free-text notes', formatDataValue(occupancy.hazards_free_text ?? occupancy.notes ?? occupancy.user_notes)],
   ], ['occupancy type', 'process / use overview', 'selected hazards / descriptors']);
 }
@@ -1145,9 +1150,119 @@ function getFireProtectionSupplementaryRows(module: ModuleInstance): Row[] {
   return compactRows([...headlineRows, ...questionRows], ['questions scored', 'overall supplementary score']);
 }
 
+interface OccupancyScoredFactor {
+  key: string;
+  label: string;
+  rating: number;
+  explanation: string;
+  weight: number;
+}
+
+function extractOccupancyFactorExplanations(module: ModuleInstance): Map<string, string> {
+  const occupancy = ((module.data as any)?.occupancy || module.data || {}) as any;
+  const sources = [
+    ...(Array.isArray(occupancy?.questions) ? occupancy.questions : []),
+    ...(Array.isArray(occupancy?.factors) ? occupancy.factors : []),
+    ...(Array.isArray(occupancy?.ratings_breakdown) ? occupancy.ratings_breakdown : []),
+    ...(Array.isArray((module.data as any)?.questions) ? (module.data as any).questions : []),
+    ...(Array.isArray((module.data as any)?.factors) ? (module.data as any).factors : []),
+  ];
+  const explanations = new Map<string, string>();
+  for (const item of sources) {
+    if (!item || typeof item !== 'object') continue;
+    const key = String(item.factor_key ?? item.canonical_key ?? item.key ?? item.id ?? '').trim().toLowerCase();
+    if (!key) continue;
+    const explanation = String(
+      item.notes ??
+      item.explanation ??
+      item.descriptor ??
+      item.description ??
+      item.detail ??
+      ''
+    ).trim();
+    if (!explanation || explanations.has(key)) continue;
+    explanations.set(key, explanation.replace(/\s+/g, ' '));
+  }
+  return explanations;
+}
+
+function getOccupancyScoredFactors(module: ModuleInstance, breakdown: Breakdown): OccupancyScoredFactor[] {
+  const explanations = extractOccupancyFactorExplanations(module);
+  return breakdown.occupancyDrivers
+    .filter((factor) => Number.isFinite(Number(factor.rating)))
+    .map((factor) => {
+      const key = String(factor.key || '').trim();
+      const explanation = explanations.get(key.toLowerCase()) || '';
+      return {
+        key,
+        label: formatIdentifierLabel(factor.label || key),
+        rating: Number(factor.rating),
+        explanation,
+        weight: Number(factor.weight) || 0,
+      };
+    });
+}
+
+function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  const occupancy = (module.data as any)?.occupancy || module.data || {};
+  const hazards = Array.isArray(occupancy?.hazards) ? occupancy.hazards : [];
+  const scoredFactors = getOccupancyScoredFactors(module, breakdown);
+  if (scoredFactors.length === 0) return '';
+
+  const occupancyType = pickFirstProvided(
+    occupancy?.occupancy_type,
+    occupancy?.occupancyType,
+    (module.data as any)?.occupancy_type,
+    (module.data as any)?.occupancyType
+  );
+  const processOverview = pickFirstProvided(
+    occupancy?.process_overview,
+    occupancy?.process_description,
+    occupancy?.operations_description,
+    occupancy?.process_use_overview,
+    occupancy?.occupancy_products_services,
+    (module.data as any)?.occupancyProductsServices,
+    (module.data as any)?.activityOverview
+  );
+  const hazardLabels = hazards
+    .map((hazard: any) => String(hazard?.hazard_label || hazard?.hazard_key || '').trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(', ');
+  const contextParts = [formatDataValue(occupancyType), formatDataValue(processOverview), hazardLabels || null]
+    .filter((part) => part && part !== 'Data not provided');
+  const opening = contextParts.length
+    ? `Occupancy context: ${contextParts.join(' | ')}.`
+    : 'Occupancy context: Data not provided.';
+
+  const ranked = [...scoredFactors].sort((a, b) => a.rating - b.rating || b.weight - a.weight || a.label.localeCompare(b.label));
+  const weak = ranked.filter((factor) => factor.rating <= 2);
+  const moderate = ranked.filter((factor) => factor.rating > 2 && factor.rating < 4);
+  const strong = ranked.filter((factor) => factor.rating >= 4);
+
+  const weakFocus = (weak.length ? weak : moderate).slice(0, 3);
+  const weakSummary = weakFocus
+    .map((factor) => `${factor.label} (${formatScoreOutOfFive(factor.rating)})${factor.explanation ? `: ${factor.explanation}` : ''}`)
+    .join('; ');
+  const weaknessNarrative = weakSummary
+    ? `Most material occupancy weaknesses are ${weakSummary}.`
+    : '';
+
+  const strongFocus = strong.slice(0, 2);
+  const resilienceNarrative = strongFocus.length
+    ? `Relative resilience is supported by ${strongFocus.map((factor) => `${factor.label} (${formatScoreOutOfFive(factor.rating)})`).join(' and ')}.`
+    : '';
+
+  const overallRating = resolveSectionRating(module, breakdown);
+  const implication = getScoreBand(overallRating).occupancyImplication;
+  const closing = `Overall occupancy score is ${formatScoreOutOfFive(overallRating)}. ${implication} This profile should be read as a direct indicator of ignition potential, fire/explosion escalation risk, and interruption sensitivity.`;
+
+  return [opening, weaknessNarrative, resilienceNarrative, closing].filter(Boolean).join('\n\n');
+}
+
 function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
   if (module.module_key === 'RE_02_CONSTRUCTION') return buildConstructionEngineeringInterpretation(module, breakdown);
-  if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation();
+  if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module);
 
   const rating = resolveSectionRating(module, breakdown);
@@ -1291,10 +1406,6 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
       : 'Building-level cladding records are not available.';
   const geometryText = `Recorded geometry totals are roof ${formatDataValue(context.totalRoofArea)} m² and mezz ${formatDataValue(context.totalMezzArea)} m² across ${context.buildingCount} building(s).`;
   return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText}`;
-}
-
-function buildOccupancyEngineeringInterpretation(): string {
-  return '';
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -1873,7 +1984,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION') {
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
       if (commentary) {
         ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
