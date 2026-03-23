@@ -1,8 +1,14 @@
-import { useState, useEffect } from 'react';
-import { Users, Plus, Trash2, Shield, Edit2, X, Check } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../utils/permissions';
+import {
+  getUserSeatEntitlement,
+  getUserSeatUpgradeMessage,
+  normalizeSeatLimitErrorMessage,
+  type UserSeatEntitlement,
+} from '../utils/userSeatEntitlements';
 
 interface UserProfile {
   id: string;
@@ -13,8 +19,15 @@ interface UserProfile {
   is_platform_admin: boolean;
 }
 
+interface OrganisationMemberRow {
+  user_id: string;
+  role: UserRole;
+  status: string;
+  created_at: string;
+}
+
 export default function UserManagement() {
-  const { user: currentUser, isPlatformAdmin } = useAuth();
+  const { user: currentUser, isPlatformAdmin, organisation } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -24,27 +37,79 @@ export default function UserManagement() {
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<UserRole>('viewer');
+  const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
+
+  const atSeatLimit = useMemo(() => {
+    if (!seatEntitlement) return false;
+    return !seatEntitlement.allowed;
+  }, [seatEntitlement]);
+
+  const refreshSeatEntitlement = async () => {
+    if (!currentUser?.organisation_id) {
+      setSeatEntitlement(null);
+      return;
+    }
+
+    const entitlement = await getUserSeatEntitlement(currentUser.organisation_id);
+    setSeatEntitlement(entitlement);
+  };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    void fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.organisation_id]);
 
   const fetchUsers = async () => {
+    if (!currentUser?.organisation_id) {
+      setUsers([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
+      const { data: memberData, error: memberError } = await supabase
+        .from('organisation_members')
+        .select('user_id, role, status, created_at')
+        .eq('organisation_id', currentUser.organisation_id)
+        .eq('status', 'active')
+        .order('created_at', { ascending: true });
+
+      if (memberError) throw memberError;
+
+      const activeMembers = (memberData ?? []) as OrganisationMemberRow[];
+      const userIds = [...new Set(activeMembers.map((member) => member.user_id))];
+
+      if (userIds.length === 0) {
+        setUsers([]);
+        await refreshSeatEntitlement();
+        return;
+      }
+
       const { data: profilesData, error: profilesError } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('id, name, created_at, is_platform_admin')
+        .in('id', userIds)
         .order('created_at', { ascending: true });
 
       if (profilesError) throw profilesError;
 
-      const usersWithEmails = (profilesData || []).map(profile => ({
-        ...profile,
-        email: 'Managed in Supabase Auth',
-      }));
+      const profileById = new Map((profilesData ?? []).map((profile) => [profile.id, profile]));
 
-      setUsers(usersWithEmails);
+      const usersWithMembershipRole: UserProfile[] = activeMembers.map((member) => {
+        const profile = profileById.get(member.user_id);
+        return {
+          id: member.user_id,
+          role: member.role,
+          name: profile?.name ?? null,
+          email: 'Managed in Supabase Auth',
+          created_at: profile?.created_at ?? member.created_at,
+          is_platform_admin: Boolean(profile?.is_platform_admin),
+        };
+      });
+
+      setUsers(usersWithMembershipRole);
+      await refreshSeatEntitlement();
     } catch (error) {
       console.error('Error fetching users:', error);
       alert('Failed to load users. Please check your permissions.');
@@ -59,8 +124,21 @@ export default function UserManagement() {
       return;
     }
 
+    if (!currentUser?.organisation_id) {
+      alert('Cannot add users without an organisation context.');
+      return;
+    }
+
     setIsAddingUser(true);
     try {
+      const entitlement = await getUserSeatEntitlement(currentUser.organisation_id);
+      setSeatEntitlement(entitlement);
+
+      if (!entitlement.allowed) {
+        alert(entitlement.reason || getUserSeatUpgradeMessage(organisation));
+        return;
+      }
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: newUserEmail.trim(),
         password: Math.random().toString(36).slice(-12) + 'Aa1!',
@@ -86,11 +164,10 @@ export default function UserManagement() {
       setNewUserEmail('');
       setNewUserName('');
       setNewUserRole('viewer');
-      fetchUsers();
+      await fetchUsers();
     } catch (error: unknown) {
       console.error('Error adding user:', error);
-      const message = error instanceof Error ? error.message : 'Failed to add user. Please try again.';
-      alert(message);
+      alert(normalizeSeatLimitErrorMessage(error));
     } finally {
       setIsAddingUser(false);
     }
@@ -117,9 +194,11 @@ export default function UserManagement() {
 
     try {
       const { error } = await supabase
-        .from('user_profiles')
+        .from('organisation_members')
         .update({ role: newRole })
-        .eq('id', userId);
+        .eq('organisation_id', currentUser?.organisation_id)
+        .eq('user_id', userId)
+        .eq('status', 'active');
 
       if (error) throw error;
 
@@ -214,17 +293,35 @@ export default function UserManagement() {
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
+      {seatEntitlement && !seatEntitlement.allowed && (
+        <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4" />
+            <div>
+              <p className="font-semibold">User seats limit reached</p>
+              <p>
+                {seatEntitlement.reason || getUserSeatUpgradeMessage(organisation)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Users className="w-5 h-5 text-slate-600" />
           <h2 className="text-lg font-semibold text-slate-900">User Management</h2>
           <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded">
-            {users.length} {users.length === 1 ? 'user' : 'users'}
+            {seatEntitlement
+              ? `${seatEntitlement.active_member_count}/${seatEntitlement.user_limit} seats`
+              : `${users.length} ${users.length === 1 ? 'user' : 'users'}`}
           </span>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium"
+          disabled={atSeatLimit}
+          title={atSeatLimit ? (seatEntitlement?.reason || getUserSeatUpgradeMessage(organisation)) : 'Add User'}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
           Add User
@@ -383,6 +480,9 @@ export default function UserManagement() {
             </div>
 
             <div className="px-6 py-4 space-y-4">
+              <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 border border-amber-200">
+                Invites are blocked when your organisation reaches the active user seat limit for its plan.
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Email <span className="text-red-500">*</span>
@@ -438,7 +538,7 @@ export default function UserManagement() {
               </button>
               <button
                 onClick={handleAddUser}
-                disabled={isAddingUser}
+                disabled={isAddingUser || atSeatLimit}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAddingUser ? (
