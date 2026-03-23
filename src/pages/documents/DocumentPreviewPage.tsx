@@ -388,7 +388,68 @@ export default function DocumentPreviewPage() {
           });
           reportKind = 're_survey';
         } else {
-          pdfBytes = await buildReLpPdf(pdfOptions);
+          const { data: reRecommendations, error: reRecommendationsError } = await supabase
+            .from('re_recommendations')
+            .select(`
+              id,
+              title,
+              action_required_text,
+              priority,
+              status,
+              target_date,
+              module_instance_id,
+              source_module_key,
+              rec_number,
+              created_at
+            `)
+            .eq('document_id', document.id)
+            .eq('is_suppressed', false)
+            .order('created_at', { ascending: true });
+
+          if (reRecommendationsError) {
+            throw reRecommendationsError;
+          }
+
+          const priorityToBand: Record<string, string> = {
+            critical: 'P1',
+            high: 'P1',
+            medium: 'P2',
+            low: 'P3',
+          };
+
+          const statusMap: Record<string, string> = {
+            Open: 'open',
+            'In Progress': 'in_progress',
+            Completed: 'closed',
+          };
+
+          const lpActions = (reRecommendations || []).map((rec: any, index: number) => ({
+            id: rec.id,
+            recommended_action: rec.title || rec.action_required_text || `Recommendation ${index + 1}`,
+            priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
+            status: statusMap[rec.status] || 'open',
+            owner_user_id: null,
+            owner_display_name: null,
+            target_date: rec.target_date || null,
+            module_instance_id: rec.module_instance_id,
+            created_at: rec.created_at,
+            reference_number: rec.rec_number || null,
+            source_module_key: rec.source_module_key || null,
+          }));
+
+          console.log('[PDF Preview] RE LP recommendations loaded:', {
+            count: lpActions.length,
+            byPriorityBand: lpActions.reduce((acc: Record<string, number>, item: any) => {
+              const key = item.priority_band || 'P3';
+              acc[key] = (acc[key] || 0) + 1;
+              return acc;
+            }, {}),
+          });
+
+          pdfBytes = await buildReLpPdf({
+            ...pdfOptions,
+            actions: lpActions,
+          });
           reportKind = 're_lp';
         }
 

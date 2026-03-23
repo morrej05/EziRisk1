@@ -990,8 +990,28 @@ function getLossValuesStructuredRows(module: ModuleInstance): Row[] {
     ['Additional BI notes', formatDataValue(bi?.notes ?? (d as any)?.business_interruption_notes)],
     ['Declared values commentary', formatDataValue((d as any)?.loss_comments ?? (d as any)?.declared_values_notes ?? sums?.notes)],
     ['Sums insured additional comments', formatDataValue((d as any)?.sums_insured?.additional_comments)],
-    ['WLE scenario / estimate', `${formatDataValue((d as any)?.wle?.scenario_summary ?? (d as any)?.wle?.scenario_description)} | ${formatDataValue((d as any)?.wle?.estimated_total ?? (d as any)?.wle?.estimated_total_loss)}`],
-    ['NLE scenario / estimate', `${formatDataValue((d as any)?.nle?.scenario_summary ?? (d as any)?.nle?.scenario_description)} | ${formatDataValue((d as any)?.nle?.estimated_total ?? (d as any)?.nle?.estimated_total_loss)}`],
+  ];
+}
+
+function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle'): Row[] {
+  const d = module.data || {};
+  const expectancy = (d as any)?.[event] || {};
+  const bi = expectancy?.business_interruption || {};
+  const estimate = expectancy?.estimated_total ?? expectancy?.estimated_total_loss;
+  const commentary = expectancy?.commentary ?? expectancy?.notes ?? expectancy?.scenario_commentary;
+  const estimateAndCommentary = estimate || commentary
+    ? `${formatDataValue(estimate)} | ${formatDataValue(commentary)}`
+    : 'Data not provided';
+
+  return [
+    ['Scenario title', formatDataValue(expectancy?.scenario_summary ?? expectancy?.scenario_description ?? expectancy?.title)],
+    ['Building damage %', formatDataPercent(expectancy?.property_damage?.buildings_improvements_pct)],
+    ['Plant & machinery damage %', formatDataPercent(expectancy?.property_damage?.plant_machinery_contents_pct)],
+    ['Stock damage %', formatDataPercent(expectancy?.property_damage?.stock_wip_pct)],
+    ['BI interruption basis', formatDataValue(bi?.interruption_basis ?? bi?.basis ?? bi?.gross_profit_basis)],
+    ['BI interruption duration', formatDataValue(bi?.outage_duration_months !== undefined ? `${bi?.outage_duration_months} months` : undefined)],
+    ['BI severity input', formatDataPercent(bi?.gross_profit_pct ?? bi?.severity_pct)],
+    ['Estimate / commentary', estimateAndCommentary],
   ];
 }
 
@@ -1514,10 +1534,32 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_12_LOSS_VALUES') {
-      const lossRows = getLossValuesStructuredRows(module);
-      ({ page, yPosition } = ensurePageSpace(100 + lossRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Inputs — Loss & values structured fields', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], lossRows, { regular: font, bold: fontBold }, {
+      const declaredValueRows = getLossValuesStructuredRows(module);
+      ({ page, yPosition } = ensurePageSpace(100 + declaredValueRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'Declared Values Summary', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], declaredValueRows, { regular: font, bold: fontBold }, {
+        colWidths: [185, CONTENT_WIDTH - 185],
+        fontSize: 8.5,
+        minRowHeight: 18,
+        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+      }));
+      yPosition = sectionBreak(yPosition);
+
+      const wleRows = getLossExpectancyRows(module, 'wle');
+      ({ page, yPosition } = ensurePageSpace(100 + wleRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'WLE (Worse Loss Event)', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], wleRows, { regular: font, bold: fontBold }, {
+        colWidths: [185, CONTENT_WIDTH - 185],
+        fontSize: 8.5,
+        minRowHeight: 18,
+        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+      }));
+      yPosition = sectionBreak(yPosition);
+
+      const nleRows = getLossExpectancyRows(module, 'nle');
+      ({ page, yPosition } = ensurePageSpace(100 + nleRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'NLE (Normal Loss Event)', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], nleRows, { regular: font, bold: fontBold }, {
         colWidths: [185, CONTENT_WIDTH - 185],
         fontSize: 8.5,
         minRowHeight: 18,
