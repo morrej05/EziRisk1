@@ -2,6 +2,7 @@ import { useMemo, useEffect, useState } from 'react';
 import { CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import { getUserLimitForOrganisation } from '../utils/planLimits';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
@@ -38,35 +39,6 @@ function getPlanLabel(planId: CanonicalPlanId): string {
   }
 }
 
-function getPlanDescriptor(planId: CanonicalPlanId): string {
-  switch (planId) {
-    case 'standard':
-      return '£79/month • 10 reports per month • up to 2 users';
-    case 'professional':
-      return '£149/month • 30 reports per month • up to 5 users';
-    case 'free':
-    default:
-      return '7-day free trial • 5 reports per month • 1 user';
-  }
-}
-
-function getPrimaryCta(planId: CanonicalPlanId) {
-  if (planId === 'professional') {
-    return 'Manage subscription';
-  }
-
-  if (planId === 'standard') {
-    return 'Manage subscription';
-  }
-
-  return 'Upgrade to Standard or Professional';
-}
-
-function getSecondaryCta(planId: CanonicalPlanId) {
-  if (planId === 'free') return null;
-  return null;
-}
-
 function getStatusLabel(status?: string): string {
   switch (status) {
     case 'active':
@@ -91,6 +63,7 @@ export default function AdminBillingPanel() {
   const [reportEntitlement, setReportEntitlement] = useState<ReportCreationEntitlement | null>(null);
   const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
 
   useEffect(() => {
     const fetchBillingData = async () => {
@@ -116,9 +89,53 @@ export default function AdminBillingPanel() {
     fetchBillingData();
   }, [organisation?.id]);
 
+  const openStripePortal = async () => {
+    if (!organisation?.id || isOpeningPortal) return;
+
+    setIsOpeningPortal(true);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-portal-session`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${sessionData.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            organisationId: organisation.id,
+            returnUrl: `${window.location.origin}/admin`,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to open billing portal');
+      }
+
+      if (data.portalUrl || data.url) {
+        window.location.href = data.portalUrl || data.url;
+        return;
+      }
+
+      throw new Error('No portal URL returned');
+    } catch (error) {
+      console.error('[AdminBillingPanel] Failed to open Stripe portal:', error);
+      alert('Unable to open billing management right now. Please try again.');
+    } finally {
+      setIsOpeningPortal(false);
+    }
+  };
+
   const planId = resolvePlanId(organisation);
   const planName = getPlanLabel(planId);
-  const planDescriptor = getPlanDescriptor(planId);
 
   const reportLimit = reportEntitlement?.monthly_report_limit ?? 0;
   const reportsUsed = reportEntitlement?.monthly_report_count ?? 0;
@@ -138,31 +155,27 @@ export default function AdminBillingPanel() {
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }, [planId, trialExpiry]);
 
-  const isTrialNearExpiry = (trialDaysRemaining ?? Number.MAX_SAFE_INTEGER) <= 2;
-  const primaryCta = getPrimaryCta(planId);
-  const secondaryCta = getSecondaryCta(planId);
+  const hasCancellationScheduled = Boolean(organisation?.cancel_at_period_end && organisation?.stripe_current_period_end);
+  const isOverPlanLimit = seatsUsed > seatLimit || reportsUsed > reportLimit;
 
   return (
     <div className="max-w-3xl rounded-lg border border-slate-200 bg-slate-50 p-6">
       <h2 className="text-xl font-semibold text-slate-900 mb-2">Billing</h2>
       <p className="text-sm text-slate-600 mb-5">
-        Plan and upgrade decisions. For detailed operational tracking, use the Usage & Limits tab.
+        Current subscription and usage snapshot for your organisation.
       </p>
 
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <dt className="text-xs uppercase tracking-wide text-slate-500">Current plan</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">{planName}</dd>
-          <p className="text-sm text-slate-600 mt-1">{planDescriptor}</p>
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Status</dt>
+          <dt className="text-xs uppercase tracking-wide text-slate-500">Subscription status</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">{statusLabel}</dd>
           {planId === 'free' && trialExpiry && (
-            <p
-              className={`text-sm mt-1 ${isTrialNearExpiry ? 'text-amber-700 font-medium' : 'text-slate-600'}`}
-            >
+            <p className="text-sm mt-1 text-slate-600">
               {trialDaysRemaining !== null && trialDaysRemaining <= 7
                 ? `Trial expires in ${trialDaysRemaining} day${trialDaysRemaining === 1 ? '' : 's'}`
                 : `Trial ends on ${formatDate(trialExpiry)}`}
@@ -170,24 +183,43 @@ export default function AdminBillingPanel() {
           )}
         </div>
 
-        <div className="md:col-span-2">
-          <p className="text-xs uppercase tracking-wide text-slate-500 px-1">Plan usage snapshot</p>
-        </div>
-
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Reports used this month</dt>
+          <dt className="text-xs uppercase tracking-wide text-slate-500">Current report usage</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">
             {isLoading ? 'Loading…' : `${reportsUsed} / ${reportLimit}`}
           </dd>
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <dt className="text-xs uppercase tracking-wide text-slate-500">Seats in use</dt>
+          <dt className="text-xs uppercase tracking-wide text-slate-500">Current seat usage</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">
             {isLoading ? 'Loading…' : `${seatsUsed} / ${seatLimit}`}
           </dd>
         </div>
       </dl>
+
+      {hasCancellationScheduled && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            Your subscription will remain active until the end of the current billing period. After that, your organisation will move to Free.
+          </p>
+          <p className="text-xs text-amber-800 mt-1">
+            Current period end: {formatDate(organisation.stripe_current_period_end)}
+          </p>
+        </div>
+      )}
+
+      {isOverPlanLimit && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-900">
+            Your organisation is above the limits of its current plan. Existing data is preserved, but some actions may be restricted until usage is back within limits.
+          </p>
+        </div>
+      )}
+
+      <p className="text-sm text-slate-600 mb-4">
+        Manage billing, payment methods, invoices, and cancellation in Stripe.
+      </p>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -195,18 +227,31 @@ export default function AdminBillingPanel() {
           className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
         >
           <CreditCard className="w-4 h-4" />
-          {primaryCta}
+          Upgrade plan
         </button>
 
-        {secondaryCta && (
-          <button
-            onClick={() => navigate('/upgrade')}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            {secondaryCta}
-          </button>
+        {planId !== 'free' && (
+          <>
+            <button
+              onClick={openStripePortal}
+              disabled={isOpeningPortal}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
+            >
+              {isOpeningPortal ? 'Opening Stripe…' : 'Manage billing'}
+            </button>
+
+            <button
+              onClick={openStripePortal}
+              disabled={isOpeningPortal}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-60"
+            >
+              Cancel subscription
+            </button>
+          </>
         )}
       </div>
+
+      <p className="text-xs text-slate-500 mt-4">Need a larger deployment? Contact us.</p>
     </div>
   );
 }
