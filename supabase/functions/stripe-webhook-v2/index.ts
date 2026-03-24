@@ -349,25 +349,27 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
-    if (error instanceof Error && error.message === "Stripe configuration missing") {
-      const hasStripeSecretKey = Boolean(Deno.env.get("STRIPE_SECRET_KEY"));
-      const hasStripeWebhookSecret = Boolean(Deno.env.get("STRIPE_WEBHOOK_SECRET"));
-      console.error("Stripe configuration missing", {
+  if (error instanceof Error && error.message === "Stripe configuration missing") {
+    const hasStripeSecretKey = Boolean(Deno.env.get("STRIPE_SECRET_KEY"));
+    const hasStripeWebhookSecret = Boolean(Deno.env.get("STRIPE_WEBHOOK_SECRET"));
+    console.error("Stripe configuration missing", {
+      hasStripeSecretKey,
+      hasStripeWebhookSecret,
+      marker: "SWHV2_CONFIG_DEBUG_20260324_B",
+    });
+    return new Response(
+      JSON.stringify({
+        error: "Stripe configuration missing",
         hasStripeSecretKey,
         hasStripeWebhookSecret,
-      });
-      return new Response(
-        JSON.stringify({
-          error: "Stripe configuration missing",
-          hasStripeSecretKey,
-          hasStripeWebhookSecret,
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
+        marker: "SWHV2_CONFIG_DEBUG_20260324_B",
+      }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
 
     console.error("Webhook error:", error);
     return new Response(
