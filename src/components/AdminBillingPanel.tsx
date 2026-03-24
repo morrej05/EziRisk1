@@ -2,13 +2,6 @@ import { useMemo, useEffect, useState } from 'react';
 import { CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  getPlan,
-  getPlanConfig,
-  getPlanDisplayName,
-  getSubscriptionStatusDisplayName,
-  type PlanId,
-} from '../utils/entitlements';
 import { getUserLimitForOrganisation } from '../utils/planLimits';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
@@ -21,27 +14,75 @@ function formatDate(value: string): string {
   });
 }
 
-function getPrimaryCta(plan: PlanId) {
-  if (plan === 'professional') {
+type CanonicalPlanId = 'solo' | 'team' | 'consultancy';
+
+function resolvePlanId(organisation: any): CanonicalPlanId {
+  const rawPlan = organisation?.plan_id ?? organisation?.plan_type ?? 'solo';
+
+  if (rawPlan === 'team' || rawPlan === 'consultancy' || rawPlan === 'solo') {
+    return rawPlan;
+  }
+
+  return 'solo';
+}
+
+function getPlanLabel(planId: CanonicalPlanId): string {
+  switch (planId) {
+    case 'team':
+      return 'Professional';
+    case 'consultancy':
+      return 'Consultancy';
+    case 'solo':
+    default:
+      return 'Free';
+  }
+}
+
+function getPlanDescriptor(planId: CanonicalPlanId): string {
+  switch (planId) {
+    case 'team':
+      return '30 reports per month • up to 5 users • portfolio access';
+    case 'consultancy':
+      return '100 reports per month • up to 20 users • portfolio access';
+    case 'solo':
+    default:
+      return 'Includes 5 reports and 1 user';
+  }
+}
+
+function getPrimaryCta(planId: CanonicalPlanId) {
+  if (planId === 'consultancy') {
     return 'Manage subscription';
   }
 
-  if (plan === 'trial') {
-    return 'Upgrade to Standard (10 reports • 2 users)';
+  if (planId === 'team') {
+    return 'Manage subscription';
   }
 
   return 'Upgrade to Professional (30 reports • 5 users)';
 }
 
-function getSecondaryCta(plan: PlanId) {
-  if (plan === 'trial') return 'Upgrade to Professional (30 reports • 5 users)';
+function getSecondaryCta(planId: CanonicalPlanId) {
+  if (planId === 'solo') return null;
   return null;
 }
 
-function getPlanDescriptor(plan: PlanId): string {
-  if (plan === 'trial') return 'Includes 5 reports and 1 user';
-  if (plan === 'professional') return '30 reports per month • up to 5 users • portfolio access';
-  return '10 reports per month • up to 2 users';
+function getStatusLabel(status?: string): string {
+  switch (status) {
+    case 'active':
+      return 'Active';
+    case 'past_due':
+      return 'Past due';
+    case 'canceled':
+      return 'Canceled';
+    case 'trialing':
+      return 'Trial';
+    case 'unpaid':
+      return 'Unpaid';
+    case 'inactive':
+    default:
+      return 'Inactive';
+  }
 }
 
 export default function AdminBillingPanel() {
@@ -75,33 +116,31 @@ export default function AdminBillingPanel() {
     fetchBillingData();
   }, [organisation?.id]);
 
-  const planId = getPlan(organisation);
-  const planName = getPlanDisplayName(planId);
-  const planConfig = getPlanConfig(organisation);
-  const reportLimit = reportEntitlement?.monthly_report_limit ?? planConfig.reportLimit;
+  const planId = resolvePlanId(organisation);
+  const planName = getPlanLabel(planId);
+  const planDescriptor = getPlanDescriptor(planId);
+
+  const reportLimit = reportEntitlement?.monthly_report_limit ?? 0;
   const reportsUsed = reportEntitlement?.monthly_report_count ?? 0;
   const seatLimit = seatEntitlement?.user_limit ?? getUserLimitForOrganisation(organisation);
   const seatsUsed = seatEntitlement?.active_member_count ?? 0;
 
   const statusLabel = useMemo(() => {
-    if (planId === 'trial') {
-      return reportEntitlement?.is_trial_expired ? 'Trial expired' : 'Trial';
-    }
-    return getSubscriptionStatusDisplayName(organisation?.subscription_status ?? 'inactive');
-  }, [organisation?.subscription_status, planId, reportEntitlement?.is_trial_expired]);
+    return getStatusLabel(organisation?.subscription_status);
+  }, [organisation?.subscription_status]);
 
   const trialExpiry = reportEntitlement?.trial_ends_at || organisation?.trial_ends_at || null;
   const trialDaysRemaining = useMemo(() => {
-    if (planId !== 'trial' || !trialExpiry) return null;
+    if (planId !== 'solo' || !trialExpiry) return null;
     const now = new Date();
     const expiryDate = new Date(trialExpiry);
     const diffMs = expiryDate.getTime() - now.getTime();
     return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
   }, [planId, trialExpiry]);
+
   const isTrialNearExpiry = (trialDaysRemaining ?? Number.MAX_SAFE_INTEGER) <= 2;
   const primaryCta = getPrimaryCta(planId);
   const secondaryCta = getSecondaryCta(planId);
-  const planDescriptor = getPlanDescriptor(planId);
 
   return (
     <div className="max-w-3xl rounded-lg border border-slate-200 bg-slate-50 p-6">
@@ -116,10 +155,11 @@ export default function AdminBillingPanel() {
           <dd className="text-base font-semibold text-slate-900 mt-1">{planName}</dd>
           <p className="text-sm text-slate-600 mt-1">{planDescriptor}</p>
         </div>
+
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <dt className="text-xs uppercase tracking-wide text-slate-500">Status</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">{statusLabel}</dd>
-          {planId === 'trial' && trialExpiry && (
+          {planId === 'solo' && trialExpiry && (
             <p
               className={`text-sm mt-1 ${isTrialNearExpiry ? 'text-amber-700 font-medium' : 'text-slate-600'}`}
             >
@@ -129,15 +169,18 @@ export default function AdminBillingPanel() {
             </p>
           )}
         </div>
+
         <div className="md:col-span-2">
           <p className="text-xs uppercase tracking-wide text-slate-500 px-1">Plan usage snapshot</p>
         </div>
+
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <dt className="text-xs uppercase tracking-wide text-slate-500">Reports used this month</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">
             {isLoading ? 'Loading…' : `${reportsUsed} / ${reportLimit}`}
           </dd>
         </div>
+
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <dt className="text-xs uppercase tracking-wide text-slate-500">Seats in use</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">
@@ -154,6 +197,7 @@ export default function AdminBillingPanel() {
           <CreditCard className="w-4 h-4" />
           {primaryCta}
         </button>
+
         {secondaryCta && (
           <button
             onClick={() => navigate('/upgrade')}
