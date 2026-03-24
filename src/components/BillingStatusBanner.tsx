@@ -53,7 +53,7 @@ export default function BillingStatusBanner() {
                 Your subscription will end on {formatDate(stripe_current_period_end)}
               </p>
               <p className="text-xs text-amber-700 mt-1">
-                You will revert to Core unless renewed. Your existing documents and data will remain accessible.
+                You will revert to Standard unless renewed. Your existing documents and data will remain accessible.
               </p>
             </div>
             <Link

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, CreditCard } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 import OrganisationBranding from '../../components/OrganisationBranding';
 import PlanUsageWidget from '../../components/PlanUsageWidget';
 import UserManagement from '../../components/UserManagement';
 import { useAuth } from '../../contexts/AuthContext';
+import AdminBillingPanel from '../../components/AdminBillingPanel';
+import { getPlanDisplayName, getPlan } from '../../utils/entitlements';
 
 type AdminTab = 'users' | 'organisation' | 'usage-limits' | 'billing' | 'branding';
 
@@ -97,7 +99,7 @@ export default function AdminPage() {
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Plan</dt>
-                <dd className="text-sm font-medium text-slate-900 mt-1">{organisation?.plan_type || organisation?.plan_id || 'trial'}</dd>
+                <dd className="text-sm font-medium text-slate-900 mt-1">{getPlanDisplayName(getPlan(organisation))}</dd>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Signed-in Admin</dt>
@@ -109,25 +111,16 @@ export default function AdminPage() {
 
         {activeTab === 'usage-limits' && (
           <div className="p-8">
+            <p className="text-sm text-slate-600 mb-4">
+              Usage & Limits is your operational view for monthly report credits and seat consumption.
+            </p>
             <PlanUsageWidget />
           </div>
         )}
 
         {activeTab === 'billing' && (
           <div className="p-8">
-            <div className="max-w-2xl rounded-lg border border-slate-200 bg-slate-50 p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-2">Billing</h2>
-              <p className="text-sm text-slate-600 mb-4">
-                Manage your organisation subscription, view plan options, and self-serve upgrades.
-              </p>
-              <button
-                onClick={() => navigate('/upgrade')}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <CreditCard className="w-4 h-4" />
-                Manage subscription
-              </button>
-            </div>
+            <AdminBillingPanel />
           </div>
         )}
 
