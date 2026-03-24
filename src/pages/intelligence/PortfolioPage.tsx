@@ -11,6 +11,7 @@ import {
   type PortfolioAiPayload,
 } from '../../lib/ai/generatePortfolioInsights';
 import { canAccessPortfolio } from '../../utils/entitlements';
+import { buildUpgradePath } from '../../utils/upgradeNavigation';
 import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
 import {
   generatePortfolioMarkdown,
@@ -242,7 +243,7 @@ export default function PortfolioPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Portfolio is locked on your current plan</h1>
           <p className="mt-2 text-slate-600">Upgrade to unlock portfolio analytics and exports.</p>
           <button
-            onClick={() => navigate('/upgrade')}
+            onClick={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
             className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
             Upgrade plan
@@ -253,7 +254,7 @@ export default function PortfolioPage() {
           reason="portfolio_locked"
           detail="Portfolio analytics are only available on plans with portfolio access."
           onClose={() => setShowUpgradeModal(false)}
-          onUpgrade={() => navigate('/upgrade')}
+          onUpgrade={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
         />
       </div>
     );

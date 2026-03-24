@@ -8,6 +8,7 @@ import { DeleteDocumentModal } from '../../components/DeleteDocumentModal';
 import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 import { inferReportUpgradeReason, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
+import { buildUpgradePath } from '../../utils/upgradeNavigation';
 import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 
 export default function AssessmentsPage() {
@@ -682,7 +683,7 @@ export default function AssessmentsPage() {
           reason={creationBlockedCode}
           detail={creationBlockedReason}
           onClose={() => setShowUpgradeModal(false)}
-          onUpgrade={() => navigate('/upgrade')}
+          onUpgrade={() => navigate(buildUpgradePath(creationBlockedCode, { action: 'create_assessment' }))}
         />
       </div>
   );

@@ -7,6 +7,7 @@ import { canAccessRiskEngineering, canAccessExplosionSafety } from '../../utils/
 import { createDocument, ReportCreationBlockedError } from '../../utils/documentCreation';
 import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
+import { buildUpgradePath } from '../../utils/upgradeNavigation';
 
 interface AssessmentType {
   id: string;
@@ -281,7 +282,7 @@ export default function NewAssessmentPage() {
                       </button>
                     ) : (
                       <button
-                        onClick={() => navigate('/upgrade')}
+                        onClick={() => navigate(buildUpgradePath('report_limit', { action: 'start_locked_assessment' }))}
                         className="ml-6 flex items-center gap-2 px-4 py-2 bg-white text-slate-700 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
                       >
                         Upgrade
@@ -297,7 +298,7 @@ export default function NewAssessmentPage() {
           reason={upgradeReason}
           detail={upgradeDetail}
           onClose={() => setShowUpgradeModal(false)}
-          onUpgrade={() => navigate('/upgrade')}
+          onUpgrade={() => navigate(buildUpgradePath(upgradeReason, { action: 'new_assessment' }))}
         />
       </div>
   );
