@@ -93,7 +93,7 @@ export default function UserManagement() {
 
       const { data: profilesData, error: profilesError } = await supabase
         .from('user_profiles')
-        .select('id, name, created_at, is_platform_admin')
+        .select('id, name, email, created_at, is_platform_admin')
         .in('id', userIds)
         .order('created_at', { ascending: true });
 
@@ -107,7 +107,7 @@ export default function UserManagement() {
           id: member.user_id,
           role: member.role,
           name: profile?.name ?? null,
-          email: 'Managed in Supabase Auth',
+          email: profile?.email ?? undefined,
           created_at: profile?.created_at ?? member.created_at,
           is_platform_admin: Boolean(profile?.is_platform_admin),
         };
