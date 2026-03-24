@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@14";
+import { getBearerToken } from "../_shared/auth.ts";
 import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
@@ -49,6 +50,48 @@ const ALLOWED_PRICE_IDS = new Set(
   ].filter((value): value is string => Boolean(value)),
 );
 
+interface TokenProjectInfo {
+  issuer: string | null;
+  projectRefFromIssuer: string | null;
+}
+
+function parseJwtProjectInfo(token: string): TokenProjectInfo {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      return { issuer: null, projectRefFromIssuer: null };
+    }
+
+    const payloadBase64 = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+
+    const padded = payloadBase64.padEnd(Math.ceil(payloadBase64.length / 4) * 4, '=');
+    const payloadRaw = atob(padded);
+    const payload = JSON.parse(payloadRaw) as { iss?: string };
+    const issuer = payload.iss ?? null;
+
+    const projectRefFromIssuer = issuer?.match(/^https:\/\/([^.]+)\.supabase\.co\/?$/)?.[1] ?? null;
+    return { issuer, projectRefFromIssuer };
+  } catch {
+    return { issuer: null, projectRefFromIssuer: null };
+  }
+}
+
+function getProjectRefFromSupabaseUrl(url: string): string | null {
+  return url.match(/^https:\/\/([^.]+)\.supabase\.co\/?$/)?.[1] ?? null;
+}
+
+function jsonResponse(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -57,10 +100,78 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const requestId = req.headers.get("x-request-id")
+    ?? req.headers.get("x-nf-request-id")
+    ?? crypto.randomUUID();
+
   try {
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
-      throw new Error("STRIPE_SECRET_KEY not configured");
+      console.error("[create-checkout-session] Missing STRIPE_SECRET_KEY", { requestId });
+      return jsonResponse(500, { error: "STRIPE_SECRET_KEY not configured", requestId });
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const token = getBearerToken(req);
+    if (!token) {
+      console.warn("[create-checkout-session] Missing bearer token", { requestId });
+      return jsonResponse(401, { error: "Missing or malformed Authorization header", requestId });
+    }
+
+    const urlProjectRef = getProjectRefFromSupabaseUrl(supabaseUrl);
+    const { issuer, projectRefFromIssuer } = parseJwtProjectInfo(token);
+
+    if (projectRefFromIssuer && urlProjectRef && projectRefFromIssuer !== urlProjectRef) {
+      console.error("[create-checkout-session] JWT issuer project mismatch", {
+        requestId,
+        issuer,
+        tokenProjectRef: projectRefFromIssuer,
+        functionProjectRef: urlProjectRef,
+      });
+      return jsonResponse(401, {
+        error: "JWT issuer does not match function project",
+        requestId,
+        tokenProjectRef: projectRefFromIssuer,
+        functionProjectRef: urlProjectRef,
+      });
+    }
+
+    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    const { data: { user }, error: authError } = await authSupabase.auth.getUser();
+
+    if (authError || !user) {
+      console.error("[create-checkout-session] Auth rejected bearer token", {
+        requestId,
+        authError: authError?.message ?? null,
+        issuer,
+        tokenProjectRef: projectRefFromIssuer,
+        functionProjectRef: urlProjectRef,
+      });
+      return jsonResponse(401, {
+        error: "Invalid JWT",
+        reason: authError?.message ?? "No user returned",
+        requestId,
+      });
+    }
+
+    const { priceId, organisationId, successUrl, cancelUrl }: CheckoutRequest = await req.json();
+
+    if (!priceId || !organisationId) {
+      return jsonResponse(400, { error: "Missing required parameters", requestId });
+    }
+
+    if (!ALLOWED_PRICE_IDS.has(priceId)) {
+      return jsonResponse(400, { error: "Unsupported Stripe price ID", requestId });
+    }
+
+    const planMapping = getPlanFromPriceId(priceId);
+    if (!planMapping) {
+      return jsonResponse(400, { error: "Unable to map Stripe price to plan", requestId });
     }
 
     const stripe = new Stripe(stripeSecretKey, {
@@ -68,56 +179,35 @@ Deno.serve(async (req: Request) => {
       httpClient: Stripe.createFetchHttpClient(),
     });
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("Missing authorization header");
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      throw new Error("Unauthorized");
-    }
-
-    const { priceId, organisationId, successUrl, cancelUrl }: CheckoutRequest = await req.json();
-
-    if (!priceId || !organisationId) {
-      throw new Error("Missing required parameters");
-    }
-
-    if (!ALLOWED_PRICE_IDS.has(priceId)) {
-      throw new Error("Unsupported Stripe price ID");
-    }
-
-    const planMapping = getPlanFromPriceId(priceId);
-    if (!planMapping) {
-      throw new Error("Unable to map Stripe price to plan");
-    }
-
-    const { data: organisation, error: orgError } = await supabase
+    const { data: organisation, error: orgError } = await adminSupabase
       .from("organisations")
       .select("*")
       .eq("id", organisationId)
       .single();
 
     if (orgError || !organisation) {
-      throw new Error("Organisation not found");
+      console.error("[create-checkout-session] Organisation lookup failed", {
+        requestId,
+        organisationId,
+        orgError: orgError?.message ?? null,
+      });
+      return jsonResponse(404, { error: "Organisation not found", requestId });
     }
 
     const canManageCheckout = await hasRequiredOrganisationRole(
-      supabase,
+      adminSupabase,
       user.id,
       organisationId,
       ['owner', 'admin'],
     );
 
     if (!canManageCheckout) {
-      throw new Error("Only organisation owners/admins can create checkout sessions");
+      return jsonResponse(403, {
+        error: "Only organisation owners/admins can create checkout sessions",
+        requestId,
+      });
     }
 
     let stripeCustomerId = organisation.stripe_customer_id;
@@ -132,7 +222,7 @@ Deno.serve(async (req: Request) => {
       });
       stripeCustomerId = customer.id;
 
-      await supabase
+      await adminSupabase
         .from("organisations")
         .update({ stripe_customer_id: stripeCustomerId })
         .eq("id", organisationId);
@@ -166,26 +256,16 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    return new Response(
-      JSON.stringify({ sessionUrl: session.url, url: session.url }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    return jsonResponse(200, { sessionUrl: session.url, url: session.url, requestId });
   } catch (error) {
-    console.error("Error creating checkout session:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Failed to create checkout session" }),
-      {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    console.error("[create-checkout-session] Unhandled error", {
+      requestId,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return jsonResponse(500, {
+      error: error instanceof Error ? error.message : "Failed to create checkout session",
+      requestId,
+    });
   }
 });
