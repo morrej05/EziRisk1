@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { getPlanConfig, getPlanDisplayName, type Organisation } from './entitlements';
+import type { Organisation } from './entitlements';
+import { getUserLimitForOrganisation, resolveCanonicalPlanId } from './planLimits';
 
 export interface UserSeatEntitlement {
   allowed: boolean;
@@ -35,7 +36,7 @@ export async function getUserSeatEntitlement(organisationId: string): Promise<Us
   return {
     allowed: Boolean(row.allowed),
     reason: row.reason ?? null,
-    resolved_plan: row.resolved_plan ?? 'trial',
+    resolved_plan: row.resolved_plan ?? 'solo',
     user_limit: Number(row.user_limit ?? 1),
     active_member_count: Number(row.active_member_count ?? 0),
     is_over_limit: Boolean(row.is_over_limit),
@@ -43,29 +44,22 @@ export async function getUserSeatEntitlement(organisationId: string): Promise<Us
 }
 
 export function getUserSeatUpgradeMessage(organisation: Organisation | null | undefined): string {
-  const plan = organisation?.plan_id ?? 'trial';
-  const displayPlan = getPlanDisplayName(plan);
-  const currentLimit = getPlanConfig(organisation).userLimit;
+  const plan = resolveCanonicalPlanId(organisation);
+  const currentLimit = getUserLimitForOrganisation(organisation);
+  const displayPlan = plan.charAt(0).toUpperCase() + plan.slice(1);
   return `${displayPlan} includes up to ${currentLimit} active user${currentLimit === 1 ? '' : 's'}. Upgrade to add more users.`;
 }
 
 export function getUserSeatLimitCopy(
-  seatEntitlement: UserSeatEntitlement | null | undefined,
+  _seatEntitlement: UserSeatEntitlement | null | undefined,
   organisation: Organisation | null | undefined,
 ): UserSeatLimitCopy {
-  const resolvedPlan = seatEntitlement?.resolved_plan ?? organisation?.plan_id ?? 'trial';
-  const isTrial = resolvedPlan === 'trial';
-
-  if (isTrial) {
-    return {
-      title: 'User limit reached',
-      body: 'Trial includes 1 active user. Upgrade to add more users.',
-    };
-  }
+  const resolvedPlan = resolveCanonicalPlanId(organisation);
+  const userLimit = getUserLimitForOrganisation(organisation);
 
   return {
     title: 'User limit reached',
-    body: `${DEFAULT_LIMIT_MESSAGE} Upgrade to add more users.`,
+    body: `${resolvedPlan.charAt(0).toUpperCase() + resolvedPlan.slice(1)} includes ${userLimit} active user${userLimit === 1 ? '' : 's'}. Upgrade to add more users.`,
   };
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getPlanConfig } from '../utils/entitlements';
+import { getUserLimitForOrganisation } from '../utils/planLimits';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
 import { useTenant } from '../hooks/useTenant';
@@ -55,7 +56,7 @@ export default function PlanUsageWidget() {
   const reportLimit = reportEntitlement?.monthly_report_limit ?? planConfig.reportLimit;
   const reportsUsed = reportEntitlement?.monthly_report_count ?? 0;
   const reportPercent = reportLimit > 0 ? (reportsUsed / reportLimit) * 100 : 0;
-  const seatLimit = seatEntitlement?.user_limit ?? planConfig.userLimit;
+  const seatLimit = seatEntitlement?.user_limit ?? getUserLimitForOrganisation(organisation);
   const seatsUsed = seatEntitlement?.active_member_count ?? userCount;
   const usersPercent = seatLimit > 0 ? (seatsUsed / seatLimit) * 100 : 0;
   const storagePercent = tenant?.plan ? (tenant.storage_used_mb / tenant.plan.max_storage_mb) * 100 : 0;
