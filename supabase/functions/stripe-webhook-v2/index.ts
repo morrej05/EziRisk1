@@ -82,14 +82,30 @@ Deno.serve(async (req: Request) => {
         processed: false
       });
 
-    if (idempotencyError && idempotencyError.code === '23505') {
-      console.log(`Event ${event.id} already processed, skipping`);
-      return new Response(
-        JSON.stringify({ received: true, skipped: true }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (idempotencyError && idempotencyError.code === "23505") {
+      const { data: existingEvent, error: existingEventError } = await supabase
+        .from("stripe_webhook_events")
+        .select("processed")
+        .eq("event_id", event.id)
+        .maybeSingle();
+
+      if (existingEventError) {
+        throw new Error(`Failed to load existing webhook event state for ${event.id}`);
+      }
+
+      if (existingEvent?.processed) {
+        console.log(`Event ${event.id} already processed, skipping`);
+        return new Response(
+          JSON.stringify({ received: true, skipped: true }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      console.log(`Event ${event.id} exists but is marked unprocessed; retrying handler`);
+    } else if (idempotencyError) {
+      throw new Error(`Failed to persist webhook event ${event.id}: ${idempotencyError.message}`);
     }
 
     let organisationId: string | null = null;
@@ -136,7 +152,7 @@ Deno.serve(async (req: Request) => {
         return;
       }
 
-      const updateData: any = {
+      const updateData: Record<string, string | boolean> = {
         stripe_subscription_id: subscription.id,
         stripe_customer_id: subscription.customer as string,
         stripe_price_id: priceId,
@@ -153,10 +169,14 @@ Deno.serve(async (req: Request) => {
         updateData.plan_id = "trial";
       }
 
-      await supabase
+      const { error: organisationUpdateError } = await supabase
         .from("organisations")
         .update(updateData)
         .eq("id", orgId);
+
+      if (organisationUpdateError) {
+        throw new Error(`Failed to update organisation ${orgId}: ${organisationUpdateError.message}`);
+      }
 
       console.log(`Updated org ${orgId}: plan_id=${updateData.plan_id}, status=${subscription.status}`);
     }
@@ -235,7 +255,7 @@ Deno.serve(async (req: Request) => {
           break;
         }
 
-        await supabase
+        const { error: cancellationError } = await supabase
           .from("organisations")
           .update({
             plan_id: "trial",
@@ -245,6 +265,10 @@ Deno.serve(async (req: Request) => {
             updated_at: new Date().toISOString(),
           })
           .eq("id", organisationId);
+
+        if (cancellationError) {
+          throw new Error(`Failed to cancel subscription state for org ${organisationId}: ${cancellationError.message}`);
+        }
 
         console.log(`Canceled subscription for org ${organisationId}`);
         break;
@@ -261,13 +285,17 @@ Deno.serve(async (req: Request) => {
           );
 
           if (organisationId) {
-            await supabase
+            const { error: paymentFailedUpdateError } = await supabase
               .from("organisations")
               .update({
                 subscription_status: "past_due",
                 updated_at: new Date().toISOString(),
               })
               .eq("id", organisationId);
+
+            if (paymentFailedUpdateError) {
+              throw new Error(`Failed to mark payment failed for org ${organisationId}: ${paymentFailedUpdateError.message}`);
+            }
 
             console.log(`Payment failed for org ${organisationId}`);
           }
@@ -300,10 +328,14 @@ Deno.serve(async (req: Request) => {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
-    await supabase
+    const { error: processedUpdateError } = await supabase
       .from("stripe_webhook_events")
       .update({ processed: true })
       .eq("event_id", event.id);
+
+    if (processedUpdateError) {
+      throw new Error(`Failed to mark webhook event ${event.id} as processed`);
+    }
 
     return new Response(
       JSON.stringify({ received: true }),
