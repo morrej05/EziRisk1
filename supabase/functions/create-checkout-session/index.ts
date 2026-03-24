@@ -92,6 +92,34 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
   });
 }
 
+function logAndRespond(
+  status: number,
+  requestId: string,
+  reason: string,
+  message: string,
+  details: Record<string, unknown> = {},
+) {
+  const logPayload = {
+    requestId,
+    reason,
+    ...details,
+  };
+
+  if (status >= 500) {
+    console.error("[create-checkout-session] Request failed", logPayload);
+  } else if (status >= 400) {
+    console.warn("[create-checkout-session] Request rejected", logPayload);
+  } else {
+    console.log("[create-checkout-session] Request info", logPayload);
+  }
+
+  return jsonResponse(status, {
+    error: message,
+    reason,
+    requestId,
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -107,36 +135,52 @@ Deno.serve(async (req: Request) => {
   try {
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
-      console.error("[create-checkout-session] Missing STRIPE_SECRET_KEY", { requestId });
-      return jsonResponse(500, { error: "STRIPE_SECRET_KEY not configured", requestId });
+      return logAndRespond(500, requestId, "missing_stripe_secret", "STRIPE_SECRET_KEY not configured");
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+      return logAndRespond(
+        500,
+        requestId,
+        "missing_supabase_secrets",
+        "SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY must be configured",
+        {
+          hasSupabaseUrl: Boolean(supabaseUrl),
+          hasSupabaseAnonKey: Boolean(supabaseAnonKey),
+          hasSupabaseServiceRoleKey: Boolean(supabaseServiceKey),
+        },
+      );
+    }
 
     const token = getBearerToken(req);
     if (!token) {
-      console.warn("[create-checkout-session] Missing bearer token", { requestId });
-      return jsonResponse(401, { error: "Missing or malformed Authorization header", requestId });
+      return logAndRespond(
+        401,
+        requestId,
+        "missing_bearer_token",
+        "Missing or malformed Authorization header",
+      );
     }
 
     const urlProjectRef = getProjectRefFromSupabaseUrl(supabaseUrl);
     const { issuer, projectRefFromIssuer } = parseJwtProjectInfo(token);
 
     if (projectRefFromIssuer && urlProjectRef && projectRefFromIssuer !== urlProjectRef) {
-      console.error("[create-checkout-session] JWT issuer project mismatch", {
+      return logAndRespond(
+        401,
         requestId,
-        issuer,
-        tokenProjectRef: projectRefFromIssuer,
-        functionProjectRef: urlProjectRef,
-      });
-      return jsonResponse(401, {
-        error: "JWT issuer does not match function project",
-        requestId,
-        tokenProjectRef: projectRefFromIssuer,
-        functionProjectRef: urlProjectRef,
-      });
+        "jwt_project_mismatch",
+        "JWT issuer does not match function project",
+        {
+          issuer,
+          tokenProjectRef: projectRefFromIssuer,
+          functionProjectRef: urlProjectRef,
+        },
+      );
     }
 
     const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -145,24 +189,21 @@ Deno.serve(async (req: Request) => {
     const { data: { user }, error: authError } = await authSupabase.auth.getUser();
 
     if (authError || !user) {
-      console.error("[create-checkout-session] Auth rejected bearer token", {
-        requestId,
+      return logAndRespond(401, requestId, "auth_get_user_failed", "Invalid JWT", {
         authError: authError?.message ?? null,
         issuer,
         tokenProjectRef: projectRefFromIssuer,
         functionProjectRef: urlProjectRef,
       });
-      return jsonResponse(401, {
-        error: "Invalid JWT",
-        reason: authError?.message ?? "No user returned",
-        requestId,
-      });
     }
 
     const { priceId, organisationId, successUrl, cancelUrl }: CheckoutRequest = await req.json();
 
-    if (!priceId || !organisationId) {
-      return jsonResponse(400, { error: "Missing required parameters", requestId });
+    if (!priceId) {
+      return logAndRespond(400, requestId, "missing_price_id", "Missing required parameter: priceId");
+    }
+    if (!organisationId) {
+      return logAndRespond(401, requestId, "missing_org_context", "Missing required parameter: organisationId");
     }
 
     if (!ALLOWED_PRICE_IDS.has(priceId)) {
@@ -188,12 +229,39 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (orgError || !organisation) {
-      console.error("[create-checkout-session] Organisation lookup failed", {
-        requestId,
+      return logAndRespond(404, requestId, "organisation_not_found", "Organisation not found", {
         organisationId,
         orgError: orgError?.message ?? null,
       });
-      return jsonResponse(404, { error: "Organisation not found", requestId });
+    }
+
+    const { data: membership, error: membershipError } = await adminSupabase
+      .from("organisation_members")
+      .select("role, status")
+      .eq("organisation_id", organisationId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      return logAndRespond(500, requestId, "membership_lookup_failed", "Failed to verify organisation membership", {
+        organisationId,
+        userId: user.id,
+        membershipError: membershipError.message,
+      });
+    }
+
+    if (!membership || membership.status !== "active") {
+      return logAndRespond(
+        401,
+        requestId,
+        "missing_org_membership",
+        "Active organisation membership is required to create checkout sessions",
+        {
+          organisationId,
+          userId: user.id,
+          membershipStatus: membership?.status ?? null,
+        },
+      );
     }
 
     const canManageCheckout = await hasRequiredOrganisationRole(
@@ -204,10 +272,17 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!canManageCheckout) {
-      return jsonResponse(403, {
-        error: "Only organisation owners/admins can create checkout sessions",
+      return logAndRespond(
+        401,
         requestId,
-      });
+        "insufficient_role",
+        "Only organisation owners/admins can create checkout sessions",
+        {
+          organisationId,
+          userId: user.id,
+          membershipRole: membership.role,
+        },
+      );
     }
 
     let stripeCustomerId = organisation.stripe_customer_id;
