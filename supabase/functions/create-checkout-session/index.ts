@@ -158,6 +158,13 @@ function classifyAuthFailure(authErrorMessage: string | null, hasUser: boolean) 
 }
 
 Deno.serve(async (req: Request) => {
+  return jsonResponse(200, {
+    marker: "CCS_MARKER_2026_03_24_A",
+    deployment: Deno.env.get("DENO_DEPLOYMENT_ID"),
+    method: req.method,
+    url: req.url,
+  });
+
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
