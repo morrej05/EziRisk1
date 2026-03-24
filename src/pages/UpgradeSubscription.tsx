@@ -4,7 +4,7 @@ import { useTenant } from '../hooks/useTenant';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, Loader2, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { PLAN_FEATURES, canAccessAdmin, getPlanDisplayName, type User as EntitlementsUser } from '../utils/entitlements';
+import { canAccessAdmin, getPlanDisplayName, type User as EntitlementsUser } from '../utils/entitlements';
 import { PRICING, getDefaultRegion, formatPrice } from '../config/pricing';
 import { toggleDevForcePro } from '../utils/devFlags';
 
@@ -43,8 +43,8 @@ export default function UpgradeSubscription() {
       await toggleDevForcePro(organisation.id, tenant.plan_id);
       await refreshUserRole();
       await refetchTenant();
-    } catch (error) {
-      console.error('[UpgradeSubscription] Error toggling plan:', error);
+    } catch (upgradeError) {
+      console.error('[UpgradeSubscription] Error toggling plan:', upgradeError);
       alert('Failed to toggle plan. Please try again.');
     }
   };
@@ -69,7 +69,7 @@ export default function UpgradeSubscription() {
         {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${session.session.access_token}`,
+            Authorization: `Bearer ${session.session.access_token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -88,21 +88,21 @@ export default function UpgradeSubscription() {
 
       const { sessionUrl, url } = await response.json();
       window.location.href = sessionUrl || url;
-    } catch (err) {
-      console.error('Upgrade error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start upgrade process');
+    } catch (upgradeError) {
+      console.error('Upgrade error:', upgradeError);
+      setError(upgradeError instanceof Error ? upgradeError.message : 'Failed to start upgrade process');
       setIsLoading(false);
     }
   };
 
-  const coreMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
-  const coreAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+  const standardMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+  const standardAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
   const proMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
   const proAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
 
   const missingEnvVars = [];
-  if (!coreMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_CORE_MONTHLY');
-  if (!coreAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_CORE_ANNUAL');
+  if (!standardMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_CORE_MONTHLY');
+  if (!standardAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_CORE_ANNUAL');
   if (!proMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_MONTHLY');
   if (!proAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_ANNUAL');
 
@@ -157,7 +157,7 @@ export default function UpgradeSubscription() {
               The following Stripe environment variables are missing. Buttons will be disabled until configured:
             </p>
             <ul className="text-sm text-warning-700 list-disc list-inside">
-              {missingEnvVars.map(envVar => (
+              {missingEnvVars.map((envVar) => (
                 <li key={envVar}><code className="bg-warning-100 px-1 rounded">{envVar}</code></li>
               ))}
             </ul>
@@ -186,21 +186,20 @@ export default function UpgradeSubscription() {
         <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
           <div className="bg-white rounded-lg shadow-sm border-2 border-neutral-200 p-8 flex flex-col">
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-neutral-900 mb-2">Core</h2>
-              <p className="text-neutral-600 mb-6">{PLAN_FEATURES.core.description}</p>
+              <h2 className="text-2xl font-bold text-neutral-900 mb-6">Standard</h2>
 
               <div className="space-y-4 mb-8">
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700">{PLAN_FEATURES.core.maxEditors} editor</span>
+                  <span className="text-neutral-700">10 reports per month</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700">Basic features</span>
+                  <span className="text-neutral-700">Up to 2 users</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700">Bolt-on add-ons available</span>
+                  <span className="text-neutral-700">Clean, branded PDF reports</span>
                 </div>
               </div>
             </div>
@@ -208,13 +207,13 @@ export default function UpgradeSubscription() {
             <div className="space-y-3">
               <div className="flex items-baseline gap-2 mb-4">
                 <span className="text-3xl font-bold text-neutral-900">
-                  {formatPrice(region, pricing.core.monthly)}
+                  {formatPrice(region, pricing.standard.monthly)}
                 </span>
                 <span className="text-neutral-600">/month</span>
               </div>
               <button
-                onClick={() => handleUpgrade(coreMonthlyPrice)}
-                disabled={isLoading || !coreMonthlyPrice}
+                onClick={() => handleUpgrade(standardMonthlyPrice)}
+                disabled={isLoading || !standardMonthlyPrice}
                 className="w-full px-4 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
@@ -223,20 +222,20 @@ export default function UpgradeSubscription() {
                     Processing...
                   </>
                 ) : (
-                  'Upgrade to Core Monthly'
+                  'Upgrade to Standard'
                 )}
               </button>
 
               <div className="flex items-baseline gap-2 mb-2 mt-6">
                 <span className="text-3xl font-bold text-neutral-900">
-                  {formatPrice(region, pricing.core.annual)}
+                  {formatPrice(region, pricing.standard.annual)}
                 </span>
                 <span className="text-neutral-600">/year</span>
                 <span className="text-sm text-success-600 font-medium">2 months free</span>
               </div>
               <button
-                onClick={() => handleUpgrade(coreAnnualPrice)}
-                disabled={isLoading || !coreAnnualPrice}
+                onClick={() => handleUpgrade(standardAnnualPrice)}
+                disabled={isLoading || !standardAnnualPrice}
                 className="w-full px-4 py-3 bg-neutral-100 text-neutral-900 rounded-lg hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
@@ -245,7 +244,7 @@ export default function UpgradeSubscription() {
                     Processing...
                   </>
                 ) : (
-                  'Upgrade to Core Annual'
+                  'Upgrade to Standard'
                 )}
               </button>
             </div>
@@ -257,25 +256,20 @@ export default function UpgradeSubscription() {
             </div>
 
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-neutral-900 mb-2">Professional</h2>
-              <p className="text-neutral-600 mb-6">{PLAN_FEATURES.professional.description}</p>
+              <h2 className="text-2xl font-bold text-neutral-900 mb-6">Professional</h2>
 
               <div className="space-y-4 mb-8">
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700">{PLAN_FEATURES.professional.maxEditors} editors</span>
+                  <span className="text-neutral-700">30 reports per month</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700 font-semibold">AI-powered features</span>
+                  <span className="text-neutral-700">Up to 5 users</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700">Smart recommendations</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Check className="w-5 h-5 text-success-600" />
-                  <span className="text-neutral-700">Bolt-on add-ons available</span>
+                  <span className="text-neutral-700">Portfolio view & multi-site management</span>
                 </div>
               </div>
             </div>
@@ -298,7 +292,7 @@ export default function UpgradeSubscription() {
                     Processing...
                   </>
                 ) : (
-                  'Upgrade to Professional Monthly'
+                  'Upgrade to Professional'
                 )}
               </button>
 
@@ -320,28 +314,10 @@ export default function UpgradeSubscription() {
                     Processing...
                   </>
                 ) : (
-                  'Upgrade to Professional Annual'
+                  'Upgrade to Professional'
                 )}
               </button>
             </div>
-          </div>
-        </div>
-
-        <div className="mt-12 max-w-5xl mx-auto">
-          <div className="bg-white rounded-lg shadow-sm border border-neutral-200 p-8">
-            <h3 className="text-xl font-bold text-neutral-900 mb-4">Enterprise</h3>
-            <p className="text-neutral-600 mb-4">
-              Need more editors, custom features, or want to discuss discipline switching?
-            </p>
-            <p className="text-neutral-700 mb-6">
-              <strong>{PLAN_FEATURES.enterprise.maxEditors}+ editors</strong> · All Pro features · Discipline switching · Priority support
-            </p>
-            <button
-              onClick={() => window.location.href = 'mailto:sales@ezirisk.com'}
-              className="px-6 py-3 bg-white text-neutral-900 border-2 border-neutral-900 rounded-lg hover:bg-neutral-50 transition-colors font-medium"
-            >
-              Contact Sales
-            </button>
           </div>
         </div>
 
