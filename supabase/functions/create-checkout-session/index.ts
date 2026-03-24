@@ -120,6 +120,43 @@ function logAndRespond(
   });
 }
 
+function classifyAuthFailure(authErrorMessage: string | null, hasUser: boolean) {
+  if (!authErrorMessage && !hasUser) {
+    return {
+      reason: "auth_user_missing",
+      message: "Authenticated user was not returned",
+    };
+  }
+
+  const normalized = authErrorMessage?.toLowerCase() ?? "";
+
+  if (normalized.includes("expired")) {
+    return {
+      reason: "auth_jwt_expired",
+      message: "JWT has expired",
+    };
+  }
+
+  if (normalized.includes("signature")) {
+    return {
+      reason: "auth_jwt_signature_invalid",
+      message: "JWT signature validation failed",
+    };
+  }
+
+  if (normalized.includes("invalid jwt") || normalized.includes("jwt")) {
+    return {
+      reason: "auth_invalid_jwt",
+      message: "JWT validation failed",
+    };
+  }
+
+  return {
+    reason: "auth_get_user_failed",
+    message: "Failed to validate authenticated user",
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -141,6 +178,22 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const viteSupabaseAnonKey = Deno.env.get("VITE_SUPABASE_ANON_KEY");
+    const legacyAnon = Deno.env.get("ANON");
+
+    const envPresence = {
+      hasSupabaseUrl: Boolean(supabaseUrl),
+      hasSupabaseAnonKey: Boolean(supabaseAnonKey),
+      hasViteSupabaseAnonKey: Boolean(viteSupabaseAnonKey),
+      hasAnon: Boolean(legacyAnon),
+      hasSupabaseServiceRoleKey: Boolean(supabaseServiceKey),
+    };
+
+    console.log("[create-checkout-session] Auth env presence", {
+      requestId,
+      ...envPresence,
+      authClientEnvSource: ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
+    });
 
     if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
       return logAndRespond(
@@ -148,11 +201,7 @@ Deno.serve(async (req: Request) => {
         requestId,
         "missing_supabase_secrets",
         "SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_SERVICE_ROLE_KEY must be configured",
-        {
-          hasSupabaseUrl: Boolean(supabaseUrl),
-          hasSupabaseAnonKey: Boolean(supabaseAnonKey),
-          hasSupabaseServiceRoleKey: Boolean(supabaseServiceKey),
-        },
+        envPresence,
       );
     }
 
@@ -183,17 +232,23 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
-    const { data: { user }, error: authError } = await authSupabase.auth.getUser();
+    const authSupabase = createClient(supabaseUrl, supabaseAnonKey);
+    const { data: { user }, error: authError } = await authSupabase.auth.getUser(token);
 
     if (authError || !user) {
-      return logAndRespond(401, requestId, "auth_get_user_failed", "Invalid JWT", {
-        authError: authError?.message ?? null,
+      const authErrorMessage = authError?.message ?? null;
+      const authFailure = classifyAuthFailure(authErrorMessage, Boolean(user));
+
+      return logAndRespond(401, requestId, authFailure.reason, authFailure.message, {
+        authError: authErrorMessage,
         issuer,
         tokenProjectRef: projectRefFromIssuer,
         functionProjectRef: urlProjectRef,
+        inferredEnvMismatch:
+          authFailure.reason === "auth_invalid_jwt" && projectRefFromIssuer === urlProjectRef
+            ? "Token project matches function project; verify SUPABASE_ANON_KEY belongs to the same project and is not stale."
+            : null,
+        ...envPresence,
       });
     }
 
