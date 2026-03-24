@@ -11,6 +11,7 @@ import {
   type UserSeatEntitlement,
 } from '../utils/userSeatEntitlements';
 import { inferUserUpgradeReason, type UpgradeBlockReason } from '../utils/upgradeBlocks';
+import { buildUpgradePath } from '../utils/upgradeNavigation';
 
 interface UserProfile {
   id: string;
@@ -647,7 +648,7 @@ export default function UserManagement() {
         reason={upgradeReason}
         detail={upgradeDetail}
         onClose={() => setShowUpgradeModal(false)}
-        onUpgrade={() => window.location.assign('/upgrade')}
+        onUpgrade={() => window.location.assign(buildUpgradePath(upgradeReason, { action: 'add_user' }))}
       />
     </div>
   );

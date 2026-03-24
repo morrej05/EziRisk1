@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../hooks/useTenant';
@@ -11,15 +11,41 @@ const STRIPE_PRICE_CORE_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
 const STRIPE_PRICE_PRO_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
 const STRIPE_PRICE_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
 
+const UPGRADE_CONTEXT_COPY: Record<string, { title: string; body: string }> = {
+  report_limit: {
+    title: 'Report limit reached',
+    body: "You've used all reports for this month. Upgrading unlocks higher report capacity and more team access.",
+  },
+  user_limit: {
+    title: 'User limit reached',
+    body: "You've reached your active user cap. Upgrading lets you add more teammates immediately.",
+  },
+  trial_expired: {
+    title: 'Trial expired',
+    body: "Your trial has ended. Upgrading restores report creation and full workspace access.",
+  },
+  portfolio_locked: {
+    title: 'Portfolio locked on current plan',
+    body: 'Portfolio analytics and exports require a higher plan. Upgrading unlocks portfolio tools.',
+  },
+};
+
 export default function UpgradePage() {
   const { user, userPlan } = useAuth();
   const { organisation } = useTenant();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const upgradeReason = searchParams.get('reason');
+  const upgradeAction = searchParams.get('action');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+
+  const contextualUpgradeCopy = useMemo(() => {
+    if (!upgradeReason) return null;
+    return UPGRADE_CONTEXT_COPY[upgradeReason] ?? null;
+  }, [upgradeReason]);
 
   const plans = [
     {
@@ -251,6 +277,27 @@ export default function UpgradePage() {
           </div>
         </div>
       </header>
+
+      {contextualUpgradeCopy && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 text-indigo-700" />
+              <div>
+                <p className="text-sm font-semibold text-indigo-900">{contextualUpgradeCopy.title}</p>
+                <p className="mt-1 text-sm text-indigo-800">{contextualUpgradeCopy.body}</p>
+                {upgradeAction && (
+                  <p className="mt-2 text-xs uppercase tracking-wide text-indigo-700">
+                    Triggered by: {upgradeAction.replace(/_/g, ' ')}
+                  </p>
+                )}
+                <p className="mt-2 text-sm font-medium text-indigo-900">Standard: 10 reports per month • up to 2 users</p>
+                <p className="text-sm font-medium text-indigo-900">Professional: 30 reports per month • up to 5 users • portfolio tools</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingMessage && (
         <div className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4`}>

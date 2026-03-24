@@ -7,6 +7,7 @@ import UpgradeBlockModal from '../UpgradeBlockModal';
 import { canAccessRiskEngineering } from '../../utils/entitlements';
 import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
+import { buildUpgradePath } from '../../utils/upgradeNavigation';
 import { getStandardsOptions } from '../../lib/jurisdictions';
 
 interface CreateDocumentModalProps {
@@ -374,7 +375,7 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
                     type="button"
                     onClick={() => {
                       onClose();
-                      navigate('/upgrade');
+                      navigate(buildUpgradePath('report_limit', { action: 'create_document_module' }));
                     }}
                     className="mt-2 px-3 py-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs rounded font-medium hover:from-blue-700 hover:to-purple-700 transition-colors inline-flex items-center gap-1"
                   >
@@ -536,7 +537,7 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         reason={upgradeReason}
         detail={upgradeDetail}
         onClose={() => setShowUpgradeModal(false)}
-        onUpgrade={() => navigate('/upgrade')}
+        onUpgrade={() => navigate(buildUpgradePath(upgradeReason, { action: 'create_document' }))}
       />
     </div>
   );
