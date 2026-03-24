@@ -90,7 +90,7 @@ export default function CommonDashboard() {
 
   const canAccessExplosion = userObj && organisation ? canAccessExplosionSafety(userObj, organisation) : false;
   const showUpgradePrompts = userObj && organisation ? shouldShowUpgradePrompts(userObj, organisation) : false;
-  const planTier = organisation ? getPlan(organisation) : 'trial';
+  const planTier = organisation ? getPlan(organisation) : 'free';
   const subscriptionStatus = organisation ? getSubscriptionStatusDisplayName(organisation.subscription_status) : 'Unknown';
 
   const handleSignOut = async () => {

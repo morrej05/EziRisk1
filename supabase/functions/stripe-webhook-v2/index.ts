@@ -17,9 +17,9 @@ interface StripePlanMapping {
 }
 
 const STRIPE_PRICE_STANDARD_MONTHLY =
-  Deno.env.get("STRIPE_PRICE_STANDARD_MONTHLY") || Deno.env.get("STRIPE_PRICE_CORE_MONTHLY");
+  Deno.env.get("STRIPE_PRICE_STANDARD_MONTHLY");
 const STRIPE_PRICE_STANDARD_ANNUAL =
-  Deno.env.get("STRIPE_PRICE_STANDARD_ANNUAL") || Deno.env.get("STRIPE_PRICE_CORE_ANNUAL");
+  Deno.env.get("STRIPE_PRICE_STANDARD_ANNUAL");
 
 const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
   [STRIPE_PRICE_STANDARD_MONTHLY || ""]: { planId: "standard", interval: "month" },
@@ -170,8 +170,6 @@ Deno.serve(async (req: Request) => {
 
       if (subscription.status === 'active' || subscription.status === 'trialing') {
         updateData.plan_id = planMapping.planId;
-      } else if (subscription.status === 'canceled' || subscription.status === 'unpaid') {
-        updateData.plan_id = "trial";
       }
 
       const { error: organisationUpdateError } = await supabase
@@ -263,7 +261,7 @@ Deno.serve(async (req: Request) => {
         const { error: cancellationError } = await supabase
           .from("organisations")
           .update({
-            plan_id: "trial",
+            plan_id: "free",
             subscription_status: "canceled",
             stripe_subscription_id: null,
             cancel_at_period_end: false,

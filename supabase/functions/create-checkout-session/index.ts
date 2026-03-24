@@ -26,9 +26,9 @@ interface StripePlanMapping {
 }
 
 const STRIPE_PRICE_STANDARD_MONTHLY =
-  Deno.env.get("STRIPE_PRICE_STANDARD_MONTHLY") || Deno.env.get("STRIPE_PRICE_CORE_MONTHLY");
+  Deno.env.get("STRIPE_PRICE_STANDARD_MONTHLY");
 const STRIPE_PRICE_STANDARD_ANNUAL =
-  Deno.env.get("STRIPE_PRICE_STANDARD_ANNUAL") || Deno.env.get("STRIPE_PRICE_CORE_ANNUAL");
+  Deno.env.get("STRIPE_PRICE_STANDARD_ANNUAL");
 
 const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
   [STRIPE_PRICE_STANDARD_MONTHLY || ""]: { planId: "standard", interval: "month" },

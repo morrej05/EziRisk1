@@ -36,7 +36,7 @@ export async function getUserSeatEntitlement(organisationId: string): Promise<Us
   return {
     allowed: Boolean(row.allowed),
     reason: row.reason ?? null,
-    resolved_plan: row.resolved_plan ?? 'solo',
+    resolved_plan: row.resolved_plan ?? 'free',
     user_limit: Number(row.user_limit ?? 1),
     active_member_count: Number(row.active_member_count ?? 0),
     is_over_limit: Boolean(row.is_over_limit),
