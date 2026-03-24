@@ -3,20 +3,20 @@ export const PRICING = {
     currency: 'USD',
     symbol: '$',
     trial: { monthly: 0, annual: 0 },
-    core: { monthly: 49, annual: 490 },
-    professional: { monthly: 109, annual: 1090 },
+    standard: { monthly: 99, annual: 990 },
+    professional: { monthly: 189, annual: 1890 },
   },
   UK: {
     currency: 'GBP',
     symbol: '£',
     trial: { monthly: 0, annual: 0 },
-    core: { monthly: 39, annual: 390 },
-    professional: { monthly: 89, annual: 890 },
+    standard: { monthly: 79, annual: 790 },
+    professional: { monthly: 149, annual: 1490 },
   },
 } as const;
 
 export type Region = keyof typeof PRICING;
-export type PlanTier = 'trial' | 'core' | 'professional';
+export type PlanTier = 'trial' | 'standard' | 'professional';
 export type BillingPeriod = 'monthly' | 'annual';
 
 export function getPricing(region: Region, tier: PlanTier, period: BillingPeriod): number {
