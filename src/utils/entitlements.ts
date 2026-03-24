@@ -73,6 +73,8 @@ export interface Organisation {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   billing_cycle?: 'monthly' | 'annual' | null;
+  cancel_at_period_end?: boolean | null;
+  stripe_current_period_end?: string | null;
   created_at?: string;
   updated_at?: string;
   trial_ends_at?: string | null;
@@ -178,11 +180,13 @@ export function canAccessPlatformSettings(user: User): boolean {
   return isPlatformAdmin(user);
 }
 
-export function canViewData(_org?: Organisation | null): boolean {
+export function canViewData(org?: Organisation | null): boolean {
+  void org;
   return true;
 }
 
-export function canExportData(_org?: Organisation | null): boolean {
+export function canExportData(org?: Organisation | null): boolean {
+  void org;
   return true;
 }
 

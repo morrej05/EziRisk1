@@ -1,5 +1,7 @@
 import { AlertTriangle, Lock } from 'lucide-react';
 import { type UpgradeBlockReason } from '../utils/upgradeBlocks';
+import { useAuth } from '../contexts/AuthContext';
+import { getPlan } from '../utils/entitlements';
 
 interface UpgradeBlockModalProps {
   open: boolean;
@@ -20,7 +22,7 @@ const COPY: Record<UpgradeBlockReason, { title: string; description: string }> =
   },
   trial_expired: {
     title: 'Trial expired',
-    description: 'Your 7-day trial has expired. Upgrade to continue creating reports.',
+    description: 'Your trial has expired. Upgrade to continue creating reports.',
   },
   portfolio_locked: {
     title: 'Portfolio access requires upgrade',
@@ -35,9 +37,16 @@ export default function UpgradeBlockModal({
   onClose,
   onUpgrade,
 }: UpgradeBlockModalProps) {
+  const { organisation } = useAuth();
   if (!open) return null;
 
   const copy = COPY[reason];
+  const currentPlan = getPlan(organisation);
+  const actionLabel = currentPlan === 'trial'
+    ? 'Upgrade to Standard'
+    : currentPlan === 'professional'
+      ? 'Manage subscription'
+      : 'Upgrade to Professional';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -70,7 +79,7 @@ export default function UpgradeBlockModal({
             onClick={onUpgrade}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
-            Upgrade plan
+            {actionLabel}
           </button>
         </div>
       </div>
