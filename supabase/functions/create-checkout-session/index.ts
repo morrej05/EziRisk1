@@ -16,6 +16,25 @@ interface CheckoutRequest {
   cancelUrl: string;
 }
 
+type PlanId = "standard" | "professional";
+type PlanInterval = "month" | "year";
+
+interface StripePlanMapping {
+  planId: PlanId;
+  interval: PlanInterval;
+}
+
+const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
+  [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY") || ""]: { planId: "standard", interval: "month" },
+  [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL") || ""]: { planId: "standard", interval: "year" },
+  [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || ""]: { planId: "professional", interval: "month" },
+  [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") || ""]: { planId: "professional", interval: "year" },
+};
+
+function getPlanFromPriceId(priceId: string): StripePlanMapping | null {
+  return PRICE_TO_PLAN[priceId] || null;
+}
+
 const ALLOWED_PRICE_IDS = new Set(
   [
     Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"),
@@ -68,6 +87,11 @@ Deno.serve(async (req: Request) => {
 
     if (!ALLOWED_PRICE_IDS.has(priceId)) {
       throw new Error("Unsupported Stripe price ID");
+    }
+
+    const planMapping = getPlanFromPriceId(priceId);
+    if (!planMapping) {
+      throw new Error("Unable to map Stripe price to plan");
     }
 
     const { data: organisation, error: orgError } = await supabase
@@ -124,11 +148,15 @@ Deno.serve(async (req: Request) => {
       metadata: {
         organisation_id: organisationId,
         user_id: user.id,
+        plan_id: planMapping.planId,
+        plan_interval: planMapping.interval,
       },
       subscription_data: {
         metadata: {
           organisation_id: organisationId,
           user_id: user.id,
+          plan_id: planMapping.planId,
+          plan_interval: planMapping.interval,
         },
       },
     });

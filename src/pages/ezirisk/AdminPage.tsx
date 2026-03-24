@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
@@ -8,13 +8,68 @@ import UserManagement from '../../components/UserManagement';
 import { useAuth } from '../../contexts/AuthContext';
 import AdminBillingPanel from '../../components/AdminBillingPanel';
 import { getPlanDisplayName, getPlan } from '../../utils/entitlements';
+import { supabase } from '../../lib/supabase';
 
 type AdminTab = 'users' | 'organisation' | 'usage-limits' | 'billing' | 'branding';
 
 export default function AdminPage() {
   const navigate = useNavigate();
-  const { organisation, user } = useAuth();
+  const { organisation, user, refreshUserRole } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
+  const [upgradeSuccess, setUpgradeSuccess] = useState(false);
+  const [upgradeStatus, setUpgradeStatus] = useState<'checking' | 'confirmed' | 'delayed'>('checking');
+
+  const runUpgradeSuccessRefresh = useCallback(async () => {
+    const baselinePlanId = organisation?.plan_id ?? null;
+    const organisationId = user?.organisation_id ?? organisation?.id ?? null;
+    const maxAttempts = 6;
+    const retryDelayMs = 2000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      await refreshUserRole();
+
+      if (organisationId) {
+        const { data, error } = await supabase
+          .from('organisations')
+          .select('plan_id, subscription_status')
+          .eq('id', organisationId)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('[AdminPage] Unable to verify upgraded plan state:', error);
+        } else {
+          const currentPlanId = data?.plan_id ?? null;
+          const currentSubscriptionStatus = data?.subscription_status ?? null;
+          const planChanged = baselinePlanId ? currentPlanId !== baselinePlanId : false;
+          const upgradedWithoutBaseline = !baselinePlanId && currentSubscriptionStatus === 'active';
+
+          if (planChanged || upgradedWithoutBaseline) {
+            setUpgradeStatus('confirmed');
+            return;
+          }
+        }
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+
+    setUpgradeStatus('delayed');
+  }, [organisation?.id, organisation?.plan_id, refreshUserRole, user?.organisation_id]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('upgrade') === 'success') {
+      setUpgradeSuccess(true);
+      setUpgradeStatus('checking');
+      void runUpgradeSuccessRefresh();
+      window.history.replaceState({}, '', '/admin');
+      const timeoutId = window.setTimeout(() => setUpgradeSuccess(false), 12000);
+      return () => window.clearTimeout(timeoutId);
+    }
+    return undefined;
+  }, [runUpgradeSuccessRefresh]);
 
   const tabs = [
     { id: 'users' as AdminTab, label: 'Users' },
@@ -78,6 +133,16 @@ export default function AdminPage() {
             Admin is limited to organisation-level controls. Platform-level controls are managed in Platform Admin.
           </p>
         </div>
+
+        {upgradeSuccess && (
+          <div className="mx-8 mt-6 rounded-lg border border-green-200 bg-green-50 p-4">
+            <p className="text-sm font-medium text-green-800">
+              {upgradeStatus === 'confirmed' && 'Subscription upgraded successfully! Your new plan features are now available.'}
+              {upgradeStatus === 'checking' && 'We are finalising your upgrade. Your plan features will unlock automatically in a few seconds.'}
+              {upgradeStatus === 'delayed' && 'Your checkout succeeded, but plan syncing is still in progress. Features will unlock automatically shortly.'}
+            </p>
+          </div>
+        )}
 
         {activeTab === 'users' && <UserManagement />}
 

@@ -14,6 +14,8 @@ export default function UpgradeSubscription() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryParams = new URLSearchParams(window.location.search);
+  const checkoutCanceled = queryParams.get('canceled') === 'true';
   const region = getDefaultRegion();
   const pricing = PRICING[region];
 
@@ -167,6 +169,14 @@ export default function UpgradeSubscription() {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <p className="text-sm text-red-800">{error}</p>
+          </div>
+        )}
+
+        {checkoutCanceled && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-sm text-amber-900">
+              Checkout was canceled. Your plan has not changed. You can try again whenever you&apos;re ready.
+            </p>
           </div>
         )}
 
