@@ -24,9 +24,14 @@ interface StripePlanMapping {
   interval: PlanInterval;
 }
 
+const STRIPE_PRICE_STANDARD_MONTHLY =
+  Deno.env.get("STRIPE_PRICE_STANDARD_MONTHLY") || Deno.env.get("STRIPE_PRICE_CORE_MONTHLY");
+const STRIPE_PRICE_STANDARD_ANNUAL =
+  Deno.env.get("STRIPE_PRICE_STANDARD_ANNUAL") || Deno.env.get("STRIPE_PRICE_CORE_ANNUAL");
+
 const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
-  [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY") || ""]: { planId: "standard", interval: "month" },
-  [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL") || ""]: { planId: "standard", interval: "year" },
+  [STRIPE_PRICE_STANDARD_MONTHLY || ""]: { planId: "standard", interval: "month" },
+  [STRIPE_PRICE_STANDARD_ANNUAL || ""]: { planId: "standard", interval: "year" },
   [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || ""]: { planId: "professional", interval: "month" },
   [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") || ""]: { planId: "professional", interval: "year" },
 };
@@ -37,8 +42,8 @@ function getPlanFromPriceId(priceId: string): StripePlanMapping | null {
 
 const ALLOWED_PRICE_IDS = new Set(
   [
-    Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"),
-    Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"),
+    STRIPE_PRICE_STANDARD_MONTHLY,
+    STRIPE_PRICE_STANDARD_ANNUAL,
     Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
     Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
   ].filter((value): value is string => Boolean(value)),

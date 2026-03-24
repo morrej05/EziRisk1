@@ -6,8 +6,10 @@ import { ArrowLeft, Check, Zap, Lock, Users, AlertCircle, CheckCircle } from 'lu
 import { PLAN_LABELS } from '../utils/permissions';
 import { supabase } from '../lib/supabase';
 
-const STRIPE_PRICE_CORE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
-const STRIPE_PRICE_CORE_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+const STRIPE_PRICE_STANDARD_MONTHLY =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY || import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+const STRIPE_PRICE_STANDARD_ANNUAL =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL || import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
 const STRIPE_PRICE_PRO_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
 const STRIPE_PRICE_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
 
@@ -41,6 +43,7 @@ export default function UpgradePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const normalizedUserPlan = userPlan === 'core' ? 'standard' : userPlan;
 
   const contextualUpgradeCopy = useMemo(() => {
     if (!upgradeReason) return null;
@@ -73,12 +76,12 @@ export default function UpgradePage() {
       highlighted: false,
     },
     {
-      id: 'core',
-      name: 'Core',
+      id: 'standard',
+      name: 'Standard',
       priceMonthly: 49,
       priceAnnual: 490,
-      stripePriceIdMonthly: STRIPE_PRICE_CORE_MONTHLY,
-      stripePriceIdAnnual: STRIPE_PRICE_CORE_ANNUAL,
+      stripePriceIdMonthly: STRIPE_PRICE_STANDARD_MONTHLY,
+      stripePriceIdAnnual: STRIPE_PRICE_STANDARD_ANNUAL,
       description: 'Essential features for small teams',
       features: [
         'Everything in Free',
@@ -94,7 +97,7 @@ export default function UpgradePage() {
         'Limited to 1 editor',
       ],
       editors: '1 Editor',
-      cta: 'Upgrade to Core',
+      cta: 'Upgrade to Standard',
       showCheckout: true,
       highlighted: false,
     },
@@ -107,7 +110,7 @@ export default function UpgradePage() {
       stripePriceIdAnnual: STRIPE_PRICE_PRO_ANNUAL,
       description: 'Advanced features for growing teams',
       features: [
-        'Everything in Core',
+        'Everything in Standard',
         '3 editor seats',
         'AI-powered Smart Recommendations',
         'Advanced analytics dashboard',
@@ -167,9 +170,10 @@ export default function UpgradePage() {
         .eq('id', organisation.id)
         .single();
 
-      if (data?.subscription_status === 'active' && data?.plan_id !== userPlan) {
+      const normalizedOrgPlan = data?.plan_id === 'core' ? 'standard' : data?.plan_id;
+      if (data?.subscription_status === 'active' && normalizedOrgPlan !== normalizedUserPlan) {
         setIsPending(false);
-        setPendingMessage(`You are now on ${(data?.plan_id || 'trial').toString()}.`);
+        setPendingMessage(`You are now on ${(normalizedOrgPlan || 'trial').toString()}.`);
         setTimeout(() => {
           navigate('/dashboard');
         }, 2000);
@@ -328,7 +332,7 @@ export default function UpgradePage() {
             Choose the Perfect Plan for Your Needs
           </h2>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-6">
-            Self-serve upgrade to Core or Professional. Contact us for Enterprise.
+            Self-serve upgrade to Standard or Professional. Contact us for Enterprise.
           </p>
 
           <div className="inline-flex items-center gap-2 bg-white rounded-lg p-1 border border-slate-200">
@@ -357,7 +361,7 @@ export default function UpgradePage() {
 
         <div className="grid md:grid-cols-4 gap-6 mb-12">
           {plans.map((plan) => {
-            const isCurrentPlan = plan.id === userPlan;
+            const isCurrentPlan = plan.id === normalizedUserPlan;
 
             return (
               <div

@@ -21,9 +21,10 @@ export default function UpgradeBanner({ plan, feature = 'Smart Recommendations' 
           title: "You're on Free Plan",
           subtitle: `Upgrade to Professional for ${feature} and advanced features`,
         };
+      case 'standard':
       case 'core':
         return {
-          title: "You're on Core Plan",
+          title: "You're on Standard Plan",
           subtitle: `Upgrade to Professional for ${feature} and 3 editor seats`,
         };
       default:
