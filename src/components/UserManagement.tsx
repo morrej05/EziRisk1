@@ -26,6 +26,13 @@ interface OrganisationMemberRow {
   role: UserRole;
   status: string;
   created_at: string;
+  user_profiles: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    created_at: string;
+    is_platform_admin: boolean | null;
+  } | null;
 }
 
 export default function UserManagement() {
@@ -39,6 +46,7 @@ export default function UserManagement() {
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<UserRole>('viewer');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('user_limit');
@@ -67,15 +75,17 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     if (!currentUser?.organisation_id) {
       setUsers([]);
+      setLoadError(null);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
+    setLoadError(null);
     try {
       const { data: memberData, error: memberError } = await supabase
         .from('organisation_members')
-        .select('user_id, role, status, created_at')
+        .select('user_id, role, status, created_at, user_profiles(id, name, email, created_at, is_platform_admin)')
         .eq('organisation_id', currentUser.organisation_id)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
@@ -83,26 +93,8 @@ export default function UserManagement() {
       if (memberError) throw memberError;
 
       const activeMembers = (memberData ?? []) as OrganisationMemberRow[];
-      const userIds = [...new Set(activeMembers.map((member) => member.user_id))];
-
-      if (userIds.length === 0) {
-        setUsers([]);
-        await refreshSeatEntitlement();
-        return;
-      }
-
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('id, name, email, created_at, is_platform_admin')
-        .in('id', userIds)
-        .order('created_at', { ascending: true });
-
-      if (profilesError) throw profilesError;
-
-      const profileById = new Map((profilesData ?? []).map((profile) => [profile.id, profile]));
-
       const usersWithMembershipRole: UserProfile[] = activeMembers.map((member) => {
-        const profile = profileById.get(member.user_id);
+        const profile = member.user_profiles;
         return {
           id: member.user_id,
           role: member.role,
@@ -113,11 +105,29 @@ export default function UserManagement() {
         };
       });
 
+      if (!usersWithMembershipRole.some((member) => member.id === currentUser.id)) {
+        const { data: selfProfile } = await supabase
+          .from('user_profiles')
+          .select('id, name, email, created_at, is_platform_admin')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+        usersWithMembershipRole.push({
+          id: currentUser.id,
+          role: currentUser.role,
+          name: selfProfile?.name ?? currentUser.user_metadata?.name ?? null,
+          email: selfProfile?.email ?? currentUser.email ?? undefined,
+          created_at: selfProfile?.created_at ?? new Date().toISOString(),
+          is_platform_admin: Boolean(selfProfile?.is_platform_admin ?? isPlatformAdmin),
+        });
+      }
+
       setUsers(usersWithMembershipRole);
       await refreshSeatEntitlement();
     } catch (error) {
       console.error('Error fetching users:', error);
-      alert('Failed to load users. Please check your permissions.');
+      setLoadError('Failed to load users. Please try again.');
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }
@@ -180,7 +190,7 @@ export default function UserManagement() {
         setUpgradeDetail(message);
         setShowUpgradeModal(true);
       } else {
-        alert(message);
+        alert('Could not add user right now. Please try again.');
       }
     } finally {
       setIsAddingUser(false);
@@ -318,6 +328,12 @@ export default function UserManagement() {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {loadError && (
+        <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          {loadError}
         </div>
       )}
 
@@ -473,7 +489,7 @@ export default function UserManagement() {
       {users.length === 0 && (
         <div className="text-center py-12">
           <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-600 mb-2">No users found</p>
+          <p className="text-slate-600 mb-2">No users yet</p>
           <p className="text-sm text-slate-500">Add your first user to get started</p>
         </div>
       )}

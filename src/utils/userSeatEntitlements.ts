@@ -48,6 +48,10 @@ export function normalizeSeatLimitErrorMessage(error: unknown): string {
     return FALLBACK_REASON;
   }
 
+  if (error.message.includes('get_user_seat_entitlement')) {
+    return 'Unable to verify user seat entitlement right now. Please retry in a moment or contact support if this continues.';
+  }
+
   if (error.message.includes('user seat limit')) {
     return error.message;
   }
