@@ -9,6 +9,7 @@ import {
   getSubscriptionStatusDisplayName,
   type PlanId,
 } from '../utils/entitlements';
+import { getUserLimitForOrganisation } from '../utils/planLimits';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
 
@@ -79,7 +80,7 @@ export default function AdminBillingPanel() {
   const planConfig = getPlanConfig(organisation);
   const reportLimit = reportEntitlement?.monthly_report_limit ?? planConfig.reportLimit;
   const reportsUsed = reportEntitlement?.monthly_report_count ?? 0;
-  const seatLimit = seatEntitlement?.user_limit ?? planConfig.userLimit;
+  const seatLimit = seatEntitlement?.user_limit ?? getUserLimitForOrganisation(organisation);
   const seatsUsed = seatEntitlement?.active_member_count ?? 0;
 
   const statusLabel = useMemo(() => {

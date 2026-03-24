@@ -12,6 +12,7 @@ import {
 } from '../utils/userSeatEntitlements';
 import { inferUserUpgradeReason, type UpgradeBlockReason } from '../utils/upgradeBlocks';
 import { buildUpgradePath } from '../utils/upgradeNavigation';
+import { getUserLimitForOrganisation } from '../utils/planLimits';
 
 interface UserProfile {
   id: string;
@@ -53,10 +54,9 @@ export default function UserManagement() {
   const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('user_limit');
   const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
 
-  const atSeatLimit = useMemo(() => {
-    if (!seatEntitlement) return false;
-    return !seatEntitlement.allowed;
-  }, [seatEntitlement]);
+  const maxUsers = useMemo(() => getUserLimitForOrganisation(organisation), [organisation]);
+  const currentUsers = users.length;
+  const atSeatLimit = useMemo(() => currentUsers >= maxUsers, [currentUsers, maxUsers]);
   const seatLimitCopy = useMemo(
     () => getUserSeatLimitCopy(seatEntitlement, organisation),
     [seatEntitlement, organisation],
@@ -373,7 +373,7 @@ export default function UserManagement() {
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
-      {seatEntitlement && !seatEntitlement.allowed && (
+      {atSeatLimit && (
         <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4" />
@@ -398,9 +398,7 @@ export default function UserManagement() {
           <Users className="w-5 h-5 text-slate-600" />
           <h2 className="text-lg font-semibold text-slate-900">User Management</h2>
           <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded">
-            {seatEntitlement
-              ? `${seatEntitlement.active_member_count}/${seatEntitlement.user_limit} seats`
-              : `${users.length} ${users.length === 1 ? 'user' : 'users'}`}
+            {`${currentUsers}/${maxUsers} seats`}
           </span>
         </div>
         <button
