@@ -11,6 +11,12 @@ export interface UserSeatEntitlement {
 }
 
 const FALLBACK_REASON = 'Your organisation has reached its user seat limit. Upgrade to add more users.';
+const DEFAULT_LIMIT_MESSAGE = 'Your organisation has reached the user limit for its current plan.';
+
+interface UserSeatLimitCopy {
+  title: string;
+  body: string;
+}
 
 export async function getUserSeatEntitlement(organisationId: string): Promise<UserSeatEntitlement> {
   const { data, error } = await supabase.rpc('get_user_seat_entitlement', {
@@ -43,17 +49,44 @@ export function getUserSeatUpgradeMessage(organisation: Organisation | null | un
   return `${displayPlan} includes up to ${currentLimit} active user${currentLimit === 1 ? '' : 's'}. Upgrade to add more users.`;
 }
 
+export function getUserSeatLimitCopy(
+  seatEntitlement: UserSeatEntitlement | null | undefined,
+  organisation: Organisation | null | undefined,
+): UserSeatLimitCopy {
+  const resolvedPlan = seatEntitlement?.resolved_plan ?? organisation?.plan_id ?? 'trial';
+  const isTrial = resolvedPlan === 'trial';
+
+  if (isTrial) {
+    return {
+      title: 'User limit reached',
+      body: 'Trial includes 1 active user. Upgrade to add more users.',
+    };
+  }
+
+  return {
+    title: 'User limit reached',
+    body: `${DEFAULT_LIMIT_MESSAGE} Upgrade to add more users.`,
+  };
+}
+
 export function normalizeSeatLimitErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) {
-    return FALLBACK_REASON;
+    return DEFAULT_LIMIT_MESSAGE;
   }
 
   if (error.message.includes('get_user_seat_entitlement')) {
     return 'Unable to verify user seat entitlement right now. Please retry in a moment or contact support if this continues.';
   }
 
-  if (error.message.includes('user seat limit')) {
-    return error.message;
+  const normalised = error.message.trim().toLowerCase();
+  if (
+    normalised.includes('user_limit_reached')
+    || normalised.includes('user limit reached')
+    || normalised.includes('seat limit')
+    || normalised.includes('user seat limit')
+    || normalised.includes('upgrade')
+  ) {
+    return DEFAULT_LIMIT_MESSAGE;
   }
 
   return error.message || FALLBACK_REASON;
