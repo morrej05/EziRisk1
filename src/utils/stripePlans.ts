@@ -6,12 +6,17 @@ export interface StripePlanMapping {
   interval: PlanInterval;
 }
 
+const STRIPE_PRICE_STANDARD_MONTHLY =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY || import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+const STRIPE_PRICE_STANDARD_ANNUAL =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL || import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+
 export const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
-  [import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY || '']: {
+  [STRIPE_PRICE_STANDARD_MONTHLY || '']: {
     planType: 'standard',
     interval: 'month'
   },
-  [import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL || '']: {
+  [STRIPE_PRICE_STANDARD_ANNUAL || '']: {
     planType: 'standard',
     interval: 'year'
   },

@@ -97,14 +97,16 @@ export default function UpgradeSubscription() {
     }
   };
 
-  const standardMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
-  const standardAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+  const standardMonthlyPrice =
+    import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY || import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+  const standardAnnualPrice =
+    import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL || import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
   const proMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
   const proAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
 
   const missingEnvVars = [];
-  if (!standardMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_CORE_MONTHLY');
-  if (!standardAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_CORE_ANNUAL');
+  if (!standardMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_MONTHLY (or legacy VITE_STRIPE_PRICE_CORE_MONTHLY)');
+  if (!standardAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_ANNUAL (or legacy VITE_STRIPE_PRICE_CORE_ANNUAL)');
   if (!proMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_MONTHLY');
   if (!proAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_ANNUAL');
 

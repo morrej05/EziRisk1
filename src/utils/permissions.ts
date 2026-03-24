@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'surveyor' | 'viewer';
 
-export type SubscriptionPlan = 'free' | 'core' | 'professional' | 'enterprise';
+export type SubscriptionPlan = 'free' | 'standard' | 'core' | 'professional' | 'enterprise';
 
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 
@@ -18,13 +18,15 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 
 export const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   free: 'Free',
-  core: 'Core',
+  standard: 'Standard',
+  core: 'Standard',
   professional: 'Professional',
   enterprise: 'Enterprise',
 };
 
 export const PLAN_DESCRIPTIONS: Record<SubscriptionPlan, string> = {
   free: 'Basic features with limited functionality',
+  standard: 'Essential features for small teams (1 editor)',
   core: 'Essential features for small teams (1 editor)',
   professional: 'Advanced features for growing teams (3 editors)',
   enterprise: 'Complete solution with premium features (10 editors)',
@@ -45,6 +47,7 @@ export interface PlanLimits {
 
 export const getPlanLimits = (plan: SubscriptionPlan | null): PlanLimits => {
   switch (plan) {
+    case 'standard':
     case 'core':
       return {
         maxEditors: 1,
@@ -221,6 +224,7 @@ export const getPlanFeatures = (plan: SubscriptionPlan | null): PlanFeatures => 
 
   switch (plan) {
     case 'free':
+    case 'standard':
     case 'core':
       return {
         hasSmartRecommendations: false,
