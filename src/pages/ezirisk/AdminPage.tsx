@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
@@ -18,6 +18,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState<'checking' | 'confirmed' | 'delayed'>('checking');
+  const hasHandledUpgradeSuccessRef = useRef(false);
 
   const runUpgradeSuccessRefresh = useCallback(async () => {
     const baselinePlanId = organisation?.plan_id ?? null;
@@ -26,8 +27,6 @@ export default function AdminPage() {
     const retryDelayMs = 2000;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      await refreshUserRole();
-
       if (organisationId) {
         const { data, error } = await supabase
           .from('organisations')
@@ -44,6 +43,7 @@ export default function AdminPage() {
           const upgradedWithoutBaseline = !baselinePlanId && currentSubscriptionStatus === 'active';
 
           if (planChanged || upgradedWithoutBaseline) {
+            await refreshUserRole();
             setUpgradeStatus('confirmed');
             return;
           }
@@ -60,11 +60,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('upgrade') === 'success') {
+    const upgradeSucceeded = params.get('upgrade') === 'success';
+    if (upgradeSucceeded && !hasHandledUpgradeSuccessRef.current) {
+      hasHandledUpgradeSuccessRef.current = true;
+      window.history.replaceState({}, '', '/admin');
       setUpgradeSuccess(true);
       setUpgradeStatus('checking');
       void runUpgradeSuccessRefresh();
-      window.history.replaceState({}, '', '/admin');
       const timeoutId = window.setTimeout(() => setUpgradeSuccess(false), 12000);
       return () => window.clearTimeout(timeoutId);
     }
