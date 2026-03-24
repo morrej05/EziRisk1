@@ -6,7 +6,7 @@ import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../utils/permissions';
 import UpgradeBlockModal from './UpgradeBlockModal';
 import {
   getUserSeatEntitlement,
-  getUserSeatUpgradeMessage,
+  getUserSeatLimitCopy,
   normalizeSeatLimitErrorMessage,
   type UserSeatEntitlement,
 } from '../utils/userSeatEntitlements';
@@ -56,6 +56,10 @@ export default function UserManagement() {
     if (!seatEntitlement) return false;
     return !seatEntitlement.allowed;
   }, [seatEntitlement]);
+  const seatLimitCopy = useMemo(
+    () => getUserSeatLimitCopy(seatEntitlement, organisation),
+    [seatEntitlement, organisation],
+  );
 
   const refreshSeatEntitlement = async () => {
     if (!currentUser?.organisation_id) {
@@ -202,7 +206,7 @@ export default function UserManagement() {
 
       if (!entitlement.allowed) {
         setUpgradeReason(inferUserUpgradeReason());
-        setUpgradeDetail(entitlement.reason || getUserSeatUpgradeMessage(organisation));
+        setUpgradeDetail(getUserSeatLimitCopy(entitlement, organisation).body);
         setShowUpgradeModal(true);
         return;
       }
@@ -373,9 +377,9 @@ export default function UserManagement() {
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4" />
             <div>
-              <p className="font-semibold">User seats limit reached</p>
+              <p className="font-semibold">{seatLimitCopy.title}</p>
               <p>
-                {seatEntitlement.reason || getUserSeatUpgradeMessage(organisation)}
+                {seatLimitCopy.body}
               </p>
             </div>
           </div>
@@ -401,7 +405,7 @@ export default function UserManagement() {
         <button
           onClick={() => setShowAddModal(true)}
           disabled={atSeatLimit}
-          title={atSeatLimit ? (seatEntitlement?.reason || getUserSeatUpgradeMessage(organisation)) : 'Add User'}
+          title={atSeatLimit ? seatLimitCopy.body : 'Add User'}
           className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
@@ -410,27 +414,27 @@ export default function UserManagement() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full table-fixed">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="w-[24%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 User
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="w-[26%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Email
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="w-[16%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Role
               </th>
               {isPlatformAdmin && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th className="w-[14%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                   Platform Admin
                 </th>
               )}
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="w-[12%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">
                 Created
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <th className="w-[12%] px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -438,22 +442,22 @@ export default function UserManagement() {
           <tbody className="divide-y divide-slate-200">
             {users.map((user) => (
               <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-6 py-4">
+                <td className="px-4 py-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+                    <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200 flex items-center justify-center">
                       <span className="text-sm font-medium text-slate-600">
                         {(user.name || user.email || 'U').charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <span className="text-sm font-medium text-slate-900">
+                    <span className="truncate text-sm font-medium text-slate-900">
                       {user.name || 'Unnamed User'}
                     </span>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-slate-600">
-                  {user.email || '—'}
+                <td className="px-4 py-4 text-sm text-slate-600">
+                  <span className="block truncate">{user.email || '—'}</span>
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-4 py-4">
                   {editingUserId === user.id ? (
                     <div className="flex items-center gap-2">
                       <select
@@ -500,7 +504,7 @@ export default function UserManagement() {
                   )}
                 </td>
                 {isPlatformAdmin && (
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4">
                     {user.role === 'admin' ? (
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -518,13 +522,13 @@ export default function UserManagement() {
                     )}
                   </td>
                 )}
-                <td className="px-6 py-4 text-sm text-slate-600">
+                <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">
                   {formatDate(user.created_at)}
                 </td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-4 py-4 text-right">
                   <button
                     onClick={() => handleDeleteUser(user.id, user.email)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
                     title="Delete user"
                   >
                     <Trash2 className="w-4 h-4" />
