@@ -26,13 +26,13 @@ interface OrganisationMemberRow {
   role: UserRole;
   status: string;
   created_at: string;
-  user_profiles: {
-    id: string;
-    name: string | null;
-    email: string | null;
-    created_at: string;
-    is_platform_admin: boolean | null;
-  } | null;
+}
+
+interface UserProfileRow {
+  id: string;
+  name: string | null;
+  created_at: string;
+  is_platform_admin: boolean | null;
 }
 
 export default function UserManagement() {
@@ -85,21 +85,57 @@ export default function UserManagement() {
     try {
       const { data: memberData, error: memberError } = await supabase
         .from('organisation_members')
-        .select('user_id, role, status, created_at, user_profiles(id, name, email, created_at, is_platform_admin)')
+        .select('user_id, role, status, created_at')
         .eq('organisation_id', currentUser.organisation_id)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
 
-      if (memberError) throw memberError;
+      if (memberError) {
+        console.error('[UserManagement] Failed organisation_members query', {
+          code: memberError.code,
+          message: memberError.message,
+          details: memberError.details,
+          hint: memberError.hint,
+          organisation_id: currentUser.organisation_id,
+          query: "from('organisation_members').select('user_id, role, status, created_at').eq('organisation_id', ?).eq('status', 'active').order('created_at')",
+        });
+        throw memberError;
+      }
 
       const activeMembers = (memberData ?? []) as OrganisationMemberRow[];
+      const memberIds = activeMembers.map((member) => member.user_id);
+
+      let profilesById = new Map<string, UserProfileRow>();
+      if (memberIds.length > 0) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('id, name, created_at, is_platform_admin')
+          .in('id', memberIds);
+
+        if (profileError) {
+          console.error('[UserManagement] Failed user_profiles query', {
+            code: profileError.code,
+            message: profileError.message,
+            details: profileError.details,
+            hint: profileError.hint,
+            member_count: memberIds.length,
+            query: "from('user_profiles').select('id, name, created_at, is_platform_admin').in('id', member_ids)",
+          });
+          throw profileError;
+        }
+
+        profilesById = new Map(
+          ((profileData ?? []) as UserProfileRow[]).map((profile) => [profile.id, profile]),
+        );
+      }
+
       const usersWithMembershipRole: UserProfile[] = activeMembers.map((member) => {
-        const profile = member.user_profiles;
+        const profile = profilesById.get(member.user_id);
         return {
           id: member.user_id,
           role: member.role,
           name: profile?.name ?? null,
-          email: profile?.email ?? undefined,
+          email: member.user_id === currentUser.id ? currentUser.email ?? undefined : undefined,
           created_at: profile?.created_at ?? member.created_at,
           is_platform_admin: Boolean(profile?.is_platform_admin),
         };
@@ -108,15 +144,15 @@ export default function UserManagement() {
       if (!usersWithMembershipRole.some((member) => member.id === currentUser.id)) {
         const { data: selfProfile } = await supabase
           .from('user_profiles')
-          .select('id, name, email, created_at, is_platform_admin')
+          .select('id, name, created_at, is_platform_admin')
           .eq('id', currentUser.id)
           .maybeSingle();
 
         usersWithMembershipRole.push({
           id: currentUser.id,
-          role: currentUser.role,
+          role: currentUser.role ?? 'viewer',
           name: selfProfile?.name ?? currentUser.user_metadata?.name ?? null,
-          email: selfProfile?.email ?? currentUser.email ?? undefined,
+          email: currentUser.email ?? undefined,
           created_at: selfProfile?.created_at ?? new Date().toISOString(),
           is_platform_admin: Boolean(selfProfile?.is_platform_admin ?? isPlatformAdmin),
         });
@@ -124,8 +160,23 @@ export default function UserManagement() {
 
       setUsers(usersWithMembershipRole);
       await refreshSeatEntitlement();
-    } catch (error) {
-      console.error('Error fetching users:', error);
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'message' in error) {
+        const supabaseError = error as {
+          code?: string;
+          message?: string;
+          details?: string;
+          hint?: string;
+        };
+        console.error('[UserManagement] Error fetching users', {
+          code: supabaseError.code,
+          message: supabaseError.message,
+          details: supabaseError.details,
+          hint: supabaseError.hint,
+        });
+      } else {
+        console.error('[UserManagement] Error fetching users', error);
+      }
       setLoadError('Failed to load users. Please try again.');
       setUsers([]);
     } finally {
