@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'surveyor' | 'viewer';
 
-export type SubscriptionPlan = 'free' | 'standard' | 'core' | 'professional' | 'enterprise';
+export type SubscriptionPlan = 'free' | 'standard' | 'professional';
 
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 
@@ -19,17 +19,13 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 export const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   free: 'Free',
   standard: 'Standard',
-  core: 'Standard',
   professional: 'Professional',
-  enterprise: 'Enterprise',
 };
 
 export const PLAN_DESCRIPTIONS: Record<SubscriptionPlan, string> = {
-  free: 'Basic features with limited functionality',
-  standard: 'Essential features for small teams (1 editor)',
-  core: 'Essential features for small teams (1 editor)',
-  professional: 'Advanced features for growing teams (3 editors)',
-  enterprise: 'Complete solution with premium features (10 editors)',
+  free: '7-day free trial (5 reports, 1 user)',
+  standard: '10 reports per month, up to 2 users',
+  professional: '30 reports per month, up to 5 users',
 };
 
 export const DISCIPLINE_LABELS: Record<DisciplineType, string> = {
@@ -48,31 +44,23 @@ export interface PlanLimits {
 export const getPlanLimits = (plan: SubscriptionPlan | null): PlanLimits => {
   switch (plan) {
     case 'standard':
-    case 'core':
       return {
-        maxEditors: 1,
+        maxEditors: 2,
         canSwitchDiscipline: false,
         hasSmartRecommendations: false,
         hasBoltOns: false,
       };
     case 'professional':
       return {
-        maxEditors: 3,
+        maxEditors: 5,
         canSwitchDiscipline: false,
         hasSmartRecommendations: true,
         hasBoltOns: false,
       };
-    case 'enterprise':
-      return {
-        maxEditors: 10,
-        canSwitchDiscipline: true,
-        hasSmartRecommendations: true,
-        hasBoltOns: true,
-      };
     case 'free':
     default:
       return {
-        maxEditors: 999,
+        maxEditors: 1,
         canSwitchDiscipline: false,
         hasSmartRecommendations: false,
         hasBoltOns: false,
@@ -225,7 +213,6 @@ export const getPlanFeatures = (plan: SubscriptionPlan | null): PlanFeatures => 
   switch (plan) {
     case 'free':
     case 'standard':
-    case 'core':
       return {
         hasSmartRecommendations: false,
         hasFRAModule: false,
@@ -233,13 +220,6 @@ export const getPlanFeatures = (plan: SubscriptionPlan | null): PlanFeatures => 
       };
 
     case 'professional':
-      return {
-        hasSmartRecommendations: true,
-        hasFRAModule: false,
-        hasAdvancedAnalytics: true,
-      };
-
-    case 'enterprise':
       return {
         hasSmartRecommendations: true,
         hasFRAModule: true,

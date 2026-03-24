@@ -98,15 +98,15 @@ export default function UpgradeSubscription() {
   };
 
   const standardMonthlyPrice =
-    import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY || import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+    import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
   const standardAnnualPrice =
-    import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL || import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+    import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL;
   const proMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
   const proAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
 
   const missingEnvVars = [];
-  if (!standardMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_MONTHLY (or legacy VITE_STRIPE_PRICE_CORE_MONTHLY)');
-  if (!standardAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_ANNUAL (or legacy VITE_STRIPE_PRICE_CORE_ANNUAL)');
+  if (!standardMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_MONTHLY');
+  if (!standardAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_ANNUAL');
   if (!proMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_MONTHLY');
   if (!proAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_ANNUAL');
 
@@ -185,8 +185,8 @@ export default function UpgradeSubscription() {
         {organisation && (
           <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-800">
-              Current Plan: <strong>{getPlanDisplayName(organisation.plan_id || 'trial')}</strong>
-              {organisation.subscription_status !== 'active' && (organisation.plan_id || 'trial') !== 'professional' && (
+              Current Plan: <strong>{getPlanDisplayName(organisation.plan_id || 'free')}</strong>
+              {organisation.subscription_status !== 'active' && (organisation.plan_id || 'free') !== 'professional' && (
                 <span className="ml-2 text-blue-600">
                   (Status: {organisation.subscription_status})
                 </span>

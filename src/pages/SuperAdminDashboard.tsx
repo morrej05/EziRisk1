@@ -74,7 +74,7 @@ export default function SuperAdminDashboard() {
   }, []);
 
   const usageStats = useMemo(() => {
-    const trialOrUnknownOrgs = organisations.filter((org) => !org.plan_id || org.plan_id === 'trial').length;
+    const trialOrUnknownOrgs = organisations.filter((org) => !org.plan_id || org.plan_id === 'free').length;
     return {
       organisationCount: organisations.length,
       trialOrUnknownOrgs,
@@ -191,7 +191,7 @@ export default function SuperAdminDashboard() {
                       {organisations.map((org) => (
                         <tr key={org.id}>
                           <td className="px-4 py-3 text-slate-900">{org.name || org.id}</td>
-                          <td className="px-4 py-3 text-slate-700">{org.plan_id || 'trial'}</td>
+                          <td className="px-4 py-3 text-slate-700">{org.plan_id || 'free'}</td>
                           <td className="px-4 py-3 text-slate-700">{org.subscription_status || 'unknown'}</td>
                           <td className="px-4 py-3 text-slate-700">
                             {org.created_at ? new Date(org.created_at).toLocaleDateString('en-GB') : '—'}
@@ -219,7 +219,7 @@ export default function SuperAdminDashboard() {
                     <p className="text-3xl font-bold text-slate-900 mt-2">{usageStats.activeUserCount}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white p-6">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Trial / unknown plans</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Free / unknown plans</p>
                     <p className="text-3xl font-bold text-slate-900 mt-2">{usageStats.trialOrUnknownOrgs}</p>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white p-6">

@@ -7,9 +7,9 @@ export interface StripePlanMapping {
 }
 
 const STRIPE_PRICE_STANDARD_MONTHLY =
-  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY || import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
 const STRIPE_PRICE_STANDARD_ANNUAL =
-  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL || import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL;
 
 export const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
   [STRIPE_PRICE_STANDARD_MONTHLY || '']: {

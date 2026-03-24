@@ -7,9 +7,9 @@ import { PLAN_LABELS } from '../utils/permissions';
 import { supabase } from '../lib/supabase';
 
 const STRIPE_PRICE_STANDARD_MONTHLY =
-  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY || import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY;
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
 const STRIPE_PRICE_STANDARD_ANNUAL =
-  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL || import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL;
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL;
 const STRIPE_PRICE_PRO_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
 const STRIPE_PRICE_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
 
@@ -43,7 +43,7 @@ export default function UpgradePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const normalizedUserPlan = userPlan === 'core' ? 'standard' : userPlan;
+  const normalizedUserPlan = userPlan;
 
   const contextualUpgradeCopy = useMemo(() => {
     if (!upgradeReason) return null;
@@ -56,7 +56,7 @@ export default function UpgradePage() {
       name: 'Free',
       priceMonthly: 0,
       priceAnnual: 0,
-      description: 'Basic features with limited functionality',
+      description: '7-day free trial',
       features: [
         'Create and edit surveys',
         'Generate PDF reports',
@@ -70,7 +70,7 @@ export default function UpgradePage() {
         'No advanced analytics',
         'No custom branding',
       ],
-      editors: 'Unlimited',
+      editors: '1 User',
       cta: 'Current Plan',
       showCheckout: false,
       highlighted: false,
@@ -78,25 +78,16 @@ export default function UpgradePage() {
     {
       id: 'standard',
       name: 'Standard',
-      priceMonthly: 49,
-      priceAnnual: 490,
+      priceMonthly: 79,
+      priceAnnual: 790,
       stripePriceIdMonthly: STRIPE_PRICE_STANDARD_MONTHLY,
       stripePriceIdAnnual: STRIPE_PRICE_STANDARD_ANNUAL,
       description: 'Essential features for small teams',
-      features: [
-        'Everything in Free',
-        '1 editor seat',
-        'Unlimited viewers',
-        'Priority email support',
-        'Basic branding',
-        'Export to PDF',
-      ],
+      features: ['Everything in Free', '2 user seats', '10 reports per month', 'Priority support'],
       limitations: [
-        'No Smart Recommendations',
-        'No FRA module',
-        'Limited to 1 editor',
+        'No advanced professional features',
       ],
-      editors: '1 Editor',
+      editors: '2 Users',
       cta: 'Upgrade to Standard',
       showCheckout: true,
       highlighted: false,
@@ -109,42 +100,12 @@ export default function UpgradePage() {
       stripePriceIdMonthly: STRIPE_PRICE_PRO_MONTHLY,
       stripePriceIdAnnual: STRIPE_PRICE_PRO_ANNUAL,
       description: 'Advanced features for growing teams',
-      features: [
-        'Everything in Standard',
-        '3 editor seats',
-        'AI-powered Smart Recommendations',
-        'Advanced analytics dashboard',
-        'Custom branding',
-        'Priority support',
-        'FRA module access',
-      ],
+      features: ['Everything in Standard', '5 user seats', '30 reports per month', 'Advanced analytics', 'FRA module access'],
       limitations: [],
-      editors: '3 Editors',
+      editors: '5 Users',
       cta: 'Upgrade to Professional',
       showCheckout: true,
       highlighted: true,
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      priceMonthly: null,
-      priceAnnual: null,
-      description: 'Complete solution with premium features',
-      features: [
-        'Everything in Professional',
-        '10 editor seats',
-        'Both disciplines (Engineering + Assessment)',
-        'All bolt-ons included',
-        'Dedicated account manager',
-        'Custom integrations',
-        'Advanced compliance reporting',
-        'SLA guarantee',
-      ],
-      limitations: [],
-      editors: '10 Editors',
-      cta: 'Contact Sales',
-      showCheckout: false,
-      highlighted: false,
     },
   ];
 
@@ -170,10 +131,10 @@ export default function UpgradePage() {
         .eq('id', organisation.id)
         .single();
 
-      const normalizedOrgPlan = data?.plan_id === 'core' ? 'standard' : data?.plan_id;
+      const normalizedOrgPlan = data?.plan_id;
       if (data?.subscription_status === 'active' && normalizedOrgPlan !== normalizedUserPlan) {
         setIsPending(false);
-        setPendingMessage(`You are now on ${(normalizedOrgPlan || 'trial').toString()}.`);
+        setPendingMessage(`You are now on ${(normalizedOrgPlan || 'free').toString()}.`);
         setTimeout(() => {
           navigate('/dashboard');
         }, 2000);
@@ -254,7 +215,7 @@ export default function UpgradePage() {
     const price = billingCycle === 'monthly' ? plan.priceMonthly : plan.priceAnnual;
     const period = billingCycle === 'monthly' ? '/mo' : '/yr';
 
-    return `$${price}${period}`;
+    return `£${price}${period}`;
   };
 
   return (
@@ -332,7 +293,7 @@ export default function UpgradePage() {
             Choose the Perfect Plan for Your Needs
           </h2>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-6">
-            Self-serve upgrade to Standard or Professional. Contact us for Enterprise.
+            Choose between Free, Standard, and Professional plans.
           </p>
 
           <div className="inline-flex items-center gap-2 bg-white rounded-lg p-1 border border-slate-200">
@@ -359,7 +320,7 @@ export default function UpgradePage() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-6 mb-12">
+        <div className="grid md:grid-cols-3 gap-6 mb-12">
           {plans.map((plan) => {
             const isCurrentPlan = plan.id === normalizedUserPlan;
 
@@ -433,18 +394,6 @@ export default function UpgradePage() {
           })}
         </div>
 
-        <div className="bg-slate-900 text-white rounded-lg p-8 text-center">
-          <h3 className="text-2xl font-bold mb-3">Need Enterprise?</h3>
-          <p className="text-slate-300 mb-6 max-w-2xl mx-auto">
-            Contact our sales team for enterprise pricing, 10 editor seats, both disciplines, custom integrations, and dedicated support.
-          </p>
-          <button
-            onClick={() => window.location.href = 'mailto:sales@ezirisk.com'}
-            className="px-8 py-3 bg-white text-slate-900 font-medium rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            Contact Sales
-          </button>
-        </div>
       </main>
     </div>
   );

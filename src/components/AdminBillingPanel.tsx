@@ -14,25 +14,25 @@ function formatDate(value: string): string {
   });
 }
 
-type CanonicalPlanId = 'solo' | 'team' | 'consultancy';
+type CanonicalPlanId = 'free' | 'standard' | 'professional';
 
 function resolvePlanId(organisation: any): CanonicalPlanId {
-  const rawPlan = organisation?.plan_id ?? organisation?.plan_type ?? 'solo';
+  const rawPlan = organisation?.plan_id ?? 'free';
 
-  if (rawPlan === 'team' || rawPlan === 'consultancy' || rawPlan === 'solo') {
+  if (rawPlan === 'standard' || rawPlan === 'professional' || rawPlan === 'free') {
     return rawPlan;
   }
 
-  return 'solo';
+  return 'free';
 }
 
 function getPlanLabel(planId: CanonicalPlanId): string {
   switch (planId) {
-    case 'team':
+    case 'standard':
+      return 'Standard';
+    case 'professional':
       return 'Professional';
-    case 'consultancy':
-      return 'Consultancy';
-    case 'solo':
+    case 'free':
     default:
       return 'Free';
   }
@@ -40,30 +40,30 @@ function getPlanLabel(planId: CanonicalPlanId): string {
 
 function getPlanDescriptor(planId: CanonicalPlanId): string {
   switch (planId) {
-    case 'team':
-      return '30 reports per month • up to 5 users • portfolio access';
-    case 'consultancy':
-      return '100 reports per month • up to 20 users • portfolio access';
-    case 'solo':
+    case 'standard':
+      return '£79/month • 10 reports per month • up to 2 users';
+    case 'professional':
+      return '£149/month • 30 reports per month • up to 5 users';
+    case 'free':
     default:
-      return 'Includes 5 reports and 1 user';
+      return '7-day free trial • 5 reports per month • 1 user';
   }
 }
 
 function getPrimaryCta(planId: CanonicalPlanId) {
-  if (planId === 'consultancy') {
+  if (planId === 'professional') {
     return 'Manage subscription';
   }
 
-  if (planId === 'team') {
+  if (planId === 'standard') {
     return 'Manage subscription';
   }
 
-  return 'Upgrade to Professional (30 reports • 5 users)';
+  return 'Upgrade to Standard or Professional';
 }
 
 function getSecondaryCta(planId: CanonicalPlanId) {
-  if (planId === 'solo') return null;
+  if (planId === 'free') return null;
   return null;
 }
 
@@ -131,7 +131,7 @@ export default function AdminBillingPanel() {
 
   const trialExpiry = reportEntitlement?.trial_ends_at || organisation?.trial_ends_at || null;
   const trialDaysRemaining = useMemo(() => {
-    if (planId !== 'solo' || !trialExpiry) return null;
+    if (planId !== 'free' || !trialExpiry) return null;
     const now = new Date();
     const expiryDate = new Date(trialExpiry);
     const diffMs = expiryDate.getTime() - now.getTime();
@@ -159,7 +159,7 @@ export default function AdminBillingPanel() {
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <dt className="text-xs uppercase tracking-wide text-slate-500">Status</dt>
           <dd className="text-base font-semibold text-slate-900 mt-1">{statusLabel}</dd>
-          {planId === 'solo' && trialExpiry && (
+          {planId === 'free' && trialExpiry && (
             <p
               className={`text-sm mt-1 ${isTrialNearExpiry ? 'text-amber-700 font-medium' : 'text-slate-600'}`}
             >

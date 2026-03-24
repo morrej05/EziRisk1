@@ -57,7 +57,7 @@ export default function UpgradeBlockModal({
 
   const copy = COPY[reason];
   const currentPlan = getPlan(organisation);
-  const actionLabel = currentPlan === 'trial'
+  const actionLabel = currentPlan === 'free'
     ? 'Upgrade to Standard'
     : currentPlan === 'professional'
       ? 'Manage subscription'

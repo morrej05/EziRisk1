@@ -19,13 +19,12 @@ export default function UpgradeBanner({ plan, feature = 'Smart Recommendations' 
       case 'free':
         return {
           title: "You're on Free Plan",
-          subtitle: `Upgrade to Professional for ${feature} and advanced features`,
+          subtitle: `Upgrade to Standard (£79) or Professional (£149) for higher limits`,
         };
       case 'standard':
-      case 'core':
         return {
           title: "You're on Standard Plan",
-          subtitle: `Upgrade to Professional for ${feature} and 3 editor seats`,
+          subtitle: `Upgrade to Professional for ${feature} and 5 user seats`,
         };
       default:
         return null;

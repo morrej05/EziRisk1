@@ -21,7 +21,7 @@
  * Access is determined by the platform flag on the user state.
  */
 
-export type PlanType = 'trial' | 'standard' | 'professional';
+export type PlanType = 'free' | 'standard' | 'professional';
 export type PlanId = PlanType;
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'inactive';
@@ -35,7 +35,7 @@ export interface PlanConfig {
 }
 
 const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
-  trial: {
+  free: {
     reportLimit: 5,
     userLimit: 1,
     pdfWatermark: true,
@@ -55,7 +55,7 @@ const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
   },
 };
 
-const DEFAULT_PLAN: PlanId = 'trial';
+const DEFAULT_PLAN: PlanId = 'free';
 
 export function isDev(): boolean {
   return import.meta.env.DEV === true;
@@ -96,7 +96,7 @@ export interface UserWithOrg extends User {
 
 export function getPlan(org?: Organisation | null): PlanId {
   const raw = org?.plan_id;
-  if (raw === 'trial' || raw === 'standard' || raw === 'professional') {
+  if (raw === 'free' || raw === 'standard' || raw === 'professional') {
     return raw;
   }
   return DEFAULT_PLAN;
@@ -234,7 +234,7 @@ export function canAccessPillarB(user: User, org?: Organisation | null): boolean
   if (isPlatformAdmin(user)) return true;
   if (!org) return false;
 
-  const hasAccess = getPlan(org) === 'trial' || getPlan(org) === 'standard' || getPlan(org) === 'professional';
+  const hasAccess = getPlan(org) === 'free' || getPlan(org) === 'standard' || getPlan(org) === 'professional';
 
   if (import.meta.env.DEV) {
     console.log('[PillarB/Assessments] 🔑 Access check:', {
@@ -254,8 +254,8 @@ export function getPlanDisplayName(plan: PlanType | string): string {
   const planStr = plan.toString().trim().toLowerCase();
   if (planStr === 'professional') return 'Professional';
   if (planStr === 'standard') return 'Standard';
-  if (planStr === 'trial') return 'Trial';
-  return 'Trial';
+  if (planStr === 'free') return 'Free';
+  return 'Free';
 }
 
 export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): string {
@@ -276,13 +276,13 @@ export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): st
 }
 
 export const PLAN_FEATURES = {
-  trial: {
-    name: 'Trial',
-    maxEditors: PLAN_CONFIGS.trial.userLimit,
+  free: {
+    name: 'Free',
+    maxEditors: PLAN_CONFIGS.free.userLimit,
     proFeatures: false,
     addons: false,
     disciplineSwitching: false,
-    description: 'Up to 5 reports, 1 user, PDF watermark',
+    description: '7-day free trial, up to 5 reports, 1 user, PDF watermark',
   },
   standard: {
     name: 'Standard',
@@ -293,23 +293,6 @@ export const PLAN_FEATURES = {
     description: 'Up to 10 reports, 2 users',
   },
   professional: {
-    name: 'Professional',
-    maxEditors: PLAN_CONFIGS.professional.userLimit,
-    proFeatures: true,
-    addons: true,
-    disciplineSwitching: true,
-    description: 'Up to 30 reports, 5 users, portfolio access',
-  },
-  // Legacy aliases for non-runtime UI copy; these map to current plans.
-  core: {
-    name: 'Standard',
-    maxEditors: PLAN_CONFIGS.standard.userLimit,
-    proFeatures: false,
-    addons: true,
-    disciplineSwitching: false,
-    description: 'Up to 10 reports, 2 users',
-  },
-  enterprise: {
     name: 'Professional',
     maxEditors: PLAN_CONFIGS.professional.userLimit,
     proFeatures: true,
