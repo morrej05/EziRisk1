@@ -5,10 +5,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   const loc = useLocation();
 
   const nav = [
-    { to: '/platform', label: 'Overview' },
-    { to: '/platform/orgs', label: 'Organisations' },
-    { to: '/platform/users', label: 'Users' },
-    { to: '/platform/flags', label: 'Feature Flags' },
+    { to: '/platform', label: 'Platform' },
   ];
 
   return (

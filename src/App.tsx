@@ -241,7 +241,7 @@ function App() {
             }
           />
           <Route
-            path="/admin/*"
+            path="/admin"
             element={
               <AuthedLayout>
                 <AdminRoute>
@@ -253,7 +253,7 @@ function App() {
             }
           />
           <Route
-            path="/platform/*"
+            path="/platform"
             element={
               <AuthedLayout>
                 <PlatformAdminRoute>

@@ -11,7 +11,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  admin: 'Full access including user management, billing, and all survey operations',
+  admin: 'Organisation-level access including user management, billing, and survey operations',
   surveyor: 'Can create, edit, and manage surveys within plan limits',
   viewer: 'Read-only access to surveys and reports',
 };
@@ -135,9 +135,9 @@ export const getRolePermissions = (role: UserRole | null): RolePermissions => {
         canManageUsers: true,
         canManageBranding: true,
         canAccessAdmin: true,
-        canManageSectorWeightings: true,
-        canManageRecommendationLibrary: true,
-        canManagePlatformSettings: true,
+        canManageSectorWeightings: false,
+        canManageRecommendationLibrary: false,
+        canManagePlatformSettings: false,
         canGenerateAISummary: true,
         canExportReports: true,
       };
