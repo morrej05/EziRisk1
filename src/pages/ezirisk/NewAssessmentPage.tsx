@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Lock } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import UpgradeBlockModal from '../../components/UpgradeBlockModal';
-import { canAccessRiskEngineering, canAccessExplosionSafety } from '../../utils/entitlements';
 import { createDocument, ReportCreationBlockedError } from '../../utils/documentCreation';
 import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
 import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
@@ -13,8 +12,6 @@ interface AssessmentType {
   id: string;
   title: string;
   description: string;
-  enabled: boolean;
-  requiresUpgrade?: boolean;
 }
 
 export default function NewAssessmentPage() {
@@ -41,9 +38,6 @@ export default function NewAssessmentPage() {
     );
   }
 
-  const hasRiskEngineering = canAccessRiskEngineering(organisation);
-  const hasExplosion = canAccessExplosionSafety(user, organisation);
-
   const subNavItems = [
     { label: 'All Assessments', path: '/assessments' },
     { label: 'New Assessment', path: '/assessments/new' },
@@ -58,34 +52,26 @@ export default function NewAssessmentPage() {
       id: 'fra',
       title: 'Fire Risk Assessment',
       description: 'Structured FRA with recommendations and report output.',
-      enabled: true,
     },
     {
       id: 'fire_explosion',
       title: 'Fire + Explosion Assessment',
       description: 'Integrated Fire Risk and Explosive Atmospheres (DSEAR) assessment in a single report.',
-      enabled: hasExplosion,
-      requiresUpgrade: !hasExplosion,
     },
     {
       id: 'dsear',
       title: 'Explosive Atmospheres Risk Assessment',
       description: 'Explosion risk assessment and controls.',
-      enabled: hasExplosion,
-      requiresUpgrade: !hasExplosion,
     },
     {
       id: 'fsd',
       title: 'Fire Strategy',
       description: 'Fire strategy inputs aligned to formal output.',
-      enabled: true,
     },
     {
       id: 'property',
       title: 'Property Risk Survey',
       description: 'Property risk engineering survey and report.',
-      enabled: hasRiskEngineering,
-      requiresUpgrade: !hasRiskEngineering,
     },
   ];
 
@@ -97,21 +83,6 @@ export default function NewAssessmentPage() {
 
     if (!user?.id) {
       alert('User not found. Please refresh and try again.');
-      return;
-    }
-
-    // Double-check entitlements at submit time to prevent bypass
-    if (typeId === 'property' && !hasRiskEngineering) {
-      setUpgradeReason('report_limit');
-      setUpgradeDetail('This assessment type requires an upgrade to your plan.');
-      setShowUpgradeModal(true);
-      return;
-    }
-
-    if ((typeId === 'dsear' || typeId === 'fire_explosion') && !hasExplosion) {
-      setUpgradeReason('report_limit');
-      setUpgradeDetail('This assessment type requires an upgrade to your plan.');
-      setShowUpgradeModal(true);
       return;
     }
 
@@ -259,35 +230,22 @@ export default function NewAssessmentPage() {
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
             <div className="divide-y divide-slate-200">
               {assessmentPackages
-                .filter(a => a.enabled || a.requiresUpgrade)
                 .map((assessment) => (
                   <div key={assessment.id} className="px-6 py-5 flex items-center justify-between hover:bg-slate-50 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h4 className="text-base font-medium text-slate-900">{assessment.title}</h4>
-                        {assessment.requiresUpgrade && (
-                          <Lock className="w-4 h-4 text-slate-400" />
-                        )}
                       </div>
                       <p className="text-sm text-slate-600 mt-1">{assessment.description}</p>
                     </div>
-                    {assessment.enabled ? (
-                      <button
-                        onClick={() => handleStart(assessment.id)}
-                        disabled={creatingType !== null}
-                        className="ml-6 flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {creatingType === assessment.id ? 'Starting...' : 'Start'}
-                        {creatingType !== assessment.id && <ArrowRight className="w-4 h-4" />}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => navigate(buildUpgradePath('report_limit', { action: 'start_locked_assessment' }))}
-                        className="ml-6 flex items-center gap-2 px-4 py-2 bg-white text-slate-700 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
-                      >
-                        Upgrade
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleStart(assessment.id)}
+                      disabled={creatingType !== null}
+                      className="ml-6 flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {creatingType === assessment.id ? 'Starting...' : 'Start'}
+                      {creatingType !== assessment.id && <ArrowRight className="w-4 h-4" />}
+                    </button>
                   </div>
                 ))}
             </div>
