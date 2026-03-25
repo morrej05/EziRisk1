@@ -252,7 +252,8 @@ export default function UserManagement() {
       setNewUserRole('viewer');
       await fetchUsers();
     } catch (error: unknown) {
-      console.error('Error adding user:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[UserManagement] Error adding user:', errorMessage, error);
       const message = normalizeSeatLimitErrorMessage(error);
       if (message.toLowerCase().includes('seat limit') || message.toLowerCase().includes('upgrade') || message.toLowerCase().includes('trial')) {
         setUpgradeReason(message.toLowerCase().includes('trial') ? 'trial_expired' : inferUserUpgradeReason());

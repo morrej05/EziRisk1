@@ -40,7 +40,8 @@ export default function PlanUsageWidget() {
         setReportEntitlement(reportData);
         setSeatEntitlement(seatData);
       } catch (err) {
-        console.error('[PlanUsageWidget] Exception:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[PlanUsageWidget] Exception:', errorMessage, err);
       } finally {
         setIsLoading(false);
       }
