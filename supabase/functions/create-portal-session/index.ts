@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
 
     const authorization = req.headers.get("Authorization") ?? req.headers.get("authorization");
     if (!authorization) {
-      return jsonResponse(401, { error: "Missing Authorization header" });
+      return jsonResponse(401, { error: "DEBUG_NO_AUTH_HEADER" });
     }
 
     const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -67,7 +67,14 @@ Deno.serve(async (req: Request) => {
       error: authError,
     } = await authSupabase.auth.getUser();
 
-    if (authError || !user) {
+    if (authError) {
+      return jsonResponse(401, {
+        error: "DEBUG_AUTH_GET_USER_FAILED",
+        message: authError.message,
+      });
+    }
+
+    if (!user) {
       return jsonResponse(401, { error: "Unauthorized" });
     }
 
