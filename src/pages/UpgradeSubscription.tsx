@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../hooks/useTenant';
 import { useNavigate } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { canAccessAdmin, getPlanDisplayName, type User as EntitlementsUser } from '../utils/entitlements';
 import { PRICING, getDefaultRegion, formatPrice } from '../config/pricing';
 import { toggleDevForcePro } from '../utils/devFlags';
+import { getPriceIdForPlan, type PlanType, type BillingCycle } from '../utils/stripePlans';
 
 export default function UpgradeSubscription() {
   const { user, organisation, refreshUserRole } = useAuth();
@@ -14,8 +15,16 @@ export default function UpgradeSubscription() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoCheckoutStarted, setAutoCheckoutStarted] = useState(false);
   const queryParams = new URLSearchParams(window.location.search);
   const checkoutCanceled = queryParams.get('canceled') === 'true';
+  const signupFlow = queryParams.get('signupFlow') === '1';
+  const signupPlanParam = queryParams.get('signupPlan');
+  const signupPlan: PlanType | null =
+    signupPlanParam === 'standard' || signupPlanParam === 'professional'
+      ? signupPlanParam
+      : null;
+  const signupBillingCycle: BillingCycle = queryParams.get('signupBillingCycle') === 'annual' ? 'annual' : 'monthly';
   const region = getDefaultRegion();
   const pricing = PRICING[region];
 
@@ -33,10 +42,7 @@ export default function UpgradeSubscription() {
       : null
   ), [user]);
 
-  if (!entitlementUser || !canAccessAdmin(entitlementUser)) {
-    navigate('/dashboard');
-    return null;
-  }
+  const hasAdminAccess = Boolean(entitlementUser && canAccessAdmin(entitlementUser));
 
   const handleToggleDevForcePro = async () => {
     if (!organisation?.id || !tenant) return;
@@ -51,7 +57,7 @@ export default function UpgradeSubscription() {
     }
   };
 
-  const handleUpgrade = async (priceId: string) => {
+  const handleUpgrade = useCallback(async (priceId: string) => {
     if (!organisation) {
       setError('Organisation not found');
       return;
@@ -95,20 +101,32 @@ export default function UpgradeSubscription() {
       setError(upgradeError instanceof Error ? upgradeError.message : 'Failed to start upgrade process');
       setIsLoading(false);
     }
-  };
+  }, [organisation]);
 
-  const standardMonthlyPrice =
-    import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
-  const standardAnnualPrice =
-    import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL;
-  const proMonthlyPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
-  const proAnnualPrice = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
+  const standardMonthlyPrice = getPriceIdForPlan('standard', 'monthly');
+  const standardAnnualPrice = getPriceIdForPlan('standard', 'annual');
+  const proMonthlyPrice = getPriceIdForPlan('professional', 'monthly');
+  const proAnnualPrice = getPriceIdForPlan('professional', 'annual');
 
   const missingEnvVars = [];
   if (!standardMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_MONTHLY');
   if (!standardAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_STANDARD_ANNUAL');
   if (!proMonthlyPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_MONTHLY');
   if (!proAnnualPrice) missingEnvVars.push('VITE_STRIPE_PRICE_PRO_ANNUAL');
+
+  useEffect(() => {
+    if (!signupFlow || !signupPlan || autoCheckoutStarted || isLoading || !organisation) return;
+    const priceId = getPriceIdForPlan(signupPlan, signupBillingCycle);
+    if (!priceId) return;
+
+    setAutoCheckoutStarted(true);
+    void handleUpgrade(priceId);
+  }, [signupFlow, signupPlan, signupBillingCycle, autoCheckoutStarted, isLoading, organisation, handleUpgrade]);
+
+  if (!hasAdminAccess) {
+    navigate('/dashboard');
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -178,6 +196,14 @@ export default function UpgradeSubscription() {
           <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-sm text-amber-900">
               Checkout was canceled. Your plan has not changed. You can try again whenever you&apos;re ready.
+            </p>
+          </div>
+        )}
+
+        {signupFlow && signupPlan && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-900">
+              Account created successfully. Continue to Stripe checkout to activate the {signupPlan} plan ({signupBillingCycle} billing).
             </p>
           </div>
         )}
