@@ -1,6 +1,15 @@
+import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
+
 export default function WhatItDoes() {
+  const { ref, isVisible } = useFadeInOnScroll();
+
   return (
-    <section className="py-24 bg-white">
+    <section
+      ref={ref}
+      className={`py-24 bg-white transition-all duration-300 ease-out ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
