@@ -69,7 +69,7 @@ ALTER TABLE public.organisations
 
 -- Ensure trial timestamps exist for free-tier orgs.
 UPDATE public.organisations
-SET trial_ends_at = COALESCE(trial_ends_at, created_at + interval '7 days')
+SET trial_ends_at = COALESCE(trial_ends_at, created_at + interval '14 days')
 WHERE COALESCE(plan_id, 'free') = 'free';
 
 CREATE OR REPLACE FUNCTION public.get_report_creation_entitlement(
@@ -123,7 +123,7 @@ BEGIN
 
   v_trial_ends_at := v_org.trial_ends_at;
   IF v_plan = 'free' AND v_trial_ends_at IS NULL THEN
-    v_trial_ends_at := COALESCE(v_org.created_at, p_at) + interval '7 days';
+    v_trial_ends_at := COALESCE(v_org.created_at, p_at) + interval '14 days';
   END IF;
 
   v_trial_expired := v_plan = 'free'
@@ -133,7 +133,7 @@ BEGIN
   IF v_trial_expired THEN
     RETURN QUERY SELECT
       false,
-      'Your 7-day free trial has expired. Upgrade to continue creating reports.',
+      'Your 14-day free trial has expired. Upgrade to continue creating reports. Existing data is still available.',
       v_plan,
       v_limit,
       v_count,
@@ -187,6 +187,8 @@ DECLARE
   v_plan text;
   v_limit integer;
   v_active_count integer;
+  v_trial_ends_at timestamptz;
+  v_trial_expired boolean;
 BEGIN
   SELECT * INTO v_org
   FROM public.organisations
@@ -209,10 +211,30 @@ BEGIN
     ELSE 1
   END;
 
+  v_trial_ends_at := v_org.trial_ends_at;
+  IF v_plan = 'free' AND v_trial_ends_at IS NULL THEN
+    v_trial_ends_at := COALESCE(v_org.created_at, p_at) + interval '14 days';
+  END IF;
+
+  v_trial_expired := v_plan = 'free'
+    AND v_trial_ends_at IS NOT NULL
+    AND p_at >= v_trial_ends_at;
+
   SELECT COUNT(*)::integer INTO v_active_count
   FROM public.organisation_members om
   WHERE om.organisation_id = p_org_id
     AND om.status = 'active';
+
+  IF v_trial_expired THEN
+    RETURN QUERY SELECT
+      false,
+      'Your free trial has ended. Upgrade to add team members. Existing data is still available.',
+      v_plan,
+      v_limit,
+      v_active_count,
+      false;
+    RETURN;
+  END IF;
 
   RETURN QUERY SELECT
     v_active_count < v_limit,

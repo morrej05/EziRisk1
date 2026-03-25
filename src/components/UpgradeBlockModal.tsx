@@ -33,9 +33,9 @@ const COPY: Record<UpgradeBlockReason, UpgradeExperienceCopy> = {
   },
   trial_expired: {
     title: 'Trial expired',
-    reason: 'Your trial period has ended.',
-    attemptedAction: 'You’re trying to keep creating reports and managing your workspace.',
-    unlocks: 'Upgrade to restore full access and continue working without interruption.',
+    reason: 'Your free trial has ended.',
+    attemptedAction: 'You can still access existing data, but creating reports and adding users are now blocked.',
+    unlocks: 'Upgrade to continue creating reports and adding team members.',
   },
   portfolio_locked: {
     title: 'Portfolio locked',

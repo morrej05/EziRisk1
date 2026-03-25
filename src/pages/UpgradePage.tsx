@@ -24,7 +24,7 @@ const UPGRADE_CONTEXT_COPY: Record<string, { title: string; body: string }> = {
   },
   trial_expired: {
     title: 'Trial expired',
-    body: "Your trial has ended. Upgrading restores report creation and full workspace access.",
+    body: "Your free trial has ended. Existing data remains available, but upgrading restores report creation and team growth.",
   },
   portfolio_locked: {
     title: 'Portfolio locked on current plan',
@@ -53,11 +53,12 @@ export default function UpgradePage() {
   const plans = [
     {
       id: 'free',
-      name: 'Free',
+      name: 'Free trial',
       priceMonthly: 0,
       priceAnnual: 0,
-      description: '7-day free trial',
+      description: '14-day free trial',
       features: [
+        'Includes 1 user and 5 reports during the trial',
         'Create and edit surveys',
         'Generate PDF reports',
         'Basic export functionality',

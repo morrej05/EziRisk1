@@ -61,6 +61,16 @@ export default function PlanUsageWidget() {
   const seatsUsed = seatEntitlement?.active_member_count ?? userCount;
   const usersPercent = seatLimit > 0 ? (seatsUsed / seatLimit) * 100 : 0;
   const storagePercent = tenant?.plan ? (tenant.storage_used_mb / tenant.plan.max_storage_mb) * 100 : 0;
+  const isFreeTrial = organisation.plan_id === 'free';
+  const trialEndsAt = reportEntitlement?.trial_ends_at ?? organisation.trial_ends_at ?? null;
+  const isTrialExpired = Boolean(reportEntitlement?.is_trial_expired);
+  const trialDaysRemaining = (() => {
+    if (!isFreeTrial || !trialEndsAt || isTrialExpired) return null;
+    const now = new Date();
+    const expiryDate = new Date(trialEndsAt);
+    const diffMs = expiryDate.getTime() - now.getTime();
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  })();
 
   const getProgressColor = (percent: number) => {
     if (percent >= 100) return 'bg-red-500';
@@ -87,6 +97,26 @@ export default function PlanUsageWidget() {
       <p className="text-sm text-slate-600 mb-4">
         Operational usage for your current monthly allowance and active seats.
       </p>
+
+      {isFreeTrial && (
+        <div className={`mb-4 rounded-lg border p-3 text-sm ${isTrialExpired ? 'border-red-200 bg-red-50 text-red-900' : 'border-blue-200 bg-blue-50 text-blue-900'}`}>
+          {isTrialExpired ? (
+            <div>
+              <p className="font-semibold">Your free trial has ended.</p>
+              <p className="text-xs mt-1">Existing data is still available. Upgrade to continue creating reports and adding team members.</p>
+            </div>
+          ) : (
+            <div>
+              <p className="font-semibold">Free trial: 14 days, 1 user, 5 reports.</p>
+              <p className="text-xs mt-1">
+                {trialDaysRemaining !== null
+                  ? `Your free trial ends in ${trialDaysRemaining} day${trialDaysRemaining === 1 ? '' : 's'}.`
+                  : 'Your free trial is active.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-4">
         <div>

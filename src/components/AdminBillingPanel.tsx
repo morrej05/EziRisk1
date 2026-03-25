@@ -27,7 +27,7 @@ function resolvePlanId(organisation: any): CanonicalPlanId {
   return 'free';
 }
 
-function getPlanLabel(planId: CanonicalPlanId): string {
+function getPlanLabel(planId: CanonicalPlanId, isTrialExpired: boolean): string {
   switch (planId) {
     case 'standard':
       return 'Standard';
@@ -35,7 +35,7 @@ function getPlanLabel(planId: CanonicalPlanId): string {
       return 'Professional';
     case 'free':
     default:
-      return 'Free';
+      return isTrialExpired ? 'Trial expired' : 'Free trial';
   }
 }
 
@@ -168,7 +168,6 @@ export default function AdminBillingPanel() {
   };
 
   const planId = resolvePlanId(organisation);
-  const planName = getPlanLabel(planId);
 
   const reportLimit = reportEntitlement?.monthly_report_limit ?? 0;
   const reportsUsed = reportEntitlement?.monthly_report_count ?? 0;
@@ -180,6 +179,8 @@ export default function AdminBillingPanel() {
   }, [organisation?.subscription_status]);
 
   const trialExpiry = reportEntitlement?.trial_ends_at || organisation?.trial_ends_at || null;
+  const isTrialExpired = planId === 'free' && Boolean(reportEntitlement?.is_trial_expired);
+  const planName = getPlanLabel(planId, isTrialExpired);
   const trialDaysRemaining = useMemo(() => {
     if (planId !== 'free' || !trialExpiry) return null;
     const now = new Date();
@@ -215,8 +216,10 @@ export default function AdminBillingPanel() {
           <dd className="text-base font-semibold text-slate-900 mt-1">{statusLabel}</dd>
           {planId === 'free' && trialExpiry && (
             <p className="text-sm mt-1 text-slate-600">
-              {trialDaysRemaining !== null && trialDaysRemaining <= 7
-                ? `Trial expires in ${trialDaysRemaining} day${trialDaysRemaining === 1 ? '' : 's'}`
+              {isTrialExpired
+                ? 'Trial expired'
+                : trialDaysRemaining !== null
+                ? `Your free trial ends in ${trialDaysRemaining} day${trialDaysRemaining === 1 ? '' : 's'}`
                 : `Trial ends on ${formatDate(trialExpiry)}`}
             </p>
           )}
@@ -237,10 +240,25 @@ export default function AdminBillingPanel() {
         </div>
       </dl>
 
+      {planId === 'free' && (
+        <div className={`mb-4 rounded-lg border p-4 ${isTrialExpired ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-blue-50'}`}>
+          <p className={`text-sm font-medium ${isTrialExpired ? 'text-red-900' : 'text-blue-900'}`}>
+            {isTrialExpired
+              ? 'Your free trial has ended. Existing data is still available.'
+              : 'Free trial includes 1 user and 5 reports for 14 days.'}
+          </p>
+          <p className={`text-xs mt-1 ${isTrialExpired ? 'text-red-800' : 'text-blue-800'}`}>
+            {isTrialExpired
+              ? 'Upgrade to continue creating reports or adding team members.'
+              : 'After expiry, creating reports and adding users requires an upgrade.'}
+          </p>
+        </div>
+      )}
+
       {hasCancellationScheduled && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-medium text-amber-900">
-            Your subscription will remain active until the end of the current billing period. After that, your organisation will move to Free.
+            Your subscription will remain active until the end of the current billing period. After that, your organisation will move to Trial expired status until you upgrade.
           </p>
           <p className="text-xs text-amber-800 mt-1">
             Current period end: {formatDate(organisation.stripe_current_period_end)}
