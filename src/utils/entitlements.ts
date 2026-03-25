@@ -254,8 +254,8 @@ export function getPlanDisplayName(plan: PlanType | string): string {
   const planStr = plan.toString().trim().toLowerCase();
   if (planStr === 'professional') return 'Professional';
   if (planStr === 'standard') return 'Standard';
-  if (planStr === 'free') return 'Free';
-  return 'Free';
+  if (planStr === 'free') return 'Free trial';
+  return 'Free trial';
 }
 
 export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): string {
@@ -277,12 +277,12 @@ export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): st
 
 export const PLAN_FEATURES = {
   free: {
-    name: 'Free',
+    name: 'Free trial',
     maxEditors: PLAN_CONFIGS.free.userLimit,
     proFeatures: false,
     addons: false,
     disciplineSwitching: false,
-    description: '7-day free trial, up to 5 reports, 1 user, PDF watermark',
+    description: '14-day free trial, up to 5 reports, 1 user, PDF watermark',
   },
   standard: {
     name: 'Standard',

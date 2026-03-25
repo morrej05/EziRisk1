@@ -18,12 +18,12 @@ export default function UpgradeBanner({ plan, feature = 'Smart Recommendations' 
     switch (plan) {
       case 'free':
         return {
-          title: "You're on Free Plan",
-          subtitle: `Upgrade to Standard (£79) or Professional (£149) for higher limits`,
+          title: "You're on a 14-day Free Trial",
+          subtitle: 'Includes 1 user and 5 reports. Upgrade after trial expiry to keep creating reports and adding users.',
         };
       case 'standard':
         return {
-          title: "You're on Standard Plan",
+          title: "You're on Standard",
           subtitle: `Upgrade to Professional for ${feature} and 5 user seats`,
         };
       default:

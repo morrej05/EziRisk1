@@ -17,13 +17,13 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
 };
 
 export const PLAN_LABELS: Record<SubscriptionPlan, string> = {
-  free: 'Free',
+  free: 'Free trial',
   standard: 'Standard',
   professional: 'Professional',
 };
 
 export const PLAN_DESCRIPTIONS: Record<SubscriptionPlan, string> = {
-  free: '7-day free trial (5 reports, 1 user)',
+  free: '14-day free trial (5 reports, 1 user)',
   standard: '10 reports per month, up to 2 users',
   professional: '30 reports per month, up to 5 users',
 };

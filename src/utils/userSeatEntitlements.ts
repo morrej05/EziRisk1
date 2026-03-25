@@ -13,6 +13,7 @@ export interface UserSeatEntitlement {
 
 const FALLBACK_REASON = 'Your organisation has reached its user seat limit. Upgrade to add more users.';
 const DEFAULT_LIMIT_MESSAGE = 'Your organisation has reached the user limit for its current plan.';
+const TRIAL_EXPIRED_MESSAGE = 'Your free trial has ended. Upgrade to add team members. Existing data is still available.';
 
 interface UserSeatLimitCopy {
   title: string;
@@ -73,6 +74,10 @@ export function normalizeSeatLimitErrorMessage(error: unknown): string {
   }
 
   const normalised = error.message.trim().toLowerCase();
+  if (normalised.includes('trial') && normalised.includes('expired')) {
+    return TRIAL_EXPIRED_MESSAGE;
+  }
+
   if (
     normalised.includes('user_limit_reached')
     || normalised.includes('user limit reached')

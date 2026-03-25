@@ -65,6 +65,10 @@ export default function UserManagement() {
     () => getUserSeatLimitCopy(seatEntitlement, organisation),
     [seatEntitlement, organisation],
   );
+  const isTrialExpired = useMemo(() => {
+    const message = (seatEntitlement?.reason || '').toLowerCase();
+    return message.includes('trial') && message.includes('expired');
+  }, [seatEntitlement?.reason]);
 
   const refreshSeatEntitlement = async () => {
     if (!currentUser?.organisation_id) {
@@ -210,8 +214,13 @@ export default function UserManagement() {
       setSeatEntitlement(entitlement);
 
       if (!entitlement.allowed) {
-        setUpgradeReason(inferUserUpgradeReason());
-        setUpgradeDetail(getUserSeatLimitCopy(entitlement, organisation).body);
+        const blockedReason = entitlement.reason?.toLowerCase().includes('trial') ? 'trial_expired' : inferUserUpgradeReason();
+        setUpgradeReason(blockedReason);
+        setUpgradeDetail(
+          blockedReason === 'trial_expired'
+            ? (entitlement.reason ?? 'Your free trial has ended. Upgrade to add team members. Existing data is still available.')
+            : getUserSeatLimitCopy(entitlement, organisation).body,
+        );
         setShowUpgradeModal(true);
         return;
       }
@@ -245,8 +254,8 @@ export default function UserManagement() {
     } catch (error: unknown) {
       console.error('Error adding user:', error);
       const message = normalizeSeatLimitErrorMessage(error);
-      if (message.toLowerCase().includes('seat limit') || message.toLowerCase().includes('upgrade')) {
-        setUpgradeReason(inferUserUpgradeReason());
+      if (message.toLowerCase().includes('seat limit') || message.toLowerCase().includes('upgrade') || message.toLowerCase().includes('trial')) {
+        setUpgradeReason(message.toLowerCase().includes('trial') ? 'trial_expired' : inferUserUpgradeReason());
         setUpgradeDetail(message);
         setShowUpgradeModal(true);
       } else {
@@ -391,10 +400,14 @@ export default function UserManagement() {
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4" />
             <div>
-              <p className="font-semibold">You’ve reached your user limit ({maxUsers}). Upgrade to add more team members.</p>
-              <p>{seatLimitCopy.body}</p>
+              <p className="font-semibold">
+                {isTrialExpired
+                  ? 'Your free trial has ended. Upgrade to add team members.'
+                  : `You’ve reached your user limit (${maxUsers}). Upgrade to add more team members.`}
+              </p>
+              <p>{isTrialExpired ? 'Existing data is still available.' : seatLimitCopy.body}</p>
               <button
-                onClick={() => window.location.assign(buildUpgradePath('user_limit', { action: 'manage_users' }))}
+                onClick={() => window.location.assign(buildUpgradePath(isTrialExpired ? 'trial_expired' : 'user_limit', { action: 'manage_users' }))}
                 className="mt-2 inline-flex rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 transition-colors"
               >
                 Upgrade
@@ -420,8 +433,8 @@ export default function UserManagement() {
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          disabled={atSeatLimit}
-          title={atSeatLimit ? seatLimitCopy.body : 'Add User'}
+          disabled={atSeatLimit || isTrialExpired}
+          title={isTrialExpired ? 'Your free trial has ended. Upgrade to add team members.' : atSeatLimit ? seatLimitCopy.body : 'Add User'}
           className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
@@ -582,7 +595,7 @@ export default function UserManagement() {
 
             <div className="px-6 py-4 space-y-4">
               <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 border border-amber-200">
-                Invites are blocked when your organisation reaches the active user seat limit for its plan.
+                Invites are blocked when your organisation reaches the active user seat limit or when the free trial expires.
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -639,7 +652,7 @@ export default function UserManagement() {
               </button>
               <button
                 onClick={handleAddUser}
-                disabled={isAddingUser || atSeatLimit}
+                disabled={isAddingUser || atSeatLimit || isTrialExpired}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAddingUser ? (
