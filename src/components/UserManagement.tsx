@@ -57,6 +57,10 @@ export default function UserManagement() {
   const maxUsers = useMemo(() => getUserLimitForOrganisation(organisation), [organisation]);
   const currentUsers = users.length;
   const atSeatLimit = useMemo(() => currentUsers >= maxUsers, [currentUsers, maxUsers]);
+  const isNearSeatLimit = useMemo(
+    () => !atSeatLimit && maxUsers > 0 && currentUsers / maxUsers >= 0.8,
+    [atSeatLimit, currentUsers, maxUsers],
+  );
   const seatLimitCopy = useMemo(
     () => getUserSeatLimitCopy(seatEntitlement, organisation),
     [seatEntitlement, organisation],
@@ -373,15 +377,28 @@ export default function UserManagement() {
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
-      {atSeatLimit && (
+      {isNearSeatLimit && (
         <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-4 w-4" />
+            <p className="font-semibold">You’re close to your seat limit ({currentUsers} of {maxUsers} users).</p>
+          </div>
+        </div>
+      )}
+
+      {atSeatLimit && (
+        <div className="mx-6 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4" />
             <div>
-              <p className="font-semibold">{seatLimitCopy.title}</p>
-              <p>
-                {seatLimitCopy.body}
-              </p>
+              <p className="font-semibold">You’ve reached your user limit ({maxUsers}). Upgrade to add more team members.</p>
+              <p>{seatLimitCopy.body}</p>
+              <button
+                onClick={() => window.location.assign(buildUpgradePath('user_limit', { action: 'manage_users' }))}
+                className="mt-2 inline-flex rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 transition-colors"
+              >
+                Upgrade
+              </button>
             </div>
           </div>
         </div>

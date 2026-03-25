@@ -190,6 +190,12 @@ export default function AdminBillingPanel() {
 
   const hasCancellationScheduled = Boolean(organisation?.cancel_at_period_end && organisation?.stripe_current_period_end);
   const isOverPlanLimit = seatsUsed > seatLimit || reportsUsed > reportLimit;
+  const reportUsagePercent = reportLimit > 0 ? (reportsUsed / reportLimit) * 100 : 0;
+  const seatUsagePercent = seatLimit > 0 ? (seatsUsed / seatLimit) * 100 : 0;
+  const isReportLimitReached = reportLimit > 0 && reportsUsed >= reportLimit;
+  const isSeatLimitReached = seatLimit > 0 && seatsUsed >= seatLimit;
+  const isNearReportLimit = !isReportLimitReached && reportUsagePercent >= 80;
+  const isNearSeatLimit = !isSeatLimitReached && seatUsagePercent >= 80;
 
   return (
     <div className="max-w-3xl rounded-lg border border-slate-200 bg-slate-50 p-6">
@@ -250,6 +256,50 @@ export default function AdminBillingPanel() {
         </div>
       )}
 
+      {isNearReportLimit && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            You’ve used {reportsUsed} of {reportLimit} reports this month.
+          </p>
+        </div>
+      )}
+
+      {isReportLimitReached && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-900">
+            You’ve reached your monthly report limit ({reportLimit}). Upgrade to continue creating reports.
+          </p>
+          <button
+            onClick={() => navigate('/upgrade')}
+            className="mt-3 inline-flex items-center gap-2 rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white hover:bg-red-800 transition-colors"
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
+
+      {isNearSeatLimit && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            You’re close to your seat limit ({seatsUsed} of {seatLimit} users).
+          </p>
+        </div>
+      )}
+
+      {isSeatLimitReached && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-900">
+            You’ve reached your user limit ({seatLimit}). Upgrade to add more team members.
+          </p>
+          <button
+            onClick={() => navigate('/upgrade')}
+            className="mt-3 inline-flex items-center gap-2 rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white hover:bg-red-800 transition-colors"
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
+
       <p className="text-sm text-slate-600 mb-4">
         Manage billing, payment methods, invoices, and cancellation in Stripe.
       </p>
@@ -258,26 +308,59 @@ export default function AdminBillingPanel() {
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => navigate('/upgrade')}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
-        >
-          <CreditCard className="w-4 h-4" />
-          Upgrade plan
-        </button>
-
-        {planId !== 'free' && (
+        {planId === 'free' && (
           <>
-            {planId === 'professional' && (
-              <button
-                onClick={() => setIsConfirmingDowngrade(true)}
-                disabled={isChangingPlan}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
-              >
-                Downgrade to Standard
-              </button>
-            )}
+            <button
+              onClick={() => navigate('/upgrade?plan=standard')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              Upgrade to Standard
+            </button>
+            <button
+              onClick={() => navigate('/upgrade?plan=professional')}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              Upgrade to Professional
+            </button>
+          </>
+        )}
 
+        {planId === 'standard' && (
+          <>
+            <button
+              onClick={() => navigate('/upgrade?plan=professional')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+            >
+              <CreditCard className="w-4 h-4" />
+              Upgrade to Professional
+            </button>
+            <button
+              onClick={openStripePortal}
+              disabled={isOpeningPortal}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
+            >
+              {isOpeningPortal ? 'Opening Stripe…' : 'Manage billing'}
+            </button>
+            <button
+              onClick={openStripePortal}
+              disabled={isOpeningPortal}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-red-300 text-red-700 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-60"
+            >
+              Cancel subscription
+            </button>
+          </>
+        )}
+
+        {planId === 'professional' && (
+          <>
+            <button
+              onClick={() => setIsConfirmingDowngrade(true)}
+              disabled={isChangingPlan}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
+            >
+              Downgrade to Standard
+            </button>
             <button
               onClick={openStripePortal}
               disabled={isOpeningPortal}
@@ -317,6 +400,11 @@ export default function AdminBillingPanel() {
             <p className="text-sm text-slate-700 mt-1">
               If you are above these limits, some actions will be restricted until usage is reduced.
             </p>
+            {(seatsUsed > 2 || reportsUsed > 10) && (
+              <p className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-sm font-medium text-red-900">
+                Your organisation currently exceeds Standard plan limits. Downgrading will preserve existing data, but some actions will be restricted until usage is reduced.
+              </p>
+            )}
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 onClick={() => setIsConfirmingDowngrade(false)}
