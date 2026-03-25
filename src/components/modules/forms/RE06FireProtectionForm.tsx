@@ -71,6 +71,22 @@ interface SiteWaterData {
   hose_reels_present?: YesNoUnknown;
   flow_test_evidence?: TestEvidence;
   flow_test_date?: string;
+  pumps?: Array<{
+    driver_type?: 'Electric' | 'Diesel' | '';
+    rated_flow?: string;
+    rated_pressure?: string;
+    rated_rpm?: string;
+  }>;
+  water_supplies?: Array<{
+    type?: string;
+    capacity_m3?: string;
+  }>;
+  // Legacy fields retained for migration only
+  pump_rating?: string;
+  pump_pressure?: string;
+  pump_flow?: string;
+  pump_rpm?: string;
+  capacity?: string;
 }
 
 type SprinklersInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
@@ -100,6 +116,9 @@ interface BuildingSprinklerData {
   sprinkler_coverage_required_pct?: number | null;
   sprinkler_standard?: string; // Legacy field - will migrate to 'standard'
   hazard_class?: string;
+  density_area?: string;
+  pressure?: string;
+  number_of_heads?: string;
   maintenance_status?: MaintenanceStatus;
   sprinkler_adequacy?: SprinklerAdequacy;
   justification_if_required_lt_100?: string;
@@ -396,6 +415,13 @@ function createDefaultSiteWater(): SiteWaterData {
     hose_reels_present: 'Unknown',
     flow_test_evidence: 'Unknown',
     flow_test_date: '',
+    pumps: [],
+    water_supplies: [],
+    pump_rating: '',
+    pump_pressure: '',
+    pump_flow: '',
+    pump_rpm: '',
+    capacity: '',
   };
 }
 
@@ -414,6 +440,9 @@ function createDefaultBuildingSprinkler(): BuildingSprinklerData {
     sprinkler_coverage_required_pct: null,
     sprinkler_standard: '',
     hazard_class: '',
+    density_area: '',
+    pressure: '',
+    number_of_heads: '',
     maintenance_status: 'Unknown',
     sprinkler_adequacy: 'Unknown',
     justification_if_required_lt_100: '',
@@ -455,6 +484,41 @@ export default function RE06FireProtectionForm({
   // Data migration: Map sentinel value 0 or undefined to null for "Not rated"
   if (initialData.site.water_score_1_5 === 0 || initialData.site.water_score_1_5 === undefined) {
     initialData.site.water_score_1_5 = null;
+  }
+  initialData.site = initialData.site || { water: createDefaultSiteWater(), water_score_1_5: null, comments: '' };
+  initialData.site.water = {
+    ...createDefaultSiteWater(),
+    ...(initialData.site.water || {}),
+  };
+  if (!Array.isArray(initialData.site.water.pumps)) {
+    const legacyRatedFlow = initialData.site.water.pump_flow || initialData.site.water.pump_rating;
+    const legacyRatedPressure = initialData.site.water.pump_pressure;
+    const legacyRatedRpm = initialData.site.water.pump_rpm;
+    const hasLegacyPump = [legacyRatedFlow, legacyRatedPressure, legacyRatedRpm].some((value) => String(value || '').trim().length > 0);
+    initialData.site.water.pumps = hasLegacyPump
+      ? [{ rated_flow: legacyRatedFlow || '', rated_pressure: legacyRatedPressure || '', rated_rpm: legacyRatedRpm || '' }]
+      : [];
+  }
+  if (Array.isArray(initialData.site.water.pumps)) {
+    initialData.site.water.pumps = initialData.site.water.pumps.map((pump) => ({
+      driver_type: pump?.driver_type === 'Electric' || pump?.driver_type === 'Diesel' ? pump.driver_type : '',
+      rated_flow: pump?.rated_flow || '',
+      rated_pressure: pump?.rated_pressure || '',
+      rated_rpm: pump?.rated_rpm || '',
+    }));
+  }
+  if (!Array.isArray(initialData.site.water.water_supplies)) {
+    const legacyType = String(initialData.site.water.supply_type || '').trim();
+    const legacyCapacity = String(initialData.site.water.capacity || '').trim();
+    const hasLegacySupply = legacyType.length > 0 || legacyCapacity.length > 0;
+    initialData.site.water.water_supplies = hasLegacySupply
+      ? [{ type: legacyType, capacity_m3: legacyCapacity }]
+      : [];
+  } else {
+    initialData.site.water.water_supplies = initialData.site.water.water_supplies.map((supply) => ({
+      type: String(supply?.type || ''),
+      capacity_m3: String(supply?.capacity_m3 || ''),
+    }));
   }
 
   initialData.supplementary_assessment = normalizeSupplementaryAssessment(initialData.supplementary_assessment);
@@ -734,6 +798,121 @@ export default function RE06FireProtectionForm({
           [selectedBuildingId]: {
             ...building,
             sprinklerData: updatedData,
+          },
+        },
+      };
+    });
+  };
+
+  const syncLegacyWaterSupplyFields = (waterSupplies: Array<{ type?: string; capacity_m3?: string }>) => {
+    const firstSupply = waterSupplies[0] || {};
+    return {
+      water_supplies: waterSupplies,
+      supply_type: String(firstSupply?.type || ''),
+      capacity: String(firstSupply?.capacity_m3 || ''),
+    };
+  };
+
+  const updateSitePump = (
+    index: number,
+    field: 'driver_type' | 'rated_flow' | 'rated_pressure' | 'rated_rpm',
+    value: string
+  ) => {
+    setFireProtectionData((prev) => {
+      const currentPumps = Array.isArray(prev.site?.water?.pumps) ? [...(prev.site?.water?.pumps || [])] : [];
+      const current = currentPumps[index] || {};
+      currentPumps[index] = { ...current, [field]: value };
+      return {
+        ...prev,
+        site: {
+          ...prev.site,
+          water: {
+            ...createDefaultSiteWater(),
+            ...(prev.site?.water || {}),
+            pumps: currentPumps,
+          },
+        },
+      };
+    });
+  };
+
+  const addSitePump = () => {
+    setFireProtectionData((prev) => ({
+      ...prev,
+      site: {
+        ...prev.site,
+        water: {
+          ...createDefaultSiteWater(),
+          ...(prev.site?.water || {}),
+          pumps: [...(prev.site?.water?.pumps || []), { driver_type: '', rated_flow: '', rated_pressure: '', rated_rpm: '' }],
+        },
+      },
+    }));
+  };
+
+  const removeSitePump = (index: number) => {
+    setFireProtectionData((prev) => ({
+      ...prev,
+      site: {
+        ...prev.site,
+        water: {
+          ...createDefaultSiteWater(),
+          ...(prev.site?.water || {}),
+          pumps: (prev.site?.water?.pumps || []).filter((_, pumpIndex) => pumpIndex !== index),
+        },
+      },
+    }));
+  };
+
+  const updateWaterSupply = (index: number, field: 'type' | 'capacity_m3', value: string) => {
+    setFireProtectionData((prev) => {
+      const currentSupplies = Array.isArray(prev.site?.water?.water_supplies) ? [...(prev.site?.water?.water_supplies || [])] : [];
+      const current = currentSupplies[index] || {};
+      currentSupplies[index] = { ...current, [field]: value };
+      return {
+        ...prev,
+        site: {
+          ...prev.site,
+          water: {
+            ...createDefaultSiteWater(),
+            ...(prev.site?.water || {}),
+            ...syncLegacyWaterSupplyFields(currentSupplies),
+          },
+        },
+      };
+    });
+  };
+
+  const addWaterSupply = () => {
+    setFireProtectionData((prev) => {
+      const currentSupplies = Array.isArray(prev.site?.water?.water_supplies) ? [...(prev.site?.water?.water_supplies || [])] : [];
+      const nextSupplies = [...currentSupplies, { type: '', capacity_m3: '' }];
+      return {
+        ...prev,
+        site: {
+          ...prev.site,
+          water: {
+            ...createDefaultSiteWater(),
+            ...(prev.site?.water || {}),
+            ...syncLegacyWaterSupplyFields(nextSupplies),
+          },
+        },
+      };
+    });
+  };
+
+  const removeWaterSupply = (index: number) => {
+    setFireProtectionData((prev) => {
+      const currentSupplies = Array.isArray(prev.site?.water?.water_supplies) ? [...(prev.site?.water?.water_supplies || [])] : [];
+      const nextSupplies = currentSupplies.filter((_, supplyIndex) => supplyIndex !== index);
+      return {
+        ...prev,
+        site: {
+          ...prev.site,
+          water: {
+            ...createDefaultSiteWater(),
+            ...(prev.site?.water || {}),
+            ...syncLegacyWaterSupplyFields(nextSupplies),
           },
         },
       };
@@ -1362,6 +1541,39 @@ export default function RE06FireProtectionForm({
                       </div>
                     </div>
 
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Density / area</label>
+                        <input
+                          type="text"
+                          value={selectedSprinklerData.density_area || ''}
+                          onChange={(e) => updateBuildingSprinkler('density_area', e.target.value)}
+                          placeholder="Enter as specified"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Pressure</label>
+                        <input
+                          type="text"
+                          value={selectedSprinklerData.pressure || ''}
+                          onChange={(e) => updateBuildingSprinkler('pressure', e.target.value)}
+                          placeholder="Enter as specified"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">No. of heads</label>
+                        <input
+                          type="text"
+                          value={selectedSprinklerData.number_of_heads || ''}
+                          onChange={(e) => updateBuildingSprinkler('number_of_heads', e.target.value)}
+                          placeholder="Enter as specified"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
                     {/* Maintenance Status and Sprinkler Adequacy */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -1614,6 +1826,145 @@ export default function RE06FireProtectionForm({
                 </div>
               </div>
             </>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 className="text-base font-semibold text-slate-900">Site Water Supply Inputs</h3>
+        <p className="text-xs text-slate-600">Site-level inputs apply across all buildings in this RE-04 assessment.</p>
+
+        <div>
+          <h4 className="text-sm font-medium text-slate-700 mb-2">Water supply details</h4>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-slate-500">Record one or more site water supplies.</p>
+            <button
+              type="button"
+              onClick={addWaterSupply}
+              className="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              Add water supply
+            </button>
+          </div>
+          {(fireProtectionData.site?.water?.water_supplies || []).length === 0 ? (
+            <p className="text-xs text-slate-500">No water supplies added.</p>
+          ) : (
+            <div className="space-y-3">
+              {(fireProtectionData.site?.water?.water_supplies || []).map((supply, index) => (
+                <div key={`water-supply-${index}`} className="border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-slate-600">Supply {index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => removeWaterSupply(index)}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Water supply type</label>
+                      <input
+                        type="text"
+                        value={supply?.type || ''}
+                        onChange={(e) => updateWaterSupply(index, 'type', e.target.value)}
+                        placeholder="Tank / open water / other"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Capacity (m³)</label>
+                      <input
+                        type="text"
+                        value={supply?.capacity_m3 || ''}
+                        onChange={(e) => updateWaterSupply(index, 'capacity_m3', e.target.value)}
+                        placeholder="Enter storage volume"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-sm font-medium text-slate-700">Fire pump details</h4>
+            <button
+              type="button"
+              onClick={addSitePump}
+              className="text-xs px-3 py-1.5 rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              Add pump
+            </button>
+          </div>
+
+          {(fireProtectionData.site?.water?.pumps || []).length === 0 ? (
+            <p className="text-xs text-slate-500">No pumps added.</p>
+          ) : (
+            <div className="space-y-3">
+              {(fireProtectionData.site?.water?.pumps || []).map((pump, index) => (
+                <div key={`pump-${index}`} className="border border-slate-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-slate-600">Pump {index + 1}</p>
+                    <button
+                      type="button"
+                      onClick={() => removeSitePump(index)}
+                      className="text-xs text-slate-500 hover:text-slate-700 underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Driver type</label>
+                      <select
+                        value={pump?.driver_type || ''}
+                        onChange={(e) => updateSitePump(index, 'driver_type', e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select driver type</option>
+                        <option value="Electric">Electric</option>
+                        <option value="Diesel">Diesel</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Rated flow (m³/h)</label>
+                      <input
+                        type="text"
+                        value={pump?.rated_flow || ''}
+                        onChange={(e) => updateSitePump(index, 'rated_flow', e.target.value)}
+                        placeholder="Enter rated flow"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Rated pressure (bar)</label>
+                      <input
+                        type="text"
+                        value={pump?.rated_pressure || ''}
+                        onChange={(e) => updateSitePump(index, 'rated_pressure', e.target.value)}
+                        placeholder="Enter rated pressure"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Rated RPM</label>
+                      <input
+                        type="text"
+                        value={pump?.rated_rpm || ''}
+                        onChange={(e) => updateSitePump(index, 'rated_rpm', e.target.value)}
+                        placeholder="Enter rated RPM"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

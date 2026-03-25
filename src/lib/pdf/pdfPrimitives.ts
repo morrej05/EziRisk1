@@ -193,7 +193,7 @@ export function drawRiskSignificanceBlock(args: {
     font: fonts.bold,
     color: colour.fg,
   });
-  cursorY -= 12;
+  cursorY -= 16;
 
   for (const line of lines) {
     page.drawText(line, {
@@ -208,7 +208,7 @@ export function drawRiskSignificanceBlock(args: {
 
   return {
     y: cursorY - 6,
-    estimatedHeight: 40 + lines.length * 13,
+    estimatedHeight: 44 + lines.length * 13,
   };
 }
 

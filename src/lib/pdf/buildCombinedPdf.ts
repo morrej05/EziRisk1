@@ -26,6 +26,7 @@ import {
   getOutcomeLabel,
   getPriorityColor,
   drawDraftWatermark,
+  drawPlanWatermark,
   addNewPage,
   drawFooter,
   addSupersededWatermark,
@@ -34,6 +35,7 @@ import {
 } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
 import { drawSectionHeaderBar } from './pdfPrimitives';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -103,6 +105,8 @@ interface BuildPdfOptions {
   actionRatings: ActionRating[];
   organisation: Organisation;
   renderMode?: 'preview' | 'issued';
+  applyTrialWatermark?: boolean;
+  preparedByName?: string | null;
 }
 
 const FRA_MODULE_ORDER_LEGACY = [
@@ -154,7 +158,11 @@ const FSD_MODULE_ORDER = [
 const COMMON_MODULES = ['A1_DOC_CONTROL', 'A2_BUILDING_PROFILE', 'A3_PERSONS_AT_RISK'];
 
 export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  const { document, moduleInstances, actions, actionRatings, organisation, renderMode } = options;
+  const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
+  const document = {
+    ...options.document,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
+  };
 
   console.log('[Combined PDF] Building combined FRA + FSD PDF with:', {
     modules: moduleInstances.length,
@@ -401,6 +409,10 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   const startPageForFooters = isIssuedMode ? 2 : 1;
   for (let i = startPageForFooters; i < totalPages.length; i++) {
     drawFooter(totalPages[i], footerText, i, totalPages.length - 1, font);
+  }
+
+  if (applyTrialWatermark) {
+    totalPages.forEach((p) => drawPlanWatermark(p, 'TRIAL'));
   }
 
   if (document.status === 'superseded') {

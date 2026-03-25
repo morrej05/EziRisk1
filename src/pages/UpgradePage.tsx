@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTenant } from '../hooks/useTenant';
@@ -6,24 +6,59 @@ import { ArrowLeft, Check, Zap, Lock, Users, AlertCircle, CheckCircle } from 'lu
 import { PLAN_LABELS } from '../utils/permissions';
 import { supabase } from '../lib/supabase';
 
+const STRIPE_PRICE_STANDARD_MONTHLY =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
+const STRIPE_PRICE_STANDARD_ANNUAL =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL;
+const STRIPE_PRICE_PRO_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
+const STRIPE_PRICE_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
+
+const UPGRADE_CONTEXT_COPY: Record<string, { title: string; body: string }> = {
+  report_limit: {
+    title: 'Report limit reached',
+    body: "You've used all reports for this month. Upgrading unlocks higher report capacity and more team access.",
+  },
+  user_limit: {
+    title: 'User limit reached',
+    body: "You've reached your active user cap. Upgrading lets you add more teammates immediately.",
+  },
+  trial_expired: {
+    title: 'Trial expired',
+    body: "Your free trial has ended. Existing data remains available, but upgrading restores report creation and team growth.",
+  },
+  portfolio_locked: {
+    title: 'Portfolio locked on current plan',
+    body: 'Portfolio analytics and exports require a higher plan. Upgrading unlocks portfolio tools.',
+  },
+};
+
 export default function UpgradePage() {
   const { user, userPlan } = useAuth();
   const { organisation } = useTenant();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const upgradeReason = searchParams.get('reason');
+  const upgradeAction = searchParams.get('action');
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const normalizedUserPlan = userPlan;
+
+  const contextualUpgradeCopy = useMemo(() => {
+    if (!upgradeReason) return null;
+    return UPGRADE_CONTEXT_COPY[upgradeReason] ?? null;
+  }, [upgradeReason]);
 
   const plans = [
     {
       id: 'free',
-      name: 'Free',
+      name: 'Free trial',
       priceMonthly: 0,
       priceAnnual: 0,
-      description: 'Basic features with limited functionality',
+      description: '14-day free trial',
       features: [
+        'Includes 1 user and 5 reports during the trial',
         'Create and edit surveys',
         'Generate PDF reports',
         'Basic export functionality',
@@ -36,34 +71,25 @@ export default function UpgradePage() {
         'No advanced analytics',
         'No custom branding',
       ],
-      editors: 'Unlimited',
+      editors: '1 User',
       cta: 'Current Plan',
       showCheckout: false,
       highlighted: false,
     },
     {
-      id: 'core',
-      name: 'Core',
-      priceMonthly: 49,
-      priceAnnual: 490,
-      stripePriceIdMonthly: 'price_core_monthly',
-      stripePriceIdAnnual: 'price_core_annual',
+      id: 'standard',
+      name: 'Standard',
+      priceMonthly: 79,
+      priceAnnual: 790,
+      stripePriceIdMonthly: STRIPE_PRICE_STANDARD_MONTHLY,
+      stripePriceIdAnnual: STRIPE_PRICE_STANDARD_ANNUAL,
       description: 'Essential features for small teams',
-      features: [
-        'Everything in Free',
-        '1 editor seat',
-        'Unlimited viewers',
-        'Priority email support',
-        'Basic branding',
-        'Export to PDF',
-      ],
+      features: ['Everything in Free', '2 user seats', '10 reports per month', 'Priority support'],
       limitations: [
-        'No Smart Recommendations',
-        'No FRA module',
-        'Limited to 1 editor',
+        'No advanced professional features',
       ],
-      editors: '1 Editor',
-      cta: 'Upgrade to Core',
+      editors: '2 Users',
+      cta: 'Upgrade to Standard',
       showCheckout: true,
       highlighted: false,
     },
@@ -72,45 +98,15 @@ export default function UpgradePage() {
       name: 'Professional',
       priceMonthly: 149,
       priceAnnual: 1490,
-      stripePriceIdMonthly: 'price_professional_monthly',
-      stripePriceIdAnnual: 'price_professional_annual',
+      stripePriceIdMonthly: STRIPE_PRICE_PRO_MONTHLY,
+      stripePriceIdAnnual: STRIPE_PRICE_PRO_ANNUAL,
       description: 'Advanced features for growing teams',
-      features: [
-        'Everything in Core',
-        '3 editor seats',
-        'AI-powered Smart Recommendations',
-        'Advanced analytics dashboard',
-        'Custom branding',
-        'Priority support',
-        'FRA module access',
-      ],
+      features: ['Everything in Standard', '5 user seats', '30 reports per month', 'Advanced analytics', 'FRA module access'],
       limitations: [],
-      editors: '3 Editors',
+      editors: '5 Users',
       cta: 'Upgrade to Professional',
       showCheckout: true,
       highlighted: true,
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      priceMonthly: null,
-      priceAnnual: null,
-      description: 'Complete solution with premium features',
-      features: [
-        'Everything in Professional',
-        '10 editor seats',
-        'Both disciplines (Engineering + Assessment)',
-        'All bolt-ons included',
-        'Dedicated account manager',
-        'Custom integrations',
-        'Advanced compliance reporting',
-        'SLA guarantee',
-      ],
-      limitations: [],
-      editors: '10 Editors',
-      cta: 'Contact Sales',
-      showCheckout: false,
-      highlighted: false,
     },
   ];
 
@@ -132,13 +128,14 @@ export default function UpgradePage() {
     const poll = async () => {
       const { data } = await supabase
         .from('organisations')
-        .select('plan_type, subscription_status')
+        .select('plan_id, subscription_status')
         .eq('id', organisation.id)
         .single();
 
-      if (data?.subscription_status === 'active' && data?.plan_type !== userPlan) {
+      const normalizedOrgPlan = data?.plan_id;
+      if (data?.subscription_status === 'active' && normalizedOrgPlan !== normalizedUserPlan) {
         setIsPending(false);
-        setPendingMessage(`You are now on ${PLAN_LABELS[data.plan_type as keyof typeof PLAN_LABELS]}.`);
+        setPendingMessage(`You are now on ${(normalizedOrgPlan || 'free').toString()}.`);
         setTimeout(() => {
           navigate('/dashboard');
         }, 2000);
@@ -166,6 +163,11 @@ export default function UpgradePage() {
     setIsProcessing(true);
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        throw new Error('Not authenticated');
+      }
+
       const priceIdKey = billingCycle === 'monthly'
         ? 'stripePriceIdMonthly'
         : 'stripePriceIdAnnual';
@@ -177,7 +179,7 @@ export default function UpgradePage() {
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${sessionData.session.access_token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -190,8 +192,8 @@ export default function UpgradePage() {
 
       const data = await response.json();
 
-      if (data.url) {
-        window.location.href = data.url;
+      if (data.sessionUrl || data.url) {
+        window.location.href = data.sessionUrl || data.url;
       } else {
         throw new Error(data.error || 'No checkout URL returned');
       }
@@ -214,7 +216,7 @@ export default function UpgradePage() {
     const price = billingCycle === 'monthly' ? plan.priceMonthly : plan.priceAnnual;
     const period = billingCycle === 'monthly' ? '/mo' : '/yr';
 
-    return `$${price}${period}`;
+    return `£${price}${period}`;
   };
 
   return (
@@ -241,6 +243,27 @@ export default function UpgradePage() {
           </div>
         </div>
       </header>
+
+      {contextualUpgradeCopy && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 text-indigo-700" />
+              <div>
+                <p className="text-sm font-semibold text-indigo-900">{contextualUpgradeCopy.title}</p>
+                <p className="mt-1 text-sm text-indigo-800">{contextualUpgradeCopy.body}</p>
+                {upgradeAction && (
+                  <p className="mt-2 text-xs uppercase tracking-wide text-indigo-700">
+                    Triggered by: {upgradeAction.replace(/_/g, ' ')}
+                  </p>
+                )}
+                <p className="mt-2 text-sm font-medium text-indigo-900">Standard: 10 reports per month • up to 2 users</p>
+                <p className="text-sm font-medium text-indigo-900">Professional: 30 reports per month • up to 5 users • portfolio tools</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingMessage && (
         <div className={`mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4`}>
@@ -271,7 +294,7 @@ export default function UpgradePage() {
             Choose the Perfect Plan for Your Needs
           </h2>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto mb-6">
-            Self-serve upgrade to Core or Professional. Contact us for Enterprise.
+            Choose between Free, Standard, and Professional plans.
           </p>
 
           <div className="inline-flex items-center gap-2 bg-white rounded-lg p-1 border border-slate-200">
@@ -298,9 +321,9 @@ export default function UpgradePage() {
           </div>
         </div>
 
-        <div className="grid md:grid-cols-4 gap-6 mb-12">
+        <div className="grid md:grid-cols-3 gap-6 mb-12">
           {plans.map((plan) => {
-            const isCurrentPlan = plan.id === userPlan;
+            const isCurrentPlan = plan.id === normalizedUserPlan;
 
             return (
               <div
@@ -372,18 +395,6 @@ export default function UpgradePage() {
           })}
         </div>
 
-        <div className="bg-slate-900 text-white rounded-lg p-8 text-center">
-          <h3 className="text-2xl font-bold mb-3">Need Enterprise?</h3>
-          <p className="text-slate-300 mb-6 max-w-2xl mx-auto">
-            Contact our sales team for enterprise pricing, 10 editor seats, both disciplines, custom integrations, and dedicated support.
-          </p>
-          <button
-            onClick={() => window.location.href = 'mailto:sales@ezirisk.com'}
-            className="px-8 py-3 bg-white text-slate-900 font-medium rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            Contact Sales
-          </button>
-        </div>
       </main>
     </div>
   );

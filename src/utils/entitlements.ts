@@ -21,10 +21,41 @@
  * Access is determined by the platform flag on the user state.
  */
 
-export type PlanType = 'free' | 'core' | 'professional' | 'enterprise';
+export type PlanType = 'free' | 'standard' | 'professional';
+export type PlanId = PlanType;
 export type DisciplineType = 'engineering' | 'assessment' | 'both';
 export type SubscriptionStatus = 'active' | 'trialing' | 'past_due' | 'canceled' | 'inactive';
 export type UserRole = 'admin' | 'surveyor' | 'viewer';
+
+export interface PlanConfig {
+  reportLimit: number;
+  userLimit: number;
+  pdfWatermark: boolean;
+  portfolioAccess: boolean;
+}
+
+const PLAN_CONFIGS: Record<PlanId, PlanConfig> = {
+  free: {
+    reportLimit: 5,
+    userLimit: 1,
+    pdfWatermark: true,
+    portfolioAccess: false,
+  },
+  standard: {
+    reportLimit: 10,
+    userLimit: 2,
+    pdfWatermark: false,
+    portfolioAccess: false,
+  },
+  professional: {
+    reportLimit: 30,
+    userLimit: 5,
+    pdfWatermark: false,
+    portfolioAccess: true,
+  },
+};
+
+const DEFAULT_PLAN: PlanId = 'free';
 
 export function isDev(): boolean {
   return import.meta.env.DEV === true;
@@ -33,8 +64,8 @@ export function isDev(): boolean {
 export interface Organisation {
   id: string;
   name: string;
-  plan_type: PlanType;
-  plan_id?: string;
+  plan_type?: string | null; // legacy field retained for backwards compatibility in data shape
+  plan_id?: string | null;
   discipline_type: DisciplineType;
   enabled_addons: string[];
   max_editors: number;
@@ -42,8 +73,11 @@ export interface Organisation {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   billing_cycle?: 'monthly' | 'annual' | null;
+  cancel_at_period_end?: boolean | null;
+  stripe_current_period_end?: string | null;
   created_at?: string;
   updated_at?: string;
+  trial_ends_at?: string | null;
 }
 
 export interface User {
@@ -60,6 +94,34 @@ export interface UserWithOrg extends User {
   organisation?: Organisation;
 }
 
+export function getPlan(org?: Organisation | null): PlanId {
+  const raw = org?.plan_id;
+  if (raw === 'free' || raw === 'standard' || raw === 'professional') {
+    return raw;
+  }
+  return DEFAULT_PLAN;
+}
+
+export function getPlanConfig(org?: Organisation | null): PlanConfig {
+  return PLAN_CONFIGS[getPlan(org)];
+}
+
+export function canCreateReport(org: Organisation | null | undefined, currentReportCount: number): boolean {
+  return currentReportCount < getPlanConfig(org).reportLimit;
+}
+
+export function canInviteUser(org: Organisation | null | undefined, currentUserCount: number): boolean {
+  return currentUserCount < getPlanConfig(org).userLimit;
+}
+
+export function isWatermarked(org?: Organisation | null): boolean {
+  return getPlanConfig(org).pdfWatermark;
+}
+
+export function canAccessPortfolio(org?: Organisation | null): boolean {
+  return getPlanConfig(org).portfolioAccess;
+}
+
 export function isOrgAdmin(user: User): boolean {
   return user.role === 'admin';
 }
@@ -68,16 +130,8 @@ export function isPlatformAdmin(user: User): boolean {
   return user.platform === true || user.is_platform_admin === true;
 }
 
-export function getPlanTier(org: Organisation): 'free' | 'solo' | 'core' | 'professional' | 'enterprise' {
-  const planId = org?.plan_id ?? org?.plan_type ?? '';
-  const planStr = planId.toString().trim().toLowerCase();
-
-  if (planStr === 'solo' || planStr === 'free') return 'solo';
-  if (planStr === 'core') return 'core';
-  if (planStr === 'professional' || planStr === 'pro' || planStr === 'team') return 'professional';
-  if (planStr === 'enterprise' || planStr === 'consultancy') return 'enterprise';
-
-  return 'free';
+export function getPlanTier(org: Organisation): PlanId {
+  return getPlan(org);
 }
 
 export function isPaidActive(org?: Organisation | null): boolean {
@@ -86,93 +140,36 @@ export function isPaidActive(org?: Organisation | null): boolean {
 }
 
 export function canEdit(user: User, org?: Organisation | null): boolean {
-  if (isPlatformAdmin(user)) {
-    return true;
-  }
-
-  if (user.role === 'viewer') {
-    return false;
-  }
-
-  if (!user.can_edit) {
-    return false;
-  }
-
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-  const isActiveSubscription = isPaidActive(org) || tier === 'enterprise';
-
-  return isActiveSubscription;
+  if (isPlatformAdmin(user)) return true;
+  if (user.role === 'viewer') return false;
+  if (!user.can_edit) return false;
+  if (!org) return false;
+  return isPaidActive(org);
 }
 
 export function canAccessProFeatures(user: User, org?: Organisation | null): boolean {
-  if (isPlatformAdmin(user)) {
-    return true;
-  }
-
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-  const isProOrEnterprise = tier === 'professional' || tier === 'enterprise';
-  const isActive = isPaidActive(org) || tier === 'enterprise';
-
-  return isProOrEnterprise && isActive;
+  if (isPlatformAdmin(user)) return true;
+  if (!org) return false;
+  return getPlan(org) === 'professional' && isPaidActive(org);
 }
 
 export function canAccessExplosionSafety(user?: User | null, org?: Organisation | null): boolean {
-  if (user && isPlatformAdmin(user)) {
-    return true;
-  }
-
-  if (!org) {
-    return false;
-  }
-
-  // DEV override so we can test flows without subscription wiring
-  if (isDev()) {
-    return true;
-  }
-
-  const tier = getPlanTier(org);
-  const isProOrEnterprise = tier === 'professional' || tier === 'enterprise';
-  const isActive = isPaidActive(org) || tier === 'enterprise';
-
-  return isProOrEnterprise && isActive;
+  if (user && isPlatformAdmin(user)) return true;
+  if (!org) return false;
+  if (isDev()) return true;
+  return getPlan(org) === 'professional' && isPaidActive(org);
 }
 
 export function hasAddon(user: User, org?: Organisation | null, addonKey?: string): boolean {
-  if (isPlatformAdmin(user)) {
-    return true;
-  }
-
-  if (!org || !addonKey) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-  if (tier === 'enterprise') {
-    return true;
-  }
-
+  if (isPlatformAdmin(user)) return true;
+  if (!org || !addonKey) return false;
   return org.enabled_addons?.includes(addonKey) ?? false;
 }
 
 export function canSwitchDiscipline(user: User, org?: Organisation | null): boolean {
-  if (isPlatformAdmin(user)) {
-    return true;
-  }
-
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-  return tier === 'enterprise' && org.discipline_type === 'both';
+  if (isPlatformAdmin(user)) return true;
+  if (!org) return false;
+  return getPlan(org) === 'professional' && org.discipline_type === 'both';
 }
 
 export function canAccessAdmin(user: User): boolean {
@@ -184,67 +181,33 @@ export function canAccessPlatformSettings(user: User): boolean {
 }
 
 export function canViewData(org?: Organisation | null): boolean {
+  void org;
   return true;
 }
 
 export function canExportData(org?: Organisation | null): boolean {
+  void org;
   return true;
 }
 
 export function isSubscriptionActive(org?: Organisation | null): boolean {
-  if (!org) {
-    return false;
-  }
-  return isPaidActive(org) || getPlanTier(org) === 'enterprise';
+  return Boolean(org) && isPaidActive(org);
 }
 
 export function shouldShowUpgradePrompts(user: User, org?: Organisation | null): boolean {
-  if (isPlatformAdmin(user)) {
-    return false;
-  }
-
-  if (!org) {
-    return true;
-  }
-
-  const tier = getPlanTier(org);
-  if (tier === 'professional' || tier === 'enterprise') {
-    return false;
-  }
-
-  return true;
+  if (isPlatformAdmin(user)) return false;
+  if (!org) return true;
+  return getPlan(org) !== 'professional';
 }
 
 export function needsActiveSubscription(user: User, org?: Organisation | null): boolean {
-  if (isPlatformAdmin(user)) {
-    return false;
-  }
-
-  if (!org) {
-    return true;
-  }
-
-  const tier = getPlanTier(org);
-  if (tier === 'enterprise') {
-    return false;
-  }
-
+  if (isPlatformAdmin(user)) return false;
+  if (!org) return true;
   return !isPaidActive(org);
 }
 
 export function getMaxEditors(plan: PlanType): number {
-  switch (plan) {
-    case 'free':
-      return 0;
-    case 'core':
-      return 1;
-    case 'professional':
-      return 3;
-    case 'enterprise':
-      return 10;
-    default:
-      return 0;
-  }
+  return PLAN_CONFIGS[plan].userLimit;
 }
 
 export function canManageUsers(user: User): boolean {
@@ -268,43 +231,19 @@ export function canIssueSurveys(user: User, org?: Organisation | null): boolean 
 }
 
 export function canAccessPillarB(user: User, org?: Organisation | null): boolean {
-  if (isPlatformAdmin(user)) {
-    return true;
-  }
+  if (isPlatformAdmin(user)) return true;
+  if (!org) return false;
 
-  if (!org) {
-    return false;
-  }
-
-  // Check for plan_id first (new field), fallback to plan_type (old field)
-  const planId = org?.plan_id ?? org?.plan_type ?? (org as any)?.plan ?? '';
-  const planStr = planId.toString().trim().toLowerCase();
-
-  // All valid plans can access assessments
-  const validPlans = [
-    'solo',
-    'team',
-    'consultancy',
-    'free',
-    'core',
-    'professional',
-    'pro',
-    'professional_plan',
-    'pro_plan',
-    'enterprise'
-  ];
-
-  const hasAccess = validPlans.includes(planStr) && planStr !== '';
+  const hasAccess = getPlan(org) === 'free' || getPlan(org) === 'standard' || getPlan(org) === 'professional';
 
   if (import.meta.env.DEV) {
     console.log('[PillarB/Assessments] 🔑 Access check:', {
       userId: user.id,
       orgId: org?.id,
       plan_id: org?.plan_id,
-      plan_type: org?.plan_type,
-      resolved: planStr,
+      resolved: getPlan(org),
       hasAccess,
-      isPlatformAdmin: isPlatformAdmin(user)
+      isPlatformAdmin: isPlatformAdmin(user),
     });
   }
 
@@ -313,13 +252,10 @@ export function canAccessPillarB(user: User, org?: Organisation | null): boolean
 
 export function getPlanDisplayName(plan: PlanType | string): string {
   const planStr = plan.toString().trim().toLowerCase();
-
-  if (planStr === 'solo' || planStr === 'free') return 'Free';
-  if (planStr === 'core') return 'Core';
-  if (planStr === 'team' || planStr === 'professional' || planStr === 'pro') return 'Professional';
-  if (planStr === 'consultancy' || planStr === 'enterprise') return 'Enterprise';
-
-  return 'Free';
+  if (planStr === 'professional') return 'Professional';
+  if (planStr === 'standard') return 'Standard';
+  if (planStr === 'free') return 'Free trial';
+  return 'Free trial';
 }
 
 export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): string {
@@ -340,80 +276,48 @@ export function getSubscriptionStatusDisplayName(status: SubscriptionStatus): st
 }
 
 export const PLAN_FEATURES = {
-  solo: {
-    name: 'Solo',
-    maxEditors: 1,
-    proFeatures: false,
-    addons: false,
-    disciplineSwitching: false,
-    description: '1 user, basic features'
-  },
-  team: {
-    name: 'Team',
-    maxEditors: 5,
-    proFeatures: true,
-    addons: true,
-    disciplineSwitching: false,
-    description: '5 users, AI features'
-  },
-  consultancy: {
-    name: 'Consultancy',
-    maxEditors: 999,
-    proFeatures: true,
-    addons: true,
-    disciplineSwitching: true,
-    description: 'Unlimited users and features'
-  },
   free: {
-    name: 'Solo',
-    maxEditors: 1,
+    name: 'Free trial',
+    maxEditors: PLAN_CONFIGS.free.userLimit,
     proFeatures: false,
     addons: false,
     disciplineSwitching: false,
-    description: '1 user, basic features'
+    description: '14-day free trial, up to 5 reports, 1 user, PDF watermark',
   },
-  core: {
-    name: 'Solo',
-    maxEditors: 1,
+  standard: {
+    name: 'Standard',
+    maxEditors: PLAN_CONFIGS.standard.userLimit,
     proFeatures: false,
-    addons: false,
+    addons: true,
     disciplineSwitching: false,
-    description: '1 user, basic features'
+    description: 'Up to 10 reports, 2 users',
   },
   professional: {
-    name: 'Team',
-    maxEditors: 5,
-    proFeatures: true,
-    addons: true,
-    disciplineSwitching: false,
-    description: '5 users, AI features'
-  },
-  enterprise: {
-    name: 'Consultancy',
-    maxEditors: 999,
+    name: 'Professional',
+    maxEditors: PLAN_CONFIGS.professional.userLimit,
     proFeatures: true,
     addons: true,
     disciplineSwitching: true,
-    description: 'Unlimited users and features'
-  }
-};
+    description: 'Up to 30 reports, 5 users, portfolio access',
+  },
+} as const;
 
 export const ADDON_KEYS = {
   FRA_FORM: 'fra_form',
   BCM_FORM: 'bcm_form',
   ATEX_FORM: 'atex_form',
-  ASEAR_FORM: 'asear_form'
+  ASEAR_FORM: 'asear_form',
 };
 
 export const ADDON_DISPLAY_NAMES = {
   [ADDON_KEYS.FRA_FORM]: 'Fire Risk Assessment',
   [ADDON_KEYS.BCM_FORM]: 'Business Continuity Management',
   [ADDON_KEYS.ATEX_FORM]: 'ATEX Assessment',
-  [ADDON_KEYS.ASEAR_FORM]: 'ASEAR Assessment'
+  [ADDON_KEYS.ASEAR_FORM]: 'ASEAR Assessment',
 };
 
 export const ENTITLEMENTS = {
-  core: {
+  standard: {
     canAccessRiskEngineering: false,
     canGenerateAiExecutiveSummary: false,
     canShareWithClients: false,
@@ -425,56 +329,24 @@ export const ENTITLEMENTS = {
     canShareWithClients: true,
     canUseApprovalWorkflow: true,
   },
-};
+} as const;
 
 export function canAccessRiskEngineering(org?: Organisation | null): boolean {
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-
-  if (tier === 'enterprise') return true;
-  if (tier === 'professional') return ENTITLEMENTS.professional.canAccessRiskEngineering;
-
-  return false;
+  if (!org) return false;
+  return getPlan(org) === 'professional' && ENTITLEMENTS.professional.canAccessRiskEngineering;
 }
 
 export function canGenerateAiSummary(org?: Organisation | null): boolean {
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-
-  if (tier === 'enterprise') return true;
-  if (tier === 'professional') return ENTITLEMENTS.professional.canGenerateAiExecutiveSummary;
-
-  return false;
+  if (!org) return false;
+  return getPlan(org) === 'professional' && ENTITLEMENTS.professional.canGenerateAiExecutiveSummary;
 }
 
 export function canShareWithClients(org?: Organisation | null): boolean {
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-
-  if (tier === 'enterprise') return true;
-  if (tier === 'professional') return ENTITLEMENTS.professional.canShareWithClients;
-
-  return false;
+  if (!org) return false;
+  return getPlan(org) === 'professional' && ENTITLEMENTS.professional.canShareWithClients;
 }
 
 export function canUseApprovalWorkflow(org?: Organisation | null): boolean {
-  if (!org) {
-    return false;
-  }
-
-  const tier = getPlanTier(org);
-
-  if (tier === 'enterprise') return true;
-  if (tier === 'professional') return ENTITLEMENTS.professional.canUseApprovalWorkflow;
-
-  return false;
+  if (!org) return false;
+  return getPlan(org) === 'professional' && ENTITLEMENTS.professional.canUseApprovalWorkflow;
 }

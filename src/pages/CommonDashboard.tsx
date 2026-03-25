@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LogOut, TrendingUp, Flame, Zap, ClipboardList, Shield, Palette, Building2, Lock } from 'lucide-react';
 import { useClientBranding } from '../contexts/ClientBrandingContext';
 import { getRolePermissions } from '../utils/permissions';
-import { canAccessExplosionSafety, shouldShowUpgradePrompts, getPlanTier, getSubscriptionStatusDisplayName } from '../utils/entitlements';
+import { canAccessExplosionSafety, shouldShowUpgradePrompts, getPlan, getSubscriptionStatusDisplayName } from '../utils/entitlements';
 import { useState } from 'react';
 import ClientBrandingModal from '../components/ClientBrandingModal';
 import BillingStatusBanner from '../components/BillingStatusBanner';
@@ -90,7 +90,7 @@ export default function CommonDashboard() {
 
   const canAccessExplosion = userObj && organisation ? canAccessExplosionSafety(userObj, organisation) : false;
   const showUpgradePrompts = userObj && organisation ? shouldShowUpgradePrompts(userObj, organisation) : false;
-  const planTier = organisation ? getPlanTier(organisation) : 'free';
+  const planTier = organisation ? getPlan(organisation) : 'free';
   const subscriptionStatus = organisation ? getSubscriptionStatusDisplayName(organisation.subscription_status) : 'Unknown';
 
   const handleSignOut = async () => {

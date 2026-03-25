@@ -3,7 +3,11 @@ import { X, ArrowUpCircle, Lock, Flame, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import UpgradeBlockModal from '../UpgradeBlockModal';
 import { canAccessRiskEngineering } from '../../utils/entitlements';
+import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
+import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
+import { buildUpgradePath } from '../../utils/upgradeNavigation';
 import { getStandardsOptions } from '../../lib/jurisdictions';
 
 interface CreateDocumentModalProps {
@@ -59,6 +63,9 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
   const navigate = useNavigate();
   const { organisation, user, userRole } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('report_limit');
+  const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
 
   const canAccessEngineering = organisation ? canAccessRiskEngineering(organisation) : false;
 
@@ -140,6 +147,13 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
     setIsSubmitting(true);
 
     try {
+      const creationEntitlement = await getReportCreationEntitlement(organisation.id);
+      if (!creationEntitlement.allowed) {
+        setUpgradeReason(inferReportUpgradeReason(creationEntitlement));
+        setUpgradeDetail(creationEntitlement.reason || 'Your current plan cannot create more reports.');
+        setShowUpgradeModal(true);
+        return;
+      }
       const enabledModules = formData.enabledModules;
       const primaryDocumentType = enabledModules.includes('FRA') ? 'FRA' :
                                   enabledModules.includes('FSD') ? 'FSD' :
@@ -215,7 +229,14 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
       navigate(`/documents/${document.id}`);
     } catch (error) {
       console.error('Error creating document:', error);
-      alert('Failed to create document. Please try again.');
+      const message = error instanceof Error ? error.message : 'Failed to create document. Please try again.';
+      if (message.toLowerCase().includes('upgrade') || message.toLowerCase().includes('trial')) {
+        setUpgradeReason(inferReportUpgradeReasonFromMessage(message));
+        setUpgradeDetail(message);
+        setShowUpgradeModal(true);
+      } else {
+        alert(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -354,7 +375,7 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
                     type="button"
                     onClick={() => {
                       onClose();
-                      navigate('/upgrade');
+                      navigate(buildUpgradePath('report_limit', { action: 'create_document_module' }));
                     }}
                     className="mt-2 px-3 py-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs rounded font-medium hover:from-blue-700 hover:to-purple-700 transition-colors inline-flex items-center gap-1"
                   >
@@ -511,6 +532,13 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
           </div>
         </form>
       </div>
+      <UpgradeBlockModal
+        open={showUpgradeModal}
+        reason={upgradeReason}
+        detail={upgradeDetail}
+        onClose={() => setShowUpgradeModal(false)}
+        onUpgrade={() => navigate(buildUpgradePath(upgradeReason, { action: 'create_document' }))}
+      />
     </div>
   );
 }

@@ -1,25 +1,44 @@
-export type PlanType = 'core' | 'professional';
+export type PlanType = 'standard' | 'professional';
 export type PlanInterval = 'month' | 'year';
+export type BillingCycle = 'monthly' | 'annual';
 
 export interface StripePlanMapping {
   planType: PlanType;
   interval: PlanInterval;
 }
 
+const STRIPE_PRICE_STANDARD_MONTHLY =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
+const STRIPE_PRICE_STANDARD_ANNUAL =
+  import.meta.env.VITE_STRIPE_PRICE_STANDARD_ANNUAL;
+const STRIPE_PRICE_PRO_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY;
+const STRIPE_PRICE_PRO_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL;
+
+const PLAN_PRICE_IDS: Record<PlanType, Record<BillingCycle, string | undefined>> = {
+  standard: {
+    monthly: STRIPE_PRICE_STANDARD_MONTHLY,
+    annual: STRIPE_PRICE_STANDARD_ANNUAL,
+  },
+  professional: {
+    monthly: STRIPE_PRICE_PRO_MONTHLY,
+    annual: STRIPE_PRICE_PRO_ANNUAL,
+  },
+};
+
 export const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
-  [import.meta.env.VITE_STRIPE_PRICE_CORE_MONTHLY || '']: {
-    planType: 'core',
+  [STRIPE_PRICE_STANDARD_MONTHLY || '']: {
+    planType: 'standard',
     interval: 'month'
   },
-  [import.meta.env.VITE_STRIPE_PRICE_CORE_ANNUAL || '']: {
-    planType: 'core',
+  [STRIPE_PRICE_STANDARD_ANNUAL || '']: {
+    planType: 'standard',
     interval: 'year'
   },
-  [import.meta.env.VITE_STRIPE_PRICE_PRO_MONTHLY || '']: {
+  [STRIPE_PRICE_PRO_MONTHLY || '']: {
     planType: 'professional',
     interval: 'month'
   },
-  [import.meta.env.VITE_STRIPE_PRICE_PRO_ANNUAL || '']: {
+  [STRIPE_PRICE_PRO_ANNUAL || '']: {
     planType: 'professional',
     interval: 'year'
   },
@@ -30,5 +49,9 @@ export function getPlanFromPriceId(priceId: string): StripePlanMapping | null {
 }
 
 export function getDefaultPlan(): PlanType {
-  return 'core';
+  return 'standard';
+}
+
+export function getPriceIdForPlan(planType: PlanType, billingCycle: BillingCycle): string | null {
+  return PLAN_PRICE_IDS[planType][billingCycle] || null;
 }

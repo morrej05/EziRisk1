@@ -19,6 +19,7 @@ import { migrateLegacyFraActions } from '../../lib/modules/fra/migrateLegacyFraA
 import type { FraContext } from '../../lib/modules/fra/severityEngine';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { normalizeJurisdiction } from '../../lib/jurisdictions';
+import { buildPdfIdentityOptions } from '../../utils/pdfIdentity';
 
 type OutputMode = 'FRA' | 'FSD' | 'DSEAR' | 'COMBINED' | 'FIRE_EXPLOSION_COMBINED';
 type ReReportTab = 're_survey' | 're_lp';
@@ -26,7 +27,7 @@ type ReReportTab = 're_survey' | 're_lp';
 export default function DocumentPreviewPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { organisation } = useAuth();
+  const { organisation, user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -374,6 +375,7 @@ export default function DocumentPreviewPage() {
           branding_logo_path: freshOrg.branding_logo_path,
         },
         renderMode: (document.issue_status === 'issued' || document.issue_status === 'superseded') ? 'issued' as const : 'preview' as const,
+        ...buildPdfIdentityOptions(organisation, user),
       };
 
       let pdfBytes: Uint8Array;
@@ -383,6 +385,54 @@ export default function DocumentPreviewPage() {
         // RE documents
         if (reActiveTab === 're_survey') {
           let reSurveyModuleInstances = moduleInstances;
+          let reSurveyRecommendations = actions;
+
+          const { data: reRecommendations, error: reRecommendationsError } = await supabase
+            .from('re_recommendations')
+            .select(`
+              id,
+              document_id,
+              title,
+              action_required_text,
+              priority,
+              status,
+              owner,
+              target_date,
+              module_instance_id,
+              rec_number,
+              created_at
+            `)
+            .eq('document_id', document.id)
+            .eq('is_suppressed', false)
+            .order('created_at', { ascending: true });
+
+          if (reRecommendationsError) {
+            throw reRecommendationsError;
+          }
+
+          const priorityToBand: Record<string, string> = {
+            critical: 'P1',
+            high: 'P1',
+            medium: 'P2',
+            low: 'P3',
+          };
+
+          reSurveyRecommendations = (reRecommendations || []).map((rec: any, index: number) => ({
+            id: rec.id,
+            document_id: rec.document_id,
+            recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
+            priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
+            status: rec.status || 'Open',
+            owner_user_id: null,
+            owner_display_name: rec.owner || null,
+            target_date: rec.target_date || null,
+            module_instance_id: rec.module_instance_id,
+            created_at: rec.created_at,
+            reference_number: rec.rec_number || null,
+            completed_at: rec.completed_at || null,
+            is_complete: rec.is_complete ?? null,
+          }));
+
           try {
             const re02Module = moduleInstances.find((instance: any) => instance.module_key === 'RE_02_CONSTRUCTION');
             if (re02Module) {
@@ -452,6 +502,7 @@ export default function DocumentPreviewPage() {
 
           pdfBytes = await buildReSurveyPdf({
             ...pdfOptions,
+            actions: reSurveyRecommendations,
             moduleInstances: reSurveyModuleInstances,
             selectedModules: reSelectedModules,
           });
@@ -494,7 +545,7 @@ export default function DocumentPreviewPage() {
 
           const lpActions = (reRecommendations || []).map((rec: any, index: number) => ({
             id: rec.id,
-            recommended_action: rec.title || rec.action_required_text || `Recommendation ${index + 1}`,
+            recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
             priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
             status: statusMap[rec.status] || 'open',
             owner_user_id: null,

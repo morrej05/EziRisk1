@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 export async function setDevForcePro(organisationId: string, enabled: boolean): Promise<void> {
   if (!import.meta.env.DEV) return;
 
-  const targetPlanId = enabled ? 'team' : 'solo';
+  const targetPlanId = enabled ? 'professional' : 'standard';
 
   const { error } = await supabase
     .from('organisations')
@@ -21,7 +21,7 @@ export async function setDevForcePro(organisationId: string, enabled: boolean): 
 export async function toggleDevForcePro(organisationId: string, currentPlanId: string): Promise<boolean> {
   if (!import.meta.env.DEV) return false;
 
-  const newEnabled = currentPlanId !== 'team';
+  const newEnabled = currentPlanId !== 'professional';
   await setDevForcePro(organisationId, newEnabled);
   return newEnabled;
 }

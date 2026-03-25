@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 export interface PlanDefinition {
-  id: 'solo' | 'team' | 'consultancy';
+  id: 'free' | 'standard' | 'professional';
   name: string;
   max_users: number;
   max_storage_mb: number;
@@ -101,7 +101,7 @@ export function useTenant() {
     }
   };
 
-  const updatePlan = async (newPlanId: 'solo' | 'team' | 'consultancy') => {
+  const updatePlan = async (newPlanId: 'free' | 'standard' | 'professional') => {
     if (!organisation?.id) return;
 
     try {

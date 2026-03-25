@@ -18,13 +18,13 @@ export default function UpgradeBanner({ plan, feature = 'Smart Recommendations' 
     switch (plan) {
       case 'free':
         return {
-          title: "You're on Free Plan",
-          subtitle: `Upgrade to Professional for ${feature} and advanced features`,
+          title: "You're on a 14-day Free Trial",
+          subtitle: 'Includes 1 user and 5 reports. Upgrade after trial expiry to keep creating reports and adding users.',
         };
-      case 'core':
+      case 'standard':
         return {
-          title: "You're on Core Plan",
-          subtitle: `Upgrade to Professional for ${feature} and 3 editor seats`,
+          title: "You're on Standard",
+          subtitle: `Upgrade to Professional for ${feature} and 5 user seats`,
         };
       default:
         return null;

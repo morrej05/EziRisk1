@@ -8,19 +8,24 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, stripe-signature",
 };
 
-type PlanType = 'core' | 'professional';
+type PlanId = "standard" | "professional";
 type PlanInterval = 'month' | 'year';
 
 interface StripePlanMapping {
-  planType: PlanType;
+  planId: PlanId;
   interval: PlanInterval;
 }
 
+const STRIPE_PRICE_STANDARD_MONTHLY =
+  Deno.env.get("STRIPE_PRICE_STANDARD_MONTHLY");
+const STRIPE_PRICE_STANDARD_ANNUAL =
+  Deno.env.get("STRIPE_PRICE_STANDARD_ANNUAL");
+
 const PRICE_TO_PLAN: Record<string, StripePlanMapping> = {
-  [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY") || ""]: { planType: "core", interval: "month" },
-  [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL") || ""]: { planType: "core", interval: "year" },
-  [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || ""]: { planType: "professional", interval: "month" },
-  [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") || ""]: { planType: "professional", interval: "year" },
+  [STRIPE_PRICE_STANDARD_MONTHLY || ""]: { planId: "standard", interval: "month" },
+  [STRIPE_PRICE_STANDARD_ANNUAL || ""]: { planId: "standard", interval: "year" },
+  [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || ""]: { planId: "professional", interval: "month" },
+  [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL") || ""]: { planId: "professional", interval: "year" },
 };
 
 function getPlanFromPriceId(priceId: string): StripePlanMapping | null {
@@ -82,14 +87,30 @@ Deno.serve(async (req: Request) => {
         processed: false
       });
 
-    if (idempotencyError && idempotencyError.code === '23505') {
-      console.log(`Event ${event.id} already processed, skipping`);
-      return new Response(
-        JSON.stringify({ received: true, skipped: true }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+    if (idempotencyError && idempotencyError.code === "23505") {
+      const { data: existingEvent, error: existingEventError } = await supabase
+        .from("stripe_webhook_events")
+        .select("processed")
+        .eq("event_id", event.id)
+        .maybeSingle();
+
+      if (existingEventError) {
+        throw new Error(`Failed to load existing webhook event state for ${event.id}`);
+      }
+
+      if (existingEvent?.processed) {
+        console.log(`Event ${event.id} already processed, skipping`);
+        return new Response(
+          JSON.stringify({ received: true, skipped: true }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      console.log(`Event ${event.id} exists but is marked unprocessed; retrying handler`);
+    } else if (idempotencyError) {
+      throw new Error(`Failed to persist webhook event ${event.id}: ${idempotencyError.message}`);
     }
 
     let organisationId: string | null = null;
@@ -136,7 +157,7 @@ Deno.serve(async (req: Request) => {
         return;
       }
 
-      const updateData: any = {
+      const updateData: Record<string, string | boolean> = {
         stripe_subscription_id: subscription.id,
         stripe_customer_id: subscription.customer as string,
         stripe_price_id: priceId,
@@ -148,17 +169,19 @@ Deno.serve(async (req: Request) => {
       };
 
       if (subscription.status === 'active' || subscription.status === 'trialing') {
-        updateData.plan_type = planMapping.planType;
-      } else if (subscription.status === 'canceled' || subscription.status === 'unpaid') {
-        updateData.plan_type = 'core';
+        updateData.plan_id = planMapping.planId;
       }
 
-      await supabase
+      const { error: organisationUpdateError } = await supabase
         .from("organisations")
         .update(updateData)
         .eq("id", orgId);
 
-      console.log(`Updated org ${orgId}: plan=${updateData.plan_type}, status=${subscription.status}`);
+      if (organisationUpdateError) {
+        throw new Error(`Failed to update organisation ${orgId}: ${organisationUpdateError.message}`);
+      }
+
+      console.log(`Updated org ${orgId}: plan_id=${updateData.plan_id}, status=${subscription.status}`);
     }
 
     switch (event.type) {
@@ -235,16 +258,20 @@ Deno.serve(async (req: Request) => {
           break;
         }
 
-        await supabase
+        const { error: cancellationError } = await supabase
           .from("organisations")
           .update({
-            plan_type: "core",
+            plan_id: "free",
             subscription_status: "canceled",
             stripe_subscription_id: null,
             cancel_at_period_end: false,
             updated_at: new Date().toISOString(),
           })
           .eq("id", organisationId);
+
+        if (cancellationError) {
+          throw new Error(`Failed to cancel subscription state for org ${organisationId}: ${cancellationError.message}`);
+        }
 
         console.log(`Canceled subscription for org ${organisationId}`);
         break;
@@ -261,13 +288,17 @@ Deno.serve(async (req: Request) => {
           );
 
           if (organisationId) {
-            await supabase
+            const { error: paymentFailedUpdateError } = await supabase
               .from("organisations")
               .update({
                 subscription_status: "past_due",
                 updated_at: new Date().toISOString(),
               })
               .eq("id", organisationId);
+
+            if (paymentFailedUpdateError) {
+              throw new Error(`Failed to mark payment failed for org ${organisationId}: ${paymentFailedUpdateError.message}`);
+            }
 
             console.log(`Payment failed for org ${organisationId}`);
           }
@@ -300,10 +331,14 @@ Deno.serve(async (req: Request) => {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
-    await supabase
+    const { error: processedUpdateError } = await supabase
       .from("stripe_webhook_events")
       .update({ processed: true })
       .eq("event_id", event.id);
+
+    if (processedUpdateError) {
+      throw new Error(`Failed to mark webhook event ${event.id} as processed`);
+    }
 
     return new Response(
       JSON.stringify({ received: true }),
@@ -312,6 +347,28 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (error) {
+  if (error instanceof Error && error.message === "Stripe configuration missing") {
+    const hasStripeSecretKey = Boolean(Deno.env.get("STRIPE_SECRET_KEY"));
+    const hasStripeWebhookSecret = Boolean(Deno.env.get("STRIPE_WEBHOOK_SECRET"));
+    console.error("Stripe configuration missing", {
+      hasStripeSecretKey,
+      hasStripeWebhookSecret,
+      marker: "SWHV2_CONFIG_DEBUG_20260324_B",
+    });
+    return new Response(
+      JSON.stringify({
+        error: "Stripe configuration missing",
+        hasStripeSecretKey,
+        hasStripeWebhookSecret,
+        marker: "SWHV2_CONFIG_DEBUG_20260324_B",
+      }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
+
     console.error("Webhook error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Webhook processing failed" }),

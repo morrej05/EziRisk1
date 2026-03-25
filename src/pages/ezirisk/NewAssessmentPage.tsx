@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import { canAccessRiskEngineering, canAccessExplosionSafety } from '../../utils/entitlements';
-import { createDocument } from '../../utils/documentCreation';
+import { createDocument, ReportCreationBlockedError } from '../../utils/documentCreation';
+import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlements';
+import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
+import { buildUpgradePath } from '../../utils/upgradeNavigation';
 
 interface AssessmentType {
   id: string;
@@ -19,6 +23,9 @@ export default function NewAssessmentPage() {
   const { user, organisation } = useAuth();
 
   const [creatingType, setCreatingType] = useState<string | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('report_limit');
+  const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
 
   // Guard: Wait for auth to load
   if (!user || !organisation) {
@@ -95,14 +102,32 @@ export default function NewAssessmentPage() {
 
     // Double-check entitlements at submit time to prevent bypass
     if (typeId === 'property' && !hasRiskEngineering) {
-      alert('This assessment type requires an upgrade to your plan.');
-      navigate('/upgrade');
+      setUpgradeReason('report_limit');
+      setUpgradeDetail('This assessment type requires an upgrade to your plan.');
+      setShowUpgradeModal(true);
       return;
     }
 
     if ((typeId === 'dsear' || typeId === 'fire_explosion') && !hasExplosion) {
-      alert('This assessment type requires an upgrade to your plan.');
-      navigate('/upgrade');
+      setUpgradeReason('report_limit');
+      setUpgradeDetail('This assessment type requires an upgrade to your plan.');
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    let creationEntitlement;
+    try {
+      creationEntitlement = await getReportCreationEntitlement(organisation.id);
+    } catch (error) {
+      console.error('[NewAssessment] Failed to check report creation entitlement:', error);
+      alert('Unable to verify report creation limits right now. Please try again.');
+      return;
+    }
+
+    if (!creationEntitlement.allowed) {
+      setUpgradeReason(inferReportUpgradeReason(creationEntitlement));
+      setUpgradeDetail(creationEntitlement.reason || 'Your current plan cannot create more reports.');
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -190,7 +215,13 @@ export default function NewAssessmentPage() {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const displayMessage = `Failed to create assessment: ${errorMessage}`;
 
-      alert(displayMessage);
+      if (error instanceof ReportCreationBlockedError) {
+        setUpgradeReason(inferReportUpgradeReasonFromMessage(error.message));
+        setUpgradeDetail(error.message);
+        setShowUpgradeModal(true);
+      } else {
+        alert(displayMessage);
+      }
       setCreatingType(null);
     }
   };
@@ -251,7 +282,7 @@ export default function NewAssessmentPage() {
                       </button>
                     ) : (
                       <button
-                        onClick={() => navigate('/upgrade')}
+                        onClick={() => navigate(buildUpgradePath('report_limit', { action: 'start_locked_assessment' }))}
                         className="ml-6 flex items-center gap-2 px-4 py-2 bg-white text-slate-700 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
                       >
                         Upgrade
@@ -262,6 +293,13 @@ export default function NewAssessmentPage() {
             </div>
           </div>
         </div>
+        <UpgradeBlockModal
+          open={showUpgradeModal}
+          reason={upgradeReason}
+          detail={upgradeDetail}
+          onClose={() => setShowUpgradeModal(false)}
+          onUpgrade={() => navigate(buildUpgradePath(upgradeReason, { action: 'new_assessment' }))}
+        />
       </div>
   );
 }

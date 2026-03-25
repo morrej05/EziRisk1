@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LogOut, Shield } from 'lucide-react';
-import { canAccessAdmin, canAccessPlatformSettings, type User as EntitlementsUser } from '../utils/entitlements';
+import { canAccessAdmin, canAccessPlatformSettings, canAccessPortfolio, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
 import { resolveLogoUrl } from '../utils/logo';
 
@@ -9,7 +9,7 @@ type AuthUserWithPlatform = { platform?: boolean };
 
 export default function PrimaryNavigation() {
   const location = useLocation();
-  const { signOut, user } = useAuth();
+  const { signOut, user, organisation } = useAuth();
   const [logoError, setLogoError] = useState(false);
 
   const isActive = (path: string) => {
@@ -35,7 +35,7 @@ export default function PrimaryNavigation() {
     { label: 'Home', path: '/dashboard', show: true },
     { label: 'Assessments', path: '/assessments', show: true },
     { label: 'Remediation', path: '/remediation', show: true },
-    { label: 'Portfolio', path: '/portfolio', show: true },
+    { label: 'Portfolio', path: '/portfolio', show: organisation ? canAccessPortfolio(organisation) : false },
     {
       label: 'Admin',
       path: '/admin',

@@ -16,6 +16,7 @@ import {
   formatDate,
   getPriorityColor,
   drawDraftWatermark,
+  drawPlanWatermark,
   addNewPage,
   drawFooter,
   addSupersededWatermark,
@@ -46,6 +47,7 @@ import {
   getExplosiveAtmospheresReferences,
   type Jurisdiction,
 } from '../reportText';
+import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -118,6 +120,8 @@ interface BuildPdfOptions {
   actionRatings: ActionRating[];
   organisation: Organisation;
   renderMode: 'preview' | 'issued';
+  applyTrialWatermark?: boolean;
+  preparedByName?: string | null;
 }
 
 const NOT_ASSESSED_LABEL = 'Not assessed';
@@ -424,7 +428,11 @@ const reasonLines = wrapText(reason, CONTENT_WIDTH - 30, 9, font);
 }
 
 export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  const { document, moduleInstances, actions, actionRatings, organisation, renderMode } = options;
+  const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
+  const document = {
+    ...options.document,
+    assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
+  };
 
   let attachments: Attachment[] = [];
   try {
@@ -987,6 +995,10 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
   // Apply watermarks if needed
   if (isDraft) {
     totalPages.forEach((p) => drawDraftWatermark(p));
+  }
+
+  if (applyTrialWatermark) {
+    totalPages.forEach((p) => drawPlanWatermark(p, 'TRIAL'));
   }
 
   if (document.status === 'superseded') {

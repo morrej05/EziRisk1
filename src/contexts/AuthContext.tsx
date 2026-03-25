@@ -48,6 +48,9 @@ type OrganisationRecord = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   billing_cycle?: 'monthly' | 'annual' | null;
+  trial_ends_at?: string | null;
+  cancel_at_period_end?: boolean | null;
+  stripe_current_period_end?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -377,8 +380,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOrganisation({
           id: healedOrg.id,
           name: healedOrg.name,
-          plan_type: healedOrg.plan_type || healedOrg.plan_id || 'free',
-          plan_id: healedOrg.plan_id || healedOrg.plan_type || 'free',
+          plan_type: healedOrg.plan_id || 'free',
+          plan_id: healedOrg.plan_id || 'free',
           discipline_type: healedOrg.discipline_type,
           enabled_addons: Array.isArray(healedOrg.enabled_addons) ? healedOrg.enabled_addons : [],
           max_editors: healedOrg.max_editors || 0,
@@ -386,6 +389,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           stripe_customer_id: healedOrg.stripe_customer_id,
           stripe_subscription_id: healedOrg.stripe_subscription_id,
           billing_cycle: healedOrg.billing_cycle,
+          trial_ends_at: healedOrg.trial_ends_at,
+          cancel_at_period_end: healedOrg.cancel_at_period_end ?? false,
+          stripe_current_period_end: healedOrg.stripe_current_period_end,
           created_at: healedOrg.created_at,
           updated_at: healedOrg.updated_at,
         });
@@ -432,8 +438,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const orgData = {
           id: org.id,
           name: org.name,
-          plan_type: org.plan_type || org.plan_id || 'free',
-          plan_id: org.plan_id || org.plan_type || 'free',
+          plan_type: org.plan_id || 'free',
+          plan_id: org.plan_id || 'free',
           discipline_type: org.discipline_type,
           enabled_addons: Array.isArray(org.enabled_addons) ? org.enabled_addons : [],
           max_editors: org.max_editors || 0,
@@ -441,6 +447,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           stripe_customer_id: org.stripe_customer_id,
           stripe_subscription_id: org.stripe_subscription_id,
           billing_cycle: org.billing_cycle,
+          trial_ends_at: org.trial_ends_at,
+          cancel_at_period_end: org.cancel_at_period_end ?? false,
+          stripe_current_period_end: org.stripe_current_period_end,
           created_at: org.created_at,
           updated_at: org.updated_at,
         };

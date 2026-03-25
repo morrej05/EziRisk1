@@ -1,55 +1,87 @@
-import { Users, Database } from 'lucide-react';
-import { useTenant } from '../hooks/useTenant';
+import { Users, FileText, Database } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { getPlanConfig } from '../utils/entitlements';
+import { getUserLimitForOrganisation } from '../utils/planLimits';
+import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
+import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
+import { useTenant } from '../hooks/useTenant';
 
 export default function PlanUsageWidget() {
+  const { organisation } = useAuth();
   const { tenant } = useTenant();
   const [userCount, setUserCount] = useState(0);
+  const [reportEntitlement, setReportEntitlement] = useState<ReportCreationEntitlement | null>(null);
+  const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchUserCount = async () => {
-      if (!tenant?.id) return;
+    const fetchUsage = async () => {
+      if (!organisation?.id) return;
 
       try {
-        const { count, error } = await supabase
-          .from('user_profiles')
-          .select('*', { count: 'exact', head: true })
-          .eq('organisation_id', tenant.id);
+        const [{ count, error }, reportData, seatData] = await Promise.all([
+          supabase
+            .from('user_profiles')
+            .select('*', { count: 'exact', head: true })
+            .eq('organisation_id', organisation.id),
+          getReportCreationEntitlement(organisation.id),
+          getUserSeatEntitlement(organisation.id),
+        ]);
 
         if (error) {
           console.error('[PlanUsageWidget] Error fetching user count:', error);
-          return;
+        } else {
+          setUserCount(count || 0);
         }
 
-        setUserCount(count || 0);
+        setReportEntitlement(reportData);
+        setSeatEntitlement(seatData);
       } catch (err) {
-        console.error('[PlanUsageWidget] Exception:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[PlanUsageWidget] Exception:', errorMessage, err);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchUserCount();
-  }, [tenant?.id]);
+    fetchUsage();
+  }, [organisation?.id]);
 
-  if (isLoading || !tenant || !tenant.plan) {
+  if (isLoading || !organisation) {
     return null;
   }
 
-  const storagePercent = (tenant.storage_used_mb / tenant.plan.max_storage_mb) * 100;
-  const usersPercent = (userCount / tenant.plan.max_users) * 100;
+  const planConfig = getPlanConfig(organisation);
+  const reportLimit = reportEntitlement?.monthly_report_limit ?? planConfig.reportLimit;
+  const reportsUsed = reportEntitlement?.monthly_report_count ?? 0;
+  const reportPercent = reportLimit > 0 ? (reportsUsed / reportLimit) * 100 : 0;
+  const seatLimit = seatEntitlement?.user_limit ?? getUserLimitForOrganisation(organisation);
+  const seatsUsed = seatEntitlement?.active_member_count ?? userCount;
+  const usersPercent = seatLimit > 0 ? (seatsUsed / seatLimit) * 100 : 0;
+  const storagePercent = tenant?.plan ? (tenant.storage_used_mb / tenant.plan.max_storage_mb) * 100 : 0;
+  const isFreeTrial = organisation.plan_id === 'free';
+  const trialEndsAt = reportEntitlement?.trial_ends_at ?? organisation.trial_ends_at ?? null;
+  const isTrialExpired = Boolean(reportEntitlement?.is_trial_expired);
+  const trialDaysRemaining = (() => {
+    if (!isFreeTrial || !trialEndsAt || isTrialExpired) return null;
+    const now = new Date();
+    const expiryDate = new Date(trialEndsAt);
+    const diffMs = expiryDate.getTime() - now.getTime();
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  })();
+
+  const getProgressColor = (percent: number) => {
+    if (percent >= 100) return 'bg-red-500';
+    if (percent >= 80) return 'bg-amber-500';
+    return 'bg-blue-500';
+  };
 
   const getStorageColor = () => {
     if (storagePercent >= 100) return 'bg-red-500';
     if (storagePercent >= 80) return 'bg-amber-500';
-    return 'bg-blue-500';
-  };
-
-  const getUsersColor = () => {
-    if (usersPercent >= 100) return 'bg-red-500';
-    if (usersPercent >= 80) return 'bg-amber-500';
     return 'bg-blue-500';
   };
 
@@ -62,71 +94,128 @@ export default function PlanUsageWidget() {
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-      <h3 className="text-lg font-semibold text-slate-900 mb-4">Plan & Usage</h3>
+      <h3 className="text-lg font-semibold text-slate-900 mb-1">Usage & Limits</h3>
+      <p className="text-sm text-slate-600 mb-4">
+        Operational usage for your current monthly allowance and active seats.
+      </p>
+
+      {isFreeTrial && (
+        <div className={`mb-4 rounded-lg border p-3 text-sm ${isTrialExpired ? 'border-red-200 bg-red-50 text-red-900' : 'border-blue-200 bg-blue-50 text-blue-900'}`}>
+          {isTrialExpired ? (
+            <div>
+              <p className="font-semibold">Your free trial has ended.</p>
+              <p className="text-xs mt-1">Existing data is still available. Upgrade to continue creating reports and adding team members.</p>
+            </div>
+          ) : (
+            <div>
+              <p className="font-semibold">Free trial: 14 days, 1 user, 5 reports.</p>
+              <p className="text-xs mt-1">
+                {trialDaysRemaining !== null
+                  ? `Your free trial ends in ${trialDaysRemaining} day${trialDaysRemaining === 1 ? '' : 's'}.`
+                  : 'Your free trial is active.'}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-4">
-        {import.meta.env.DEV && (
-          <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-            <div className="text-xs font-semibold text-blue-900 mb-2">🔧 Dev Diagnostics</div>
-            <div className="text-xs font-mono text-blue-800 space-y-1">
-              <div>Org loaded: <span className="font-bold text-green-700">✓ Yes</span></div>
-              <div>Org ID: {tenant.id.substring(0, 8)}...</div>
-              <div>Plan ID: <span className="font-bold">{tenant.plan_id}</span></div>
-              <div>Status: {tenant.subscription_status || 'N/A'}</div>
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-slate-600" />
+              <span className="text-sm font-medium text-slate-700">Reports used this month</span>
             </div>
+            <span className="text-sm font-semibold text-slate-900">
+              {reportsUsed} / {reportLimit}
+            </span>
           </div>
-        )}
-
-        <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-          <div className="text-sm font-medium text-slate-600 mb-1">Current Plan</div>
-          <div className="text-xl font-bold text-slate-900">{tenant.plan.name}</div>
+          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div
+              className={`h-full transition-all ${getProgressColor(reportPercent)}`}
+              style={{ width: `${Math.min(reportPercent, 100)}%` }}
+            />
+          </div>
+          {reportPercent >= 80 && (
+            <div className="mt-1">
+              {reportPercent >= 100 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-red-700">
+                    You’ve reached your monthly report limit ({reportLimit}). Upgrade to continue creating reports.
+                  </p>
+                  <Link to="/upgrade" className="text-xs font-medium text-red-700 underline hover:text-red-800">
+                    Upgrade
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-700">
+                  You’ve used {reportsUsed} of {reportLimit} reports this month.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-slate-600" />
-              <span className="text-sm font-medium text-slate-700">Users</span>
+              <span className="text-sm font-medium text-slate-700">Seats in use</span>
             </div>
             <span className="text-sm font-semibold text-slate-900">
-              {userCount} / {tenant.plan.max_users}
+              {seatsUsed} / {seatLimit}
             </span>
           </div>
           <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
             <div
-              className={`h-full transition-all ${getUsersColor()}`}
+              className={`h-full transition-all ${getProgressColor(usersPercent)}`}
               style={{ width: `${Math.min(usersPercent, 100)}%` }}
             />
           </div>
           {usersPercent >= 80 && (
-            <p className="text-xs text-amber-700 mt-1">
-              {usersPercent >= 100 ? 'User limit reached' : 'Approaching user limit'}
-            </p>
+            <div className="mt-1">
+              {usersPercent >= 100 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-red-700">
+                    You’ve reached your user limit ({seatLimit}). Upgrade to add more team members.
+                  </p>
+                  <Link to="/upgrade" className="text-xs font-medium text-red-700 underline hover:text-red-800">
+                    Upgrade
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-700">
+                  You’re close to your seat limit ({seatsUsed} of {seatLimit} users).
+                </p>
+              )}
+            </div>
           )}
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-slate-600" />
-              <span className="text-sm font-medium text-slate-700">Storage</span>
+        {tenant?.plan && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-slate-600" />
+                <span className="text-sm font-medium text-slate-700">Storage</span>
+              </div>
+              <span className="text-sm font-semibold text-slate-900">
+                {formatStorageSize(tenant.storage_used_mb)} / {formatStorageSize(tenant.plan.max_storage_mb)}
+              </span>
             </div>
-            <span className="text-sm font-semibold text-slate-900">
-              {formatStorageSize(tenant.storage_used_mb)} / {formatStorageSize(tenant.plan.max_storage_mb)}
-            </span>
+            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${getStorageColor()}`}
+                style={{ width: `${Math.min(storagePercent, 100)}%` }}
+              />
+            </div>
+            {storagePercent >= 80 && (
+              <p className="text-xs text-amber-700 mt-1">
+                {storagePercent >= 100 ? 'Storage limit reached' : 'Approaching storage limit'}
+              </p>
+            )}
           </div>
-          <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-            <div
-              className={`h-full transition-all ${getStorageColor()}`}
-              style={{ width: `${Math.min(storagePercent, 100)}%` }}
-            />
-          </div>
-          {storagePercent >= 80 && (
-            <p className="text-xs text-amber-700 mt-1">
-              {storagePercent >= 100 ? 'Storage limit reached' : 'Approaching storage limit'}
-            </p>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

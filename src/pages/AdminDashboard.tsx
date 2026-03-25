@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Eye, Edit, Trash2, RefreshCw, Lock, Filter, Download, Shield, Users, ArrowLeft, CreditCard } from 'lucide-react';
@@ -27,7 +27,7 @@ interface Survey {
 }
 
 export default function AdminDashboard() {
-  const { signOut, user, isPlatformAdmin, refreshUserRole } = useAuth();
+  const { signOut, user, organisation, isPlatformAdmin, refreshUserRole } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'users' | 'surveys'>('surveys');
   const [surveys, setSurveys] = useState<Survey[]>([]);
@@ -36,6 +36,7 @@ export default function AdminDashboard() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string | null>(null);
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
+  const [upgradeStatus, setUpgradeStatus] = useState<'checking' | 'confirmed' | 'delayed'>('checking');
 
   const entitlementUser: EntitlementsUser | null = useMemo(() => (
     user
@@ -61,15 +62,55 @@ export default function AdminDashboard() {
   const [sortBy, setSortBy] = useState<'survey_date' | 'issue_date' | 'company_name' | 'updated_at'>('updated_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  const runUpgradeSuccessRefresh = useCallback(async () => {
+    const baselinePlanId = organisation?.plan_id ?? null;
+    const organisationId = user?.organisation_id ?? organisation?.id ?? null;
+    const maxAttempts = 6;
+    const retryDelayMs = 2000;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      await refreshUserRole();
+
+      if (organisationId) {
+        const { data, error } = await supabase
+          .from('organisations')
+          .select('plan_id, subscription_status')
+          .eq('id', organisationId)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('[AdminDashboard] Unable to verify upgraded plan state:', error);
+        } else {
+          const currentPlanId = data?.plan_id ?? null;
+          const currentSubscriptionStatus = data?.subscription_status ?? null;
+          const planChanged = baselinePlanId ? currentPlanId !== baselinePlanId : false;
+          const upgradedWithoutBaseline = !baselinePlanId && currentSubscriptionStatus === 'active';
+
+          if (planChanged || upgradedWithoutBaseline) {
+            setUpgradeStatus('confirmed');
+            return;
+          }
+        }
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+
+    setUpgradeStatus('delayed');
+  }, [organisation?.id, organisation?.plan_id, refreshUserRole, user?.organisation_id]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('upgrade') === 'success') {
       setUpgradeSuccess(true);
-      refreshUserRole();
+      setUpgradeStatus('checking');
+      void runUpgradeSuccessRefresh();
       window.history.replaceState({}, '', '/admin');
-      setTimeout(() => setUpgradeSuccess(false), 5000);
+      setTimeout(() => setUpgradeSuccess(false), 12000);
     }
-  }, []);
+  }, [runUpgradeSuccessRefresh]);
 
   useEffect(() => {
     if (!entitlementUser || !canAccessAdmin(entitlementUser)) {
@@ -440,7 +481,9 @@ export default function AdminDashboard() {
         <div className="max-w-[1600px] mx-auto px-6 pt-6">
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <p className="text-sm text-green-800 font-medium">
-              Subscription upgraded successfully! Your new plan features are now available.
+              {upgradeStatus === 'confirmed' && 'Subscription upgraded successfully! Your new plan features are now available.'}
+              {upgradeStatus === 'checking' && 'We are finalising your upgrade. Your plan features will unlock automatically in a few seconds.'}
+              {upgradeStatus === 'delayed' && 'Your checkout succeeded, but plan syncing is still in progress. Features will unlock automatically shortly, or refresh this page in a moment.'}
             </p>
           </div>
         </div>
