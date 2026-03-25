@@ -3,6 +3,9 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AlertCircle } from 'lucide-react';
 
+type SignupPlan = 'free' | 'standard' | 'professional';
+type BillingCycle = 'monthly' | 'annual';
+
 export default function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -14,6 +17,8 @@ export default function SignIn() {
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<SignupPlan>('free');
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const { signIn, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
 
@@ -29,10 +34,15 @@ export default function SignIn() {
 
       if (authError) {
         setError(authError.message);
+      } else if (isSignUp && selectedPlan !== 'free') {
+        navigate(
+          `/upgrade?signupFlow=1&signupPlan=${selectedPlan}&signupBillingCycle=${billingCycle}`,
+          { replace: true }
+        );
       } else {
         navigate('/dashboard', { replace: true });
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -52,7 +62,7 @@ export default function SignIn() {
       } else {
         setResetSuccess(true);
       }
-    } catch (err) {
+    } catch {
       setError('An unexpected error occurred');
     } finally {
       setResetLoading(false);
@@ -87,7 +97,7 @@ export default function SignIn() {
               {isSignUp ? 'Create your account' : 'Sign in to your account'}
             </h2>
             <p className="mt-2 text-center text-sm text-neutral-600">
-              {isSignUp ? 'Start creating professional fire risk reports' : 'Access your fire risk reports'}
+              {isSignUp ? 'Start your 14-day free trial' : 'Access your fire risk reports'}
             </p>
           </div>
 
@@ -96,6 +106,62 @@ export default function SignIn() {
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <span className="text-sm">{error}</span>
+              </div>
+            )}
+
+            {isSignUp && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm font-semibold text-slate-900">Choose your starting plan</p>
+                  <p className="mt-1 text-sm text-slate-700">Includes 1 user and 5 reports.</p>
+                  <p className="text-sm text-slate-700">Upgrade anytime for more users and reports.</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {([
+                    { id: 'free', label: 'Free Trial', description: '14 days • 1 user • 5 reports' },
+                    { id: 'standard', label: 'Standard', description: 'Paid plan after account setup' },
+                    { id: 'professional', label: 'Professional', description: 'Paid plan after account setup' },
+                  ] as const).map((plan) => (
+                    <button
+                      key={plan.id}
+                      type="button"
+                      onClick={() => setSelectedPlan(plan.id)}
+                      className={`rounded-lg border px-3 py-3 text-left transition-colors ${
+                        selectedPlan === plan.id
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-300 bg-white text-slate-800 hover:border-slate-500'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold">{plan.label}</p>
+                      <p className={`mt-1 text-xs ${selectedPlan === plan.id ? 'text-slate-100' : 'text-slate-600'}`}>
+                        {plan.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                {selectedPlan !== 'free' && (
+                  <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                    <p className="text-sm text-slate-700">
+                      Your account is created first, then you&apos;ll continue to secure Stripe checkout.
+                    </p>
+                    <div className="inline-flex rounded-md border border-slate-300 p-1">
+                      {(['monthly', 'annual'] as const).map((cycle) => (
+                        <button
+                          key={cycle}
+                          type="button"
+                          onClick={() => setBillingCycle(cycle)}
+                          className={`px-3 py-1.5 text-sm rounded ${
+                            billingCycle === cycle ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {cycle === 'monthly' ? 'Monthly' : 'Annual'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
