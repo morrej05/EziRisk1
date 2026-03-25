@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { UserRole, SubscriptionPlan, DisciplineType } from '../utils/permissions';
 import { Organisation } from '../utils/entitlements';
 import { CURRENT_DISCLAIMER_VERSION } from '../config/legal';
+import { isDisposableEmailDomain } from '../utils/emailDomainValidation';
 
 // Enriched user object that combines auth + profile data
 interface AppUser extends User {
@@ -594,6 +595,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
+    if (isDisposableEmailDomain(email)) {
+      return {
+        error: {
+          name: 'SignupProtectionError',
+          message: 'Please use a business or personal email address.',
+        } as AuthError,
+      };
+    }
+
+    const { data: preSignupCheckData, error: preSignupCheckError } = await supabase.functions.invoke('pre-signup-check', {
+      body: { email },
+    });
+
+    if (preSignupCheckError) {
+      let message = 'Unable to process signup right now. Please try again.';
+      const response = (preSignupCheckError as { context?: Response }).context;
+
+      if (response) {
+        try {
+          const payload = await response.json();
+          if (typeof payload?.message === 'string') {
+            message = payload.message;
+          }
+        } catch {
+          // Ignore malformed response payloads and keep fallback message.
+        }
+      } else if (typeof preSignupCheckData?.message === 'string') {
+        message = preSignupCheckData.message;
+      }
+
+      return {
+        error: {
+          name: 'SignupProtectionError',
+          message,
+        } as AuthError,
+      };
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
