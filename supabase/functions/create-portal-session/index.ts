@@ -1,8 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@14";
-import { getBearerToken } from "../_shared/auth.ts";
-import { hasRequiredOrganisationRole } from "../_shared/orgAuth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,16 +49,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const token = getBearerToken(req);
-    if (!token) {
-      return jsonResponse(401, { error: "Missing or malformed Authorization header" });
+    const authorization = req.headers.get("Authorization") ?? req.headers.get("authorization");
+    if (!authorization) {
+      return jsonResponse(401, { error: "Missing Authorization header" });
     }
 
-    const authSupabase = createClient(supabaseUrl, supabaseAnonKey);
-    const { data: { user }, error: authError } = await authSupabase.auth.getUser(token);
+    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authorization,
+        },
+      },
+    });
+
+    const {
+      data: { user },
+      error: authError,
+    } = await authSupabase.auth.getUser();
 
     if (authError || !user) {
-      return jsonResponse(401, { error: "Failed to validate authenticated user" });
+      return jsonResponse(401, { error: "Unauthorized" });
     }
 
     const { organisationId, returnUrl }: PortalSessionRequest = await req.json();
@@ -79,9 +87,13 @@ Deno.serve(async (req: Request) => {
       .from("organisations")
       .select("id, stripe_customer_id")
       .eq("id", organisationId)
-      .single();
+      .maybeSingle();
 
-    if (orgError || !organisation) {
+    if (orgError) {
+      return jsonResponse(500, { error: "Failed to fetch organisation" });
+    }
+
+    if (!organisation) {
       return jsonResponse(404, { error: "Organisation not found" });
     }
 
@@ -90,25 +102,22 @@ Deno.serve(async (req: Request) => {
       .select("role, status")
       .eq("organisation_id", organisationId)
       .eq("user_id", user.id)
+      .eq("status", "active")
       .maybeSingle();
 
     if (membershipError) {
       return jsonResponse(500, { error: "Failed to verify organisation membership" });
     }
 
-    if (!membership || membership.status !== "active") {
-      return jsonResponse(401, { error: "Active organisation membership is required to manage billing" });
+    if (!membership) {
+      return jsonResponse(403, { error: "Active organisation membership is required to manage billing" });
     }
 
-    const canManageBilling = await hasRequiredOrganisationRole(
-      adminSupabase,
-      user.id,
-      organisationId,
-      ["owner", "admin"],
-    );
-
-    if (!canManageBilling) {
-      return jsonResponse(401, { error: "Only organisation owners/admins can manage billing" });
+    if (![
+      "owner",
+      "admin",
+    ].includes(membership.role)) {
+      return jsonResponse(403, { error: "Only organisation owners/admins can manage billing" });
     }
 
     if (!organisation.stripe_customer_id) {
