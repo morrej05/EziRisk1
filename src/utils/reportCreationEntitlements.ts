@@ -10,13 +10,36 @@ export interface ReportCreationEntitlement {
   is_trial_expired: boolean;
 }
 
+function formatRpcError(error: unknown, rpcName: string, organisationId: string): string {
+  if (!error || typeof error !== 'object') {
+    return `Failed to check report creation entitlements via ${rpcName} for org ${organisationId}`;
+  }
+
+  const rpcError = error as {
+    message?: string;
+    code?: string;
+    details?: string;
+    hint?: string;
+  };
+
+  return [
+    `Failed to check report creation entitlements via ${rpcName}`,
+    `organisation_id=${organisationId}`,
+    rpcError.code ? `code=${rpcError.code}` : null,
+    rpcError.message ? `message=${rpcError.message}` : null,
+    rpcError.details ? `details=${rpcError.details}` : null,
+    rpcError.hint ? `hint=${rpcError.hint}` : null,
+  ].filter(Boolean).join(' | ');
+}
+
 export async function getReportCreationEntitlement(organisationId: string): Promise<ReportCreationEntitlement> {
   const { data, error } = await supabase.rpc('get_report_creation_entitlement', {
     p_org_id: organisationId,
+    p_at: new Date().toISOString(),
   });
 
   if (error) {
-    throw new Error(error.message || 'Failed to check report creation entitlements');
+    throw new Error(formatRpcError(error, 'get_report_creation_entitlement', organisationId));
   }
 
   const row = Array.isArray(data) ? data[0] : data;

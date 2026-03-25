@@ -11,6 +11,28 @@ export interface UserSeatEntitlement {
   is_over_limit: boolean;
 }
 
+function formatRpcError(error: unknown, rpcName: string, organisationId: string): string {
+  if (!error || typeof error !== 'object') {
+    return `Failed to check user seat entitlement via ${rpcName} for org ${organisationId}`;
+  }
+
+  const rpcError = error as {
+    message?: string;
+    code?: string;
+    details?: string;
+    hint?: string;
+  };
+
+  return [
+    `Failed to check user seat entitlement via ${rpcName}`,
+    `organisation_id=${organisationId}`,
+    rpcError.code ? `code=${rpcError.code}` : null,
+    rpcError.message ? `message=${rpcError.message}` : null,
+    rpcError.details ? `details=${rpcError.details}` : null,
+    rpcError.hint ? `hint=${rpcError.hint}` : null,
+  ].filter(Boolean).join(' | ');
+}
+
 const FALLBACK_REASON = 'Your organisation has reached its user seat limit. Upgrade to add more users.';
 const DEFAULT_LIMIT_MESSAGE = 'Your organisation has reached the user limit for its current plan.';
 const TRIAL_EXPIRED_MESSAGE = 'Your free trial has ended. Upgrade to add team members. Existing data is still available.';
@@ -23,10 +45,11 @@ interface UserSeatLimitCopy {
 export async function getUserSeatEntitlement(organisationId: string): Promise<UserSeatEntitlement> {
   const { data, error } = await supabase.rpc('get_user_seat_entitlement', {
     p_org_id: organisationId,
+    p_at: new Date().toISOString(),
   });
 
   if (error) {
-    throw new Error(error.message || 'Failed to check user seat entitlement');
+    throw new Error(formatRpcError(error, 'get_user_seat_entitlement', organisationId));
   }
 
   const row = Array.isArray(data) ? data[0] : data;

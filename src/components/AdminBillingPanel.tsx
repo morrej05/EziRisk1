@@ -84,7 +84,8 @@ export default function AdminBillingPanel() {
         setReportEntitlement(reportData);
         setSeatEntitlement(seatData);
       } catch (error) {
-        console.error('[AdminBillingPanel] Failed to load billing data:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('[AdminBillingPanel] Failed to load billing data:', errorMessage, error);
       } finally {
         setIsLoading(false);
       }
