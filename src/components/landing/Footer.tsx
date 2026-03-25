@@ -15,18 +15,20 @@ export default function Footer() {
   };
 
   return (
-    <footer className="bg-neutral-900 text-neutral-300">
+    <footer className="text-neutral-300" style={{ background: 'linear-gradient(180deg, #0E3E5A 0%, #0B2F45 100%)' }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid md:grid-cols-4 gap-8">
           <div className="md:col-span-2">
             <div className="flex items-center gap-2 mb-3">
               {!logoError ? (
-                <img
-                  src={resolveLogoUrl()}
-                  alt="EziRisk"
-                  className="h-7 w-auto"
-                  onError={() => setLogoError(true)}
-                />
+                <div className="inline-flex items-center px-2 py-1 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}>
+                  <img
+                    src={resolveLogoUrl()}
+                    alt="EziRisk"
+                    className="h-7 w-auto"
+                    onError={() => setLogoError(true)}
+                  />
+                </div>
               ) : (
                 <>
                   <Shield className="w-6 h-6 text-primary-400" />
@@ -34,9 +36,8 @@ export default function Footer() {
                 </>
               )}
             </div>
-            <p className="text-neutral-400 mb-4 max-w-md leading-relaxed">
-              Professional risk assessment and reporting platform for engineering and assessment consultants.
-              Structured workflows, consistent outputs, and insurer-grade reporting.
+            <p className="text-neutral-300 mb-4 max-w-md leading-relaxed">
+              Professional risk assessment and reporting platform for engineering and assessment consultants. Structured workflows, consistent outputs, and insurer-grade reporting.
             </p>
           </div>
 

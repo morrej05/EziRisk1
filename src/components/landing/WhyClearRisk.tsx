@@ -48,7 +48,7 @@ export default function WhyClearRisk() {
             Why EziRisk
           </h2>
           <p className="text-xl text-neutral-300 max-w-3xl mx-auto">
-            The professional way to create fire risk reports
+            The professional way to create risk assessments and reports
           </p>
         </div>
 

@@ -6,10 +6,10 @@ export default function CallToAction() {
     <section className="py-24 bg-white">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-6">
-          Ready to Streamline Your Fire Risk Reporting?
+          Ready to Streamline Your Risk Assessment Reporting?
         </h2>
         <p className="text-xl text-neutral-600 mb-10 max-w-2xl mx-auto">
-          Join fire risk professionals using EziRisk to create professional reports faster
+          Join risk professionals using EziRisk to create comprehensive reports faster
         </p>
         <Link
           to="/signin"

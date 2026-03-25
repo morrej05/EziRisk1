@@ -16,7 +16,7 @@ export default function WhatItDoes() {
             What EziRisk Does
           </h2>
           <p className="text-xl text-neutral-600 max-w-3xl mx-auto">
-            A complete fire risk reporting platform for engineering and assessment consultants
+            Complete risk assessment and reporting platform for FRA, FSD, DSEAR / ATEX and risk engineering
           </p>
         </div>
 
@@ -26,10 +26,10 @@ export default function WhatItDoes() {
               <span className="text-2xl font-bold text-primary-700">1</span>
             </div>
             <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Create Surveys
+              Create Assessments
             </h3>
             <p className="text-neutral-600">
-              Structured forms capture all required data for fire property or risk assessments
+              Structured forms capture all required data for risk assessments and reports
             </p>
           </div>
 
@@ -53,7 +53,7 @@ export default function WhatItDoes() {
               Export Reports
             </h3>
             <p className="text-neutral-600">
-              Professional reports combining survey findings and recommendations, ready for clients
+              Professional reports combining assessment findings and recommendations, ready for clients
             </p>
           </div>
         </div>

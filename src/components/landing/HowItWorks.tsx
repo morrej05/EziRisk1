@@ -6,7 +6,7 @@ const steps = [
     number: '01',
     icon: ClipboardList,
     title: 'Enter Survey Data',
-    description: 'Complete structured forms with information from your site survey, including building details, occupancy, fire protection, and risk factors.',
+    description: 'Capture site data through structured modules covering building details, occupancy, fire protection, and risk factors.',
   },
   {
     number: '02',
