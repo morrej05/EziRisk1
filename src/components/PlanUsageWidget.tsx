@@ -1,5 +1,6 @@
 import { Users, FileText, Database } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getPlanConfig } from '../utils/entitlements';
@@ -105,9 +106,22 @@ export default function PlanUsageWidget() {
             />
           </div>
           {reportPercent >= 80 && (
-            <p className="text-xs text-amber-700 mt-1">
-              {reportPercent >= 100 ? 'Monthly report limit reached' : 'Approaching monthly report limit'}
-            </p>
+            <div className="mt-1">
+              {reportPercent >= 100 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-red-700">
+                    You’ve reached your monthly report limit ({reportLimit}). Upgrade to continue creating reports.
+                  </p>
+                  <Link to="/upgrade" className="text-xs font-medium text-red-700 underline hover:text-red-800">
+                    Upgrade
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-700">
+                  You’ve used {reportsUsed} of {reportLimit} reports this month.
+                </p>
+              )}
+            </div>
           )}
         </div>
 
@@ -128,9 +142,22 @@ export default function PlanUsageWidget() {
             />
           </div>
           {usersPercent >= 80 && (
-            <p className="text-xs text-amber-700 mt-1">
-              {usersPercent >= 100 ? 'User limit reached' : 'Approaching user limit'}
-            </p>
+            <div className="mt-1">
+              {usersPercent >= 100 ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-red-700">
+                    You’ve reached your user limit ({seatLimit}). Upgrade to add more team members.
+                  </p>
+                  <Link to="/upgrade" className="text-xs font-medium text-red-700 underline hover:text-red-800">
+                    Upgrade
+                  </Link>
+                </div>
+              ) : (
+                <p className="text-xs text-amber-700">
+                  You’re close to your seat limit ({seatsUsed} of {seatLimit} users).
+                </p>
+              )}
+            </div>
           )}
         </div>
 
