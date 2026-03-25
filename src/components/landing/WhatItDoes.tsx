@@ -1,13 +1,22 @@
+import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
+
 export default function WhatItDoes() {
+  const { ref, isVisible } = useFadeInOnScroll();
+
   return (
-    <section className="py-24 bg-white">
+    <section
+      ref={ref}
+      className={`py-24 bg-white transition-all duration-300 ease-out ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
             What EziRisk Does
           </h2>
           <p className="text-xl text-neutral-600 max-w-3xl mx-auto">
-            A complete fire risk reporting platform for engineering and assessment consultants
+            Complete risk assessment and reporting platform for FRA, FSD, DSEAR / ATEX and risk engineering
           </p>
         </div>
 
@@ -17,10 +26,10 @@ export default function WhatItDoes() {
               <span className="text-2xl font-bold text-primary-700">1</span>
             </div>
             <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Create Surveys
+              Create Assessments
             </h3>
             <p className="text-neutral-600">
-              Structured forms capture all required data for fire property or risk assessments
+              Structured forms capture all required data for risk assessments and reports
             </p>
           </div>
 
@@ -44,7 +53,7 @@ export default function WhatItDoes() {
               Export Reports
             </h3>
             <p className="text-neutral-600">
-              Professional reports combining survey findings and recommendations, ready for clients
+              Professional reports combining assessment findings and recommendations, ready for clients
             </p>
           </div>
         </div>

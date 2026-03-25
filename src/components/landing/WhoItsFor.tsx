@@ -1,4 +1,5 @@
 import { Flame, Shield } from 'lucide-react';
+import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 
 const personas = [
   {
@@ -16,8 +17,16 @@ const personas = [
 ];
 
 export default function WhoItsFor() {
+  const { ref, isVisible } = useFadeInOnScroll();
+
   return (
-    <section id="who-its-for" className="py-24 bg-neutral-50">
+    <section
+      id="who-its-for"
+      ref={ref}
+      className={`py-24 bg-neutral-50 transition-all duration-300 ease-out ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">

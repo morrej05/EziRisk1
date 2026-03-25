@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft } from 'lucide-react';
 import LegalLinks from '../components/legal/LegalLinks';
 import { resolveLogoUrl } from '../utils/logo';
 
@@ -94,12 +94,21 @@ export default function SignIn() {
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="max-w-md w-full space-y-8">
+          <div className="flex justify-center mb-4">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to home
+            </Link>
+          </div>
           <div>
             <h2 className="text-center text-3xl font-bold text-neutral-900">
               {isSignUp ? 'Create your account' : 'Sign in to your account'}
             </h2>
             <p className="mt-2 text-center text-sm text-neutral-600">
-              {isSignUp ? 'Start your 14-day free trial' : 'Access your fire risk reports'}
+              {isSignUp ? 'Start your 14-day free trial' : 'Access your assessments and reports'}
             </p>
           </div>
 

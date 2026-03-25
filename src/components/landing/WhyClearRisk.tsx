@@ -1,4 +1,5 @@
 import { Clock, Target, CheckCircle2, Repeat } from 'lucide-react';
+import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 
 const benefits = [
   {
@@ -32,15 +33,22 @@ const benefits = [
 ];
 
 export default function WhyClearRisk() {
+  const { ref, isVisible } = useFadeInOnScroll();
+
   return (
-    <section className="py-24 bg-neutral-900 text-white">
+    <section
+      ref={ref}
+      className={`py-24 bg-neutral-900 text-white transition-all duration-300 ease-out ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold mb-4">
             Why EziRisk
           </h2>
           <p className="text-xl text-neutral-300 max-w-3xl mx-auto">
-            The professional way to create fire risk reports
+            The professional way to create risk assessments and reports
           </p>
         </div>
 
