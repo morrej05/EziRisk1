@@ -65,6 +65,7 @@ export default function AdminBillingPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isChangingPlan, setIsChangingPlan] = useState(false);
+  const [isConfirmingDowngrade, setIsConfirmingDowngrade] = useState(false);
   const [planChangeMessage, setPlanChangeMessage] = useState<string | null>(null);
   const [planChangeError, setPlanChangeError] = useState<string | null>(null);
 
@@ -137,7 +138,7 @@ export default function AdminBillingPanel() {
     }
   };
 
-  const handleDowngradeToStandard = async () => {
+  const confirmDowngradeToStandard = async () => {
     if (!organisation?.id || isChangingPlan) return;
 
     setIsChangingPlan(true);
@@ -157,6 +158,7 @@ export default function AdminBillingPanel() {
       }
 
       setPlanChangeMessage('Your plan has been updated to Standard.');
+      setIsConfirmingDowngrade(false);
     } catch (error) {
       console.error('[AdminBillingPanel] Failed to downgrade plan:', error);
       setPlanChangeError('Unable to downgrade to Standard right now. Please try again.');
@@ -268,11 +270,11 @@ export default function AdminBillingPanel() {
           <>
             {planId === 'professional' && (
               <button
-                onClick={handleDowngradeToStandard}
+                onClick={() => setIsConfirmingDowngrade(true)}
                 disabled={isChangingPlan}
                 className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
               >
-                {isChangingPlan ? 'Downgrading…' : 'Downgrade to Standard'}
+                Downgrade to Standard
               </button>
             )}
 
@@ -299,6 +301,41 @@ export default function AdminBillingPanel() {
       {planChangeError && <p className="text-sm text-red-700 mt-3">{planChangeError}</p>}
 
       <p className="text-xs text-slate-500 mt-4">Need a larger deployment? Contact us.</p>
+
+      {isConfirmingDowngrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-slate-900 mb-2">Confirm downgrade</h3>
+            <p className="text-sm text-slate-700 mb-3">
+              Downgrading to Standard reduces your limits to:
+            </p>
+            <ul className="list-disc pl-5 text-sm text-slate-700 mb-3 space-y-1">
+              <li>2 users</li>
+              <li>10 reports per month</li>
+            </ul>
+            <p className="text-sm text-slate-700">Existing data will be retained.</p>
+            <p className="text-sm text-slate-700 mt-1">
+              If you are above these limits, some actions will be restricted until usage is reduced.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsConfirmingDowngrade(false)}
+                disabled={isChangingPlan}
+                className="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDowngradeToStandard}
+                disabled={isChangingPlan}
+                className="inline-flex items-center px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-60"
+              >
+                {isChangingPlan ? 'Confirming…' : 'Confirm downgrade'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
