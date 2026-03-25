@@ -64,6 +64,9 @@ export default function AdminBillingPanel() {
   const [seatEntitlement, setSeatEntitlement] = useState<UserSeatEntitlement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
+  const [isChangingPlan, setIsChangingPlan] = useState(false);
+  const [planChangeMessage, setPlanChangeMessage] = useState<string | null>(null);
+  const [planChangeError, setPlanChangeError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchBillingData = async () => {
@@ -131,6 +134,34 @@ export default function AdminBillingPanel() {
       alert('Unable to open billing management right now. Please try again.');
     } finally {
       setIsOpeningPortal(false);
+    }
+  };
+
+  const handleDowngradeToStandard = async () => {
+    if (!organisation?.id || isChangingPlan) return;
+
+    setIsChangingPlan(true);
+    setPlanChangeMessage(null);
+    setPlanChangeError(null);
+
+    try {
+      const { error } = await supabase.functions.invoke('change-subscription-plan', {
+        body: {
+          organisationId: organisation.id,
+          targetPlan: 'standard',
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to change plan');
+      }
+
+      setPlanChangeMessage('Your plan has been updated to Standard.');
+    } catch (error) {
+      console.error('[AdminBillingPanel] Failed to downgrade plan:', error);
+      setPlanChangeError('Unable to downgrade to Standard right now. Please try again.');
+    } finally {
+      setIsChangingPlan(false);
     }
   };
 
@@ -220,6 +251,9 @@ export default function AdminBillingPanel() {
       <p className="text-sm text-slate-600 mb-4">
         Manage billing, payment methods, invoices, and cancellation in Stripe.
       </p>
+      <p className="text-sm text-slate-600 mb-4">
+        Plan changes keep your existing data. If your organisation is above the limits of the new plan, some actions may be restricted until usage is back within limits.
+      </p>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -232,6 +266,16 @@ export default function AdminBillingPanel() {
 
         {planId !== 'free' && (
           <>
+            {planId === 'professional' && (
+              <button
+                onClick={handleDowngradeToStandard}
+                disabled={isChangingPlan}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
+              >
+                {isChangingPlan ? 'Downgrading…' : 'Downgrade to Standard'}
+              </button>
+            )}
+
             <button
               onClick={openStripePortal}
               disabled={isOpeningPortal}
@@ -250,6 +294,9 @@ export default function AdminBillingPanel() {
           </>
         )}
       </div>
+
+      {planChangeMessage && <p className="text-sm text-green-700 mt-3">{planChangeMessage}</p>}
+      {planChangeError && <p className="text-sm text-red-700 mt-3">{planChangeError}</p>}
 
       <p className="text-xs text-slate-500 mt-4">Need a larger deployment? Contact us.</p>
     </div>
