@@ -13,13 +13,15 @@ const plans = [
   {
     title: 'Standard',
     price: `£${getPricing(region, 'standard', 'monthly')} / month`,
-    details: ['For individual consultants', 'Unlimited reports', 'Single user'],
+    annualPrice: `or £${getPricing(region, 'standard', 'annual')} / year`,
+    details: ['For individual consultants', 'Up to 2 users', 'Up to 10 reports'],
     cta: 'Upgrade to Standard',
   },
   {
     title: 'Professional',
     price: `£${getPricing(region, 'professional', 'monthly')} / month`,
-    details: ['For teams and consultancies', 'Multiple users', 'Full platform access'],
+    annualPrice: `or £${getPricing(region, 'professional', 'annual')} / year`,
+    details: ['For teams and consultancies', 'Up to 5 users', 'Up to 30 reports'],
     cta: 'Upgrade to Professional',
   },
 ];
@@ -40,6 +42,7 @@ export default function Pricing() {
             <div key={plan.title} className="p-6 bg-white rounded-xl border border-neutral-200">
               <h3 className="text-xl font-semibold text-neutral-900">{plan.title}</h3>
               <p className="text-3xl font-bold text-neutral-900 mt-3">{plan.price}</p>
+              {plan.annualPrice && <p className="mt-1 text-sm text-neutral-500">{plan.annualPrice}</p>}
               <ul className="mt-5 space-y-2 text-neutral-600">
                 {plan.details.map((detail) => (
                   <li key={detail}>{detail}</li>
@@ -55,8 +58,9 @@ export default function Pricing() {
           ))}
         </div>
 
-        <p className="mt-8 text-center text-sm text-neutral-500">
-          No long-term contracts. Upgrade or cancel anytime.
+        <p className="mt-8 text-center text-sm text-neutral-500">No long-term contracts. Upgrade or cancel anytime.</p>
+        <p className="mt-1 text-center text-sm text-neutral-500">
+          All plans include access to FRA, FSD, DSEAR / ATEX and risk engineering reports.
         </p>
       </div>
     </section>
