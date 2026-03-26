@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Shield } from 'lucide-react';
 import LegalLinks from '../legal/LegalLinks';
-import { resolveLogoUrl } from '../../utils/logo';
 
 export default function Footer() {
   const [logoError, setLogoError] = useState(false);
@@ -23,9 +22,9 @@ export default function Footer() {
               {!logoError ? (
                 <div className="inline-flex items-center px-2 py-1 rounded" style={{ backgroundColor: 'rgba(255, 255, 255, 0.08)' }}>
                   <img
-                    src={resolveLogoUrl()}
+                    src="/ezirisk-logo-primary.svg"
                     alt="EziRisk"
-                    className="h-7 w-auto"
+                    className="h-6 w-auto object-contain"
                     onError={() => setLogoError(true)}
                   />
                 </div>

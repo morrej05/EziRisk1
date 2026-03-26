@@ -73,6 +73,14 @@ export default function Navbar() {
             >
               Who it's for
             </button>
+            <button
+              onClick={() => scrollToSection('pricing')}
+              className={`text-sm font-medium transition-colors ${
+                isScrolled ? 'text-neutral-700 hover:text-neutral-900' : 'text-white hover:text-neutral-100'
+              }`}
+            >
+              Pricing
+            </button>
             <Link
               to="/signin"
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -110,6 +118,12 @@ export default function Navbar() {
               className="block w-full text-left px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 rounded-md"
             >
               Who it's for
+            </button>
+            <button
+              onClick={() => scrollToSection('pricing')}
+              className="block w-full text-left px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 rounded-md"
+            >
+              Pricing
             </button>
             <Link
               to="/signin"
