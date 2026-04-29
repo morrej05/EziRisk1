@@ -28,12 +28,16 @@ export async function resolveOrganisationLogo(
     return nullResult;
   }
 
+  const normalizedPath = brandingLogoPath.startsWith('org-assets/')
+    ? brandingLogoPath.slice('org-assets/'.length)
+    : brandingLogoPath;
+
   try {
     // Create signed URL
-    console.log('[Logo Resolver] Creating signed URL for path:', brandingLogoPath);
+    console.log('[Logo Resolver] Creating signed URL for path:', normalizedPath);
     const { data, error } = await supabase.storage
       .from('org-assets')
-      .createSignedUrl(brandingLogoPath, 3600);
+      .createSignedUrl(normalizedPath, 3600);
 
     if (error || !data?.signedUrl) {
       console.warn('[Logo Resolver] Failed to create signed URL:', {
@@ -75,7 +79,7 @@ export async function resolveOrganisationLogo(
 
     // Detect mime type from file extension
     let mime: 'image/png' | 'image/jpeg' | null = null;
-    const lowerPath = brandingLogoPath.toLowerCase();
+    const lowerPath = normalizedPath.toLowerCase();
     if (lowerPath.endsWith('.png')) {
       mime = 'image/png';
     } else if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {

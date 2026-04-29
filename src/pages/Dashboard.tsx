@@ -3,14 +3,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { useClientBranding } from '../contexts/ClientBrandingContext';
 import { useTenant } from '../hooks/useTenant';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogOut, Plus, Eye, CreditCard as Edit, Trash2, CheckCircle2, RefreshCw, Lock, Shield, ExternalLink, FileText, FileEdit, Sparkles, TrendingUp, AlertCircle, Building2, Filter, Palette, Users, X, ClipboardList, Copy } from 'lucide-react';
+import { LogOut, Plus, Eye, CreditCard as Edit, Trash2, CheckCircle2, RefreshCw, Lock, Shield, ExternalLink, FileText, FileEdit, Sparkles, TrendingUp, AlertCircle, Building2, Filter, Users, X, ClipboardList, Copy } from 'lucide-react';
 import NewSurveyReport from '../components/NewSurveyReport';
 import NewSurveyModal from '../components/NewSurveyModal';
 import ExternalLinkModal from '../components/ExternalLinkModal';
 import RecommendationReport from '../components/RecommendationReport';
 import SurveyTextEditor from '../components/SurveyTextEditor';
 import TextReportModal from '../components/TextReportModal';
-import ClientBrandingModal from '../components/ClientBrandingModal';
 import CloneSurveyModal from '../components/CloneSurveyModal';
 import RoleDebugWidget from '../components/RoleDebugWidget';
 import TrialBanner from '../components/TrialBanner';
@@ -55,7 +54,7 @@ interface PortfolioMetrics {
 
 export default function Dashboard() {
   const { signOut, user, userRole, userPlan, isPlatformAdmin, roleError, organisation, refreshUserRole } = useAuth();
-  const { branding: clientBranding, refreshBranding } = useClientBranding();
+  const { branding: clientBranding } = useClientBranding();
   const { tenant, refetch: refetchTenant } = useTenant();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -94,7 +93,6 @@ export default function Dashboard() {
   } | null>(null);
   const [surveySummaryCache, setSurveySummaryCache] = useState<Record<string, string>>({});
   const [showFilters, setShowFilters] = useState(false);
-  const [showBrandingModal, setShowBrandingModal] = useState(false);
   const [cloneSurveyId, setCloneSurveyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -456,10 +454,6 @@ export default function Dashboard() {
     return clientBranding.companyName;
   };
 
-  const handleBrandingUpdated = () => {
-    refreshBranding();
-  };
-
   const handleToggleDevForcePro = async () => {
     if (!organisation?.id || !tenant) return;
 
@@ -548,16 +542,6 @@ export default function Dashboard() {
                 >
                   <Shield className="w-4 h-4" />
                   Admin
-                </button>
-              )}
-              {permissions.canManageBranding && (
-                <button
-                  onClick={() => setShowBrandingModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
-                  title="Client Branding"
-                >
-                  <Palette className="w-4 h-4" />
-                  Branding
                 </button>
               )}
               <button
@@ -1243,11 +1227,6 @@ export default function Dashboard() {
         />
       )}
 
-      <ClientBrandingModal
-        isOpen={showBrandingModal}
-        onClose={() => setShowBrandingModal(false)}
-        onBrandingUpdated={handleBrandingUpdated}
-      />
     </div>
   );
 }
