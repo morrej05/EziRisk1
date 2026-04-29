@@ -8,8 +8,8 @@ const reportTypes = [
   },
   {
     icon: Building2,
-    title: 'FSD (Fire Safety Design)',
-    description: 'Evaluation of fire strategy and design measures in new or modified buildings.',
+    title: 'FSD (Fire Strategy Document)',
+    description: 'Preparation and review of fire strategy documents for new and existing buildings.',
   },
   {
     icon: AlertTriangle,
@@ -25,34 +25,41 @@ const reportTypes = [
 
 export default function SupportedReports() {
   return (
-    <section className="py-24 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            Supported report types
-          </h2>
+    <section className="max-w-7xl mx-auto px-6 py-16">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div>
+          <img
+            src="/images/portfolio-dashboard.png"
+            alt="EziRisk platform preview"
+            className="w-full rounded-xl shadow-lg"
+          />
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {reportTypes.map((report, index) => {
-            const Icon = report.icon;
-            return (
-              <div
-                key={index}
-                className="p-6 bg-white rounded-xl border border-neutral-200 hover:border-primary-300 hover:shadow-lg transition-all"
-              >
-                <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center mb-4">
-                  <Icon className="w-6 h-6 text-white" />
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-6">
+            Supported report types
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {reportTypes.map((report, index) => {
+              const Icon = report.icon;
+              return (
+                <div
+                  key={index}
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+                >
+                  <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center mb-3">
+                    <Icon className="w-6 h-6 text-white" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                    {report.title}
+                  </h3>
+                  <p className="text-sm leading-6 text-slate-600">
+                    {report.description}
+                  </p>
                 </div>
-                <h3 className="text-xl font-semibold text-neutral-900 mb-3">
-                  {report.title}
-                </h3>
-                <p className="text-neutral-600 leading-relaxed">
-                  {report.description}
-                </p>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>
