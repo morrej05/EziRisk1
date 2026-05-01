@@ -43,6 +43,7 @@ import ProfessionalLiabilityDisclaimerPage from './pages/legal/ProfessionalLiabi
 import SecurityTrustPage from './pages/legal/SecurityTrustPage';
 import AcceptableUsePolicyPage from './pages/legal/AcceptableUsePolicyPage';
 import SubProcessorsInfrastructurePage from './pages/legal/SubProcessorsInfrastructurePage';
+import CookieConsentBanner from './components/CookieConsentBanner';
 
 function App() {
   return (
@@ -282,6 +283,7 @@ function App() {
           )}
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <CookieConsentBanner />
           </ErrorBoundary>
         </ClientBrandingProvider>
       </BrowserRouter>

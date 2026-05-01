@@ -3,7 +3,12 @@ import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import './index.css';
 
+const COOKIE_CONSENT_KEY = 'ezirisk_cookie_consent';
+
 const maybeInitMonitoring = () => {
+  if (localStorage.getItem(COOKIE_CONSENT_KEY) !== 'accept') {
+    return;
+  }
   const mf = (window as any).mf || (window as any).MF;
   const mfParams = import.meta.env.VITE_MF_PARAMS;
 
@@ -19,6 +24,13 @@ const maybeInitMonitoring = () => {
 };
 
 maybeInitMonitoring();
+
+window.addEventListener('ezirisk:cookie-consent', (event) => {
+  const customEvent = event as CustomEvent<{ choice?: string }>;
+  if (customEvent.detail?.choice === 'accept') {
+    maybeInitMonitoring();
+  }
+});
 
 // Register service worker for safe navigation handling
 if ('serviceWorker' in navigator) {
