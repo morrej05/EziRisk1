@@ -1,5 +1,7 @@
 import type { UpgradeBlockReason } from './upgradeBlocks';
 
+export const UPGRADE_ROUTE = '/upgrade';
+
 export interface UpgradeContextOptions {
   action?: string;
 }
@@ -12,5 +14,5 @@ export function buildUpgradePath(reason: UpgradeBlockReason, options?: UpgradeCo
     params.set('action', options.action);
   }
 
-  return `/upgrade?${params.toString()}`;
+  return `${UPGRADE_ROUTE}?${params.toString()}`;
 }
