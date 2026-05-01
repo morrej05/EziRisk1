@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
+import { UPGRADE_ROUTE, buildUpgradePath } from '../utils/upgradeNavigation';
 
 function getTrialDaysRemaining(trialEndsAt: string | null): number | null {
   if (!trialEndsAt) return null;
@@ -16,6 +17,7 @@ function getTrialDaysRemaining(trialEndsAt: string | null): number | null {
 export default function TrialStatusBanner() {
   const { organisation } = useAuth();
   const [reportEntitlement, setReportEntitlement] = useState<ReportCreationEntitlement | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
     let cancelled = false;
@@ -38,7 +40,7 @@ export default function TrialStatusBanner() {
 
     fetchEntitlement();
 
-    return () => {
+  return () => {
       cancelled = true;
     };
   }, [organisation?.id, organisation?.plan_id]);
@@ -92,6 +94,8 @@ export default function TrialStatusBanner() {
         ? 'You have 1 trial report remaining.'
         : null;
 
+  const onUpgradePage = location.pathname === UPGRADE_ROUTE;
+
   return (
     <div className={`border-b ${statusTone.container}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5">
@@ -100,12 +104,14 @@ export default function TrialStatusBanner() {
             <p className={`text-sm font-medium ${statusTone.text}`}>{trialSummary}</p>
             {secondaryMessage && <p className={`text-xs ${statusTone.subtext}`}>{secondaryMessage}</p>}
           </div>
-          <Link
-            to="/upgrade"
-            className={`inline-flex w-fit items-center rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${statusTone.button}`}
-          >
-            Upgrade
-          </Link>
+          {!onUpgradePage && (
+            <Link
+              to={buildUpgradePath('trial_expired', { action: 'trial_banner' })}
+              className={`inline-flex w-fit items-center rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${statusTone.button}`}
+            >
+              Upgrade
+            </Link>
+          )}
         </div>
       </div>
     </div>
