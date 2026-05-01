@@ -12,7 +12,10 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
       <main className="max-w-4xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 lg:p-10">
           <div className="mb-8 border-b border-slate-200 pb-6">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">{content.title}</h1>
+            <Link to="/" className="inline-flex items-center text-sm font-medium text-slate-900 underline hover:text-slate-700">
+              ← Back to Home
+            </Link>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">{content.title}</h1>
             <p className="mt-2 text-sm text-slate-500">{content.lastUpdated}</p>
           </div>
 
