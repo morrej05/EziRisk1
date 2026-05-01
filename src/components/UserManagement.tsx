@@ -45,6 +45,7 @@ export default function UserManagement() {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserRole, setNewUserRole] = useState<UserRole>('viewer');
+  const [acknowledgeEmailBehaviour, setAcknowledgeEmailBehaviour] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingRole, setEditingRole] = useState<UserRole>('viewer');
@@ -208,6 +209,11 @@ export default function UserManagement() {
       return;
     }
 
+    if (!acknowledgeEmailBehaviour) {
+      alert('Please confirm you understand this flow may send an authentication email automatically.');
+      return;
+    }
+
     setIsAddingUser(true);
     try {
       const entitlement = await getUserSeatEntitlement(currentUser.organisation_id);
@@ -250,6 +256,8 @@ export default function UserManagement() {
       setNewUserEmail('');
       setNewUserName('');
       setNewUserRole('viewer');
+      setAcknowledgeEmailBehaviour(false);
+      alert('User account created.\n\nNext step: Ask the user to go to /login and use Forgot password with their email address to set their password.');
       await fetchUsers();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -435,11 +443,11 @@ export default function UserManagement() {
         <button
           onClick={() => setShowAddModal(true)}
           disabled={atSeatLimit || isTrialExpired}
-          title={isTrialExpired ? 'Your free trial has ended. Upgrade to add team members.' : atSeatLimit ? seatLimitCopy.body : 'Add User'}
+          title={isTrialExpired ? 'Your free trial has ended. Upgrade to add team members.' : atSeatLimit ? seatLimitCopy.body : 'Create User Account'}
           className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
-          Add User
+          Create User Account
         </button>
       </div>
 
@@ -584,7 +592,7 @@ export default function UserManagement() {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
             <div className="px-6 py-4 border-b border-slate-200">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-slate-900">Add New User</h3>
+                <h3 className="text-lg font-semibold text-slate-900">Create User Account</h3>
                 <button
                   onClick={() => setShowAddModal(false)}
                   className="text-slate-400 hover:text-slate-600 transition-colors"
@@ -597,6 +605,10 @@ export default function UserManagement() {
             <div className="px-6 py-4 space-y-4">
               <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 border border-amber-200">
                 Invites are blocked when your organisation reaches the active user seat limit or when the free trial expires.
+              </div>
+              <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-900 border border-blue-200">
+                This action creates an authentication account immediately. It does not create a pending invite link.
+                If email confirmation is enabled in Auth settings, an email may be sent automatically.
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -622,6 +634,18 @@ export default function UserManagement() {
                   placeholder="John Doe"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-500 text-slate-900"
                 />
+              </div>
+
+              <div>
+                <label className="inline-flex items-start gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={acknowledgeEmailBehaviour}
+                    onChange={(e) => setAcknowledgeEmailBehaviour(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  />
+                  <span>I understand this flow may send an authentication email automatically and does not generate a copyable invite link.</span>
+                </label>
               </div>
 
               <div>
@@ -653,18 +677,18 @@ export default function UserManagement() {
               </button>
               <button
                 onClick={handleAddUser}
-                disabled={isAddingUser || atSeatLimit || isTrialExpired}
+                disabled={isAddingUser || atSeatLimit || isTrialExpired || !acknowledgeEmailBehaviour}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAddingUser ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Adding...
+                    Creating...
                   </>
                 ) : (
                   <>
                     <Plus className="w-4 h-4" />
-                    Add User
+                    Create User Account
                   </>
                 )}
               </button>
