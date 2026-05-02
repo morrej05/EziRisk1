@@ -156,7 +156,7 @@ export default function UpgradePage() {
 
   const handleUpgrade = async (plan: typeof plans[0]) => {
     if (!plan.showCheckout || !user || !organisation) {
-      window.location.href = 'mailto:sales@ezirisk.com';
+      window.location.href = 'mailto:support@ezirisk.co.uk';
       return;
     }
 
