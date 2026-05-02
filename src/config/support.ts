@@ -1,6 +1,6 @@
 export const SUPPORT_CONFIG = {
-  email: 'support@ezirisk.com',
-  legalEmail: 'legal@ezirisk.com',
+  email: 'support@ezirisk.co.uk',
+  legalEmail: 'support@ezirisk.co.uk',
   linkLabel: 'Contact Support',
 } as const;
 

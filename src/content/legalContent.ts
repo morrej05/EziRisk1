@@ -82,7 +82,7 @@ export const privacyPolicyContent: LegalDocumentContent = {
     {
       heading: '9. Contact',
       paragraphs: [
-        'For privacy requests and enquiries, contact: privacy@ezirisk.com',
+        'For privacy requests and enquiries, contact: support@ezirisk.co.uk',
       ],
     },
   ],
@@ -216,7 +216,7 @@ export const securityTrustContent: LegalDocumentContent = {
     {
       heading: '5. Contact',
       paragraphs: [
-        'For security enquiries and responsible disclosure, contact: security@ezirisk.com',
+        'For security enquiries and responsible disclosure, contact: support@ezirisk.co.uk',
       ],
     },
   ],
@@ -387,7 +387,7 @@ export const subProcessorsInfrastructureContent: LegalDocumentContent = {
       heading: '7. Contact',
       paragraphs: [
         'If you have questions about EziRisk infrastructure or data processing providers, please contact:',
-        'privacy@ezirisk.com',
+        'support@ezirisk.co.uk',
       ],
     },
   ],
