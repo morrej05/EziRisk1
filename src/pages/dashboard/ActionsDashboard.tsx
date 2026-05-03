@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ArrowLeft, Filter, X, ClipboardList, AlertTriangle, Paperclip, Camera, ExternalLink, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import AppLayout from '../../components/AppLayout';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
 import EvidencePanel from '../../components/actions/EvidencePanel';
 import { actionPriorityClasses, actionStatusClasses, focusRingClass } from '../../theme/semanticClasses';
@@ -262,9 +261,8 @@ export default function ActionsDashboard() {
     infoGapFilter;
 
   return (
-    <AppLayout>
-      <div className="bg-neutral-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="bg-neutral-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-6">
             <button
               onClick={() => navigate('/dashboard')}
@@ -585,22 +583,21 @@ export default function ActionsDashboard() {
           )}
         </div>
 
-        {selectedAction && (
-          <ActionDetailModal
-            action={selectedAction}
-            onClose={() => setSelectedAction(null)}
-            onActionUpdated={handleActionUpdated}
-            returnTo="/dashboard"
-          />
-        )}
+      {selectedAction && (
+        <ActionDetailModal
+          action={selectedAction}
+          onClose={() => setSelectedAction(null)}
+          onActionUpdated={handleActionUpdated}
+          returnTo="/dashboard"
+        />
+      )}
 
-        {evidenceActionId && (
-          <EvidencePanel
-            actionId={evidenceActionId}
-            onClose={() => setEvidenceActionId(null)}
-          />
-        )}
-      </div>
-    </AppLayout>
+      {evidenceActionId && (
+        <EvidencePanel
+          actionId={evidenceActionId}
+          onClose={() => setEvidenceActionId(null)}
+        />
+      )}
+    </div>
   );
 }
