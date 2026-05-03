@@ -62,4 +62,23 @@ html, body {
   .animate-slide-in {
     animation: slide-in 0.3s ease-out;
   }
+
+  @keyframes scanSlow {
+    0% {
+      transform: translateY(-20%);
+    }
+    100% {
+      transform: translateY(120%);
+    }
+  }
+
+  .scan-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    height: 2px;
+    background: rgba(255, 60, 60, 0.3);
+    animation: scanSlow 12s linear infinite;
+  }
 }
