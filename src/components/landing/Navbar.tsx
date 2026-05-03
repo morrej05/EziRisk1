@@ -24,7 +24,8 @@ export default function Navbar() {
         <nav className={`hidden md:flex items-center gap-8 transition-colors ${isScrolled ? 'text-slate-700' : 'text-white/90'}`}>
           <a href="#how" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>How it works</a>
           <a href="#who" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Who it’s for</a>
-          <a href="#pricing" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Pricing</a>
+          <a href="/pricing" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Pricing</a>
+          <a href="/security" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Security</a>
         </nav>
 
         <a

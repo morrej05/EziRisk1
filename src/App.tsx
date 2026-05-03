@@ -44,14 +44,18 @@ import SecurityTrustPage from './pages/legal/SecurityTrustPage';
 import AcceptableUsePolicyPage from './pages/legal/AcceptableUsePolicyPage';
 import SubProcessorsInfrastructurePage from './pages/legal/SubProcessorsInfrastructurePage';
 import CookieConsentBanner from './components/CookieConsentBanner';
+import SeoManager from './components/SeoManager';
+import PricingPage from './pages/PricingPage';
 
 function App() {
   return (
     <BrowserRouter>
       <ClientBrandingProvider>
+          <SeoManager />
           <ErrorBoundary>
             <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/external/:token" element={<ExternalSurvey />} />

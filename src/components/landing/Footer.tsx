@@ -60,7 +60,23 @@ export default function Footer() {
                   Who it's for
                 </button>
               </li>
+                            <li>
+                <Link
+                  to="/pricing"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  Pricing
+                </Link>
+              </li>
               <li>
+                <Link
+                  to="/security"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  Security
+                </Link>
+              </li>
+<li>
                 <Link
                   to="/signin"
                   className="text-neutral-400 hover:text-white transition-colors"
