@@ -35,7 +35,7 @@ export default function Navbar() {
         </nav>
 
         <a
-          href="/login"
+          href="/signin"
           className={`px-4 py-2 rounded-lg font-medium transition ${
             isScrolled ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-white text-blue-900 hover:bg-gray-100'
           }`}
