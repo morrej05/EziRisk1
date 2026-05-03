@@ -17,8 +17,14 @@ export default function Navbar() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className={`font-bold text-xl transition-colors ${isScrolled ? 'text-slate-900' : 'text-white'}`}>
-          Ezi<span className="text-red-500">Risk</span>
+        <div className={`transition-all duration-300 ${isScrolled ? '' : 'bg-white/85 rounded-md px-2 py-1 shadow-sm'}`}>
+          <img
+            src="/ezirisk-logo-primary.svg"
+            alt="EziRisk"
+            className={`h-9 w-auto transition-all duration-300 ${
+              isScrolled ? '' : 'drop-shadow-[0_1px_8px_rgba(255,255,255,0.45)]'
+            }`}
+          />
         </div>
 
         <nav className={`hidden md:flex items-center gap-8 transition-colors ${isScrolled ? 'text-slate-700' : 'text-white/90'}`}>
