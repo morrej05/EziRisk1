@@ -31,17 +31,19 @@ export default function PrimaryNavigation() {
       }
     : null;
 
+  const isPlatformAdminUser = entitlementUser ? canAccessPlatformSettings(entitlementUser) : false;
+
   const navItems = [
     { label: 'Home', path: '/dashboard', show: true },
     { label: 'Assessments', path: '/assessments', show: true },
     { label: 'Remediation', path: '/remediation', show: true },
-    { label: 'Portfolio', path: '/portfolio', show: organisation ? canAccessPortfolio(organisation) : false },
+    { label: 'Portfolio', path: '/portfolio', show: isPlatformAdminUser || (organisation ? canAccessPortfolio(organisation) : false) },
     {
       label: 'Admin',
       path: '/admin',
       show: entitlementUser ? canAccessAdmin(entitlementUser) && !location.pathname.startsWith('/admin') : false,
     },
-    { label: 'Platform', path: '/platform', show: entitlementUser ? canAccessPlatformSettings(entitlementUser) : false },
+    { label: 'Platform', path: '/platform', show: isPlatformAdminUser },
   ];
 
   const handleSignOut = async () => {
