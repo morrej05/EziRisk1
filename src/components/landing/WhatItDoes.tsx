@@ -22,9 +22,11 @@ export default function WhatItDoes() {
 
         <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
           <div className="text-center">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <span className="text-2xl font-bold text-primary-700">1</span>
-            </div>
+            <img
+              src="/what-create.webp"
+              alt="Create Assessments"
+              className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
+            />
             <h3 className="text-xl font-semibold text-neutral-900 mb-2">
               Create Assessments
             </h3>
@@ -34,9 +36,11 @@ export default function WhatItDoes() {
           </div>
 
           <div className="text-center">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <span className="text-2xl font-bold text-primary-700">2</span>
-            </div>
+            <img
+              src="/what-recommendations.webp"
+              alt="Add Recommendations"
+              className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
+            />
             <h3 className="text-xl font-semibold text-neutral-900 mb-2">
               Add Recommendations
             </h3>
@@ -46,9 +50,11 @@ export default function WhatItDoes() {
           </div>
 
           <div className="text-center">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <span className="text-2xl font-bold text-primary-700">3</span>
-            </div>
+            <img
+              src="/what-export.webp"
+              alt="Export Reports"
+              className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
+            />
             <h3 className="text-xl font-semibold text-neutral-900 mb-2">
               Export Reports
             </h3>
