@@ -37,6 +37,18 @@ interface Action {
   created_at: string;
 }
 
+interface ActionRow {
+  id: string;
+  recommended_action: string | null;
+  title?: string | null;
+  priority_band: FraPriority | null;
+  priority?: FraPriority | null;
+  category?: FraFindingCategory | null;
+  trigger_text?: string | null;
+  status: string | null;
+  created_at: string;
+}
+
 export default function FRA4SignificantFindingsForm({
   moduleInstance,
   document,
@@ -99,13 +111,23 @@ export default function FRA4SignificantFindingsForm({
 
       const { data: actionsData, error: actionsError } = await supabase
         .from('actions')
-        .select('id, title, priority, category, trigger_text, status, created_at')
+        .select('id, recommended_action, priority_band, category, trigger_text, status, created_at')
+        .eq('document_id', document.id)
         .in('module_instance_id', moduleIds)
+        .is('deleted_at', null)
         .order('created_at', { ascending: true });
 
       if (actionsError) throw actionsError;
 
-      setActions(actionsData || []);
+      setActions(((actionsData || []) as ActionRow[]).map((action) => ({
+        id: action.id,
+        title: action.recommended_action || action.title || 'Untitled action',
+        priority: (action.priority_band || action.priority || 'P4') as FraPriority,
+        category: action.category || undefined,
+        trigger_text: action.trigger_text || undefined,
+        status: action.status || 'open',
+        created_at: action.created_at,
+      })));
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {

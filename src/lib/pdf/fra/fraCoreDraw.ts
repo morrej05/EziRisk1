@@ -14,7 +14,6 @@ import {
   wrapText,
   formatDate,
   getOutcomeColor,
-  getOutcomeLabel,
   getPriorityColor,
   addNewPage,
   ensurePageSpace,
@@ -43,6 +42,7 @@ import type { Attachment } from '../../supabase/attachments';
 import { fetchAttachmentBytes } from '../../supabase/attachments';
 import { getJurisdictionConfig, getJurisdictionLabel } from '../../jurisdictions';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
+import { getFraOutcomeLabel } from '../../modules/moduleCatalog';
 import { type ScoringResult } from '../../fra/scoring/scoringEngine';
 
 /**
@@ -1363,7 +1363,7 @@ export async function drawModuleContent(
   
  // Outcome badge
 if (module.outcome) {
-  const outcomeLabel = getOutcomeLabel(module.outcome);
+  const outcomeLabel = getFraOutcomeLabel(module.data?.section_assessment_outcome || module.outcome);
 
   page.drawText('Outcome:', {
     x: MARGIN,

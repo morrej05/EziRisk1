@@ -362,6 +362,7 @@ Deno.serve(async (req: Request) => {
       customer: stripeCustomerId,
       mode: "subscription",
       payment_method_types: ["card"],
+      allow_promotion_codes: true,
       line_items: [
         {
           price: priceId,
