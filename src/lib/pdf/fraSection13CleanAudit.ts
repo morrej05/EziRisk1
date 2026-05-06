@@ -6,7 +6,7 @@
  */
 
 import { PDFDocument, PDFPage, rgb } from 'pdf-lib';
-import type { Action, ModuleInstance } from '../supabase/attachments';
+import type { Action, ModuleInstance } from './fra/fraTypes';
 import {
   sanitizePdfText,
   wrapText,
@@ -19,7 +19,6 @@ import {
 } from './pdfUtils';
 import {
   deriveExecutiveOutcome,
-  checkMaterialDeficiency,
   type FraContext,
   type FraExecutiveOutcome,
 } from '../modules/fra/severityEngine';
@@ -29,6 +28,7 @@ import {
   type FraBuildingComplexityInput,
 } from '../modules/fra/complexityEngine';
 import type { ScoringResult } from '../fra/scoring/scoringEngine';
+import { normalizeFraPriority } from '../modules/fra/significantFindingsEngine';
 
 interface CleanAuditOptions {
   page: PDFPage;
@@ -72,11 +72,17 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     storeys: derivedStoreys,
   };
 
-  // Derive executive outcome
-  const openActions = actions.filter((a) => a.status === 'open' || a.status === 'in_progress');
-  const computedOutcome: FraExecutiveOutcome = deriveExecutiveOutcome(openActions);
-  const { isMaterialDeficiency } = checkMaterialDeficiency(openActions, fraContext);
-
+  // Derive executive outcome from the current document action register, matching All actions.
+  const currentActions = actions.map((action) => ({
+    ...action,
+    priority_band: normalizeFraPriority({
+      priority_band: action.priority_band,
+      severity_tier: action.severity_tier,
+    }),
+  }));
+  const computedOutcome: FraExecutiveOutcome = deriveExecutiveOutcome(
+    currentActions.map((action) => ({ priority: action.priority_band }))
+  );
   // Check for override
   const hasOverride = fra4Module.data.override?.enabled === true;
   const overrideOutcome = fra4Module.data.override?.outcome;
@@ -93,7 +99,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     floorAreaM2Exact: buildingProfile?.data.floor_area_m2 || null,
     sleepingRisk: buildingProfile?.data.sleeping_risk || 'None',
     layoutComplexity: buildingProfile?.data.layout_complexity || 'Simple',
-    fireProtectionReliance: 'Moderate', // Simplified for now
+    fireProtectionReliance: 'DetectionAndEmergencyLighting', // Simplified for now
   };
   const scs = calculateSCS(scsInput);
 
@@ -271,8 +277,8 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   // 3. BASIS OF ASSESSMENT (3-5 Line Narrative)
   // ========================================================
   // Generate professional narrative based on context
-  const p1Count = openActions.filter((a) => a.priority_band === 'P1').length;
-  const p2Count = openActions.filter((a) => a.priority_band === 'P2').length;
+  const p1Count = currentActions.filter((a) => a.priority_band === 'P1').length;
+  const p2Count = currentActions.filter((a) => a.priority_band === 'P2').length;
   const materialDefCount = moduleInstances.filter((m) => m.outcome === 'material_def').length;
 
   let narrativeParts: string[] = [];
@@ -297,8 +303,8 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     narrativeParts.push(`${p1Count} immediate priority issue${p1Count > 1 ? 's' : ''} ${p1Count > 1 ? 'have' : 'has'} been identified and require${p1Count > 1 ? '' : 's'} urgent attention.`);
   } else if (p2Count > 0) {
     narrativeParts.push(`${p2Count} urgent priority issue${p2Count > 1 ? 's' : ''} ${p2Count > 1 ? 'have' : 'has'} been identified and require${p2Count > 1 ? '' : 's'} prompt attention.`);
-  } else if (openActions.length > 0) {
-    narrativeParts.push(`${openActions.length} improvement action${openActions.length > 1 ? 's' : ''} ${openActions.length > 1 ? 'have' : 'has'} been identified to enhance overall fire safety provisions.`);
+  } else if (currentActions.length > 0) {
+    narrativeParts.push(`${currentActions.length} improvement action${currentActions.length > 1 ? 's' : ''} ${currentActions.length > 1 ? 'have' : 'has'} been identified to enhance overall fire safety provisions.`);
   } else {
     narrativeParts.push('No significant deficiencies were identified at the time of assessment.');
   }
@@ -394,9 +400,9 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   // ========================================================
   // 5. TOP 3 PRIORITY ISSUES
   // ========================================================
-  if (openActions.length > 0) {
+  if (currentActions.length > 0) {
     // Sort and get top 3
-    const sortedActions = [...openActions].sort((a, b) => {
+    const sortedActions = [...currentActions].sort((a, b) => {
       const priorityOrder = { P1: 1, P2: 2, P3: 3, P4: 4 };
       const aPriority = priorityOrder[a.priority_band as keyof typeof priorityOrder] || 5;
       const bPriority = priorityOrder[b.priority_band as keyof typeof priorityOrder] || 5;

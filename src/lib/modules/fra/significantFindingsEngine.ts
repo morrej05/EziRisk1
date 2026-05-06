@@ -30,10 +30,34 @@ export interface FraComputedSummary {
 
 export interface ActionForComputation {
   title?: string;
-  priority?: FraPriority;
+  priority?: string | null;
+  priority_band?: string | null;
+  action_priority?: string | null;
+  severity?: string | null;
+  severity_tier?: string | null;
+  severityTier?: string | null;
   category?: FraFindingCategory;
   trigger_text?: string;
-  status?: string;
+  status?: string | null;
+}
+
+export function normalizeFraPriority(action: ActionForComputation): FraPriority {
+  const rawPriority = String(
+    action.priority ??
+    action.priority_band ??
+    action.action_priority ??
+    action.severity ??
+    action.severity_tier ??
+    action.severityTier ??
+    ''
+  ).trim().toLowerCase();
+
+  if (['p1', 'priority 1', 'priority1', 'high', 'urgent', 'critical', 't4'].includes(rawPriority)) return 'P1';
+  if (['p2', 'priority 2', 'priority2', 'medium-high', 'high-medium', 't3'].includes(rawPriority)) return 'P2';
+  if (['p3', 'priority 3', 'priority3', 'medium', 'moderate', 't2'].includes(rawPriority)) return 'P3';
+  if (['p4', 'priority 4', 'priority4', 'low', 't1'].includes(rawPriority)) return 'P4';
+
+  return 'P4';
 }
 
 const PRIORITY_ORDER: Record<FraPriority, number> = {
@@ -104,8 +128,8 @@ function sortActions(
   const highComplexity = scsBand === 'High' || scsBand === 'VeryHigh';
 
   return [...actions].sort((a, b) => {
-    const aPriority = a.priority || 'P4';
-    const bPriority = b.priority || 'P4';
+    const aPriority = normalizeFraPriority(a);
+    const bPriority = normalizeFraPriority(b);
 
     const priorityDiff = PRIORITY_ORDER[aPriority] - PRIORITY_ORDER[bPriority];
     if (priorityDiff !== 0) return priorityDiff;
@@ -133,25 +157,30 @@ export function computeFraSummary(context: {
 }): FraComputedSummary {
   const { actions, scsBand, fraContext } = context;
 
-  const openActions = actions.filter(
-    (a) => a.status === 'open' || a.status === 'in_progress'
-  );
+  const currentActions = actions;
 
   const counts = {
-    p1: openActions.filter((a) => a.priority === 'P1').length,
-    p2: openActions.filter((a) => a.priority === 'P2').length,
-    p3: openActions.filter((a) => a.priority === 'P3').length,
-    p4: openActions.filter((a) => a.priority === 'P4').length,
+    p1: currentActions.filter((a) => normalizeFraPriority(a) === 'P1').length,
+    p2: currentActions.filter((a) => normalizeFraPriority(a) === 'P2').length,
+    p3: currentActions.filter((a) => normalizeFraPriority(a) === 'P3').length,
+    p4: currentActions.filter((a) => normalizeFraPriority(a) === 'P4').length,
   };
 
-  const computedOutcome = deriveExecutiveOutcome(openActions);
+  const actionsForOutcome = currentActions.map((action) => ({
+    ...action,
+    priority: normalizeFraPriority(action),
+  }));
 
-  const materialDefCheck = checkMaterialDeficiency(openActions, fraContext);
+  const severityActions = actionsForOutcome.map((action) => ({ priority: action.priority as FraPriority }));
+
+  const computedOutcome = deriveExecutiveOutcome(severityActions);
+
+  const materialDefCheck = checkMaterialDeficiency(severityActions, fraContext);
   const materialDeficiency = materialDefCheck.isMaterialDeficiency;
 
-  const sortedActions = sortActions(openActions, scsBand);
+  const sortedActions = sortActions(actionsForOutcome, scsBand);
   const topIssues: FraTopIssue[] = sortedActions.slice(0, 3).map((action) => {
-    const priority = action.priority || 'P4';
+    const priority = normalizeFraPriority(action);
     const showTrigger = priority === 'P1' || priority === 'P2';
 
     return {

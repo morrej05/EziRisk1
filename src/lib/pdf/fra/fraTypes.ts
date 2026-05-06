@@ -40,6 +40,7 @@ export interface Action {
   finding_category?: string | null;
   trigger_id?: string | null;
   trigger_text?: string | null;
+  severity_tier?: string | null;
   owner_user_id: string | null;
   owner_display_name?: string;
   target_date: string | null;
