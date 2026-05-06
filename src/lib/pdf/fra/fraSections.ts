@@ -23,6 +23,7 @@ import {
 import type { Cursor, Document, ModuleInstance, Action } from './fraTypes';
 import type { Attachment } from '../../supabase/attachments';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
+import { getFraOutcomeLabel } from '../../modules/moduleCatalog';
 
 /**
  * Get display section number (uses displayNumber if available, otherwise falls back to id)
@@ -687,7 +688,35 @@ export function renderSection5FireHazards(
     yPosition -= 6;
   };
 
+  const drawOutcome = () => {
+    const outcomeLabel = getFraOutcomeLabel(mod.data?.section_assessment_outcome || mod.outcome);
+    if (!outcomeLabel) return;
+
+    ({ page, yPosition } = ensureSpace(28, page, yPosition, pdfDoc, isDraft, totalPages));
+
+    page.drawText('Outcome:', {
+      x: MARGIN,
+      y: yPosition,
+      size: 11,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+
+    page.drawText(outcomeLabel, {
+      x: MARGIN + 70,
+      y: yPosition,
+      size: 11,
+      font: fontBold,
+      color: rgb(0.25, 0.25, 0.25),
+    });
+
+    yPosition -= 22;
+  };
+
   // --- Clean grouped output ---
+  // Outcome is rendered before Key Details to match the standard FRA section order.
+  drawOutcome();
+
   // Small divider after outcome/key points area
   drawLine();
 

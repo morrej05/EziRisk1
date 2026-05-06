@@ -409,6 +409,42 @@ export function getModuleOutcomeCategory(moduleKey: string): 'critical' | 'gover
   return category;
 }
 
+
+/**
+ * FRA display wording keeps fire risk assessment modules on compliance terminology.
+ * This is display-only: stored canonical outcome values remain unchanged.
+ */
+export function getFraOutcomeLabel(outcome: string | null | undefined): string {
+  switch ((outcome || '').toLowerCase().trim()) {
+    case 'compliant':
+    case 'adequate':
+      return 'Compliant';
+    case 'minor_def':
+    case 'minor deficiency':
+      return 'Minor Deficiency';
+    case 'moderate_def':
+    case 'moderate deficiency':
+      return 'Moderate Deficiency';
+    case 'material_def':
+    case 'material deficiency':
+    case 'significant_def':
+    case 'significant deficiency':
+      return 'Significant Deficiency';
+    case 'info_gap':
+    case 'information_gap':
+    case 'information gap':
+    case 'information_incomplete':
+      return 'Information Gap';
+    case 'na':
+    case 'n/a':
+    case 'not_applicable':
+    case 'not applicable':
+      return 'Not Applicable';
+    default:
+      return outcome || '';
+  }
+}
+
 /**
  * Normalized outcome values used for scoring and PDF
  */

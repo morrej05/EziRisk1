@@ -7,7 +7,7 @@ import {
   isDerivedModule,
   type ModuleInstance,
 } from '../../lib/modules/moduleDisplay';
-import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
+import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getFraOutcomeLabel, getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
 import { getModuleCompletionDetails } from '../../utils/moduleCompletion';
 
 interface ModuleSidebarProps {
@@ -108,6 +108,10 @@ export default function ModuleSidebar({
   };
 
   const getOutcomeLabel = (outcome: string, moduleKey: string): string => {
+    if (fireRiskKeys.has(moduleKey)) {
+      return getFraOutcomeLabel(outcome);
+    }
+
     const category = getModuleOutcomeCategory(moduleKey);
 
     if (category === 'governance') {

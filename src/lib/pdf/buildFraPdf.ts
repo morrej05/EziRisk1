@@ -1,5 +1,5 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
-import { getModuleName } from '../modules/moduleCatalog';
+import { getFraOutcomeLabel, getModuleName } from '../modules/moduleCatalog';
 import { listAttachments, type Attachment } from '../supabase/attachments';
 import { type Jurisdiction, getJurisdictionConfig, getJurisdictionLabel } from '../jurisdictions';
 import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
@@ -32,7 +32,6 @@ import {
   formatDate,
   getRatingColor,
   getOutcomeColor,
-  getOutcomeLabel,
   getPriorityColor,
   drawDraftWatermark,
   drawPlanWatermark,
@@ -804,7 +803,7 @@ if (section.id === 5) {
       // Outcome badge if available
       const outcome = modules[0]?.outcome;
       if (outcome) {
-        const outcomeLabel = getOutcomeLabel(outcome);
+        const outcomeLabel = getFraOutcomeLabel(modules[0]?.data?.section_assessment_outcome || outcome);
         page.drawText(`  • Outcome: ${outcomeLabel}`, {
           x: MARGIN + 20,
           y: yPosition,
@@ -2007,7 +2006,7 @@ function drawModuleSummary(
   yPosition -= 25;
 
   if (module.outcome) {
-    const outcomeLabel = getOutcomeLabel(module.outcome);
+    const outcomeLabel = getFraOutcomeLabel(module.data?.section_assessment_outcome || module.outcome);
     const outcomeColor = getOutcomeColor(module.outcome);
 
     page.drawText('Outcome:', {
