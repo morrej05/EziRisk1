@@ -3,7 +3,7 @@ import { FileText, CheckCircle, AlertTriangle, AlertCircle, Info, RefreshCw, Shi
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { computeFraSummary, type FraComputedSummary } from '../../../lib/modules/fra/significantFindingsEngine';
+import { computeFraSummary, normalizeFraPriority, type FraComputedSummary } from '../../../lib/modules/fra/significantFindingsEngine';
 import { deriveStoreysForScoring, type FraComplexityBand } from '../../../lib/modules/fra/complexityEngine';
 import type { FraContext, FraPriority, FraFindingCategory } from '../../../lib/modules/fra/severityEngine';
 import { scoreFraDocument, type ScoringResult } from '../../../lib/fra/scoring/scoringEngine';
@@ -16,6 +16,7 @@ interface Document {
 
 interface ModuleInstance {
   id: string;
+  module_key?: string;
   outcome: string | null;
   assessor_notes: string;
   data: Record<string, any>;
@@ -43,8 +44,10 @@ interface ActionRow {
   title?: string | null;
   priority_band: FraPriority | null;
   priority?: FraPriority | null;
-  category?: FraFindingCategory | null;
+  finding_category?: FraFindingCategory | null;
   trigger_text?: string | null;
+  severity_tier?: string | null;
+  module_instance_id?: string | null;
   status: string | null;
   created_at: string;
 }
@@ -102,32 +105,35 @@ export default function FRA4SignificantFindingsForm({
       );
       setBuildingProfile(buildingProfileModule || null);
 
-      const moduleIds = moduleInstances?.map((m) => m.id) || [];
-
-      if (moduleIds.length === 0) {
-        setActions([]);
-        return;
-      }
-
       const { data: actionsData, error: actionsError } = await supabase
         .from('actions')
-        .select('id, recommended_action, priority_band, category, trigger_text, status, created_at')
+        .select('id, recommended_action, priority_band, finding_category, trigger_text, status, created_at, severity_tier, module_instance_id')
         .eq('document_id', document.id)
-        .in('module_instance_id', moduleIds)
         .is('deleted_at', null)
-        .order('created_at', { ascending: true });
+        .order('priority_band', { ascending: true })
+        .order('created_at', { ascending: false });
 
       if (actionsError) throw actionsError;
 
-      setActions(((actionsData || []) as ActionRow[]).map((action) => ({
-        id: action.id,
-        title: action.recommended_action || action.title || 'Untitled action',
-        priority: (action.priority_band || action.priority || 'P4') as FraPriority,
-        category: action.category || undefined,
-        trigger_text: action.trigger_text || undefined,
-        status: action.status || 'open',
-        created_at: action.created_at,
-      })));
+      setActions(((actionsData || []) as ActionRow[]).map((action) => {
+        const priority = normalizeFraPriority({
+          priority: action.priority,
+          priority_band: action.priority_band,
+          severity_tier: action.severity_tier,
+        });
+
+        return {
+          id: action.id,
+          title: action.recommended_action || action.title || 'Untitled action',
+          priority,
+          priority_band: action.priority_band,
+          severity_tier: action.severity_tier,
+          category: action.finding_category || undefined,
+          trigger_text: action.trigger_text || undefined,
+          status: action.status || 'open',
+          created_at: action.created_at,
+        };
+      }));
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -587,6 +593,7 @@ export default function FRA4SignificantFindingsForm({
         onNotesChange={setAssessorNotes}
         onSave={handleSave}
         isSaving={isSaving}
+        moduleKey={moduleInstance.module_key || 'FRA_90_SIGNIFICANT_FINDINGS'}
       />
     </div>
   );

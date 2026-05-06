@@ -23,7 +23,7 @@ import {
 import type { Cursor, Document, ModuleInstance, Action } from './fraTypes';
 import type { Attachment } from '../../supabase/attachments';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
-import { getFraOutcomeLabel } from '../../modules/moduleCatalog';
+import { getFraReportOutcomeLabel, resolveFraOutcomeValue } from './fraOutcome';
 
 /**
  * Get display section number (uses displayNumber if available, otherwise falls back to id)
@@ -689,7 +689,7 @@ export function renderSection5FireHazards(
   };
 
   const drawOutcome = () => {
-    const outcomeLabel = getFraOutcomeLabel(mod.data?.section_assessment_outcome || mod.outcome);
+    const outcomeLabel = getFraReportOutcomeLabel(resolveFraOutcomeValue(mod));
     if (!outcomeLabel) return;
 
     ({ page, yPosition } = ensureSpace(28, page, yPosition, pdfDoc, isDraft, totalPages));
