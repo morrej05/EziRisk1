@@ -687,9 +687,9 @@ const handleDownloadDefencePack = async () => {
 
     setIsDeleting(true);
     try {
-      // Only allow deleting draft documents
+      // Only allow archiving draft documents. This is a soft delete: set deleted_at and deleted_by.
       if (document?.issue_status !== 'draft') {
-        alert('Only draft documents can be deleted');
+        alert('Only draft documents can be archived');
         return;
       }
 
@@ -705,15 +705,15 @@ const handleDownloadDefencePack = async () => {
         .eq('issue_status', 'draft');
 
       if (error) {
-        console.error('Error deleting document:', error);
-        throw new Error(error.message || 'Failed to delete document');
+        console.error('Error archiving document:', error);
+        throw new Error(error.message || 'Failed to archive document');
       }
 
       // Navigate back to dashboard
       navigate(getDashboardRoute(), { replace: true });
     } catch (error: any) {
-      console.error('Error deleting document:', error);
-      alert(error.message || 'Failed to delete document');
+      console.error('Error archiving document:', error);
+      alert(error.message || 'Failed to archive document');
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -1704,7 +1704,7 @@ try {
           )}
         </Card>
 
-        {/* Delete Draft Button */}
+        {/* Archive Draft Button */}
         {document.issue_status === 'draft' && (
           <div className="mt-6 flex justify-end">
             <Button
@@ -1713,7 +1713,7 @@ try {
               className="!bg-risk-high-fg !text-white hover:!bg-risk-high-fg/90"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete Draft
+              Archive Draft
             </Button>
           </div>
         )}
@@ -1796,10 +1796,10 @@ try {
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
               <AlertTriangle className="w-6 h-6 text-red-600" />
-              <h2 className="text-xl font-bold text-neutral-900">Delete Draft Document</h2>
+              <h2 className="text-xl font-bold text-neutral-900">Archive Draft</h2>
             </div>
             <p className="text-neutral-700 mb-6">
-              Are you sure you want to delete this draft document? This action cannot be undone.
+              This will archive this draft assessment. It will no longer appear in active assessments.
             </p>
             <div className="flex items-center gap-3 justify-end">
               <button
@@ -1818,12 +1818,12 @@ try {
                 {isDeleting ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                    Deleting...
+                    Archiving...
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    Delete
+                    Archive Draft
                   </>
                 )}
               </Button>

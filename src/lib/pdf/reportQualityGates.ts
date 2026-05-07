@@ -2,7 +2,7 @@
  * Report Quality Gates & Validation
  *
  * Validates report completeness and data quality before PDF generation.
- * Detects placeholders, missing IDs, empty commentary, and other issues.
+ * Detects placeholders, missing IDs, missing outcomes, and other issues.
  */
 
 interface ModuleInstance {
@@ -16,7 +16,7 @@ interface ModuleInstance {
 }
 
 export interface QualityIssue {
-  type: 'placeholder' | 'missing_action_id' | 'empty_commentary' | 'missing_outcome';
+  type: 'placeholder' | 'missing_action_id' | 'missing_action_text' | 'empty_commentary' | 'missing_outcome';
   severity: 'blocking' | 'warning';
   message: string;
   moduleKey?: string;
@@ -28,6 +28,7 @@ export interface QualityGateResult {
   blockingIssues: QualityIssue[];
   warnings: QualityIssue[];
   assuranceGaps: string[]; // Compact 2-item max list for PDF
+  advisoryNotes: string[]; // Optional non-blocking quality notes; not used for completeness
 }
 
 /**
@@ -119,7 +120,7 @@ function validateActions(actions: any[]): QualityIssue[] {
     // Check for empty/minimal action text
     if (!action.recommended_action || action.recommended_action.trim().length < 15) {
       issues.push({
-        type: 'empty_commentary',
+        type: 'missing_action_text',
         severity: 'blocking',
         message: 'Action description is too short or missing',
       });
@@ -157,17 +158,6 @@ function validateModules(modules: ModuleInstance[]): QualityIssue[] {
       });
     }
 
-    // Check for empty commentary in completed modules
-    if (module.completed_at && isEmptyCommentary(module.assessor_notes)) {
-      issues.push({
-        type: 'empty_commentary',
-        severity: 'warning',
-        message: `Module "${module.module_key}" is complete but has minimal/no assessor commentary`,
-        moduleKey: module.module_key,
-        field: 'assessor_notes',
-      });
-    }
-
     // Check data fields for common placeholders
     if (module.data) {
       for (const [key, value] of Object.entries(module.data)) {
@@ -195,16 +185,16 @@ function generateAssuranceGaps(issues: QualityIssue[]): string[] {
 
   // Count issues by type
   const placeholderCount = issues.filter(i => i.type === 'placeholder').length;
-  const emptyCommentaryCount = issues.filter(i => i.type === 'empty_commentary').length;
   const missingOutcomeCount = issues.filter(i => i.type === 'missing_outcome').length;
+  const missingActionTextCount = issues.filter(i => i.type === 'missing_action_text').length;
 
   // Generate summary statements (max 2)
   if (placeholderCount > 0) {
     gaps.push(`${placeholderCount} field${placeholderCount > 1 ? 's' : ''} contain placeholder text requiring completion`);
   }
 
-  if (emptyCommentaryCount > 0 && gaps.length < 2) {
-    gaps.push(`${emptyCommentaryCount} module${emptyCommentaryCount > 1 ? 's' : ''} lack assessor commentary`);
+  if (missingActionTextCount > 0 && gaps.length < 2) {
+    gaps.push(`${missingActionTextCount} action${missingActionTextCount > 1 ? 's' : ''} missing required description text`);
   }
 
   if (missingOutcomeCount > 0 && gaps.length < 2) {
@@ -233,14 +223,18 @@ export function validateReportQuality(
   const blockingIssues = allIssues.filter(i => i.severity === 'blocking');
   const warnings = allIssues.filter(i => i.severity === 'warning');
 
-  // Generate assurance gaps for PDF
+  // Generate assurance gaps for PDF from genuinely required/completion-blocking checks only.
   const assuranceGaps = generateAssuranceGaps([...blockingIssues, ...warnings]);
+  const advisoryNotes = modules
+    .filter(module => module.completed_at && isEmptyCommentary(module.assessor_notes))
+    .map(module => `Module "${module.module_key}" is complete but has minimal/no assessor commentary`);
 
   return {
     passed: blockingIssues.length === 0,
     blockingIssues,
     warnings,
     assuranceGaps,
+    advisoryNotes,
   };
 }
 

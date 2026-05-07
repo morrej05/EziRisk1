@@ -31,7 +31,6 @@ import {
   wrapText,
   formatDate,
   getRatingColor,
-  getOutcomeColor,
   getPriorityColor,
   drawDraftWatermark,
   drawPlanWatermark,
@@ -96,6 +95,7 @@ import {
   drawLimitations,
   drawTableOfContents,
   drawCleanAuditPage1,
+  drawFraOutcomeTag,
 } from './fra/fraCoreDraw';
 
 import {
@@ -1430,45 +1430,50 @@ page.drawText(outcomeLabel, {
     yPosition -= 25;
   }
 
-  const p1OpenCount = openActions.filter((a) => a.priority_band === 'P1').length;
-  const p2Actions = openActions.filter((a) => a.priority_band === 'P2').length;
+  const priorityActionCounts = {
+    P1: openActions.filter((a) => a.priority_band === 'P1').length,
+    P2: openActions.filter((a) => a.priority_band === 'P2').length,
+    P3: openActions.filter((a) => a.priority_band === 'P3').length,
+    P4: openActions.filter((a) => a.priority_band === 'P4').length,
+  };
+  const hasPriorityActions = Object.values(priorityActionCounts).some((count) => count > 0);
 
-  page.drawText('Priority Actions Summary:', {
-    x: MARGIN,
-    y: yPosition,
-    size: 12,
-    font: fontBold,
-    color: rgb(0, 0, 0),
-  });
+  if (hasPriorityActions) {
+    if (yPosition < MARGIN + 120) {
+      const result = addNewPage(pdfDoc, isDraft, totalPages);
+      page = result.page;
+      yPosition = PAGE_TOP_Y;
+    }
 
-  yPosition -= 22;
-  page.drawText(`P1 (Immediate): ${p1OpenCount}`, {
-    x: MARGIN + 10,
-    y: yPosition,
-    size: 11,
-    font,
-    color: PDF_THEME.colours.risk.high.fg,
-  });
+    page.drawText('Priority Actions Summary', {
+      x: MARGIN,
+      y: yPosition,
+      size: 12,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
 
-  yPosition -= 18;
-  page.drawText(`P2 (Urgent): ${p2Actions}`, {
-    x: MARGIN + 10,
-    y: yPosition,
-    size: 11,
-    font,
-    color: PDF_THEME.colours.risk.medium.fg,
-  });
+    const prioritySummaryRows = [
+      { label: 'P1 Immediate', count: priorityActionCounts.P1, color: PDF_THEME.colours.risk.high.fg },
+      { label: 'P2 Urgent', count: priorityActionCounts.P2, color: PDF_THEME.colours.risk.medium.fg },
+      { label: 'P3 Planned', count: priorityActionCounts.P3, color: PDF_THEME.colours.risk.medium.fg },
+      { label: 'P4 Improvement', count: priorityActionCounts.P4, color: rgb(0.2, 0.5, 0.8) },
+    ];
 
-  yPosition -= 18;
-  page.drawText(`Total Open Actions: ${openActions.length}`, {
-    x: MARGIN + 10,
-    y: yPosition,
-    size: 11,
-    font,
-    color: rgb(0, 0, 0),
-  });
+    yPosition -= 22;
+    for (const row of prioritySummaryRows) {
+      page.drawText(`${row.label}: ${row.count}`, {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 11,
+        font,
+        color: row.color,
+      });
+      yPosition -= 18;
+    }
 
-  yPosition -= 30;
+    yPosition -= 12;
+  }
 
   // Derive emergency lighting presence from Section 7 owner module (via helper)
   // Single source of truth for EL system existence across all SCS/reliance calculations
@@ -2006,35 +2011,9 @@ function drawModuleSummary(
 
   if (module.outcome) {
     const outcomeLabel = getFraOutcomeLabel(module.data?.section_assessment_outcome || module.outcome);
-    const outcomeColor = getOutcomeColor(module.outcome);
 
-    page.drawText('Outcome:', {
-      x: MARGIN,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0, 0, 0),
-    });
-    
-    // Light tag (not a slab)
-    page.drawRectangle({
-      x: MARGIN + 70,
-      y: yPosition - 4,
-      width: 140,
-      height: 14,
-      color: rgb(0.93, 0.93, 0.93),
-      borderColor: rgb(0.80, 0.80, 0.80),
-      borderWidth: 0.5,
-    });
-    
-    page.drawText(outcomeLabel, {
-      x: MARGIN + 76,
-      y: yPosition - 1,
-      size: 10,
-      font: fontBold,
-      color: rgb(0.25, 0.25, 0.25),
-    });
-    
+    drawFraOutcomeTag({ page, yPosition, outcomeLabel, fontBold });
+
     // Tighter spacing after outcome
     yPosition -= 18;
   }
