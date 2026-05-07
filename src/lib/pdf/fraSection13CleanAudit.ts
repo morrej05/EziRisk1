@@ -57,6 +57,23 @@ function getPriorityColor(priority: string): ReturnType<typeof rgb> {
   }
 }
 
+function getFraExecutiveReportLabel(
+  outcome: FraExecutiveOutcome,
+  actionCount: number,
+): string {
+  switch (outcome) {
+    case 'MaterialLifeSafetyRiskPresent':
+      return 'MATERIAL LIFE SAFETY RISK PRESENT';
+    case 'SignificantDeficiencies':
+      return 'SIGNIFICANT DEFICIENCY';
+    case 'ImprovementsRequired':
+      return 'MODERATE DEFICIENCY';
+    case 'SatisfactoryWithImprovements':
+    default:
+      return actionCount === 0 ? 'COMPLIANT' : 'MINOR DEFICIENCY';
+  }
+}
+
 export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDFPage; yPosition: number } {
   let { page, fra4Module, actions, moduleInstances, font, fontBold, yPosition, pdfDoc, isDraft, totalPages, scoringResult } = options;
 
@@ -120,13 +137,6 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
 
   yPosition -= 40;
 
-  const outcomeLabels: Record<FraExecutiveOutcome, string> = {
-    MaterialLifeSafetyRiskPresent: 'MATERIAL LIFE SAFETY RISK PRESENT',
-    SignificantDeficiencies: 'SIGNIFICANT DEFICIENCIES IDENTIFIED',
-    ImprovementsRequired: 'IMPROVEMENTS REQUIRED',
-    SatisfactoryWithImprovements: 'SATISFACTORY WITH IMPROVEMENTS',
-  };
-
   const outcomeColors: Record<FraExecutiveOutcome, ReturnType<typeof rgb>> = {
     MaterialLifeSafetyRiskPresent: rgb(0.7, 0, 0),
     SignificantDeficiencies: rgb(0.8, 0.3, 0),
@@ -134,7 +144,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     SatisfactoryWithImprovements: rgb(0.2, 0.6, 0.2),
   };
 
-  const outcomeLabel = outcomeLabels[outcome];
+  const outcomeLabel = getFraExecutiveReportLabel(outcome, currentActions.length);
   const outcomeColor = outcomeColors[outcome];
 
   // Large outcome box
@@ -274,11 +284,68 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   yPosition -= 30;
 
   // ========================================================
-  // 3. BASIS OF ASSESSMENT (3-5 Line Narrative)
+  // 3. ACTION PRIORITY SUMMARY
+  // ========================================================
+  const priorityCounts = {
+    P1: currentActions.filter((a) => a.priority_band === 'P1').length,
+    P2: currentActions.filter((a) => a.priority_band === 'P2').length,
+    P3: currentActions.filter((a) => a.priority_band === 'P3').length,
+    P4: currentActions.filter((a) => a.priority_band === 'P4').length,
+  };
+
+  ({ page, yPosition } = ensurePageSpace(
+    76,
+    page,
+    yPosition,
+    pdfDoc,
+    isDraft,
+    totalPages
+  ));
+
+  page.drawText('Action Priority Summary', {
+    x: MARGIN,
+    y: yPosition,
+    size: 12,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
+  });
+
+  yPosition -= 24;
+
+  const countColumns: Array<{ priority: 'P1' | 'P2' | 'P3' | 'P4'; label: string }> = [
+    { priority: 'P1', label: 'Immediate' },
+    { priority: 'P2', label: 'Urgent' },
+    { priority: 'P3', label: 'Planned' },
+    { priority: 'P4', label: 'Good practice' },
+  ];
+  const columnWidth = CONTENT_WIDTH / countColumns.length;
+
+  countColumns.forEach((column, index) => {
+    const x = MARGIN + (index * columnWidth);
+    page.drawText(`${column.priority}: ${priorityCounts[column.priority]}`, {
+      x,
+      y: yPosition,
+      size: 11,
+      font: fontBold,
+      color: getPriorityColor(column.priority),
+    });
+    page.drawText(column.label, {
+      x,
+      y: yPosition - 14,
+      size: 8,
+      font,
+      color: rgb(0.35, 0.35, 0.35),
+    });
+  });
+
+  yPosition -= 48;
+
+  // ========================================================
+  // 4. BASIS OF ASSESSMENT (3-5 Line Narrative)
   // ========================================================
   // Generate professional narrative based on context
-  const p1Count = currentActions.filter((a) => a.priority_band === 'P1').length;
-  const p2Count = currentActions.filter((a) => a.priority_band === 'P2').length;
+  const p1Count = priorityCounts.P1;
+  const p2Count = priorityCounts.P2;
   const materialDefCount = moduleInstances.filter((m) => m.outcome === 'material_def').length;
 
   let narrativeParts: string[] = [];
@@ -350,7 +417,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   yPosition -= 15;
 
   // ========================================================
-  // 4. PROVISIONAL STATEMENT (If Info Gaps Present)
+  // 5. PROVISIONAL STATEMENT (If Info Gaps Present)
   // ========================================================
   const isProvisional = scoringResult?.provisional || infoGapCount > 0;
   if (isProvisional) {
@@ -398,7 +465,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   }
 
   // ========================================================
-  // 5. TOP 3 PRIORITY ISSUES
+  // 6. TOP 3 PRIORITY ISSUES
   // ========================================================
   if (currentActions.length > 0) {
     // Sort and get top 3
@@ -531,7 +598,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   }
 
   // ========================================================
-  // 6. ASSESSOR COMMENTARY (If Provided)
+  // 7. ASSESSOR COMMENTARY (If Provided)
   // ========================================================
   if (fra4Module.data.commentary?.executiveCommentary) {
     const commentaryLines = wrapText(fra4Module.data.commentary.executiveCommentary, CONTENT_WIDTH, 11, font);
@@ -555,6 +622,44 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
 
     yPosition -= 20;
     for (const line of commentaryLines) {
+      page.drawText(line, {
+        x: MARGIN,
+        y: yPosition,
+        size: 11,
+        font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+      yPosition -= 16;
+    }
+
+    yPosition -= 15;
+  }
+
+  // ========================================================
+  // 8. LIMITATIONS AND ASSUMPTIONS (If Provided)
+  // ========================================================
+  if (fra4Module.data.commentary?.limitationsAssumptions) {
+    const limitationsLines = wrapText(fra4Module.data.commentary.limitationsAssumptions, CONTENT_WIDTH, 11, font);
+    const requiredHeight = 20 + 20 + (limitationsLines.length * 16) + 15;
+    ({ page, yPosition } = ensurePageSpace(
+      requiredHeight,
+      page,
+      yPosition,
+      pdfDoc,
+      isDraft,
+      totalPages
+    ));
+
+    page.drawText('Limitations and Assumptions', {
+      x: MARGIN,
+      y: yPosition,
+      size: 12,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+
+    yPosition -= 20;
+    for (const line of limitationsLines) {
       page.drawText(line, {
         x: MARGIN,
         y: yPosition,
