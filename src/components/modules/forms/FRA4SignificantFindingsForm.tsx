@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, CheckCircle, AlertTriangle, AlertCircle, Info, RefreshCw, Shield } from 'lucide-react';
+import { FileText, CheckCircle, AlertTriangle, AlertCircle, Info, RefreshCw, Shield, Save } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import OutcomePanel from '../OutcomePanel';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { computeFraSummary, normalizeFraPriority, type FraComputedSummary } from '../../../lib/modules/fra/significantFindingsEngine';
 import { deriveStoreysForScoring, type FraComplexityBand } from '../../../lib/modules/fra/complexityEngine';
@@ -17,8 +16,6 @@ interface Document {
 interface ModuleInstance {
   id: string;
   module_key?: string;
-  outcome: string | null;
-  assessor_notes: string;
   data: Record<string, any>;
 }
 
@@ -80,9 +77,6 @@ export default function FRA4SignificantFindingsForm({
   const [limitationsAssumptions, setLimitationsAssumptions] = useState(
     moduleInstance.data.commentary?.limitationsAssumptions || ''
   );
-
-  const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
-  const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
 
   useEffect(() => {
     loadData();
@@ -203,15 +197,14 @@ export default function FRA4SignificantFindingsForm({
 
       const payload = sanitizeModuleInstancePayload({
         data: mergedData,
-        outcome,
-        assessor_notes: assessorNotes,
         updated_at: new Date().toISOString(),
       }, moduleInstance.module_key);
 
       console.log('[FRA4 Save] Payload being sent to Supabase:', {
         moduleKey: moduleInstance.module_key,
-        outcome: payload.outcome,
-        originalOutcome: outcome,
+        authoritativeOutcome: overrideEnabled && overrideOutcome
+          ? overrideOutcome
+          : computedSummary?.computedOutcome,
       });
 
       const { error } = await supabase
@@ -586,15 +579,20 @@ export default function FRA4SignificantFindingsForm({
         </div>
       </div>
 
-      <OutcomePanel
-        outcome={outcome}
-        assessorNotes={assessorNotes}
-        onOutcomeChange={setOutcome}
-        onNotesChange={setAssessorNotes}
-        onSave={handleSave}
-        isSaving={isSaving}
-        moduleKey={moduleInstance.module_key || 'FRA_90_SIGNIFICANT_FINDINGS'}
-      />
+      <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
+            isSaving
+              ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
+              : 'bg-neutral-900 text-white hover:bg-neutral-800'
+          }`}
+        >
+          <Save className="w-5 h-5" />
+          {isSaving ? 'Saving...' : 'Save Significant Findings Summary'}
+        </button>
+      </div>
     </div>
   );
 }
