@@ -13,7 +13,6 @@ import {
   sanitizePdfText,
   wrapText,
   formatDate,
-  getOutcomeColor,
   getPriorityColor,
   addNewPage,
   ensurePageSpace,
@@ -52,6 +51,53 @@ import { type ScoringResult } from '../../fra/scoring/scoringEngine';
  */
 const imageCache = new Map<string, PDFImage>();
 const REPORT_LAYOUT_SPACING = getReportLayoutSpacing();
+
+const FRA_OUTCOME_TAG_WIDTH = 140;
+const FRA_OUTCOME_TAG_HEIGHT = 14;
+
+export function drawFraOutcomeTag(args: {
+  page: PDFPage;
+  yPosition: number;
+  outcomeLabel: string;
+  fontBold: any;
+  labelX?: number;
+  tagX?: number;
+}): void {
+  const {
+    page,
+    yPosition,
+    outcomeLabel,
+    fontBold,
+    labelX = MARGIN,
+    tagX = MARGIN + 70,
+  } = args;
+
+  page.drawText('Outcome:', {
+    x: labelX,
+    y: yPosition,
+    size: 11,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  page.drawRectangle({
+    x: tagX,
+    y: yPosition - 4,
+    width: FRA_OUTCOME_TAG_WIDTH,
+    height: FRA_OUTCOME_TAG_HEIGHT,
+    color: rgb(0.93, 0.93, 0.93),
+    borderColor: rgb(0.80, 0.80, 0.80),
+    borderWidth: 0.5,
+  });
+
+  page.drawText(outcomeLabel, {
+    x: tagX + 6,
+    y: yPosition - 1,
+    size: 10,
+    font: fontBold,
+    color: rgb(0.25, 0.25, 0.25),
+  });
+}
 
 /**
  * Build stable evidence reference map for consistent E-00X numbering
@@ -1365,32 +1411,7 @@ export async function drawModuleContent(
   const resolvedOutcome = resolveFraOutcomeValue(module);
   const outcomeLabel = resolvedOutcome ? getFraReportOutcomeLabel(resolvedOutcome) : '';
   if (outcomeLabel) {
-    page.drawText('Outcome:', {
-      x: MARGIN,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0, 0, 0),
-    });
-
-    page.drawRectangle({
-      x: MARGIN + 70,
-      y: yPosition - 4,
-      width: 140,
-      height: 14,
-      color: rgb(0.93, 0.93, 0.93),
-      borderColor: rgb(0.80, 0.80, 0.80),
-      borderWidth: 0.5,
-    });
-
-    page.drawText(outcomeLabel, {
-      x: MARGIN + 76,
-      y: yPosition - 1,
-      size: 10,
-      font: fontBold,
-      color: rgb(0.25, 0.25, 0.25),
-    });
-
+    drawFraOutcomeTag({ page, yPosition, outcomeLabel, fontBold });
     yPosition -= 24;
   }
   // Assessor notes

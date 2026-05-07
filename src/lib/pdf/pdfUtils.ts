@@ -1433,15 +1433,28 @@ export function drawActionPlanSnapshot(
       }
       displayText += actionText;
 
-      context.page.drawText(displayText, {
-        x: MARGIN + 10,
-        y: context.yPosition,
-        size: 9,
-        font: fonts.regular,
-        color: rgb(0.2, 0.2, 0.2),
-      });
+      const textX = MARGIN + 10;
+      const maxTextWidth = CONTENT_WIDTH - 10;
+      const lines = wrapText(displayText, maxTextWidth, 9, fonts.regular);
+      const requiredHeight = Math.max(16, lines.length * 12 + 4);
 
-      context.yPosition -= 16;
+      if (context.yPosition < MARGIN + requiredHeight) {
+        context.page = addNewPage(pdfDoc, isDraft, totalPages).page;
+        context.yPosition = PAGE_TOP_Y;
+      }
+
+      for (const line of lines) {
+        context.page.drawText(line, {
+          x: textX,
+          y: context.yPosition,
+          size: 9,
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2),
+        });
+        context.yPosition -= 12;
+      }
+
+      context.yPosition -= 4;
     }
 
     // If more actions than displayed, show count

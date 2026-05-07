@@ -17,6 +17,7 @@ import {
 } from '../pdfUtils';
 import { ensureSpace, ensureCursor } from './fraUtils';
 import {
+  drawFraOutcomeTag,
   drawModuleContent,
   renderFilteredModuleData,
 } from './fraCoreDraw';
@@ -694,23 +695,9 @@ export function renderSection5FireHazards(
 
     ({ page, yPosition } = ensureSpace(28, page, yPosition, pdfDoc, isDraft, totalPages));
 
-    page.drawText('Outcome:', {
-      x: MARGIN,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0, 0, 0),
-    });
+    drawFraOutcomeTag({ page, yPosition, outcomeLabel, fontBold });
 
-    page.drawText(outcomeLabel, {
-      x: MARGIN + 70,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0.25, 0.25, 0.25),
-    });
-
-    yPosition -= 22;
+    yPosition -= 24;
   };
 
   // --- Clean grouped output ---
