@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 import LegalLinks from '../components/legal/LegalLinks';
@@ -23,6 +23,10 @@ export default function SignIn() {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const { signIn, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const inactivityMessage = typeof location.state?.inactivityMessage === 'string'
+    ? location.state.inactivityMessage
+    : null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -113,6 +117,13 @@ export default function SignIn() {
           </div>
 
           <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-sm" onSubmit={handleSubmit}>
+            {inactivityMessage && !error && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span className="text-sm">{inactivityMessage}</span>
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
