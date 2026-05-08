@@ -36,6 +36,10 @@ export interface Action {
   id: string;
   recommended_action: string;
   priority_band: string;
+  source?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
   status: string;
   finding_category?: string | null;
   trigger_id?: string | null;

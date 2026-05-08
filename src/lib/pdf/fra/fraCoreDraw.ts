@@ -2306,7 +2306,6 @@ export function drawTableOfContents(
 export function drawCleanAuditPage1(
   page: PDFPage,
   scoringResult: ScoringResult,
-  priorityActions: Action[],
   font: any,
   fontBold: any,
   document: Document,
@@ -2502,66 +2501,4 @@ export function drawCleanAuditPage1(
     yPosition -= 75;
   }
 
-  yPosition -= 30;
-
-  // Priority Summary Strip (minimal, clean)
-  const p1Count = priorityActions.filter(a => a.priority_band === 'P1').length;
-  const p2Count = priorityActions.filter(a => a.priority_band === 'P2').length;
-  const p3Count = priorityActions.filter(a => a.priority_band === 'P3').length;
-  const p4Count = priorityActions.filter(a => a.priority_band === 'P4').length;
-
-  if (p1Count + p2Count + p3Count + p4Count > 0) {
-    page.drawText('Priority Actions Summary', {
-      x: MARGIN + 20,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-
-    yPosition -= 25;
-
-    const boxWidth = 80;
-    const boxHeight = 50;
-    const boxSpacing = 15;
-    const startX = MARGIN + 20;
-
-    // Use PDF_THEME token-based colors for priority bands
-    const priorities = [
-      { label: 'P1', count: p1Count, color: PDF_THEME.colours.risk.high.fg },
-      { label: 'P2', count: p2Count, color: PDF_THEME.colours.risk.medium.fg },
-      { label: 'P3', count: p3Count, color: PDF_THEME.colours.risk.info.fg },
-      { label: 'P4', count: p4Count, color: PDF_THEME.colours.risk.info.fg }
-    ];
-
-    priorities.forEach((p, idx) => {
-      const x = startX + (idx * (boxWidth + boxSpacing));
-
-      page.drawRectangle({
-        x,
-        y: yPosition - boxHeight + 10,
-        width: boxWidth,
-        height: boxHeight,
-        borderColor: p.color,
-        borderWidth: 1,
-        color: rgb(1, 1, 1),
-      });
-
-      page.drawText(p.label, {
-        x: x + 10,
-        y: yPosition - 15,
-        size: 12,
-        font: fontBold,
-        color: p.color,
-      });
-
-      page.drawText(p.count.toString(), {
-        x: x + 10,
-        y: yPosition - 35,
-        size: 20,
-        font: fontBold,
-        color: rgb(0.2, 0.2, 0.2),
-      });
-    });
-  }
 }
