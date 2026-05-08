@@ -249,6 +249,78 @@ export function deriveSystemSnapshotTitle(action: { recommended_action?: string;
   return t;
 }
 
+function truncateAtWordBoundary(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+
+  const truncated = text.slice(0, maxLength + 1);
+  const boundary = Math.max(
+    truncated.lastIndexOf(' '),
+    truncated.lastIndexOf(','),
+    truncated.lastIndexOf(';'),
+    truncated.lastIndexOf(':')
+  );
+
+  const shortened = (boundary >= Math.floor(maxLength * 0.6)
+    ? truncated.slice(0, boundary)
+    : text.slice(0, maxLength)
+  ).replace(/[\s,;:.-]+$/g, '').trim();
+
+  return `${shortened}...`;
+}
+
+/**
+ * Build the short, readable action text used in the Action Plan Snapshot.
+ * Prefers explicit short fields and otherwise condenses recommended_action.
+ */
+export function getActionSnapshotText(action: {
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
+  recommended_action?: string | null;
+}): string {
+  const raw = String(
+    action.title ||
+    action.summary ||
+    action.short_description ||
+    action.recommended_action ||
+    ''
+  );
+
+  let cleaned = raw
+    .replace(/\s+/g, ' ')
+    .replace(/^(urgent|immediate)\s*[:\-]\s*/i, '')
+    .replace(/^(recommended action|required action|action required)\s*[:\-]\s*/i, '')
+    .replace(/^it is recommended that\s+/i, '')
+    .replace(/^the (responsible person|duty holder|client) should\s+/i, '')
+    .replace(/^the (responsible person|duty holder|client)\s+/i, '')
+    .replace(/^ensure that\s+/i, '')
+    .replace(/^confirm (the )?(requirement )?for\s+/i, '')
+    .trim();
+
+  const clauseParts = cleaned.split(/(?:;|\.\s+|\s+-\s+|\s+to ensure\b|\s+in order to\b|\s+so that\b)/i);
+  const firstMeaningfulClause = clauseParts.find(part => part.trim().length >= 12)?.trim();
+  if (firstMeaningfulClause) {
+    cleaned = firstMeaningfulClause;
+  }
+
+  cleaned = cleaned.replace(/[\s,;:.-]+$/g, '').trim();
+  if (!cleaned) return '(No action text provided)';
+
+  cleaned = cleaned
+    .replace(/^resolves\b/i, 'Resolve')
+    .replace(/^commissions\b/i, 'Commission')
+    .replace(/^surveys\b/i, 'Survey')
+    .replace(/^verifies\b/i, 'Verify')
+    .replace(/^removes\b/i, 'Remove')
+    .replace(/^inspects\b/i, 'Inspect')
+    .replace(/^updates\b/i, 'Update')
+    .replace(/^provides\b/i, 'Provide');
+
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  return truncateAtWordBoundary(cleaned, 100);
+}
+
 export function formatAddress(addr?: any): string {
   if (!addr) return '';
   const parts = [
@@ -1307,6 +1379,10 @@ export interface ActionForPdf {
   closed_at: string | null;
   superseded_by_action_id: string | null;
   superseded_at: string | null;
+  source?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
 }
 
 /**
@@ -1411,12 +1487,7 @@ export function drawActionPlanSnapshot(
         context.yPosition = PAGE_TOP_Y;
       }
 
-      // Derive ultra-short title for snapshot (70 char max for system actions)
-      const actionTitle = deriveSystemSnapshotTitle(action);
-      let actionText = sanitizePdfText(actionTitle);
-      if (actionText.length > 100) {
-        actionText = actionText.substring(0, 97) + '...';
-      }
+      const actionText = sanitizePdfText(getActionSnapshotText(action));
 
       // Reference and section - reference_number from DB or undefined
       const ref = action.reference_number;

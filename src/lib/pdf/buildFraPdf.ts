@@ -308,17 +308,12 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
         moduleInstances,
       });
 
-      const priorityActions = actions
-        .filter((a) => ['P1', 'P2', 'P3'].includes(a.priority_band) && (a.status === 'open' || a.status === 'in_progress'))
-        .sort(compareActionsByDisplayReference);
-
       const riskSummaryResult = addNewPage(pdfDoc, isDraft, totalPages);
       page = riskSummaryResult.page;
       yPosition = PAGE_TOP_Y;
       drawCleanAuditPage1(
         page,
         scoringResult,
-        priorityActions,
         font,
         fontBold,
         document,
@@ -404,6 +399,9 @@ drawTableOfContents(page, font, fontBold);
     id: a.id,
     reference_number: a.reference_number, // Deterministic display ref (FRA-YYYY-001, FRA-YYYY-002...) from DB
     recommended_action: a.recommended_action,
+    title: a.title || null,
+    summary: a.summary || null,
+    short_description: a.short_description || null,
     priority_band: a.priority_band,
     status: a.status,
     section_reference: a.section_reference, // Derived from FRA_REPORT_STRUCTURE
@@ -843,6 +841,9 @@ if (section.id === 5) {
       id: action.id,
       reference_number: action.reference_number || null,
       recommended_action: action.recommended_action,
+      title: action.title || null,
+      summary: action.summary || null,
+      short_description: action.short_description || null,
       priority_band: action.priority_band,
       status: action.status,
       source: action.source, // Needed for deriveSystemActionTitle
