@@ -797,6 +797,33 @@ export function resolveExecutiveSummaryMode(
   return 'ai';
 }
 
+export function getSelectedExecutiveSummaryText(
+  mode: 'ai' | 'author' | 'both' | 'none' | string | null | undefined,
+  aiSummary?: string | null,
+  authorSummary?: string | null
+): { mode: 'ai' | 'author' | 'both' | 'none'; text: string } {
+  const resolvedMode = resolveExecutiveSummaryMode(mode, aiSummary, authorSummary);
+  const normalizedAiSummary = String(aiSummary || '').trim();
+  const normalizedAuthorSummary = String(authorSummary || '').trim();
+
+  if (resolvedMode === 'none') {
+    return { mode: resolvedMode, text: '' };
+  }
+
+  if (resolvedMode === 'both') {
+    return {
+      mode: resolvedMode,
+      text: [normalizedAiSummary, normalizedAuthorSummary].filter(Boolean).join('\n\n'),
+    };
+  }
+
+  if (resolvedMode === 'author') {
+    return { mode: resolvedMode, text: normalizedAuthorSummary };
+  }
+
+  return { mode: resolvedMode, text: normalizedAiSummary };
+}
+
 export function addExecutiveSummaryPages(
   pdfDoc: PDFDocument,
   isDraft: boolean,
