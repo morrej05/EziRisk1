@@ -4,6 +4,11 @@ import { generateChangeSummary, createInitialIssueSummary } from './changeSummar
 import { carryForwardEvidence } from './evidenceManagement';
 import { getMissingRequiredRatings } from '../lib/re/scoring/riskEngineeringHelpers';
 
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export interface DocumentVersion {
   id: string;
   base_document_id: string;
@@ -21,7 +26,11 @@ export interface DocumentVersion {
 export interface IssueDocumentResult {
   success: boolean;
   error?: string;
+  warning?: string;
+  postIssueWarning?: string;
   documentId?: string;
+  alreadyIssued?: boolean;
+  partialSuccess?: boolean;
 }
 
 export interface CreateNewVersionResult {
@@ -196,6 +205,28 @@ export async function issueDocument(documentId: string, userId: string, organisa
     const validation = await validateDocumentForIssue(documentId, organisationId);
     if (!validation.valid) {
       console.log('[issueDocument] Validation failed:', validation.errors);
+
+      const { data: currentDocument } = await supabase
+        .from('documents')
+        .select('id, status, issue_status, locked_pdf_path, pdf_generation_error')
+        .eq('id', documentId)
+        .eq('organisation_id', organisationId)
+        .maybeSingle();
+
+      if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+        console.warn('[issueDocument] Document is already issued after validation failure; treating as partial success');
+        return {
+          success: true,
+          documentId,
+          alreadyIssued: true,
+          partialSuccess: true,
+          warning: currentDocument.locked_pdf_path
+            ? 'Document was already issued. Reloaded the issued document state.'
+            : 'Document was already issued, but the locked PDF is not available yet.',
+          postIssueWarning: currentDocument.pdf_generation_error || undefined,
+        };
+      }
+
       return { success: false, error: validation.errors.join(', ') };
     }
 
@@ -258,17 +289,53 @@ export async function issueDocument(documentId: string, userId: string, organisa
     if (error) throw error;
 
     console.log('[issueDocument] Generating change summary');
-    if (previousIssued) {
-      await generateChangeSummary(documentId, previousIssued.id, userId);
-    } else {
-      await createInitialIssueSummary(documentId, userId);
+    let postIssueWarning: string | undefined;
+    try {
+      const summaryResult = previousIssued
+        ? await generateChangeSummary(documentId, previousIssued.id, userId)
+        : await createInitialIssueSummary(documentId, userId);
+
+      if (summaryResult && summaryResult.success === false) {
+        postIssueWarning = summaryResult.error || 'Issue succeeded, but change summary generation failed.';
+      }
+    } catch (summaryError: unknown) {
+      postIssueWarning = getErrorMessage(summaryError, 'Issue succeeded, but change summary generation failed.');
+      console.warn('[issueDocument] Change summary failed after document was issued:', summaryError);
     }
 
     console.log('[issueDocument] Document issued successfully');
-    return { success: true, documentId };
-  } catch (error) {
+    return {
+      success: true,
+      documentId,
+      partialSuccess: Boolean(postIssueWarning),
+      postIssueWarning,
+      warning: postIssueWarning ? `Document issued, but post-issue processing failed: ${postIssueWarning}` : undefined,
+    };
+  } catch (error: unknown) {
     console.error('[issueDocument] Error issuing document:', error);
-    return { success: false, error: 'Failed to issue document' };
+
+    const { data: currentDocument } = await supabase
+      .from('documents')
+      .select('id, status, issue_status, locked_pdf_path, pdf_generation_error')
+      .eq('id', documentId)
+      .eq('organisation_id', organisationId)
+      .maybeSingle();
+
+    if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+      console.warn('[issueDocument] Failure occurred after document was issued; returning partial success');
+      return {
+        success: true,
+        documentId,
+        alreadyIssued: true,
+        partialSuccess: true,
+        warning: currentDocument.locked_pdf_path
+          ? 'Document was issued, but post-issue processing reported an error. Reloading the issued document state.'
+          : 'Document was issued, but the locked PDF is not available yet.',
+        postIssueWarning: currentDocument.pdf_generation_error || getErrorMessage(error, 'Post-issue processing failed'),
+      };
+    }
+
+    return { success: false, error: getErrorMessage(error, 'Failed to issue document') };
   }
 }
 

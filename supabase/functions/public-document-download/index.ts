@@ -152,7 +152,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
-      .from("locked-pdfs")
+      .from("document-pdfs")
       .createSignedUrl(document.locked_pdf_path, 300);
 
     if (signedUrlError || !signedUrlData) {
