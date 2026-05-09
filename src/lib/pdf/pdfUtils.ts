@@ -215,7 +215,7 @@ export function deriveSystemActionTitle(action: { recommended_action?: string; s
 
   // Keep first clause (imperative), strip rationale tails, remove urgency prefix
   let title = text.split(/\n|;|\.(\s|$)/)[0].trim();
-  title = title.replace(/^(urgent|immediate)\s*[:\-]\s*/i, '').trim();
+  title = title.replace(/^(urgent|immediate)\s*[:-]\s*/i, '').trim();
   title = title.replace(/\s+\b(to|in order to|so that)\b.*$/i, '').trim();
 
   const max = 95;
@@ -238,7 +238,7 @@ export function deriveSystemSnapshotTitle(action: { recommended_action?: string;
 
   // Remove common filler starts (optional but helps)
   let t = text
-    .replace(/^(urgent|immediate)\s*[:\-]\s*/i, '')
+    .replace(/^(urgent|immediate)\s*[:-]\s*/i, '')
     .replace(/^confirm (requirement )?for\s+/i, '')
     .replace(/^provide\s+/i, '')
     .trim();
@@ -249,23 +249,51 @@ export function deriveSystemSnapshotTitle(action: { recommended_action?: string;
   return t;
 }
 
-function truncateAtWordBoundary(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
+const ACTION_SNAPSHOT_MAX_LENGTH = 140;
 
-  const truncated = text.slice(0, maxLength + 1);
+function shortenAtWordBoundary(text: string, maxLength: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+
+  const truncated = normalized.slice(0, maxLength + 1);
   const boundary = Math.max(
     truncated.lastIndexOf(' '),
     truncated.lastIndexOf(','),
     truncated.lastIndexOf(';'),
-    truncated.lastIndexOf(':')
+    truncated.lastIndexOf(':'),
+    truncated.lastIndexOf(')')
   );
 
   const shortened = (boundary >= Math.floor(maxLength * 0.6)
     ? truncated.slice(0, boundary)
-    : text.slice(0, maxLength)
+    : normalized.slice(0, maxLength)
   ).replace(/[\s,;:.-]+$/g, '').trim();
 
-  return `${shortened}...`;
+  // Snapshot text is intentionally concise; do not append ellipses because the
+  // full recommendation remains available later in the report.
+  return shortened || normalized.slice(0, maxLength).trim();
+}
+
+function firstNonEmptyActionField(action: {
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
+  recommended_action?: string | null;
+}): { value: string; source: 'short' | 'recommended_action' | 'empty' } {
+  const shortField = [action.title, action.summary, action.short_description]
+    .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
+    .find((value) => value.length > 0);
+
+  if (shortField) {
+    return { value: shortField, source: 'short' };
+  }
+
+  const recommendation = String(action.recommended_action || '').replace(/\s+/g, ' ').trim();
+  if (recommendation) {
+    return { value: recommendation, source: 'recommended_action' };
+  }
+
+  return { value: '', source: 'empty' };
 }
 
 /**
@@ -278,18 +306,11 @@ export function getActionSnapshotText(action: {
   short_description?: string | null;
   recommended_action?: string | null;
 }): string {
-  const raw = String(
-    action.title ||
-    action.summary ||
-    action.short_description ||
-    action.recommended_action ||
-    ''
-  );
+  const selected = firstNonEmptyActionField(action);
 
-  let cleaned = raw
-    .replace(/\s+/g, ' ')
-    .replace(/^(urgent|immediate)\s*[:\-]\s*/i, '')
-    .replace(/^(recommended action|required action|action required)\s*[:\-]\s*/i, '')
+  let cleaned = selected.value
+    .replace(/^(urgent|immediate)\s*[:-]\s*/i, '')
+    .replace(/^(recommended action|required action|action required)\s*[:-]\s*/i, '')
     .replace(/^it is recommended that\s+/i, '')
     .replace(/^the (responsible person|duty holder|client) should\s+/i, '')
     .replace(/^the (responsible person|duty holder|client)\s+/i, '')
@@ -297,10 +318,12 @@ export function getActionSnapshotText(action: {
     .replace(/^confirm (the )?(requirement )?for\s+/i, '')
     .trim();
 
-  const clauseParts = cleaned.split(/(?:;|\.\s+|\s+-\s+|\s+to ensure\b|\s+in order to\b|\s+so that\b)/i);
-  const firstMeaningfulClause = clauseParts.find(part => part.trim().length >= 12)?.trim();
-  if (firstMeaningfulClause) {
-    cleaned = firstMeaningfulClause;
+  if (selected.source === 'recommended_action') {
+    const clauseParts = cleaned.split(/(?:;|\.\s+|\s+-\s+|\s+to ensure\b|\s+in order to\b|\s+so that\b)/i);
+    const firstMeaningfulClause = clauseParts.find(part => part.trim().length >= 12)?.trim();
+    if (firstMeaningfulClause) {
+      cleaned = firstMeaningfulClause;
+    }
   }
 
   cleaned = cleaned.replace(/[\s,;:.-]+$/g, '').trim();
@@ -318,7 +341,7 @@ export function getActionSnapshotText(action: {
 
   cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
-  return truncateAtWordBoundary(cleaned, 100);
+  return shortenAtWordBoundary(cleaned, ACTION_SNAPSHOT_MAX_LENGTH);
 }
 
 export function formatAddress(addr?: any): string {
@@ -1530,7 +1553,7 @@ export function drawActionPlanSnapshot(
 
     // If more actions than displayed, show count
     if (priorityActions.length > 5) {
-      context.page.drawText(`  ... and ${priorityActions.length - 5} more ${priorityLabel} action(s)`, {
+      context.page.drawText(`  Plus ${priorityActions.length - 5} more ${priorityLabel} action(s)`, {
         x: MARGIN + 10,
         y: context.yPosition,
         size: 9,
@@ -1656,9 +1679,10 @@ export function drawRecommendationsSection(
       yPosition -= 20;
     }
 
-    // Derive short title for auto actions, full text for manual actions
-    const actionTitle = deriveAutoActionTitle(action);
-    const descLines = wrapText(actionTitle, CONTENT_WIDTH - 20, 10, fonts.regular);
+    // Keep the full recommendation text in the Recommendations section;
+    // only the Action Plan Snapshot is condensed for quick scanning.
+    const recommendationText = sanitizePdfText(action.recommended_action || '(No action text provided)');
+    const descLines = wrapText(recommendationText, CONTENT_WIDTH - 20, 10, fonts.regular);
     for (const line of descLines) {
       if (yPosition < MARGIN + 40) {
         const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
@@ -1773,7 +1797,7 @@ export function deriveAutoActionTitle(action: { recommended_action?: string; sou
 
   // Shorten: take first clause; remove rationale tails; drop urgency prefix
   let title = text.split(/\n|;|\.(\s|$)/)[0].trim();
-  title = title.replace(/^(urgent|immediate)\s*[:\-]\s*/i, '').trim();
+  title = title.replace(/^(urgent|immediate)\s*[:-]\s*/i, '').trim();
   title = title.replace(/\s+\b(to|in order to|so that)\b.*$/i, '').trim();
 
   // Cap length
