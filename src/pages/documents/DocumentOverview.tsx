@@ -77,6 +77,9 @@ interface Document {
   locked_pdf_generated_at: string | null;
   locked_pdf_size_bytes: number | null;
   locked_pdf_sha256: string | null;
+  executive_summary_ai?: string | null;
+  executive_summary_author?: string | null;
+  executive_summary_mode?: 'ai' | 'author' | 'both' | 'none' | null;
   jurisdiction: string;
   meta?: any;
 }
@@ -837,6 +840,14 @@ try {
 
         actionRatings = ratings || [];
       }
+
+      console.info('[PDF Preview/Download] Executive summary before PDF generation:', {
+        documentId: document.id,
+        mode: document.executive_summary_mode,
+        aiLength: String(document.executive_summary_ai || '').trim().length,
+        authorLength: String(document.executive_summary_author || '').trim().length,
+        keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
+      });
 
       const pdfOptions = {
         document,

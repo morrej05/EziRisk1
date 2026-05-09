@@ -144,6 +144,15 @@ export async function buildIssuedPdfForDocument(
     actionRatings = ratings || [];
   }
 
+  const executiveSummaryDiagnostics = {
+    documentId: document.id,
+    mode: document.executive_summary_mode,
+    aiLength: String(document.executive_summary_ai || '').trim().length,
+    authorLength: String(document.executive_summary_author || '').trim().length,
+    keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
+  };
+  console.info('[Issued PDF] Executive summary before PDF generation:', executiveSummaryDiagnostics);
+
   const pdfOptions = {
     document,
     moduleInstances: moduleInstances || [],
@@ -204,6 +213,7 @@ export async function storeIssuedPdfWithEdgeFunction(
       Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({
+      pdf_payload_summary_keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
       document_id: document.id,
       organisation_id: organisationId,
       title: document.title,
@@ -212,6 +222,14 @@ export async function storeIssuedPdfWithEdgeFunction(
       pdf_base64: uint8ArrayToBase64(pdfBytes),
       size_bytes: pdfBytes.length,
     }),
+  });
+
+  console.info('[Issued PDF] generate-issued-pdf payload summary section keys:', {
+    documentId: document.id,
+    keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
+    mode: document.executive_summary_mode,
+    aiLength: String(document.executive_summary_ai || '').trim().length,
+    authorLength: String(document.executive_summary_author || '').trim().length,
   });
 
   const responseText = await response.text();

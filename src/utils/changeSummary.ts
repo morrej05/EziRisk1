@@ -168,17 +168,21 @@ export async function createInitialIssueSummary(
       .single();
 
     if (insertError) {
-      console.error('[createInitialIssueSummary] Insert failed:', {
+      const isMissingRestTable = insertError.code === 'PGRST205' || insertError.code === 'PGRST204' || insertError.message?.includes('404');
+      console.warn('[createInitialIssueSummary] Insert failed; issue summary is informational, continuing without blocking issue/version creation:', {
         table: 'document_change_summaries',
+        expectedTable: 'public.document_change_summaries',
+        productionRepairMigration: '20260509120000_repair_document_change_summaries.sql',
+        likelyMissingFromRestSchema: isMissingRestTable,
         payload: summaryData,
         error: insertError,
       });
-      throw insertError;
+      return { success: false, error: getErrorMessage(insertError, 'Failed to create initial issue summary') };
     }
 
-    return { success: true, summaryId: summary.id };
+    return { success: true, summaryId: summary?.id };
   } catch (error: unknown) {
-    console.error('Error creating initial issue summary:', error);
+    console.warn('Error creating initial issue summary (non-blocking):', error);
     return { success: false, error: getErrorMessage(error, 'Failed to create initial issue summary') };
   }
 }

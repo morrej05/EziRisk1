@@ -780,13 +780,30 @@ export async function addSupersededWatermark(pdfDoc: PDFDocument): Promise<void>
   }
 }
 
+export function resolveExecutiveSummaryMode(
+  mode: 'ai' | 'author' | 'both' | 'none' | string | null | undefined,
+  aiSummary?: string | null,
+  authorSummary?: string | null
+): 'ai' | 'author' | 'both' | 'none' {
+  if (mode === 'ai' || mode === 'author' || mode === 'both' || mode === 'none') {
+    return mode;
+  }
+
+  const hasAiSummary = Boolean(String(aiSummary || '').trim());
+  const hasAuthorSummary = Boolean(String(authorSummary || '').trim());
+
+  if (hasAiSummary && hasAuthorSummary) return 'both';
+  if (hasAuthorSummary) return 'author';
+  return 'ai';
+}
+
 export function addExecutiveSummaryPages(
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[],
-  mode: 'ai' | 'author' | 'both' | 'none',
-  aiSummary: string | null,
-  authorSummary: string | null,
+  mode: 'ai' | 'author' | 'both' | 'none' | string | null | undefined,
+  aiSummary: string | null | undefined,
+  authorSummary: string | null | undefined,
   fonts: { bold: any; regular: any }
 ): number {
   // Defensive check - ensure totalPages is defined
@@ -795,13 +812,26 @@ export function addExecutiveSummaryPages(
     return 0;
   }
 
-  if (mode === 'none') {
+  const resolvedMode = resolveExecutiveSummaryMode(mode, aiSummary, authorSummary);
+  const normalizedAiSummary = String(aiSummary || '').trim();
+  const normalizedAuthorSummary = String(authorSummary || '').trim();
+  const summaryDiagnostics = {
+    requestedMode: mode,
+    resolvedMode,
+    aiLength: normalizedAiSummary.length,
+    authorLength: normalizedAuthorSummary.length,
+    hasAiSummary: normalizedAiSummary.length > 0,
+    hasAuthorSummary: normalizedAuthorSummary.length > 0,
+  };
+
+  if (resolvedMode === 'none') {
+    console.info('[PDF Executive Summary] Section skipped by mode:', summaryDiagnostics);
     return 0;
   }
 
   let pagesAdded = 0;
 
-  if ((mode === 'ai' || mode === 'both') && aiSummary) {
+  if ((resolvedMode === 'ai' || resolvedMode === 'both') && normalizedAiSummary) {
     const { page } = addNewPage(pdfDoc, isDraft, totalPages);
     let currentPage = page;
     let yPosition = PAGE_TOP_Y;
@@ -816,7 +846,7 @@ export function addExecutiveSummaryPages(
 
     yPosition -= 30;
 
-    const paragraphs = aiSummary.split('\n\n');
+    const paragraphs = normalizedAiSummary.split('\n\n');
     for (const paragraph of paragraphs) {
       if (!paragraph.trim()) continue;
 
@@ -846,7 +876,7 @@ export function addExecutiveSummaryPages(
     pagesAdded++;
   }
 
-  if ((mode === 'author' || mode === 'both') && authorSummary) {
+  if ((resolvedMode === 'author' || resolvedMode === 'both') && normalizedAuthorSummary) {
     const { page } = addNewPage(pdfDoc, isDraft, totalPages);
     let currentPage = page;
     let yPosition = PAGE_TOP_Y;
@@ -863,7 +893,7 @@ export function addExecutiveSummaryPages(
 
     yPosition -= 30;
 
-    const paragraphs = authorSummary.split('\n\n');
+    const paragraphs = normalizedAuthorSummary.split('\n\n');
     for (const paragraph of paragraphs) {
       if (!paragraph.trim()) continue;
 
@@ -892,6 +922,12 @@ export function addExecutiveSummaryPages(
 
     pagesAdded++;
   }
+
+  console.info('[PDF Executive Summary] Section render result:', {
+    ...summaryDiagnostics,
+    addedToRenderTree: pagesAdded > 0,
+    pagesAdded,
+  });
 
   return pagesAdded;
 }

@@ -22,6 +22,7 @@ import {
   drawFooter,
   drawPlanWatermark,
   addExecutiveSummaryPages,
+  resolveExecutiveSummaryMode,
   addSupersededWatermark,
   ensurePageSpace,
   getReportFooterTitle,
@@ -309,10 +310,23 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   const tocEntries: Array<{ title: string; pageNo: number }> = [];
   const recordToc = (title: string, pageNo = totalPages.length) => tocEntries.push({ title, pageNo });
 
-  const executiveSummaryMode = (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none';
+  const executiveSummaryMode = resolveExecutiveSummaryMode(
+    document.executive_summary_mode,
+    document.executive_summary_ai,
+    document.executive_summary_author
+  );
   const hasExecutiveSummary =
-    (executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!document.executive_summary_ai ||
-    (executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!document.executive_summary_author;
+    ((executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!String(document.executive_summary_ai || '').trim()) ||
+    ((executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!String(document.executive_summary_author || '').trim());
+
+  console.info('[FSD PDF] Executive summary diagnostics:', {
+    documentId: document.id,
+    requestedMode: document.executive_summary_mode,
+    resolvedMode: executiveSummaryMode,
+    aiLength: String(document.executive_summary_ai || '').trim().length,
+    authorLength: String(document.executive_summary_author || '').trim().length,
+    addedToRenderTree: hasExecutiveSummary,
+  });
 
   if (hasExecutiveSummary) {
     const executiveSummaryStartPage = totalPages.length + 1;

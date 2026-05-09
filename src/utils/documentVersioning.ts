@@ -103,13 +103,13 @@ type JsonRecord = Record<string, unknown>;
 type AnyRow = Record<string, unknown>;
 type CountQueryResult = { count: number | null; error: { message?: string } | null };
 type CountQuery = PromiseLike<CountQueryResult> & {
-  eq: (column: string, value: unknown) => CountQuery;
-  in: (column: string, values: readonly unknown[]) => CountQuery;
-  is: (column: string, value: unknown) => CountQuery;
-  or: (filters: string) => CountQuery;
+  eq?: (column: string, value: unknown) => CountQuery;
+  in?: (column: string, values: readonly unknown[]) => CountQuery;
+  is?: (column: string, value: unknown) => CountQuery;
+  or?: (filters: string) => CountQuery;
 };
-type CountQueryFactory = (table: string) => {
-  select: (columns: string, options: { count: 'exact'; head: true }) => CountQuery;
+type CountTableQuery = {
+  select?: (columns: string, options: { count: 'exact'; head: true }) => CountQuery;
 };
 
 const LOCKED_ISSUE_DOCUMENT_FIELDS = new Set([
@@ -197,15 +197,46 @@ function countModulePhotoReferences(modules: AnyRow[] | null | undefined): numbe
   return (modules || []).reduce((total, module) => total + countPhotoReferences(module.data), 0);
 }
 
-async function countRows(table: string, documentId: string, extra?: (query: CountQuery) => CountQuery): Promise<number> {
-  const fromForCount = supabase.from as unknown as CountQueryFactory;
-  let query = fromForCount(table)
-    .select('*', { count: 'exact', head: true })
-    .eq('document_id', documentId);
-  if (extra) query = extra(query);
-  const { count, error } = await query;
-  if (error) throw error;
-  return count || 0;
+async function countRows(table: string, documentId: string, extra?: (query: CountQuery) => CountQuery | undefined): Promise<number | null> {
+  try {
+    const tableQuery = supabase.from(table) as unknown as CountTableQuery;
+    if (!tableQuery?.select) {
+      console.warn('[createNewVersion carry-forward audit] Count query unavailable:', { table, documentId });
+      return null;
+    }
+
+    let query = tableQuery.select('*', { count: 'exact', head: true });
+    if (!query?.eq) {
+      console.warn('[createNewVersion carry-forward audit] Count query missing eq filter:', { table, documentId });
+      return null;
+    }
+
+    query = query.eq('document_id', documentId);
+    if (extra) {
+      const filteredQuery = extra(query);
+      if (!filteredQuery) {
+        console.warn('[createNewVersion carry-forward audit] Count query filter returned no query:', { table, documentId });
+        return null;
+      }
+      query = filteredQuery;
+    }
+
+    const result = await query;
+    if (!result) {
+      console.warn('[createNewVersion carry-forward audit] Count query returned no result:', { table, documentId });
+      return null;
+    }
+
+    const { count, error } = result;
+    if (error) {
+      console.warn('[createNewVersion carry-forward audit] Count query failed:', { table, documentId, error });
+      return null;
+    }
+    return count || 0;
+  } catch (countError) {
+    console.warn('[createNewVersion carry-forward audit] Count query threw (continuing):', { table, documentId, error: countError });
+    return null;
+  }
 }
 
 async function logCreateNewVersionCarryForwardAudit(params: {
@@ -217,12 +248,24 @@ async function logCreateNewVersionCarryForwardAudit(params: {
   const { sourceDocument, newDocument, sourceModules, newModules } = params;
   try {
     const [sourceActionCount, newActionCount, sourceAttachmentCount, newAttachmentCount, sourceRecommendationCount, newRecommendationCount] = await Promise.all([
-      countRows('actions', String(sourceDocument.id), (q) => q.in('status', CARRY_FORWARD_ACTION_STATUSES).is('deleted_at', null)),
-      countRows('actions', String(newDocument.id), (q) => q.in('status', CARRY_FORWARD_ACTION_STATUSES).is('deleted_at', null)),
-      countRows('attachments', String(sourceDocument.id), (q) => q.is('deleted_at', null)),
-      countRows('attachments', String(newDocument.id), (q) => q.is('deleted_at', null)),
-      countRows('re_recommendations', String(sourceDocument.id), (q) => q.in('status', CARRY_FORWARD_RECOMMENDATION_STATUSES).or('is_suppressed.is.false,is_suppressed.is.null')),
-      countRows('re_recommendations', String(newDocument.id), (q) => q.in('status', CARRY_FORWARD_RECOMMENDATION_STATUSES).or('is_suppressed.is.false,is_suppressed.is.null')),
+      countRows('actions', String(sourceDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_ACTION_STATUSES);
+        return byStatus?.is?.('deleted_at', null);
+      }),
+      countRows('actions', String(newDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_ACTION_STATUSES);
+        return byStatus?.is?.('deleted_at', null);
+      }),
+      countRows('attachments', String(sourceDocument.id), (q) => q.is?.('deleted_at', null)),
+      countRows('attachments', String(newDocument.id), (q) => q.is?.('deleted_at', null)),
+      countRows('re_recommendations', String(sourceDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_RECOMMENDATION_STATUSES);
+        return byStatus?.or?.('is_suppressed.is.false,is_suppressed.is.null');
+      }),
+      countRows('re_recommendations', String(newDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_RECOMMENDATION_STATUSES);
+        return byStatus?.or?.('is_suppressed.is.false,is_suppressed.is.null');
+      }),
     ]);
 
     console.info('[createNewVersion carry-forward audit]', {

@@ -339,7 +339,7 @@ drawTableOfContents(page, font, fontBold);
     pdfDoc,
     isDraft,
     totalPages,
-    (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none',
+    document.executive_summary_mode,
     document.executive_summary_ai,
     document.executive_summary_author,
     { bold: fontBold, regular: font }

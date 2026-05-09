@@ -25,6 +25,8 @@ import {
   splitNarrativeParagraphs,
   drawNarrativeParagraphs,
   parseNarrativeBlocks,
+  addExecutiveSummaryPages,
+  resolveExecutiveSummaryMode,
   REPORT_TITLE_TO_BODY_GAP,
   } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
@@ -488,10 +490,41 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
   const tocPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   totalPages.push(tocPage);
 
-  // Add combined executive summary
+  const executiveSummaryMode = resolveExecutiveSummaryMode(
+    document.executive_summary_mode,
+    document.executive_summary_ai,
+    document.executive_summary_author
+  );
+  const hasConfiguredExecutiveSummary =
+    ((executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!String(document.executive_summary_ai || '').trim()) ||
+    ((executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!String(document.executive_summary_author || '').trim());
+
+  console.info('[FRA+DSEAR PDF] Executive summary diagnostics:', {
+    documentId: document.id,
+    requestedMode: document.executive_summary_mode,
+    resolvedMode: executiveSummaryMode,
+    aiLength: String(document.executive_summary_ai || '').trim().length,
+    authorLength: String(document.executive_summary_author || '').trim().length,
+    addedToRenderTree: hasConfiguredExecutiveSummary,
+  });
+
+  if (hasConfiguredExecutiveSummary) {
+    recordToc('Executive Summary');
+    addExecutiveSummaryPages(
+      pdfDoc,
+      isDraft,
+      totalPages,
+      executiveSummaryMode,
+      document.executive_summary_ai,
+      document.executive_summary_author,
+      { bold: fontBold, regular: font }
+    );
+  }
+
+  // Add combined risk snapshot
   page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   totalPages.push(page);
-  recordToc('Executive Summary');
+  recordToc(hasConfiguredExecutiveSummary ? 'Combined Risk Snapshot' : 'Executive Summary');
   yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = drawCombinedExecutiveSummary(
