@@ -645,7 +645,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const resetPassword = async (email: string) => {
-    const redirectTo = `${window.location.origin}/reset-password`;
+    const redirectTo = 'https://ezirisk.co.uk/reset-password';
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     return { error };
