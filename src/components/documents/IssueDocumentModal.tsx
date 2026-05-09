@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, AlertTriangle, CheckCircle, FileCheck, Shield, ArrowRight, Lock } from 'lucide-react';
+import { X, ArrowRight, Lock } from 'lucide-react';
 import { issueDocument, validateDocumentForIssue } from '../../utils/documentVersioning';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { supabase } from '../../lib/supabase';
 import { getModuleName } from '../../lib/modules/moduleCatalog';
 import { Button, Callout } from '../ui/DesignSystem';
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 interface IssueDocumentModalProps {
   documentId: string;
@@ -33,7 +37,7 @@ export default function IssueDocumentModal({
   const [validated, setValidated] = useState(false);
   const [issueProgress, setIssueProgress] = useState<string>('');
   const [documentVersion, setDocumentVersion] = useState<number>(1);
-  const [baseDocumentId, setBaseDocumentId] = useState<string | null>(null);
+  const [partialSuccessWarning, setPartialSuccessWarning] = useState<string>('');
 
   const navigate = useNavigate();
 
@@ -61,7 +65,6 @@ export default function IssueDocumentModal({
 
       if (doc) {
         setDocumentVersion(doc.version_number);
-        setBaseDocumentId(doc.base_document_id || documentId);
       }
 
       const result = await validateDocumentForIssue(documentId, organisationId);
@@ -116,6 +119,7 @@ export default function IssueDocumentModal({
   const handleIssue = async () => {
     setIsIssuing(true);
     setIssueProgress('Preparing to issue document...');
+    setPartialSuccessWarning('');
 
     try {
       console.log('[Issue] Starting issue process for document:', documentId);
@@ -146,11 +150,14 @@ export default function IssueDocumentModal({
 
       if (issueResult.success) {
         console.log('[Issue] Document issued successfully');
+        if (issueResult.warning || issueResult.postIssueWarning) {
+          setPartialSuccessWarning(issueResult.warning || issueResult.postIssueWarning || 'Document issued with a post-processing warning.');
+        }
         setIssueProgress('Generating locked PDF...');
 
         // Call generate-issued-pdf edge function to get signed URL
         try {
-          console.log('[generate-issued-pdf] sending survey_report_id', documentId);
+          console.log('[generate-issued-pdf] requesting signed URL for document_id', documentId);
 
           const { data: sessionData } = await supabase.auth.getSession();
           const accessToken = sessionData.session?.access_token;
@@ -169,7 +176,7 @@ export default function IssueDocumentModal({
               'apikey': anonKey,
               'Authorization': `Bearer ${accessToken}`,
             },
-            body: JSON.stringify({ survey_report_id: documentId }),
+            body: JSON.stringify({ document_id: documentId }),
           });
 
           const respJson = await pdfResp.json().catch(() => null);
@@ -183,12 +190,14 @@ export default function IssueDocumentModal({
           if (respJson?.signed_url) {
             window.open(respJson.signed_url, '_blank', 'noopener,noreferrer');
           }
-        } catch (pdfError) {
-          console.warn('[Issue] Failed to generate PDF (non-fatal):', pdfError);
-          // Don't fail the entire issue process if PDF generation fails
+        } catch (pdfError: unknown) {
+          console.warn('[Issue] Failed to retrieve locked PDF signed URL (non-fatal):', pdfError);
+          setPartialSuccessWarning(
+            `Document issued successfully, but the issued PDF could not be opened automatically: ${getErrorMessage(pdfError, 'PDF post-processing failed')}. Reloading the issued document state.`
+          );
         }
 
-        setIssueProgress('Complete!');
+        setIssueProgress(issueResult.partialSuccess ? 'Issued with warning' : 'Complete!');
         setTimeout(() => {
           try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
           try { onClose(); } catch (e) { console.warn('onClose failed', e); }
@@ -197,9 +206,31 @@ export default function IssueDocumentModal({
       } else {
         throw new Error(issueResult.error || 'Failed to issue document');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('[Issue] Error issuing document:', error);
-      alert(error.message || 'Failed to issue document. Document remains in draft.');
+
+      const { data: currentDocument } = await supabase
+        .from('documents')
+        .select('status, issue_status, locked_pdf_path, pdf_generation_error')
+        .eq('id', documentId)
+        .eq('organisation_id', organisationId)
+        .maybeSingle();
+
+      if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+        const warning = currentDocument.locked_pdf_path
+          ? 'Document issued successfully, but a post-issue step failed. Reloading the issued document state.'
+          : 'Document issued successfully, but the locked PDF is not available yet. Reloading the issued document state.';
+        setPartialSuccessWarning(currentDocument.pdf_generation_error ? `${warning} ${currentDocument.pdf_generation_error}` : warning);
+        setIssueProgress('Issued with warning');
+        try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
+        setTimeout(() => {
+          try { onClose(); } catch (e) { console.warn('onClose failed', e); }
+          navigate(`/documents/${documentId}/workspace`, { replace: true });
+        }, 1200);
+        return;
+      }
+
+      alert(getErrorMessage(error, 'Failed to issue document. Document remains in draft.'));
       setIssueProgress('');
     } finally {
       console.log('[Issue] Issue process complete, resetting UI state');
@@ -221,6 +252,12 @@ export default function IssueDocumentModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {partialSuccessWarning && (
+            <Callout variant="warning" className="mb-6">
+              <strong>Document issued with a warning.</strong> {partialSuccessWarning}
+            </Callout>
+          )}
+
           <div className="mb-6">
             <h3 className="font-semibold text-neutral-900 mb-2">{documentTitle}</h3>
             <p className="text-sm text-neutral-600 mb-4">

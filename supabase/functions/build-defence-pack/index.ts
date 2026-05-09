@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
     const zip = new JSZip();
 
     const { data: pdfData, error: pdfError } = await adminSupabase.storage
-      .from("locked-pdfs")
+      .from("document-pdfs")
       .download(doc.locked_pdf_path);
 
     if (pdfError || !pdfData) {
