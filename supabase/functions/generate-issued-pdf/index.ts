@@ -82,7 +82,16 @@ Deno.serve(async (req: Request) => {
       version_number,
       pdf_base64,
       size_bytes,
+      mode,
+      pdf_payload,
     } = body;
+    const pdfBase64 = typeof pdf_base64 === 'string'
+      ? pdf_base64
+      : typeof pdf_payload === 'string'
+        ? pdf_payload
+        : typeof pdf_payload?.pdf_base64 === 'string'
+          ? pdf_payload.pdf_base64
+          : null;
     const targetId = survey_report_id || document_id;
 
     if (!targetId) {
@@ -110,7 +119,21 @@ Deno.serve(async (req: Request) => {
 
       let pdfPath = document.locked_pdf_path;
 
-      if (pdf_base64) {
+      const isPreIssueMode = mode === 'pre_issue';
+
+      if (pdfBase64 && document.issue_status === 'draft' && !isPreIssueMode) {
+        return jsonResponse({ error: 'Draft document PDF generation is only allowed in pre_issue mode', current_status: document.issue_status }, 400);
+      }
+
+      if (pdfBase64 && isPreIssueMode && document.issue_status !== 'draft') {
+        return jsonResponse({ error: 'pre_issue PDF generation is only valid for draft documents', current_status: document.issue_status }, 400);
+      }
+
+      if (!pdfBase64 && document.issue_status === 'draft') {
+        return jsonResponse({ error: 'Draft document locked PDF retrieval is only available during pre_issue PDF generation' }, 400);
+      }
+
+      if (pdfBase64) {
         const canWriteLockedPdf = await hasPdfWriteAccess(userSupabase, document.organisation_id, user.id);
         if (!canWriteLockedPdf) {
           return jsonResponse({ error: 'Access denied' }, 403);
@@ -120,7 +143,7 @@ Deno.serve(async (req: Request) => {
           return jsonResponse({ error: 'Locked PDF already exists for this issued document', pdf_path: document.locked_pdf_path }, 409);
         }
 
-        const pdfBytes = decodeBase64Pdf(pdf_base64);
+        const pdfBytes = decodeBase64Pdf(pdfBase64);
         if (pdfBytes.length === 0) {
           return jsonResponse({ error: 'PDF payload is empty' }, 400);
         }
