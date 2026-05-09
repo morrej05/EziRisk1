@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { resolveDocumentIdentity } from '../lib/documents/documentIdentity';
 
 export const RE_RECOMMENDATION_STATUSES = ['Open', 'In Progress', 'Completed'] as const;
 export const RE_RECOMMENDATION_PRIORITIES = ['High', 'Medium', 'Low'] as const;
@@ -40,15 +41,25 @@ interface RecommendationDbRow {
     id: string;
     title: string;
     organisation_id: string;
-    organisations?: {
-      name: string | null;
-    } | null;
+    responsible_person?: string | null;
+    scope_description?: string | null;
+    meta?: Record<string, unknown> | null;
+    module_instances?: Array<{
+      module_key?: string | null;
+      site_id?: string | null;
+      building_id?: string | null;
+      data?: Record<string, unknown> | null;
+    }> | null;
+    organisations?: { name: string | null } | Array<{ name: string | null }> | null;
   };
 }
 
 function mapDbRowToRegisterRow(row: RecommendationDbRow): RecommendationsRegisterRow {
-  const siteName = row.documents?.title || 'Unknown site';
-  const clientName = row.documents?.organisations?.name || 'Unassigned client';
+  const identity = row.documents
+    ? resolveDocumentIdentity(row.documents, row.documents.module_instances || [])
+    : null;
+  const siteName = identity?.siteName || row.documents?.title || 'Unknown site';
+  const clientName = identity?.clientName || (Array.isArray(row.documents?.organisations) ? row.documents?.organisations[0]?.name : row.documents?.organisations?.name) || 'Unassigned client';
 
   return {
     id: row.id,
@@ -106,6 +117,10 @@ export function useRecommendationsRegister() {
               id,
               title,
               organisation_id,
+              responsible_person,
+              scope_description,
+              meta,
+              module_instances(module_key, site_id, building_id, data),
               organisations(name)
             )
           `)

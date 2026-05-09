@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { resolveDocumentIdentity } from '../lib/documents/documentIdentity';
 
 export interface Document {
   id: string;
   organisation_id: string;
-  document_type: 'FRA' | 'FSD' | 'DSEAR';
+  document_type: 'FRA' | 'FSD' | 'DSEAR' | 'RE';
   title: string;
   status: 'draft' | 'issued' | 'superseded';
   issue_status: 'draft' | 'issued' | 'superseded';
@@ -13,13 +14,22 @@ export interface Document {
   created_at: string;
   updated_at: string;
   assessor_name: string | null;
+  site_id?: string | null;
+  building_id?: string | null;
+  responsible_person?: string | null;
+  scope_description?: string | null;
   meta?: {
-    client?: { name?: string | null } | null;
-    site?: { name?: string | null } | null;
+    client?: { id?: string | null; name?: string | null } | null;
+    site?: { id?: string | null; name?: string | null } | null;
+    [key: string]: unknown;
   } | null;
-  organisations?: {
-    name: string;
-  };
+  module_instances?: Array<{
+    module_key?: string | null;
+    site_id?: string | null;
+    building_id?: string | null;
+    data?: Record<string, unknown> | null;
+  }> | null;
+  organisations?: { name: string | null } | Array<{ name: string | null }> | null;
 }
 
 export interface AssessmentViewModel {
@@ -36,16 +46,16 @@ export interface AssessmentViewModel {
 }
 
 function getClientDisplayName(document: Document): string {
-  const metaClientName = document.meta?.client?.name?.trim();
-  if (metaClientName) {
-    return metaClientName;
+  const identity = resolveDocumentIdentity(document, document.module_instances || []);
+  if (identity.clientName) {
+    return identity.clientName;
   }
 
-  const rawOrgName = document.organisations?.name?.trim();
+  const rawOrgName = (Array.isArray(document.organisations) ? document.organisations[0]?.name : document.organisations?.name)?.trim();
   const looksLikeSignupPlaceholder = !!rawOrgName && /@.+organisation$/i.test(rawOrgName);
 
   // V1: organisation names are account-level and may be email-derived placeholders,
-  // so don't use them as the runtime client label in assessment tables.
+  // so don't use them as the runtime client label in assessment tables unless no document identity exists.
   if (!rawOrgName || looksLikeSignupPlaceholder) {
     return 'Client not set';
   }
@@ -58,14 +68,17 @@ function mapDocumentToViewModel(document: Document): AssessmentViewModel {
     FRA: { display: 'FRA', discipline: 'Fire' },
     FSD: { display: 'Fire Strategy', discipline: 'Fire' },
     DSEAR: { display: 'DSEAR', discipline: 'Risk Engineering' },
+    RE: { display: 'Risk Engineering', discipline: 'Risk Engineering' },
   };
 
   const typeInfo = typeMap[document.document_type] || { display: document.document_type, discipline: 'Fire' };
 
+  const identity = resolveDocumentIdentity(document, document.module_instances || []);
+
   return {
     id: document.id,
     clientName: getClientDisplayName(document),
-    siteName: document.meta?.site?.name?.trim() || document.title || 'Site not set',
+    siteName: identity.siteName || document.title || 'Site not set',
     discipline: typeInfo.discipline,
     type: typeInfo.display,
     status: document.status.charAt(0).toUpperCase() + document.status.slice(1),
@@ -113,7 +126,12 @@ export function useAssessments(options: UseAssessmentsOptions = {}) {
             updated_at,
             assessor_name,
             issue_status,
+            site_id,
+            building_id,
+            responsible_person,
+            scope_description,
             meta,
+            module_instances (module_key, site_id, building_id, data),
             organisations (name)
           `)
           .eq('organisation_id', organisation.id)

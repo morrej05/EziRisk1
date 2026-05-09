@@ -3,6 +3,7 @@ import { canIssueDocument } from './approvalWorkflow';
 import { generateChangeSummary, createInitialIssueSummary } from './changeSummary';
 import { carryForwardEvidence } from './evidenceManagement';
 import { getMissingRequiredRatings } from '../lib/re/scoring/riskEngineeringHelpers';
+import { ensureDocumentIdentitySnapshot, mergeIdentityIntoMeta, resolveDocumentIdentity } from '../lib/documents/documentIdentity';
 
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -43,6 +44,21 @@ export interface CreateNewVersionResult {
 
 const EXISTING_DRAFT_VERSION_MESSAGE =
   'A draft version already exists and must be issued or deleted before creating another version.';
+
+type ModuleValidationRow = {
+  module_key: string;
+  data: Record<string, unknown> | null;
+  assessor_notes: string | null;
+  completed_at: string | null;
+};
+
+type DocumentSectionGrades = {
+  section_grades?: Record<string, unknown> | null;
+};
+
+type MaybeErrorWithMessage = {
+  message?: string;
+};
 
 function isDuplicateDraftVersionError(error: unknown): boolean {
   const maybeError = error as { code?: string; message?: string; details?: string };
@@ -116,10 +132,10 @@ export async function validateDocumentForIssue(
         'FRA_90_SIGNIFICANT_FINDINGS'
       ];
 
-      const isEmptyObject = (v: any) =>
+      const isEmptyObject = (v: unknown) =>
         !v || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
 
-      const moduleHasData = (m: any) => {
+      const moduleHasData = (m: ModuleValidationRow) => {
         const hasJson = !isEmptyObject(m.data);
         const hasNotes =
           typeof m.assessor_notes === 'string' &&
@@ -171,7 +187,7 @@ export async function validateDocumentForIssue(
         } else {
           const missing = getMissingRequiredRatings(
             riskEngineeringModule.data || {},
-            (document as any).section_grades || {}
+            (document as DocumentSectionGrades).section_grades || {}
           );
 
           if (missing.hasMissing) {
@@ -206,9 +222,10 @@ export async function validateDocumentForIssue(
     }
 
     return { valid: errors.length === 0, errors, warnings: warnings.length > 0 ? warnings : undefined };
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const maybeError = e as MaybeErrorWithMessage;
     const msg =
-      e?.message ||
+      maybeError.message ||
       (typeof e === 'string' ? e : 'Unknown error');
     console.error('Error validating document:', e);
     return { valid: false, errors: [`VALIDATION THREW: ${msg}`] };
@@ -245,6 +262,8 @@ export async function issueDocument(documentId: string, userId: string, organisa
       return { success: false, error: validation.errors.join(', ') };
     }
 
+    await ensureDocumentIdentitySnapshot(documentId, organisationId);
+
     const { data: document, error: docError } = await supabase
       .from('documents')
       .select('base_document_id, locked_pdf_path')
@@ -260,20 +279,20 @@ export async function issueDocument(documentId: string, userId: string, organisa
       };
     }
 
-    const { data: previousIssued, error: prevErr } = await supabase
+    const { data: previousIssuedVersions, error: prevErr } = await supabase
       .from('documents')
-      .select('id')
+      .select('id, version_number')
       .eq('base_document_id', document.base_document_id)
       .eq('issue_status', 'issued')
       .neq('id', documentId)
-      .order('version_number', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .order('version_number', { ascending: false });
 
     if (prevErr) throw prevErr;
 
-    // Supersede previous issued document FIRST (DB requires this)
-    if (previousIssued?.id) {
+    const previousIssued = previousIssuedVersions?.[0] ?? null;
+
+    // Supersede every previously issued document in the chain before issuing the new latest version.
+    if (previousIssuedVersions && previousIssuedVersions.length > 0) {
       const { error: supersedePrevError } = await supabase
         .from('documents')
         .update({
@@ -283,7 +302,9 @@ export async function issueDocument(documentId: string, userId: string, organisa
           superseded_date: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', previousIssued.id);
+        .eq('base_document_id', document.base_document_id)
+        .eq('issue_status', 'issued')
+        .neq('id', documentId);
 
       if (supersedePrevError) throw supersedePrevError;
     }
@@ -373,8 +394,12 @@ export async function createNewVersion(
         organisation_id,
         base_document_id,
         version_number,
+        site_id,
+        building_id,
         title,
         document_type,
+        responsible_person,
+        meta,
         assessor_name,
         assessor_role,
         display_author_name,
@@ -389,7 +414,9 @@ export async function createNewVersion(
         limitations_assumptions,
         standards_selected,
         enabled_modules,
-        jurisdiction
+        jurisdiction,
+        executive_summary_mode,
+        approval_status
       `)
       .eq('base_document_id', baseDocumentId)
       .eq('issue_status', 'issued')
@@ -427,13 +454,19 @@ export async function createNewVersion(
     const newVersionNumber = currentIssued.version_number + 1;
 
     const currentDate = new Date().toISOString().slice(0, 10);
+    const sourceIdentity = resolveDocumentIdentity(currentIssued);
+    const carriedMeta = mergeIdentityIntoMeta(currentIssued.meta as Record<string, unknown> | null, sourceIdentity);
 
     const newDocData = {
-      organisation_id: organisationId,
+      organisation_id: currentIssued.organisation_id || organisationId,
       base_document_id: baseDocumentId,
       version_number: newVersionNumber,
+      site_id: currentIssued.site_id ?? sourceIdentity.siteId,
+      building_id: currentIssued.building_id ?? sourceIdentity.buildingId,
       title: currentIssued.title,
       document_type: currentIssued.document_type,
+      responsible_person: currentIssued.responsible_person ?? sourceIdentity.clientName,
+      meta: carriedMeta,
       assessor_name: currentIssued.assessor_name,
       assessor_role: currentIssued.assessor_role,
       display_author_name: currentIssued.display_author_name ?? currentIssued.assessor_name,
@@ -471,7 +504,7 @@ export async function createNewVersion(
 
     const { data: modules, error: moduleError } = await supabase
       .from('module_instances')
-      .select('id, module_key, module_scope, data, outcome, assessor_notes, completed_at')
+      .select('id, module_key, module_scope, site_id, building_id, data, outcome, assessor_notes, completed_at')
       .eq('document_id', currentIssued.id)
       .eq('organisation_id', organisationId);
 
@@ -483,6 +516,8 @@ export async function createNewVersion(
         document_id: newDocument.id,
         module_key: m.module_key,
         module_scope: m.module_scope,
+        site_id: m.site_id,
+        building_id: m.building_id,
         data: m.data,
         outcome: m.outcome,
         assessor_notes: m.assessor_notes,
@@ -600,12 +635,12 @@ export async function createNewVersion(
       newDocumentId: newDocument.id,
       newVersionNumber: newVersionNumber,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating new version:', error);
     if (isDuplicateDraftVersionError(error)) {
       return { success: false, error: EXISTING_DRAFT_VERSION_MESSAGE };
     }
-    const errorMessage = error?.message || 'Failed to create new version';
+    const errorMessage = (error as MaybeErrorWithMessage)?.message || 'Failed to create new version';
     return { success: false, error: errorMessage };
   }
 }
