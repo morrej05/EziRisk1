@@ -1,4 +1,4 @@
-import { PDFDocument, PDFPage } from 'pdf-lib';
+import { PDFDocument, PDFImage, PDFPage, PDFFont } from 'pdf-lib';
 import { supabase } from '../supabase';
 import {
   PAGE_WIDTH,
@@ -9,6 +9,7 @@ import {
   loadPdfLogoWithFallback,
 } from './pdfUtils';
 import { resolveOrganisationLogo } from './logoResolver';
+import { stripSimpleMarkdown } from '../../utils/markdownDisplay';
 // Enable PDF image logos via env var (default: true)
 // Set VITE_PDF_IMAGE_LOGOS=false to disable for debugging
 const ENABLE_PDF_IMAGE_LOGOS = (import.meta.env.VITE_PDF_IMAGE_LOGOS ?? 'true') === 'true';
@@ -47,8 +48,8 @@ interface IssuedPdfOptions {
     site?: string;
   } | null;
   fonts: {
-    bold: any;
-    regular: any;
+    bold: PDFFont;
+    regular: PDFFont;
   };
 }
 
@@ -60,7 +61,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
   const { pdfDoc, document, organisation, client, fonts } = options;
   const preferredOrganisationLogoPath = organisation.branding_logo_path?.trim() || null;
 
-  let logoData: { image: any; width: number; height: number } | null = null;
+  let logoData: { image: PDFImage; width: number; height: number } | null = null;
 
   // Try to load organization logo with timeout
   if (ENABLE_PDF_IMAGE_LOGOS) {
@@ -118,7 +119,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
     try {
       const { data: summaries, error } = await supabase
         .from('document_change_summaries')
-        .select('version_number, created_at, summary_text, generated_by')
+        .select('version_number, created_at, summary_text, summary_markdown, generated_by')
         .eq('base_document_id', document.base_document_id)
         .order('version_number', { ascending: false });
 
@@ -128,7 +129,14 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
 
       if (summaries && summaries.length > 0) {
         // Collect unique user IDs
-        const userIds = [...new Set(summaries.map((s: any) => s.generated_by).filter(Boolean))];
+        const typedSummaries = summaries as Array<{
+          version_number: number;
+          created_at: string;
+          summary_text: string | null;
+          summary_markdown: string | null;
+          generated_by: string | null;
+        }>;
+        const userIds = [...new Set(typedSummaries.map((s) => s.generated_by).filter(Boolean))];
 
         // Fetch user names in a separate query
         const userNamesMap: Record<string, string> = {};
@@ -145,10 +153,10 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
           }
         }
 
-        revisionHistory = summaries.map((s: any) => ({
+        revisionHistory = typedSummaries.map((s) => ({
           version_number: s.version_number,
           issue_date: s.created_at,
-          change_summary: s.summary_text,
+          change_summary: stripSimpleMarkdown(s.summary_text || s.summary_markdown),
           issued_by_name: s.generated_by ? userNamesMap[s.generated_by] || null : null,
         }));
       }

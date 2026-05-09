@@ -1,9 +1,14 @@
 import { supabase } from '../lib/supabase';
+import { stripSimpleMarkdown } from './markdownDisplay';
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
+}
+
+export function getChangeSummaryErrorMessage(error: unknown, fallback: string): string {
+  return getErrorMessage(error, fallback);
 }
 
 interface SummaryAction {
@@ -72,6 +77,14 @@ export interface ChangeSummaryViewRow {
   created_by: string | null;
   full_name: string | null;
   summary_text: string | null;
+  summary_markdown?: string | null;
+  new_actions_count: number;
+  closed_actions_count: number;
+  outstanding_actions_count: number;
+  new_actions: SummaryAction[];
+  closed_actions: SummaryAction[];
+  has_material_changes: boolean;
+  visible_to_client: boolean;
 }
 
 /**
@@ -225,7 +238,15 @@ export async function getChangeSummary(documentId: string): Promise<ChangeSummar
         base_document_id,
         created_at,
         generated_by,
-        summary_text
+        summary_text,
+        summary_markdown,
+        new_actions_count,
+        closed_actions_count,
+        outstanding_actions_count,
+        new_actions,
+        closed_actions,
+        has_material_changes,
+        visible_to_client
       `)
       .eq('base_document_id', doc.base_document_id)
       .order('created_at', { ascending: false })
@@ -269,6 +290,14 @@ export async function getChangeSummary(documentId: string): Promise<ChangeSummar
       created_by: data.generated_by,
       full_name: authorName,
       summary_text: data.summary_text,
+      summary_markdown: data.summary_markdown,
+      new_actions_count: data.new_actions_count || 0,
+      closed_actions_count: data.closed_actions_count || 0,
+      outstanding_actions_count: data.outstanding_actions_count || 0,
+      new_actions: data.new_actions || [],
+      closed_actions: data.closed_actions || [],
+      has_material_changes: data.has_material_changes || false,
+      visible_to_client: data.visible_to_client || false,
     };
   } catch (error: unknown) {
     console.error('[getChangeSummary] Unhandled error:', error);
@@ -328,6 +357,10 @@ export function formatChangeSummaryText(summary: ChangeSummaryTextInput): string
   }
 
   return lines.join('\n');
+}
+
+export function formatChangeSummaryPlainText(summaryText: string | null | undefined): string {
+  return stripSimpleMarkdown(summaryText);
 }
 
 export function getChangeSummaryStats(summary: ChangeSummaryStatsInput) {
