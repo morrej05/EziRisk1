@@ -69,6 +69,71 @@ export interface ChangeSummary {
  * Row returned from the public.change_summaries VIEW
  * (This is what the ChangeSummaryPanel needs.)
  */
+
+export const ISSUED_REVISION_STATUSES = ['issued', 'superseded'] as const;
+
+type IssuedRevisionStatus = (typeof ISSUED_REVISION_STATUSES)[number];
+
+export interface IssuedRevisionLookupRow {
+  id: string;
+  base_document_id: string;
+  version_number: number;
+  issue_status: IssuedRevisionStatus;
+  status?: string | null;
+  issue_date?: string | null;
+  created_at?: string | null;
+}
+
+export async function findPreviousIssuedRevision(
+  current: { id: string; base_document_id: string | null; version_number: number | null },
+  context: string = 'findPreviousIssuedRevision'
+): Promise<IssuedRevisionLookupRow | null> {
+  if (!current.base_document_id || !current.version_number) {
+    console.info(`[${context}] Previous issued lookup skipped; fallback Initial issue may be required.`, {
+      reason: 'missing_base_document_id_or_version_number',
+      currentDocumentId: current.id,
+      currentBaseDocumentId: current.base_document_id,
+      currentVersion: current.version_number,
+    });
+    return null;
+  }
+
+  console.info(`[${context}] Looking up previous issued revision.`, {
+    currentDocumentId: current.id,
+    currentBaseDocumentId: current.base_document_id,
+    currentVersion: current.version_number,
+    rules: 'same base_document_id, exclude current row, issued/superseded only, version_number < current, order version_number desc',
+  });
+
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, base_document_id, version_number, issue_status, status, issue_date, created_at')
+    .eq('base_document_id', current.base_document_id)
+    .neq('id', current.id)
+    .in('issue_status', [...ISSUED_REVISION_STATUSES])
+    .lt('version_number', current.version_number)
+    .is('deleted_at', null)
+    .not('status', 'in', '(archived,deleted)')
+    .order('version_number', { ascending: false })
+    .order('issue_date', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  console.info(`[${context}] Previous issued revision selected.`, {
+    currentDocumentId: current.id,
+    currentVersion: current.version_number,
+    previousDocumentId: data?.id ?? null,
+    previousVersion: data?.version_number ?? null,
+    previousIssueStatus: data?.issue_status ?? null,
+    fallbackInitialIssueReason: data ? null : 'no_prior_issued_or_superseded_revision_in_chain',
+  });
+
+  return (data as IssuedRevisionLookupRow | null) ?? null;
+}
+
 export interface ChangeSummaryViewRow {
   id: string;
   base_document_id: string;
@@ -99,11 +164,42 @@ export async function createInitialIssueSummary(
   try {
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('organisation_id, base_document_id, version_number')
+      .select('id, organisation_id, base_document_id, version_number, issue_status, status')
       .eq('id', documentId)
       .single();
 
     if (docError) throw docError;
+
+    console.info('[createInitialIssueSummary] Current version audit.', {
+      currentDocumentId: documentId,
+      baseDocumentId: document.base_document_id,
+      currentVersion: document.version_number,
+      issueStatus: document.issue_status,
+      status: document.status,
+    });
+
+    const previousIssued = await findPreviousIssuedRevision(
+      { id: documentId, base_document_id: document.base_document_id, version_number: document.version_number },
+      'createInitialIssueSummary'
+    );
+
+    if (previousIssued) {
+      console.info('[createInitialIssueSummary] Summary generation mode.', {
+        currentDocumentId: documentId,
+        currentVersion: document.version_number,
+        mode: 'changes_since_last_issue',
+        previousDocumentId: previousIssued.id,
+        previousVersion: previousIssued.version_number,
+      });
+      return await generateChangeSummary(documentId, previousIssued.id, userId);
+    }
+
+    console.info('[createInitialIssueSummary] Summary generation mode.', {
+      currentDocumentId: documentId,
+      currentVersion: document.version_number,
+      mode: 'initial_issue',
+      fallbackInitialIssueReason: 'no_prior_issued_or_superseded_revision_in_chain',
+    });
 
     const { data: actions, error: actionsError } = await supabase
       .from('actions')
@@ -136,7 +232,7 @@ export async function createInitialIssueSummary(
       reopened_actions: [],
       risk_rating_changes: [],
       material_field_changes: [],
-      summary_text: null,
+      summary_text: 'Initial issue',
       has_material_changes: false,
       visible_to_client: true,
       generated_by: userId,
@@ -240,6 +336,8 @@ export async function getChangeSummary(documentId: string): Promise<ChangeSummar
       .select(`
         id,
         base_document_id,
+        document_id,
+        version_number,
         created_at,
         generated_by,
         summary_text,
@@ -253,6 +351,7 @@ export async function getChangeSummary(documentId: string): Promise<ChangeSummar
         visible_to_client
       `)
       .eq('base_document_id', doc.base_document_id)
+      .eq('document_id', documentId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

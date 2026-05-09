@@ -36,6 +36,9 @@ interface IssuedPdfOptions {
     issue_date: string | null;
     issue_status: 'draft' | 'issued' | 'superseded';
     assessor_name: string | null;
+    issued_by?: string | null;
+    issued_author_name_snapshot?: string | null;
+    author_name_snapshot?: string | null;
     base_document_id?: string;
   };
   organisation: {
@@ -117,28 +120,75 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
 
   if (document.base_document_id) {
     try {
-      const { data: summaries, error } = await supabase
-        .from('document_change_summaries')
-        .select('version_number, created_at, summary_text, summary_markdown, generated_by')
-        .eq('base_document_id', document.base_document_id)
-        .order('version_number', { ascending: false });
+      console.info('[Issued PDF] Loading revision history source rows.', {
+        currentDocumentId: document.id,
+        baseDocumentId: document.base_document_id,
+        currentVersion: document.version_number,
+        rules: 'issued/superseded documents only; drafts and archived/deleted duplicates ignored',
+      });
 
-      if (error) {
-        console.error('[Change summaries] load error', error);
+      const { data: issuedVersions, error: versionsError } = await supabase
+        .from('documents')
+        .select('id, version_number, issue_date, issued_by, issued_author_name_snapshot, author_name_snapshot, assessor_name, created_at, issue_status')
+        .eq('base_document_id', document.base_document_id)
+        .in('issue_status', ['issued', 'superseded'])
+        .is('deleted_at', null)
+        .not('status', 'in', '(archived,deleted)')
+        .order('version_number', { ascending: false })
+        .order('issue_date', { ascending: false, nullsFirst: false });
+
+      if (versionsError) {
+        console.error('[Revision history] issued version load error', versionsError);
       }
 
-      if (summaries && summaries.length > 0) {
-        // Collect unique user IDs
-        const typedSummaries = summaries as Array<{
+      const typedVersions = (issuedVersions || []) as Array<{
+        id: string;
+        version_number: number;
+        issue_date: string | null;
+        issued_by: string | null;
+        issued_author_name_snapshot: string | null;
+        author_name_snapshot: string | null;
+        assessor_name: string | null;
+        created_at: string | null;
+        issue_status: string;
+      }>;
+
+      if (typedVersions.length > 0) {
+        const { data: summaries, error: summariesError } = await supabase
+          .from('document_change_summaries')
+          .select('document_id, version_number, created_at, summary_text, summary_markdown, generated_by, previous_document_id')
+          .eq('base_document_id', document.base_document_id)
+          .in('document_id', typedVersions.map((v) => v.id));
+
+        if (summariesError) {
+          console.error('[Change summaries] load error', summariesError);
+        }
+
+        const typedSummaries = (summaries || []) as Array<{
+          document_id: string;
           version_number: number;
           created_at: string;
           summary_text: string | null;
           summary_markdown: string | null;
           generated_by: string | null;
+          previous_document_id: string | null;
         }>;
-        const userIds = [...new Set(typedSummaries.map((s) => s.generated_by).filter(Boolean))];
 
-        // Fetch user names in a separate query
+        const latestSummaryByDocumentId = new Map<string, (typeof typedSummaries)[number]>();
+        for (const summary of typedSummaries) {
+          const existing = latestSummaryByDocumentId.get(summary.document_id);
+          if (!existing || String(summary.created_at || '') > String(existing.created_at || '')) {
+            latestSummaryByDocumentId.set(summary.document_id, summary);
+          }
+        }
+
+        const userIds = [
+          ...new Set([
+            ...typedVersions.map((v) => v.issued_by),
+            ...typedSummaries.map((s) => s.generated_by),
+          ].filter(Boolean)),
+        ];
+
         const userNamesMap: Record<string, string> = {};
         if (userIds.length > 0) {
           const { data: profiles } = await supabase
@@ -153,12 +203,36 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
           }
         }
 
-        revisionHistory = typedSummaries.map((s) => ({
-          version_number: s.version_number,
-          issue_date: s.created_at,
-          change_summary: stripSimpleMarkdown(s.summary_text || s.summary_markdown),
-          issued_by_name: s.generated_by ? userNamesMap[s.generated_by] || null : null,
-        }));
+        const firstIssuedVersion = Math.min(...typedVersions.map((v) => v.version_number));
+
+        revisionHistory = typedVersions.map((v) => {
+          const summary = latestSummaryByDocumentId.get(v.id);
+          const summaryText = stripSimpleMarkdown(summary?.summary_text || summary?.summary_markdown);
+          const fallbackSummary = v.version_number === firstIssuedVersion ? 'Initial issue' : 'Changes Since Last Issue';
+
+          if (!summaryText) {
+            console.info('[Issued PDF] Revision history summary fallback selected.', {
+              documentId: v.id,
+              versionNumber: v.version_number,
+              mode: fallbackSummary,
+              reason: v.version_number === firstIssuedVersion
+                ? 'first_issued_document_in_base_document_id_chain'
+                : 'missing_change_summary_for_later_issued_version',
+            });
+          }
+
+          return {
+            version_number: v.version_number,
+            issue_date: v.issue_date || v.created_at || '',
+            change_summary: summaryText || fallbackSummary,
+            issued_by_name:
+              (v.issued_by ? userNamesMap[v.issued_by] : null) ||
+              v.issued_author_name_snapshot ||
+              v.author_name_snapshot ||
+              v.assessor_name ||
+              (summary?.generated_by ? userNamesMap[summary.generated_by] || null : null),
+          };
+        });
       }
     } catch (error) {
       console.warn('[Issued PDF] Failed to load revision history:', error);
