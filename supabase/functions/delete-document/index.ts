@@ -145,13 +145,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Perform soft delete
+    // Perform soft delete and move draft documents out of the active draft issue lifecycle.
+    const archivePatch: Record<string, string> = {
+      deleted_at: new Date().toISOString(),
+      deleted_by: user.id,
+    };
+
+    if (document.issue_status === 'draft') {
+      archivePatch.issue_status = 'archived';
+      archivePatch.status = 'archived';
+    }
+
     const { error: updateError } = await supabase
       .from('documents')
-      .update({
-        deleted_at: new Date().toISOString(),
-        deleted_by: user.id,
-      })
+      .update(archivePatch)
       .eq('id', document_id);
 
     if (updateError) {

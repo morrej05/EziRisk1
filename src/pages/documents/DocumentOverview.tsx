@@ -740,12 +740,15 @@ const handleDownloadDefencePack = async () => {
         return;
       }
 
-      // Soft delete: set deleted_at and deleted_by
+      // Soft delete and move the issue lifecycle out of the active draft state so archived drafts do not block new versions.
+      const archivedAt = new Date().toISOString();
       const { error } = await supabase
         .from('documents')
         .update({
-          deleted_at: new Date().toISOString(),
-          deleted_by: user.id
+          deleted_at: archivedAt,
+          deleted_by: user.id,
+          issue_status: 'archived',
+          status: 'archived'
         })
         .eq('id', id)
         .eq('organisation_id', organisation.id)
