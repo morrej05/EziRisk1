@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { X, AlertTriangle, Copy } from 'lucide-react';
 import { createNewVersion } from '../../utils/documentVersioning';
 
@@ -23,13 +23,18 @@ export default function CreateNewVersionModal({
 }: CreateNewVersionModalProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [carryForwardEvidence, setCarryForwardEvidence] = useState(true);
+  const createInFlightRef = useRef(false);
 
   const handleCreateNewVersion = async () => {
+    if (createInFlightRef.current) return;
+
+    createInFlightRef.current = true;
     setIsCreating(true);
     try {
       const result = await createNewVersion(baseDocumentId, userId, organisationId, carryForwardEvidence);
       if (result.success && result.newDocumentId) {
-        onSuccess(result.newDocumentId, result.newVersionNumber);
+        onClose();
+        onSuccess(result.newDocumentId, result.newVersionNumber ?? newVersionNumber);
       } else {
         alert(result.error || 'Failed to create new version');
       }
@@ -37,6 +42,7 @@ export default function CreateNewVersionModal({
       console.error('Error creating new version:', error);
       alert('Failed to create new version');
     } finally {
+      createInFlightRef.current = false;
       setIsCreating(false);
     }
   };
@@ -86,6 +92,7 @@ export default function CreateNewVersionModal({
                 type="checkbox"
                 checked={carryForwardEvidence}
                 onChange={(e) => setCarryForwardEvidence(e.target.checked)}
+                disabled={isCreating}
                 className="mt-0.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
               />
               <div>
