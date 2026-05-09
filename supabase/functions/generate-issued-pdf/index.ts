@@ -84,7 +84,18 @@ Deno.serve(async (req: Request) => {
       size_bytes,
       mode,
       pdf_payload,
+      pdf_payload_summary_keys,
     } = body;
+
+    console.info('[generate-issued-pdf] Final PDF payload summary section keys:', {
+      document_id,
+      survey_report_id,
+      mode,
+      pdfPayloadSummaryKeys: Array.isArray(pdf_payload_summary_keys) ? pdf_payload_summary_keys : [],
+      nestedPdfPayloadKeys: pdf_payload && typeof pdf_payload === 'object'
+        ? Object.keys(pdf_payload).filter((key) => key.startsWith('executive_summary'))
+        : [],
+    });
     const pdfBase64 = typeof pdf_base64 === 'string'
       ? pdf_base64
       : typeof pdf_payload === 'string'
