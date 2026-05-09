@@ -767,25 +767,25 @@ const handleDownloadDefencePack = async () => {
 
 setIsGeneratingPdf(true);
 try {
-  console.log('[PDF Download] Document status:', document.issue_status);
   const pdfInfo = await getLockedPdfInfo(id);
 
   // If document has a pre-generated locked PDF, open it via signed URL
   if (document.issue_status !== 'draft' && pdfInfo?.locked_pdf_path) {
-    console.log('[PDF Download] Found locked PDF, requesting signed URL for document:', id);
-
     const downloadResult = await downloadLockedPdf(id);
 
     if (downloadResult.success && downloadResult.signedUrl) {
-      console.log('[PDF Download] Opening signed URL in new tab');
       window.open(downloadResult.signedUrl, '_blank', 'noopener,noreferrer');
       setIsGeneratingPdf(false);
       return;
     }
 
-    console.warn('[PDF Download] Failed to get signed URL, falling back to regeneration:', downloadResult.error);
+    alert(downloadResult.error || 'Locked PDF is unavailable. Please contact support.');
+    setIsGeneratingPdf(false);
+    return;
   } else if (document.issue_status !== 'draft') {
-    console.log('[PDF Download] No locked PDF found for issued document, generating on-demand');
+    alert('Locked PDF is unavailable for this issued document. Please contact support.');
+    setIsGeneratingPdf(false);
+    return;
   }
 
       const { data: moduleInstances, error: moduleError } = await supabase
@@ -841,10 +841,6 @@ try {
         ...buildPdfIdentityOptions(organisation, user),
       };
 
-      console.log('[PDF Download] Starting PDF generation');
-      console.log('[PDF Download] Document type:', document.document_type);
-      console.log('[PDF Download] Render mode:', pdfOptions.renderMode);
-
       let pdfBytes;
       const enabledModules = document.enabled_modules || [document.document_type];
       const isCombinedFraFsd = enabledModules.length > 1 &&
@@ -854,52 +850,40 @@ try {
                                  enabledModules.includes('FRA') &&
                                  enabledModules.includes('DSEAR');
 
-      console.log('[PDF Download] Enabled modules:', enabledModules);
-      console.log('[PDF Download] Is combined FRA+FSD:', isCombinedFraFsd);
-      console.log('[PDF Download] Is combined FRA+DSEAR:', isCombinedFraDsear);
-
       const PDF_GENERATION_TIMEOUT = 30000;
 
       try {
         if (isCombinedFraDsear) {
-          console.log('[PDF Download] Building combined FRA+DSEAR PDF');
           pdfBytes = await withTimeout(
             buildFraDsearCombinedPdf(pdfOptions),
             PDF_GENERATION_TIMEOUT,
             'FRA+DSEAR PDF generation timed out after 30 seconds'
           );
         } else if (isCombinedFraFsd) {
-          console.log('[PDF Download] Building combined FRA+FSD PDF');
           pdfBytes = await withTimeout(
             buildCombinedPdf(pdfOptions),
             PDF_GENERATION_TIMEOUT,
             'Combined PDF generation timed out after 30 seconds'
           );
         } else if (document.document_type === 'FSD') {
-          console.log('[PDF Download] Building FSD PDF');
           pdfBytes = await withTimeout(
             buildFsdPdf(pdfOptions),
             PDF_GENERATION_TIMEOUT,
             'FSD PDF generation timed out after 30 seconds'
           );
         } else if (document.document_type === 'DSEAR') {
-          console.log('[PDF Download] Building DSEAR PDF');
           pdfBytes = await withTimeout(
             buildDsearPdf(pdfOptions),
             PDF_GENERATION_TIMEOUT,
             'DSEAR PDF generation timed out after 30 seconds'
           );
         } else {
-          console.log('[PDF Download] Building FRA PDF');
           pdfBytes = await withTimeout(
             buildFraPdf(pdfOptions),
             PDF_GENERATION_TIMEOUT,
             'FRA PDF generation timed out after 30 seconds'
           );
         }
-
-        console.log('[PDF Download] PDF generation complete, size:', pdfBytes.length, 'bytes');
-        console.log('[PDF Download] Generated for', document.issue_status === 'issued' ? 'ISSUED' : 'DRAFT', 'document');
 
         const blob = new Blob([pdfBytes], { type: 'application/pdf' });
         const siteName = document.title
@@ -910,9 +894,7 @@ try {
         const docType = document.document_type || 'FRA';
         const filename = `${docType}_${siteName}_${dateStr}_v${document.version_number}.pdf`;
 
-        console.log('[PDF Download] Downloading file:', filename);
         saveAs(blob, filename);
-        console.log('[PDF Download] Download complete');
       } catch (pdfError) {
         if (isTimeoutError(pdfError)) {
           console.error('[PDF Download] PDF generation timed out');
@@ -925,7 +907,6 @@ try {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       alert(`Failed to generate PDF: ${errorMessage}`);
     } finally {
-      console.log('[PDF Download] Resetting UI state');
       setIsGeneratingPdf(false);
     }
   };
@@ -1113,6 +1094,20 @@ try {
             </Callout>
           )}
 
+
+          {document.issue_status !== 'draft' && !document.locked_pdf_path && (
+            <Callout variant="danger" className="mt-4">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+                <div>
+                  <p className="text-sm font-medium">Locked PDF unavailable</p>
+                  <p className="text-xs text-neutral-600 mt-1">
+                    This issued document does not have a stored locked PDF. Download is disabled until support regenerates the locked artefact.
+                  </p>
+                </div>
+              </div>
+            </Callout>
+          )}
           {document.locked_pdf_path && document.issue_status !== 'draft' && (
             <Callout variant="success" className="mt-4">
               <div className="flex items-center gap-3">
@@ -1197,7 +1192,8 @@ try {
               <Button
                 variant="secondary"
                 onClick={handleGeneratePdf}
-                disabled={isGeneratingPdf}
+                disabled={isGeneratingPdf || !document.locked_pdf_path}
+                title={!document.locked_pdf_path ? 'Locked PDF is unavailable for this issued document' : undefined}
               >
                 {isGeneratingPdf ? (
                   <>

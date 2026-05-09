@@ -6,13 +6,14 @@ import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers
 import { supabase } from '../../lib/supabase';
 import { getModuleName } from '../../lib/modules/moduleCatalog';
 import { Button, Callout } from '../ui/DesignSystem';
+import { buildIssuedPdfForDocument, storeIssuedPdfWithEdgeFunction } from '../../utils/issuedPdfGeneration';
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-const ISSUED_PDF_FINALISING_WARNING =
-  'Document issued, but PDF generation is still being finalised. Please refresh or try Preview Report.';
+const LOCKED_PDF_REQUIRED_ERROR =
+  'Locked PDF generation failed. The document has not been issued and remains in draft.';
 
 type IssuedDocumentState = {
   status: string | null;
@@ -146,7 +147,7 @@ export default function IssueDocumentModal({
     return null;
   };
 
-  const finishIssuedWithWarning = (warning = ISSUED_PDF_FINALISING_WARNING) => {
+  const finishIssuedWithWarning = (warning = LOCKED_PDF_REQUIRED_ERROR) => {
     setPartialSuccessWarning(warning);
     setIssueProgress('Issued with warning');
     setIsIssuing(false);
@@ -163,7 +164,6 @@ export default function IssueDocumentModal({
     setPartialSuccessWarning('');
 
     try {
-      console.log('[Issue] Starting issue process for document:', documentId);
 
       const { data: document, error: docError } = await supabase
         .from('documents')
@@ -173,94 +173,48 @@ export default function IssueDocumentModal({
 
       if (docError) throw docError;
 
-      console.log('[Issue] Document fetched:', document.id, 'status:', document.issue_status);
+      setIssueProgress('Validating document...');
+      const preIssueValidation = await validateDocumentForIssue(documentId, organisationId);
+      if (!preIssueValidation.valid) {
+        throw new Error(preIssueValidation.errors.join(', '));
+      }
+
       setIssueProgress('Assigning recommendation reference numbers...');
 
       const actualBaseDocumentId = document.base_document_id || document.id;
       try {
         await assignActionReferenceNumbers(documentId, actualBaseDocumentId);
-        console.log('[Issue] Reference numbers assigned');
       } catch (refError) {
         console.warn('[Issue] Failed to assign reference numbers (non-fatal):', refError);
       }
 
+      setIssueProgress('Generating and storing locked PDF...');
+      const pdfBytes = await buildIssuedPdfForDocument(document, organisationId);
+      const storedPdf = await storeIssuedPdfWithEdgeFunction(document, organisationId, pdfBytes);
+
       setIssueProgress('Updating document status...');
-      console.log('[Issue] Calling issueDocument()');
 
       const issueResult = await issueDocument(documentId, userId, organisationId);
 
       if (issueResult.success) {
-        console.log('[Issue] Document issued successfully');
         const issuedDocument = await reloadIssuedDocumentState();
         const issueWarning = issueResult.warning || issueResult.postIssueWarning;
         let issuedWithWarning = Boolean(issueWarning || issueResult.partialSuccess);
 
         if (issuedWithWarning) {
-          setPartialSuccessWarning(issueWarning || ISSUED_PDF_FINALISING_WARNING);
+          setPartialSuccessWarning(issueWarning || LOCKED_PDF_REQUIRED_ERROR);
         }
 
         if (!issuedDocument) {
           console.warn('[Issue] issueDocument returned success, but the issued status was not visible when reloading document state.');
         }
 
-        setIssueProgress('Generating locked PDF...');
-
-        // Call generate-issued-pdf edge function to get signed URL
-        try {
-          console.log('[generate-issued-pdf] requesting signed URL for document_id', documentId);
-
-          const { data: sessionData } = await supabase.auth.getSession();
-          const accessToken = sessionData.session?.access_token;
-
-          if (!accessToken) {
-            throw new Error('No access token (user not signed in)');
-          }
-
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-          const pdfResp = await fetch(`${supabaseUrl}/functions/v1/generate-issued-pdf`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': anonKey,
-              'Authorization': `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ document_id: documentId }),
-          });
-
-          const responseText = await pdfResp.text();
-          let respJson: Record<string, unknown> | null = null;
-          try {
-            respJson = responseText ? JSON.parse(responseText) : null;
-          } catch {
-            respJson = null;
-          }
-
-          console.log('[generate-issued-pdf] response', {
-            request: { document_id: documentId },
-            status: pdfResp.status,
-            ok: pdfResp.ok,
-            body: respJson ?? responseText,
-          });
-
-          if (!pdfResp.ok) {
-            throw new Error(`generate-issued-pdf failed (${pdfResp.status}): ${responseText || JSON.stringify(respJson)}`);
-          }
-
-          const signedUrl = typeof respJson?.signed_url === 'string' ? respJson.signed_url : null;
-          if (signedUrl) {
-            window.open(signedUrl, '_blank', 'noopener,noreferrer');
-          }
-        } catch (pdfError: unknown) {
-          console.warn('[Issue] Failed to retrieve locked PDF signed URL (non-fatal):', pdfError);
-          await reloadIssuedDocumentState();
-          issuedWithWarning = true;
-          setPartialSuccessWarning(ISSUED_PDF_FINALISING_WARNING);
+        if (storedPdf.signedUrl) {
+          window.open(storedPdf.signedUrl, '_blank', 'noopener,noreferrer');
         }
 
         if (issuedWithWarning) {
-          finishIssuedWithWarning(issueWarning || ISSUED_PDF_FINALISING_WARNING);
+          finishIssuedWithWarning(issueWarning || LOCKED_PDF_REQUIRED_ERROR);
           return;
         }
 
@@ -274,7 +228,7 @@ export default function IssueDocumentModal({
         const issuedDocument = await reloadIssuedDocumentState();
         if (issuedDocument) {
           console.warn('[Issue] issueDocument returned failure, but document status is issued; treating as partial success.', issueResult);
-          finishIssuedWithWarning(ISSUED_PDF_FINALISING_WARNING);
+          finishIssuedWithWarning(LOCKED_PDF_REQUIRED_ERROR);
           return;
         }
 
@@ -286,14 +240,13 @@ export default function IssueDocumentModal({
       const issuedDocument = await reloadIssuedDocumentState();
 
       if (issuedDocument) {
-        finishIssuedWithWarning(ISSUED_PDF_FINALISING_WARNING);
+        finishIssuedWithWarning(LOCKED_PDF_REQUIRED_ERROR);
         return;
       }
 
-      alert(getErrorMessage(error, 'Failed to issue document. Document remains in draft.'));
+      alert(getErrorMessage(error, LOCKED_PDF_REQUIRED_ERROR));
       setIssueProgress('');
     } finally {
-      console.log('[Issue] Issue process complete, resetting UI state');
       setIsIssuing(false);
     }
   };
