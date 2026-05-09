@@ -135,12 +135,12 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
         if (userIds.length > 0) {
           const { data: profiles } = await supabase
             .from('user_profiles')
-            .select('id, full_name')
+            .select('id, name')
             .in('id', userIds);
 
           if (profiles) {
             profiles.forEach(p => {
-              userNamesMap[p.id] = p.full_name || 'Unknown';
+              userNamesMap[p.id] = p.name || 'Unknown';
             });
           }
         }

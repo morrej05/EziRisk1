@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.create-portal-session]
 verify_jwt = false
+
+[functions.generate-issued-pdf]
+verify_jwt = false

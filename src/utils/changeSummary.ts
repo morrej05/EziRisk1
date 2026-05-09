@@ -219,38 +219,18 @@ export async function getChangeSummary(documentId: string): Promise<ChangeSummar
     if (!doc?.base_document_id) return null;
 
     const { data, error } = await supabase
-  .from('document_change_summaries')
-  .select(`
-    id,
-    base_document_id,
-    created_at,
-    generated_by,
-    summary_text
-  `)
-  .eq('base_document_id', doc.base_document_id)
-  .order('created_at', { ascending: false })
-  .limit(1)
-  .maybeSingle();
-
-if (error) throw error;
-if (!data) return null;
-
-let authorName: string | null = null;
-
-if (data.generated_by) {
-  const { data: profile, error: profErr } = await supabase
-    .from('user_profiles')
-    .select('full_name')
-    .eq('id', data.generated_by)
-    .maybeSingle();
-
-  if (!profErr && profile) authorName = profile.full_name ?? null;
-}
-
-return {
-  ...data,
-  authorName,
-};
+      .from('document_change_summaries')
+      .select(`
+        id,
+        base_document_id,
+        created_at,
+        generated_by,
+        summary_text
+      `)
+      .eq('base_document_id', doc.base_document_id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
       console.error('[getChangeSummary] Error fetching change summary:', {
@@ -258,23 +238,37 @@ return {
         message: error.message,
         details: error.details,
         hint: error.hint,
-        code: error.code
+        code: error.code,
       });
       throw error;
     }
 
     if (!data) return null;
 
-    // Transform the response to match the expected interface
-    const profile = (data as { user_profiles?: { name?: string | null } }).user_profiles;
+    let authorName: string | null = null;
+
+    if (data.generated_by) {
+      const { data: profile, error: profErr } = await supabase
+        .from('user_profiles')
+        .select('name')
+        .eq('id', data.generated_by)
+        .maybeSingle();
+
+      if (profErr) {
+        console.warn('[getChangeSummary] Could not load change summary author name (non-critical):', profErr);
+      } else {
+        authorName = profile?.name ?? null;
+      }
+    }
+
     return {
       id: data.id,
       base_document_id: data.base_document_id,
       version_number: doc.version_number,
       created_at: data.created_at,
       created_by: data.generated_by,
-      full_name: profile?.name ?? null,
-      summary_text: data.summary_text
+      full_name: authorName,
+      summary_text: data.summary_text,
     };
   } catch (error: unknown) {
     console.error('[getChangeSummary] Unhandled error:', error);
