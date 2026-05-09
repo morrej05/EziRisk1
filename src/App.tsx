@@ -58,6 +58,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/login" element={<SignIn />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/external/:token" element={<ExternalSurvey />} />
