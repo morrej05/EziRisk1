@@ -44,24 +44,40 @@ export function useInactivityLogout(enabled = true) {
   const navigate = useNavigate();
   const logoutInProgressRef = useRef(false);
   const lastActivityWriteRef = useRef(0);
+  const warningVisibleRef = useRef(false);
   const [isWarningVisible, setIsWarningVisible] = useState(false);
   const [remainingMs, setRemainingMs] = useState(INACTIVITY_COUNTDOWN_MS);
 
-  const markActivity = useCallback(() => {
+  const setWarningVisible = useCallback((visible: boolean) => {
+    warningVisibleRef.current = visible;
+    setIsWarningVisible(visible);
+  }, []);
+
+  const markActivity = useCallback((options: { force?: boolean } = {}) => {
     if (!enabled || logoutInProgressRef.current) {
       return;
     }
 
+    // Once the warning is visible, require an explicit "Stay signed in" action
+    // rather than silently extending the session on incidental mouse/scroll events.
+    if (warningVisibleRef.current && !options.force) {
+      return;
+    }
+
     const now = Date.now();
-    if (now - lastActivityWriteRef.current < ACTIVITY_THROTTLE_MS) {
+    if (!options.force && now - lastActivityWriteRef.current < ACTIVITY_THROTTLE_MS) {
       return;
     }
 
     lastActivityWriteRef.current = now;
     window.localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(now));
-    setIsWarningVisible(false);
+    setWarningVisible(false);
     setRemainingMs(INACTIVITY_COUNTDOWN_MS);
-  }, [enabled]);
+  }, [enabled, setWarningVisible]);
+
+  const handleActivityEvent = useCallback(() => {
+    markActivity();
+  }, [markActivity]);
 
   const performLogout = useCallback(
     async ({ broadcast = true }: PerformLogoutOptions = {}) => {
@@ -70,7 +86,7 @@ export function useInactivityLogout(enabled = true) {
       }
 
       logoutInProgressRef.current = true;
-      setIsWarningVisible(false);
+      setWarningVisible(false);
 
       if (broadcast) {
         window.localStorage.setItem(
@@ -85,11 +101,11 @@ export function useInactivityLogout(enabled = true) {
         state: { inactivityMessage: INACTIVITY_MESSAGE },
       });
     },
-    [navigate, signOut]
+    [navigate, setWarningVisible, signOut]
   );
 
   const staySignedIn = useCallback(() => {
-    markActivity();
+    markActivity({ force: true });
   }, [markActivity]);
 
   const logOutNow = useCallback(() => {
@@ -98,7 +114,7 @@ export function useInactivityLogout(enabled = true) {
 
   useEffect(() => {
     if (!enabled) {
-      setIsWarningVisible(false);
+      setWarningVisible(false);
       return;
     }
 
@@ -114,17 +130,17 @@ export function useInactivityLogout(enabled = true) {
       }
 
       if (inactiveMs >= INACTIVITY_WARNING_AFTER_MS) {
-        setIsWarningVisible(true);
+        setWarningVisible(true);
         setRemainingMs(nextRemainingMs);
         return;
       }
 
-      setIsWarningVisible(false);
+      setWarningVisible(false);
       setRemainingMs(INACTIVITY_COUNTDOWN_MS);
     };
 
     ACTIVITY_EVENTS.forEach((eventName) => {
-      window.addEventListener(eventName, markActivity, { passive: true });
+      window.addEventListener(eventName, handleActivityEvent, { passive: true });
     });
 
     const intervalId = window.setInterval(checkInactivity, TIMER_TICK_MS);
@@ -145,12 +161,12 @@ export function useInactivityLogout(enabled = true) {
 
     return () => {
       ACTIVITY_EVENTS.forEach((eventName) => {
-        window.removeEventListener(eventName, markActivity);
+        window.removeEventListener(eventName, handleActivityEvent);
       });
       window.removeEventListener('storage', handleStorage);
       window.clearInterval(intervalId);
     };
-  }, [enabled, markActivity, performLogout]);
+  }, [enabled, handleActivityEvent, markActivity, performLogout, setWarningVisible]);
 
   return {
     isWarningVisible,
