@@ -31,6 +31,7 @@ import ChangeSummaryPanel from '../../components/documents/ChangeSummaryPanel';
 import DraftCompletenessBanner from '../../components/documents/DraftCompletenessBanner';
 import type { ApprovalStatus } from '../../utils/approvalWorkflow';
 import { getLockedPdfInfo, downloadLockedPdf } from '../../utils/pdfLocking';
+import { ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES, type DocumentIssueStatus } from '../../utils/documentVersioning';
 import { canShareWithClients, canUseApprovalWorkflow } from '../../utils/entitlements';
 import {
   getDefencePack,
@@ -63,7 +64,7 @@ interface Document {
   updated_at: string;
   base_document_id: string;
   version_number: number;
-  issue_status: 'draft' | 'issued' | 'superseded';
+  issue_status: DocumentIssueStatus;
   issue_date: string | null;
   issued_by: string | null;
   superseded_by_document_id: string | null;
@@ -99,6 +100,8 @@ interface ReRecommendationEntry {
   created_at: string;
   updated_at: string;
 }
+
+const INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER = '(archived,deleted,superseded,issued)';
 
 const isRecommendationActiveStatus = (status: string | null | undefined): boolean => {
   const normalized = (status || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -138,7 +141,7 @@ export default function DocumentOverview() {
   const [actionPriorityFilter, setActionPriorityFilter] = useState<string[]>([]);
   const [selectedAction, setSelectedAction] = useState<ActionRegisterEntry | null>(null);
   const [isLoadingActions, setIsLoadingActions] = useState(false);
-  const [activeDraftVersion, setActiveDraftVersion] = useState<{ id: string; version_number: number } | null>(null);
+  const [activeDraftVersion, setActiveDraftVersion] = useState<{ id: string; version_number: number; issue_status?: string; status?: string | null } | null>(null);
   const [isCheckingDraftVersion, setIsCheckingDraftVersion] = useState(false);
 
   const returnToPath = (location.state as any)?.returnTo || null;
@@ -278,11 +281,12 @@ export default function DocumentOverview() {
 
       const { data, error } = await supabase
         .from('documents')
-        .select('id, version_number')
+        .select('id, version_number, issue_status, status, deleted_at')
         .eq('base_document_id', baseDocumentId)
         .eq('organisation_id', organisation.id)
-        .eq('issue_status', 'draft')
+        .in('issue_status', [...ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES])
         .is('deleted_at', null)
+        .not('status', 'in', INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER)
         .neq('id', currentDocumentId)
         .order('version_number', { ascending: false })
         .limit(1)

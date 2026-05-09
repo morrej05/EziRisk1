@@ -10,11 +10,50 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+export type DocumentIssueStatus =
+  | 'draft'
+  | 'in_progress_draft'
+  | 'pending_review_draft'
+  | 'issued'
+  | 'superseded'
+  | 'archived'
+  | 'deleted';
+
+export const ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES = [
+  'draft',
+  'in_progress_draft',
+  'pending_review_draft',
+] as const;
+
+const INACTIVE_DOCUMENT_LIFECYCLE_STATUSES = [
+  'archived',
+  'deleted',
+  'superseded',
+  'issued',
+] as const;
+
+const INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER = `(${INACTIVE_DOCUMENT_LIFECYCLE_STATUSES.join(',')})`;
+
+export function isActiveEditableDraftVersion(document: {
+  issue_status?: string | null;
+  status?: string | null;
+  deleted_at?: string | null;
+}): boolean {
+  const issueStatus = (document.issue_status || '').trim().toLowerCase();
+  const lifecycleStatus = (document.status || '').trim().toLowerCase();
+
+  return (
+    !document.deleted_at &&
+    ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES.includes(issueStatus as (typeof ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES)[number]) &&
+    !INACTIVE_DOCUMENT_LIFECYCLE_STATUSES.includes(lifecycleStatus as (typeof INACTIVE_DOCUMENT_LIFECYCLE_STATUSES)[number])
+  );
+}
+
 export interface DocumentVersion {
   id: string;
   base_document_id: string;
   version_number: number;
-  issue_status: 'draft' | 'issued' | 'superseded';
+  issue_status: DocumentIssueStatus;
   issue_date: string | null;
   issued_by: string | null;
   superseded_by_document_id: string | null;
@@ -547,10 +586,11 @@ export async function createNewVersion(
 
     const { data: existingDraft, error: draftError } = await supabase
       .from('documents')
-      .select('id, version_number')
+      .select('id, version_number, issue_status, status, deleted_at')
       .eq('base_document_id', baseDocumentId)
-      .eq('issue_status', 'draft')
+      .in('issue_status', [...ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES])
       .is('deleted_at', null)
+      .not('status', 'in', INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -804,12 +844,12 @@ export async function canEditDocument(documentId: string): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from('documents')
-      .select('issue_status')
+      .select('issue_status, status, deleted_at')
       .eq('id', documentId)
       .single();
 
     if (error) throw error;
-    return data.issue_status === 'draft';
+    return isActiveEditableDraftVersion(data);
   } catch (error) {
     console.error('Error checking document edit permission:', error);
     return false;
