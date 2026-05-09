@@ -259,7 +259,7 @@ Deno.serve(async (req: Request) => {
         module_code,
         created_at,
         reference_number,
-        owner:owner_id(full_name)
+        owner:owner_id(name)
       `)
       .eq("document_id", document_id)
       .order("created_at", { ascending: false });
@@ -270,7 +270,7 @@ Deno.serve(async (req: Request) => {
       priority: a.priority || "N/A",
       status: a.status || "N/A",
       recommended_action: a.recommended_action || "N/A",
-      owner_name: a.owner?.full_name || "Unassigned",
+      owner_name: a.owner?.name || "Unassigned",
       target_date: a.target_date || "N/A",
       module_code: a.module_code || "N/A",
       created_at: a.created_at || "N/A",
