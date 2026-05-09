@@ -13,12 +13,24 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const initialiseRecoverySession = async () => {
+      const searchParams = new URLSearchParams(window.location.search);
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const code = searchParams.get('code');
       const access_token = hashParams.get('access_token');
       const refresh_token = hashParams.get('refresh_token');
-      const type = hashParams.get('type');
+      const type = hashParams.get('type') ?? searchParams.get('type');
 
-      if (type === 'recovery' && access_token && refresh_token) {
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (exchangeError) {
+          setError(exchangeError.message);
+          setReady(true);
+          return;
+        }
+
+        window.history.replaceState(null, document.title, window.location.pathname);
+      } else if ((type === 'recovery' || type === null) && access_token && refresh_token) {
         const { error: sessionError } = await supabase.auth.setSession({
           access_token,
           refresh_token,
