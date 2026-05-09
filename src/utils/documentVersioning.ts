@@ -218,11 +218,8 @@ export async function validateDocumentForIssue(
 
 export async function issueDocument(documentId: string, userId: string, organisationId: string): Promise<IssueDocumentResult> {
   try {
-    console.log('[issueDocument] Validating document:', documentId);
     const validation = await validateDocumentForIssue(documentId, organisationId);
     if (!validation.valid) {
-      console.log('[issueDocument] Validation failed:', validation.errors);
-
       const { data: currentDocument } = await supabase
         .from('documents')
         .select('id, status, issue_status, locked_pdf_path, pdf_generation_error')
@@ -231,15 +228,16 @@ export async function issueDocument(documentId: string, userId: string, organisa
         .maybeSingle();
 
       if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
-        console.warn('[issueDocument] Document is already issued after validation failure; treating as partial success');
+        if (!currentDocument.locked_pdf_path) {
+          return { success: false, error: 'Document is issued but has no locked PDF. Contact support before continuing.' };
+        }
+
         return {
           success: true,
           documentId,
           alreadyIssued: true,
-          partialSuccess: true,
-          warning: currentDocument.locked_pdf_path
-            ? 'Document was already issued. Reloaded the issued document state.'
-            : 'Document was already issued, but the locked PDF is not available yet.',
+          partialSuccess: false,
+          warning: 'Document was already issued. Reloaded the issued document state.',
           postIssueWarning: currentDocument.pdf_generation_error || undefined,
         };
       }
@@ -247,16 +245,21 @@ export async function issueDocument(documentId: string, userId: string, organisa
       return { success: false, error: validation.errors.join(', ') };
     }
 
-    console.log('[issueDocument] Validation passed, fetching document');
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('base_document_id')
+      .select('base_document_id, locked_pdf_path')
       .eq('id', documentId)
       .single();
 
     if (docError) throw docError;
 
-    console.log('[issueDocument] Finding previously issued document in chain');
+    if (!document.locked_pdf_path) {
+      return {
+        success: false,
+        error: 'Cannot issue document until the locked issued PDF has been generated and stored.',
+      };
+    }
+
     const { data: previousIssued, error: prevErr } = await supabase
       .from('documents')
       .select('id')
@@ -271,7 +274,6 @@ export async function issueDocument(documentId: string, userId: string, organisa
 
     // Supersede previous issued document FIRST (DB requires this)
     if (previousIssued?.id) {
-      console.log('[issueDocument] Superseding previous issued document:', previousIssued.id);
       const { error: supersedePrevError } = await supabase
         .from('documents')
         .update({
@@ -286,7 +288,6 @@ export async function issueDocument(documentId: string, userId: string, organisa
       if (supersedePrevError) throw supersedePrevError;
     }
 
-    console.log('[issueDocument] Marking document as issued');
     const { error } = await supabase
       .from('documents')
       .update({
@@ -305,7 +306,6 @@ export async function issueDocument(documentId: string, userId: string, organisa
 
     if (error) throw error;
 
-    console.log('[issueDocument] Generating change summary');
     let postIssueWarning: string | undefined;
     try {
       const summaryResult = previousIssued
@@ -320,13 +320,12 @@ export async function issueDocument(documentId: string, userId: string, organisa
       console.warn('[issueDocument] Change summary failed after document was issued:', summaryError);
     }
 
-    console.log('[issueDocument] Document issued successfully');
     return {
       success: true,
       documentId,
       partialSuccess: Boolean(postIssueWarning),
       postIssueWarning,
-      warning: postIssueWarning ? `Document issued, but post-issue processing failed: ${postIssueWarning}` : undefined,
+      warning: postIssueWarning ? `Document issued with locked PDF, but post-issue processing failed: ${postIssueWarning}` : undefined,
     };
   } catch (error: unknown) {
     console.error('[issueDocument] Error issuing document:', error);
@@ -339,15 +338,19 @@ export async function issueDocument(documentId: string, userId: string, organisa
       .maybeSingle();
 
     if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
-      console.warn('[issueDocument] Failure occurred after document was issued; returning partial success');
+      if (!currentDocument.locked_pdf_path) {
+        return {
+          success: false,
+          error: 'Issue failed after status changed and no locked PDF is available. Contact support before continuing.',
+        };
+      }
+
       return {
         success: true,
         documentId,
         alreadyIssued: true,
         partialSuccess: true,
-        warning: currentDocument.locked_pdf_path
-          ? 'Document was issued, but post-issue processing reported an error. Reloading the issued document state.'
-          : 'Document was issued, but the locked PDF is not available yet.',
+        warning: 'Document was issued with a locked PDF, but post-issue processing reported an error. Reloading the issued document state.',
         postIssueWarning: currentDocument.pdf_generation_error || getErrorMessage(error, 'Post-issue processing failed'),
       };
     }
@@ -457,8 +460,6 @@ export async function createNewVersion(
       locked_pdf_generated_at: null,
       locked_pdf_size_bytes: null,      
     };
-
-    console.log('[createNewVersion] insert keys', Object.keys(newDocData), 'assessment_date=', newDocData.assessment_date, newDocData);
 
     const { data: newDocument, error: newDocError } = await supabase
       .from('documents')
