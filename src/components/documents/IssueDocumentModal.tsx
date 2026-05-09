@@ -196,7 +196,7 @@ export default function IssueDocumentModal({
         let issuedWithWarning = Boolean(issueWarning || issueResult.partialSuccess);
 
         if (issuedWithWarning) {
-          setPartialSuccessWarning(ISSUED_PDF_FINALISING_WARNING);
+          setPartialSuccessWarning(issueWarning || ISSUED_PDF_FINALISING_WARNING);
         }
 
         if (!issuedDocument) {
@@ -260,7 +260,7 @@ export default function IssueDocumentModal({
         }
 
         if (issuedWithWarning) {
-          finishIssuedWithWarning(ISSUED_PDF_FINALISING_WARNING);
+          finishIssuedWithWarning(issueWarning || ISSUED_PDF_FINALISING_WARNING);
           return;
         }
 

@@ -1,5 +1,32 @@
 import { supabase } from '../lib/supabase';
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+interface SummaryAction {
+  id: string;
+  recommended_action: string;
+  priority_band: string;
+  status?: string;
+  closure_date?: string;
+}
+
+interface ChangeSummaryStatsInput {
+  new_actions_count?: number;
+  closed_actions_count?: number;
+  reopened_actions_count?: number;
+  outstanding_actions_count?: number;
+  has_material_changes?: boolean;
+}
+
+interface ChangeSummaryTextInput extends ChangeSummaryStatsInput {
+  new_actions: SummaryAction[];
+  closed_actions: SummaryAction[];
+}
+
 export interface ChangeSummary {
   id: string;
   organisation_id: string;
@@ -21,9 +48,9 @@ export interface ChangeSummary {
     priority_band: string;
     closure_date: string;
   }>;
-  reopened_actions: any[];
-  risk_rating_changes: any[];
-  material_field_changes: any[];
+  reopened_actions: JsonValue[];
+  risk_rating_changes: JsonValue[];
+  material_field_changes: JsonValue[];
   summary_text: string | null;
   has_material_changes: boolean;
   visible_to_client: boolean;
@@ -108,7 +135,18 @@ export async function createInitialIssueSummary(
       .delete()
       .eq('document_id', documentId);
 
-    if (deleteError) throw deleteError;
+    if (deleteError) {
+      console.warn('[createInitialIssueSummary] Existing summary cleanup failed (continuing to insert):', {
+        table: 'document_change_summaries',
+        documentId,
+        error: deleteError,
+      });
+    }
+
+    console.log('[createInitialIssueSummary] Inserting issue summary:', {
+      table: 'document_change_summaries',
+      payload: summaryData,
+    });
 
     const { data: summary, error: insertError } = await supabase
       .from('document_change_summaries')
@@ -116,12 +154,19 @@ export async function createInitialIssueSummary(
       .select('id')
       .single();
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error('[createInitialIssueSummary] Insert failed:', {
+        table: 'document_change_summaries',
+        payload: summaryData,
+        error: insertError,
+      });
+      throw insertError;
+    }
 
     return { success: true, summaryId: summary.id };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating initial issue summary:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error, 'Failed to create initial issue summary') };
   }
 }
 
@@ -147,9 +192,9 @@ export async function generateChangeSummary(
     if (error) throw error;
 
     return { success: true, summaryId: data };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating change summary:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: getErrorMessage(error, 'Failed to generate change summary') };
   }
 }
 
@@ -221,7 +266,7 @@ return {
     if (!data) return null;
 
     // Transform the response to match the expected interface
-    const profile = data.user_profiles as any;
+    const profile = (data as { user_profiles?: { name?: string | null } }).user_profiles;
     return {
       id: data.id,
       base_document_id: data.base_document_id,
@@ -231,7 +276,7 @@ return {
       full_name: profile?.name ?? null,
       summary_text: data.summary_text
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[getChangeSummary] Unhandled error:', error);
     return null;
   }
@@ -259,14 +304,14 @@ export async function getChangeSummaries(organisationId: string): Promise<Change
 /**
  * Format a change summary as markdown text
  */
-export function formatChangeSummaryText(summary: any): string {
+export function formatChangeSummaryText(summary: ChangeSummaryTextInput): string {
   const lines: string[] = [];
 
   lines.push('# Changes Since Last Issue\n');
 
   if (summary.new_actions_count > 0) {
     lines.push(`## New Actions (${summary.new_actions_count})\n`);
-    summary.new_actions.forEach((action: any) => {
+    summary.new_actions.forEach((action) => {
       lines.push(`- [${action.priority_band}] ${action.recommended_action}`);
     });
     lines.push('');
@@ -274,7 +319,7 @@ export function formatChangeSummaryText(summary: any): string {
 
   if (summary.closed_actions_count > 0) {
     lines.push(`## Closed Actions (${summary.closed_actions_count})\n`);
-    summary.closed_actions.forEach((action: any) => {
+    summary.closed_actions.forEach((action) => {
       lines.push(`- [${action.priority_band}] ${action.recommended_action}`);
     });
     lines.push('');
@@ -291,7 +336,7 @@ export function formatChangeSummaryText(summary: any): string {
   return lines.join('\n');
 }
 
-export function getChangeSummaryStats(summary: any) {
+export function getChangeSummaryStats(summary: ChangeSummaryStatsInput) {
   return {
     totalChanges:
       (summary.new_actions_count || 0) +
@@ -321,7 +366,7 @@ export async function updateChangeSummaryText(
 
     if (error) throw error;
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating change summary text:', error);
     return { success: false, error: error.message };
   }
@@ -342,7 +387,7 @@ export async function setChangeSummaryClientVisibility(
 
     if (error) throw error;
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating change summary visibility:', error);
     return { success: false, error: error.message };
   }
