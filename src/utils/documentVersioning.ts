@@ -38,6 +38,23 @@ export interface CreateNewVersionResult {
   error?: string;
   newDocumentId?: string;
   newVersionNumber?: number;
+  existingDraftDocumentId?: string;
+}
+
+const EXISTING_DRAFT_VERSION_MESSAGE =
+  'A draft version already exists and must be issued or deleted before creating another version.';
+
+function isDuplicateDraftVersionError(error: unknown): boolean {
+  const maybeError = error as { code?: string; message?: string; details?: string };
+  const message = String(maybeError.message || maybeError.details || '').toLowerCase();
+  return (
+    maybeError.code === '23505' ||
+    maybeError.code === 'P0001' ||
+    message.includes('one active draft version') ||
+    message.includes('draft version already exists') ||
+    message.includes('idx_documents_one_active_draft_per_base') ||
+    message.includes('idx_documents_one_draft_per_base')
+  );
 }
 
 export async function validateDocumentForIssue(
@@ -385,9 +402,10 @@ export async function createNewVersion(
 
     const { data: existingDraft, error: draftError } = await supabase
       .from('documents')
-      .select('id')
+      .select('id, version_number')
       .eq('base_document_id', baseDocumentId)
       .eq('issue_status', 'draft')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -396,8 +414,9 @@ export async function createNewVersion(
 
     if (existingDraft?.id) {
       return {
-        success: true,
-        newDocumentId: existingDraft.id,
+        success: false,
+        error: EXISTING_DRAFT_VERSION_MESSAGE,
+        existingDraftDocumentId: existingDraft.id,
         newVersionNumber: existingDraft.version_number ?? (currentIssued.version_number + 1),
       };
     }
@@ -582,6 +601,9 @@ export async function createNewVersion(
     };
   } catch (error: any) {
     console.error('Error creating new version:', error);
+    if (isDuplicateDraftVersionError(error)) {
+      return { success: false, error: EXISTING_DRAFT_VERSION_MESSAGE };
+    }
     const errorMessage = error?.message || 'Failed to create new version';
     return { success: false, error: errorMessage };
   }

@@ -138,6 +138,8 @@ export default function DocumentOverview() {
   const [actionPriorityFilter, setActionPriorityFilter] = useState<string[]>([]);
   const [selectedAction, setSelectedAction] = useState<ActionRegisterEntry | null>(null);
   const [isLoadingActions, setIsLoadingActions] = useState(false);
+  const [activeDraftVersion, setActiveDraftVersion] = useState<{ id: string; version_number: number } | null>(null);
+  const [isCheckingDraftVersion, setIsCheckingDraftVersion] = useState(false);
 
   const returnToPath = (location.state as any)?.returnTo || null;
 
@@ -182,6 +184,16 @@ export default function DocumentOverview() {
       fetchDefencePack();
     }
   }, [id, organisation?.id]);
+
+  useEffect(() => {
+    if (!document?.base_document_id || !organisation?.id) {
+      setActiveDraftVersion(null);
+      setIsCheckingDraftVersion(false);
+      return;
+    }
+
+    fetchActiveDraftVersion(document.base_document_id, document.id);
+  }, [document?.base_document_id, document?.id, organisation?.id]);
 
   useEffect(() => {
     if (!id || !organisation?.id || !document) return;
@@ -255,6 +267,34 @@ export default function DocumentOverview() {
       setDocument(null);
       setDocumentNotFound(true);
       setIsLoading(false);
+    }
+  };
+
+  const fetchActiveDraftVersion = async (baseDocumentId: string, currentDocumentId: string) => {
+    if (!organisation?.id) return;
+
+    try {
+      setIsCheckingDraftVersion(true);
+
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, version_number')
+        .eq('base_document_id', baseDocumentId)
+        .eq('organisation_id', organisation.id)
+        .eq('issue_status', 'draft')
+        .is('deleted_at', null)
+        .neq('id', currentDocumentId)
+        .order('version_number', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setActiveDraftVersion(data ?? null);
+    } catch (error) {
+      console.error('Error checking active draft version:', error);
+      setActiveDraftVersion(null);
+    } finally {
+      setIsCheckingDraftVersion(false);
     }
   };
 
@@ -611,7 +651,10 @@ const handleDownloadDefencePack = async () => {
     fetchDocument();
   };
 
-  const handleNewVersionSuccess = (newDocumentId: string, newVersionNumber: number) => {
+  const handleNewVersionSuccess = async (newDocumentId: string, newVersionNumber: number) => {
+    setShowNewVersionModal(false);
+    await fetchDocument();
+    setActiveDraftVersion({ id: newDocumentId, version_number: newVersionNumber });
     navigate(`/documents/${newDocumentId}`);
   };
 
@@ -1185,11 +1228,35 @@ try {
                   Coming Soon
                 </Badge>
               </Button>
-              <Button onClick={() => setShowNewVersionModal(true)}>
-                <FileText className="w-4 h-4 mr-2" />
-                Create New Version
-              </Button>
+              {!activeDraftVersion && (
+                <Button
+                  onClick={() => setShowNewVersionModal(true)}
+                  disabled={isCheckingDraftVersion}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  {isCheckingDraftVersion ? 'Checking Versions...' : 'Create New Version'}
+                </Button>
+              )}
             </div>
+            {activeDraftVersion && (
+              <Callout variant="warning" className="mt-4">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">
+                      A draft version already exists and must be issued or deleted before creating another version.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/documents/${activeDraftVersion.id}`)}
+                      className="mt-2 text-sm font-medium text-amber-900 underline hover:text-amber-700"
+                    >
+                      Open draft v{activeDraftVersion.version_number}
+                    </button>
+                  </div>
+                </div>
+              </Callout>
+            )}
           </Card>
         )}
 
@@ -1757,7 +1824,7 @@ try {
         />
       )}
 
-      {showNewVersionModal && user?.id && organisation?.id && (
+      {showNewVersionModal && !activeDraftVersion && user?.id && organisation?.id && (
         <CreateNewVersionModal
           baseDocumentId={document.base_document_id}
           currentVersion={document.version_number}
