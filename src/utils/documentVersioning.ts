@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { canIssueDocument } from './approvalWorkflow';
-import { generateChangeSummary, createInitialIssueSummary } from './changeSummary';
+import { generateChangeSummary, createInitialIssueSummary, findPreviousIssuedRevision, ISSUED_REVISION_STATUSES } from './changeSummary';
 import { carryForwardEvidence } from './evidenceManagement';
 import { getMissingRequiredRatings } from '../lib/re/scoring/riskEngineeringHelpers';
 import { ensureDocumentIdentitySnapshot, mergeIdentityIntoMeta, resolveDocumentIdentity } from '../lib/documents/documentIdentity';
@@ -531,17 +531,29 @@ export async function issueDocument(documentId: string, userId: string, organisa
       };
     }
 
+    console.info('[issueDocument] Current version audit.', {
+      currentDocumentId: documentId,
+      baseDocumentId: document.base_document_id,
+      currentVersion: document.version_number,
+    });
+
+    const previousIssued = await findPreviousIssuedRevision(
+      { id: documentId, base_document_id: document.base_document_id, version_number: document.version_number },
+      'issueDocument'
+    );
+
     const { data: previousIssuedVersions, error: prevErr } = await supabase
       .from('documents')
-      .select('id, version_number')
+      .select('id, version_number, issue_status')
       .eq('base_document_id', document.base_document_id)
-      .eq('issue_status', 'issued')
+      .in('issue_status', [...ISSUED_REVISION_STATUSES])
       .neq('id', documentId)
+      .lt('version_number', document.version_number || 0)
+      .is('deleted_at', null)
+      .not('status', 'in', '(archived,deleted)')
       .order('version_number', { ascending: false });
 
     if (prevErr) throw prevErr;
-
-    const previousIssued = previousIssuedVersions?.[0] ?? null;
 
     // Supersede every previously issued document in the chain before issuing the new latest version.
     if (previousIssuedVersions && previousIssuedVersions.length > 0) {
@@ -556,7 +568,8 @@ export async function issueDocument(documentId: string, userId: string, organisa
         })
         .eq('base_document_id', document.base_document_id)
         .eq('issue_status', 'issued')
-        .neq('id', documentId);
+        .neq('id', documentId)
+        .lt('version_number', document.version_number || 0);
 
       if (supersedePrevError) throw supersedePrevError;
     }
@@ -596,6 +609,15 @@ export async function issueDocument(documentId: string, userId: string, organisa
 
     let postIssueWarning: string | undefined;
     try {
+      console.info('[issueDocument] Summary generation mode.', {
+        currentDocumentId: documentId,
+        currentVersion: document.version_number,
+        mode: previousIssued ? 'changes_since_last_issue' : 'initial_issue',
+        previousDocumentId: previousIssued?.id ?? null,
+        previousVersion: previousIssued?.version_number ?? null,
+        fallbackInitialIssueReason: previousIssued ? null : 'no_prior_issued_or_superseded_revision_in_chain',
+      });
+
       const summaryResult = previousIssued
         ? await generateChangeSummary(documentId, previousIssued.id, userId)
         : await createInitialIssueSummary(documentId, userId);
@@ -860,11 +882,12 @@ export async function createNewVersion(
       newModules: insertedModules,
     });
 
-    try {
-      await createInitialIssueSummary(newDocument.id, userId);
-    } catch (summaryError) {
-      console.error('Error creating initial summary (non-blocking):', summaryError);
-    }
+    console.info('[createNewVersion] Summary generation deferred until issue.', {
+      newDocumentId: newDocument.id,
+      baseDocumentId,
+      newVersionNumber,
+      reason: 'draft_rows_must_not_create_initial_issue_or_change_summary_records',
+    });
 
     return {
       success: true,
@@ -915,6 +938,9 @@ export async function getDocumentVersionHistory(baseDocumentId: string): Promise
       .from('documents')
       .select('*')
       .eq('base_document_id', baseDocumentId)
+      .in('issue_status', [...ISSUED_REVISION_STATUSES])
+      .is('deleted_at', null)
+      .not('status', 'in', '(archived,deleted)')
       .order('version_number', { ascending: false });
 
     if (error) throw error;
