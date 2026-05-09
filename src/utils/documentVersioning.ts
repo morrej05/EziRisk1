@@ -10,6 +10,25 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function logExecutiveSummarySnapshot(
+  label: string,
+  document: ({
+    id?: string | null;
+    version_number?: number | null;
+    executive_summary_ai?: string | null;
+    executive_summary_author?: string | null;
+    executive_summary_mode?: string | null;
+  }) | null | undefined
+) {
+  console.info(label, {
+    documentId: document?.id ?? null,
+    version: document?.version_number ?? null,
+    executiveSummaryMode: document?.executive_summary_mode ?? null,
+    aiLength: String(document?.executive_summary_ai || '').trim().length,
+    authorLength: String(document?.executive_summary_author || '').trim().length,
+  });
+}
+
 export type DocumentIssueStatus =
   | 'draft'
   | 'in_progress_draft'
@@ -101,6 +120,11 @@ type MaybeErrorWithMessage = {
 
 type JsonRecord = Record<string, unknown>;
 type AnyRow = Record<string, unknown>;
+type ExecutiveSummarySnapshot = {
+  executive_summary_ai: string | null;
+  executive_summary_author: string | null;
+  executive_summary_mode: string | null;
+};
 type CountQueryResult = { count: number | null; error: { message?: string } | null };
 type CountQuery = PromiseLike<CountQueryResult> & {
   eq?: (column: string, value: unknown) => CountQuery;
@@ -491,11 +515,14 @@ export async function issueDocument(documentId: string, userId: string, organisa
 
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('base_document_id, locked_pdf_path')
+      .select('id, base_document_id, version_number, locked_pdf_path, executive_summary_ai, executive_summary_author, executive_summary_mode')
       .eq('id', documentId)
+      .eq('organisation_id', organisationId)
       .single();
 
     if (docError) throw docError;
+
+    logExecutiveSummarySnapshot('[issueDocument] Before issue executive summary snapshot:', document);
 
     if (!document.locked_pdf_path) {
       return {
@@ -546,11 +573,26 @@ export async function issueDocument(documentId: string, userId: string, organisa
         issued_display_author_name: null,
         issued_display_author_role: null,
         issued_display_author_organisation: null,
+        executive_summary_ai: (document as ExecutiveSummarySnapshot).executive_summary_ai,
+        executive_summary_author: (document as ExecutiveSummarySnapshot).executive_summary_author,
+        executive_summary_mode: (document as ExecutiveSummarySnapshot).executive_summary_mode,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', documentId);
+      .eq('id', documentId)
+      .eq('organisation_id', organisationId);
 
     if (error) throw error;
+
+    const { data: issuedDocument, error: issuedReloadError } = await supabase
+      .from('documents')
+      .select('id, version_number, executive_summary_ai, executive_summary_author, executive_summary_mode')
+      .eq('id', documentId)
+      .eq('organisation_id', organisationId)
+      .single();
+
+    if (issuedReloadError) throw issuedReloadError;
+
+    logExecutiveSummarySnapshot('[issueDocument] After issue executive summary snapshot:', issuedDocument);
 
     let postIssueWarning: string | undefined;
     try {

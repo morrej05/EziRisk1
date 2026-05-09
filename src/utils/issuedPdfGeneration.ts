@@ -7,6 +7,7 @@ import { buildFraDsearCombinedPdf } from '../lib/pdf/buildFraDsearCombinedPdf';
 import { migrateLegacyFraActions } from '../lib/modules/fra/migrateLegacyFraActions';
 import type { FraContext } from '../lib/modules/fra/severityEngine';
 import { migrateLegacyDsearActions } from '../lib/dsear/migrateLegacyDsearActions';
+import { getSelectedExecutiveSummaryText } from '../lib/pdf/pdfUtils';
 import { buildPdfIdentityOptions } from './pdfIdentity';
 import type { Organisation as EntitlementOrganisation } from './entitlements';
 import { withTimeout } from './withTimeout';
@@ -144,14 +145,21 @@ export async function buildIssuedPdfForDocument(
     actionRatings = ratings || [];
   }
 
+  const selectedExecutiveSummary = getSelectedExecutiveSummaryText(
+    document.executive_summary_mode as string | null | undefined,
+    document.executive_summary_ai as string | null | undefined,
+    document.executive_summary_author as string | null | undefined
+  );
   const executiveSummaryDiagnostics = {
     documentId: document.id,
-    mode: document.executive_summary_mode,
+    requestedMode: document.executive_summary_mode,
+    selectedMode: selectedExecutiveSummary.mode,
+    selectedTextLength: selectedExecutiveSummary.text.length,
     aiLength: String(document.executive_summary_ai || '').trim().length,
     authorLength: String(document.executive_summary_author || '').trim().length,
     keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
   };
-  console.info('[Issued PDF] Executive summary before PDF generation:', executiveSummaryDiagnostics);
+  console.info('[Issued PDF] Before PDF build selected executive summary:', executiveSummaryDiagnostics);
 
   const pdfOptions = {
     document,
