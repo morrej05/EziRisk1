@@ -415,6 +415,8 @@ export async function createNewVersion(
         standards_selected,
         enabled_modules,
         jurisdiction,
+        executive_summary_ai,
+        executive_summary_author,
         executive_summary_mode,
         approval_status
       `)
@@ -485,8 +487,8 @@ export async function createNewVersion(
       issue_date: null,
       issued_by: null,
       status: 'draft' as const,
-      executive_summary_ai: null,
-      executive_summary_author: null,
+      executive_summary_ai: currentIssued.executive_summary_ai ?? null,
+      executive_summary_author: currentIssued.executive_summary_author ?? null,
       executive_summary_mode: currentIssued.executive_summary_mode || 'ai',
       approval_status: currentIssued.approval_status ?? 'approved',
       locked_pdf_path: null,

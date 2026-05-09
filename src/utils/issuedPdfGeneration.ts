@@ -8,6 +8,7 @@ import { migrateLegacyFraActions } from '../lib/modules/fra/migrateLegacyFraActi
 import type { FraContext } from '../lib/modules/fra/severityEngine';
 import { migrateLegacyDsearActions } from '../lib/dsear/migrateLegacyDsearActions';
 import { buildPdfIdentityOptions } from './pdfIdentity';
+import type { Organisation as EntitlementOrganisation } from './entitlements';
 import { withTimeout } from './withTimeout';
 
 const PDF_GENERATION_TIMEOUT = 30000;
@@ -20,6 +21,32 @@ type IssueableDocument = {
   version_number: number;
   issue_status: 'draft' | 'issued' | 'superseded';
   [key: string]: unknown;
+};
+
+
+type ModuleInstanceLike = {
+  module_key: string;
+  data?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
+type ActionLike = {
+  id: string;
+  [key: string]: unknown;
+};
+
+type ActionRatingLike = {
+  action_id: string;
+  likelihood: unknown;
+  impact: unknown;
+  score: unknown;
+  rated_at: string | null;
+};
+
+type StoreIssuedPdfResponse = {
+  error?: string;
+  signed_url?: string;
+  pdf_path?: string;
 };
 
 type OrganisationLike = {
@@ -96,7 +123,7 @@ export async function buildIssuedPdfForDocument(
   if (document.document_type === 'DSEAR') {
     migratedActions = migrateLegacyDsearActions(migratedActions);
   } else if (document.document_type === 'FRA' || document.document_type === 'FSD') {
-    const buildingProfile = (moduleInstances || []).find((m: any) => m.module_key === 'A2_BUILDING_PROFILE');
+    const buildingProfile = ((moduleInstances || []) as ModuleInstanceLike[]).find((m) => m.module_key === 'A2_BUILDING_PROFILE');
     const fraContext: FraContext = {
       occupancyRisk: (buildingProfile?.data?.occupancy_risk || 'NonSleeping') as 'NonSleeping' | 'Sleeping' | 'Vulnerable',
       storeys: buildingProfile?.data?.number_of_storeys || null,
@@ -104,8 +131,8 @@ export async function buildIssuedPdfForDocument(
     migratedActions = migrateLegacyFraActions(migratedActions, fraContext);
   }
 
-  const actionIds = migratedActions.map((action: any) => action.id);
-  let actionRatings: any[] = [];
+  const actionIds = (migratedActions as ActionLike[]).map((action) => action.id);
+  let actionRatings: ActionRatingLike[] = [];
   if (actionIds.length > 0) {
     const { data: ratings, error: ratingsError } = await supabase
       .from('action_ratings')
@@ -128,7 +155,7 @@ export async function buildIssuedPdfForDocument(
       branding_logo_path: organisation.branding_logo_path || null,
     },
     renderMode: 'issued' as const,
-    ...buildPdfIdentityOptions(organisation as any, user),
+    ...buildPdfIdentityOptions(organisation as EntitlementOrganisation, user),
   };
 
   const enabledModules = document.enabled_modules || [document.document_type];
@@ -181,13 +208,14 @@ export async function storeIssuedPdfWithEdgeFunction(
       organisation_id: organisationId,
       title: document.title,
       version_number: document.version_number,
+      mode: 'pre_issue',
       pdf_base64: uint8ArrayToBase64(pdfBytes),
       size_bytes: pdfBytes.length,
     }),
   });
 
   const responseText = await response.text();
-  let responseJson: any = null;
+  let responseJson: StoreIssuedPdfResponse | null = null;
   try {
     responseJson = responseText ? JSON.parse(responseText) : null;
   } catch {
