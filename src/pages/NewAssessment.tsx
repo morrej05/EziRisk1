@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { canAccessPillarB } from '../utils/entitlements';
-import { ArrowLeft, Lock } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { getModuleKeysForDocType } from '../lib/modules/moduleCatalog';
 import { getAssessmentDisplayName } from '../utils/displayNames';
 import { getAvailableJurisdictions, normalizeJurisdiction } from '../lib/jurisdictions';
@@ -76,6 +75,15 @@ export default function NewAssessment() {
           title: title,
           assessment_date: formData.assessment_date,
           assessor_name: formData.assessor_name,
+          responsible_person: formData.client_name.trim() || null,
+          scope_description: formData.site_name.trim() || null,
+          meta: {
+            client: { name: formData.client_name.trim() || null },
+            site: {
+              name: formData.site_name.trim(),
+              address: formData.site_address.trim() || null,
+            },
+          },
           standards_selected: [],
           jurisdiction: normalizeJurisdiction(formData.jurisdiction),
         })

@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { getModuleName } from '../../lib/modules/moduleCatalog';
 import { Button, Callout } from '../ui/DesignSystem';
 import { buildIssuedPdfForDocument, storeIssuedPdfWithEdgeFunction } from '../../utils/issuedPdfGeneration';
+import { ensureDocumentIdentitySnapshot } from '../../lib/documents/documentIdentity';
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -165,13 +166,10 @@ export default function IssueDocumentModal({
 
     try {
 
-      const { data: document, error: docError } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('id', documentId)
-        .single();
-
-      if (docError) throw docError;
+      const { document, identity } = await ensureDocumentIdentitySnapshot(documentId, organisationId);
+      if (!identity.clientName || !identity.siteName) {
+        console.warn('[Issue] Issuing with incomplete client/site identity snapshot:', identity);
+      }
 
       setIssueProgress('Validating document...');
       const preIssueValidation = await validateDocumentForIssue(documentId, organisationId);
@@ -199,7 +197,7 @@ export default function IssueDocumentModal({
       if (issueResult.success) {
         const issuedDocument = await reloadIssuedDocumentState();
         const issueWarning = issueResult.warning || issueResult.postIssueWarning;
-        let issuedWithWarning = Boolean(issueWarning || issueResult.partialSuccess);
+        const issuedWithWarning = Boolean(issueWarning || issueResult.partialSuccess);
 
         if (issuedWithWarning) {
           setPartialSuccessWarning(issueWarning || LOCKED_PDF_REQUIRED_ERROR);
