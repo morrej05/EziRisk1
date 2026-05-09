@@ -11,6 +11,16 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+const ISSUED_PDF_FINALISING_WARNING =
+  'Document issued, but PDF generation is still being finalised. Please refresh or try Preview Report.';
+
+type IssuedDocumentState = {
+  status: string | null;
+  issue_status: string | null;
+  locked_pdf_path: string | null;
+  pdf_generation_error: string | null;
+};
+
 interface IssueDocumentModalProps {
   documentId: string;
   documentTitle: string;
@@ -116,6 +126,37 @@ export default function IssueDocumentModal({
     }
   };
 
+  const reloadIssuedDocumentState = async (): Promise<IssuedDocumentState | null> => {
+    const { data: currentDocument, error } = await supabase
+      .from('documents')
+      .select('status, issue_status, locked_pdf_path, pdf_generation_error')
+      .eq('id', documentId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[Issue] Failed to reload document state after issue attempt:', error);
+      return null;
+    }
+
+    if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+      try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
+      return currentDocument;
+    }
+
+    return null;
+  };
+
+  const finishIssuedWithWarning = (warning = ISSUED_PDF_FINALISING_WARNING) => {
+    setPartialSuccessWarning(warning);
+    setIssueProgress('Issued with warning');
+    setIsIssuing(false);
+
+    setTimeout(() => {
+      try { onClose(); } catch (e) { console.warn('onClose failed', e); }
+      navigate(`/documents/${documentId}/workspace`, { replace: true });
+    }, 1200);
+  };
+
   const handleIssue = async () => {
     setIsIssuing(true);
     setIssueProgress('Preparing to issue document...');
@@ -150,9 +191,18 @@ export default function IssueDocumentModal({
 
       if (issueResult.success) {
         console.log('[Issue] Document issued successfully');
-        if (issueResult.warning || issueResult.postIssueWarning) {
-          setPartialSuccessWarning(issueResult.warning || issueResult.postIssueWarning || 'Document issued with a post-processing warning.');
+        const issuedDocument = await reloadIssuedDocumentState();
+        const issueWarning = issueResult.warning || issueResult.postIssueWarning;
+        let issuedWithWarning = Boolean(issueWarning || issueResult.partialSuccess);
+
+        if (issuedWithWarning) {
+          setPartialSuccessWarning(ISSUED_PDF_FINALISING_WARNING);
         }
+
+        if (!issuedDocument) {
+          console.warn('[Issue] issueDocument returned success, but the issued status was not visible when reloading document state.');
+        }
+
         setIssueProgress('Generating locked PDF...');
 
         // Call generate-issued-pdf edge function to get signed URL
@@ -179,54 +229,64 @@ export default function IssueDocumentModal({
             body: JSON.stringify({ document_id: documentId }),
           });
 
-          const respJson = await pdfResp.json().catch(() => null);
-
-          console.log('[generate-issued-pdf] status', pdfResp.status, respJson);
-
-          if (!pdfResp.ok) {
-            throw new Error(`generate-issued-pdf failed (${pdfResp.status}): ${JSON.stringify(respJson)}`);
+          const responseText = await pdfResp.text();
+          let respJson: Record<string, unknown> | null = null;
+          try {
+            respJson = responseText ? JSON.parse(responseText) : null;
+          } catch {
+            respJson = null;
           }
 
-          if (respJson?.signed_url) {
-            window.open(respJson.signed_url, '_blank', 'noopener,noreferrer');
+          console.log('[generate-issued-pdf] response', {
+            request: { document_id: documentId },
+            status: pdfResp.status,
+            ok: pdfResp.ok,
+            body: respJson ?? responseText,
+          });
+
+          if (!pdfResp.ok) {
+            throw new Error(`generate-issued-pdf failed (${pdfResp.status}): ${responseText || JSON.stringify(respJson)}`);
+          }
+
+          const signedUrl = typeof respJson?.signed_url === 'string' ? respJson.signed_url : null;
+          if (signedUrl) {
+            window.open(signedUrl, '_blank', 'noopener,noreferrer');
           }
         } catch (pdfError: unknown) {
           console.warn('[Issue] Failed to retrieve locked PDF signed URL (non-fatal):', pdfError);
-          setPartialSuccessWarning(
-            `Document issued successfully, but the issued PDF could not be opened automatically: ${getErrorMessage(pdfError, 'PDF post-processing failed')}. Reloading the issued document state.`
-          );
+          await reloadIssuedDocumentState();
+          issuedWithWarning = true;
+          setPartialSuccessWarning(ISSUED_PDF_FINALISING_WARNING);
         }
 
-        setIssueProgress(issueResult.partialSuccess ? 'Issued with warning' : 'Complete!');
+        if (issuedWithWarning) {
+          finishIssuedWithWarning(ISSUED_PDF_FINALISING_WARNING);
+          return;
+        }
+
+        setIssueProgress('Complete!');
         setTimeout(() => {
           try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
           try { onClose(); } catch (e) { console.warn('onClose failed', e); }
           navigate(`/documents/${documentId}/workspace`, { replace: true });
         }, 500);
       } else {
+        const issuedDocument = await reloadIssuedDocumentState();
+        if (issuedDocument) {
+          console.warn('[Issue] issueDocument returned failure, but document status is issued; treating as partial success.', issueResult);
+          finishIssuedWithWarning(ISSUED_PDF_FINALISING_WARNING);
+          return;
+        }
+
         throw new Error(issueResult.error || 'Failed to issue document');
       }
     } catch (error: unknown) {
       console.error('[Issue] Error issuing document:', error);
 
-      const { data: currentDocument } = await supabase
-        .from('documents')
-        .select('status, issue_status, locked_pdf_path, pdf_generation_error')
-        .eq('id', documentId)
-        .eq('organisation_id', organisationId)
-        .maybeSingle();
+      const issuedDocument = await reloadIssuedDocumentState();
 
-      if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
-        const warning = currentDocument.locked_pdf_path
-          ? 'Document issued successfully, but a post-issue step failed. Reloading the issued document state.'
-          : 'Document issued successfully, but the locked PDF is not available yet. Reloading the issued document state.';
-        setPartialSuccessWarning(currentDocument.pdf_generation_error ? `${warning} ${currentDocument.pdf_generation_error}` : warning);
-        setIssueProgress('Issued with warning');
-        try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
-        setTimeout(() => {
-          try { onClose(); } catch (e) { console.warn('onClose failed', e); }
-          navigate(`/documents/${documentId}/workspace`, { replace: true });
-        }, 1200);
+      if (issuedDocument) {
+        finishIssuedWithWarning(ISSUED_PDF_FINALISING_WARNING);
         return;
       }
 
