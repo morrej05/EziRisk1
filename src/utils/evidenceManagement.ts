@@ -128,9 +128,9 @@ export async function uploadAttachment(
     }
 
     return { success: true, attachment };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Upload error:', error);
-    return { success: false, error: error.message || 'Unknown error occurred' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 
@@ -163,9 +163,9 @@ export async function deleteAttachment(
     }
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Delete error:', error);
-    return { success: false, error: error.message || 'Unknown error occurred' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 
@@ -199,9 +199,9 @@ export async function updateAttachmentCaption(
     }
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Update error:', error);
-    return { success: false, error: error.message || 'Unknown error occurred' };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 
@@ -244,7 +244,9 @@ export async function carryForwardEvidence(
   fromDocumentId: string,
   toDocumentId: string,
   toBaseDocumentId: string,
-  organisationId: string
+  organisationId: string,
+  moduleInstanceIdMap: Record<string, string> = {},
+  actionIdMap: Record<string, string> = {}
 ): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const attachments = await getDocumentAttachments(fromDocumentId);
@@ -259,8 +261,8 @@ export async function carryForwardEvidence(
       organisation_id: organisationId,
       document_id: toDocumentId,
       base_document_id: toBaseDocumentId,
-      module_instance_id: att.module_instance_id,
-      action_id: att.action_id,
+      module_instance_id: att.module_instance_id ? (moduleInstanceIdMap[att.module_instance_id] || null) : null,
+      action_id: att.action_id ? (actionIdMap[att.action_id] || null) : null,
       file_path: att.file_path,
       file_name: att.file_name,
       file_type: att.file_type,
@@ -280,9 +282,9 @@ export async function carryForwardEvidence(
     }
 
     return { success: true, count: newAttachments.length };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Carry forward error:', error);
-    return { success: false, count: 0, error: error.message || 'Unknown error occurred' };
+    return { success: false, count: 0, error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 

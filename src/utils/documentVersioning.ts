@@ -60,6 +60,149 @@ type MaybeErrorWithMessage = {
   message?: string;
 };
 
+type JsonRecord = Record<string, unknown>;
+type AnyRow = Record<string, unknown>;
+type CountQueryResult = { count: number | null; error: { message?: string } | null };
+type CountQuery = PromiseLike<CountQueryResult> & {
+  eq: (column: string, value: unknown) => CountQuery;
+  in: (column: string, values: readonly unknown[]) => CountQuery;
+  is: (column: string, value: unknown) => CountQuery;
+  or: (filters: string) => CountQuery;
+};
+type CountQueryFactory = (table: string) => {
+  select: (columns: string, options: { count: 'exact'; head: true }) => CountQuery;
+};
+
+const LOCKED_ISSUE_DOCUMENT_FIELDS = new Set([
+  'issue_status',
+  'issue_date',
+  'issued_by',
+  'issued_author_name_snapshot',
+  'issued_author_role_snapshot',
+  'issued_display_author_name',
+  'issued_display_author_role',
+  'issued_display_author_organisation',
+  'locked_pdf_path',
+  'locked_pdf_checksum',
+  'locked_pdf_generated_at',
+  'locked_pdf_size_bytes',
+  'pdf_generation_error',
+]);
+
+const DOCUMENT_INSERT_EXCLUDE_FIELDS = new Set([
+  'id',
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'deleted_by',
+  'superseded_by_document_id',
+  'superseded_date',
+  'is_immutable',
+  'client_visible',
+  'draft_pdf_path',
+  'draft_re_survey_pdf_path',
+  'draft_re_lp_pdf_path',
+  ...LOCKED_ISSUE_DOCUMENT_FIELDS,
+]);
+
+const ROW_INSERT_EXCLUDE_FIELDS = new Set([
+  'id',
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'deleted_by',
+]);
+
+const CARRY_FORWARD_ACTION_STATUSES = ['open', 'in_progress', 'deferred'];
+const CARRY_FORWARD_RECOMMENDATION_STATUSES = ['Open', 'In Progress'];
+
+function cloneRowForInsert<T extends AnyRow>(row: T, excludedFields: Set<string>): AnyRow {
+  return Object.fromEntries(
+    Object.entries(row).filter(([, value]) => value !== undefined).filter(([key]) => !excludedFields.has(key))
+  );
+}
+
+function countMetaKeys(meta: unknown): number {
+  return meta && typeof meta === 'object' && !Array.isArray(meta) ? Object.keys(meta).length : 0;
+}
+
+function hasExecutiveSummary(row: AnyRow | null | undefined): boolean {
+  if (!row) return false;
+  const mode = row.executive_summary_mode || 'ai';
+  if (mode === 'none') return false;
+  return Boolean(
+    ((mode === 'ai' || mode === 'both') && String(row.executive_summary_ai || '').trim()) ||
+    ((mode === 'author' || mode === 'both') && String(row.executive_summary_author || '').trim())
+  );
+}
+
+function countPhotoReferences(value: unknown): number {
+  if (!value) return 0;
+  if (typeof value === 'string') {
+    return /\.(png|jpe?g|webp|heic)(\?|$)/i.test(value) || /storage_path|file_path|photo|image/i.test(value) ? 1 : 0;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + countPhotoReferences(item), 0);
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as JsonRecord).reduce((total, [key, item]) => {
+      const keyHint = /photo|image|evidence|attachment|storage_path|file_path/i.test(key) ? 1 : 0;
+      if (typeof item === 'string' && keyHint && item.trim()) return total + 1;
+      return total + countPhotoReferences(item);
+    }, 0);
+  }
+  return 0;
+}
+
+function countModulePhotoReferences(modules: AnyRow[] | null | undefined): number {
+  return (modules || []).reduce((total, module) => total + countPhotoReferences(module.data), 0);
+}
+
+async function countRows(table: string, documentId: string, extra?: (query: CountQuery) => CountQuery): Promise<number> {
+  const fromForCount = supabase.from as unknown as CountQueryFactory;
+  let query = fromForCount(table)
+    .select('*', { count: 'exact', head: true })
+    .eq('document_id', documentId);
+  if (extra) query = extra(query);
+  const { count, error } = await query;
+  if (error) throw error;
+  return count || 0;
+}
+
+async function logCreateNewVersionCarryForwardAudit(params: {
+  sourceDocument: AnyRow;
+  newDocument: AnyRow;
+  sourceModules: AnyRow[];
+  newModules: AnyRow[];
+}): Promise<void> {
+  const { sourceDocument, newDocument, sourceModules, newModules } = params;
+  try {
+    const [sourceActionCount, newActionCount, sourceAttachmentCount, newAttachmentCount, sourceRecommendationCount, newRecommendationCount] = await Promise.all([
+      countRows('actions', String(sourceDocument.id), (q) => q.in('status', CARRY_FORWARD_ACTION_STATUSES).is('deleted_at', null)),
+      countRows('actions', String(newDocument.id), (q) => q.in('status', CARRY_FORWARD_ACTION_STATUSES).is('deleted_at', null)),
+      countRows('attachments', String(sourceDocument.id), (q) => q.is('deleted_at', null)),
+      countRows('attachments', String(newDocument.id), (q) => q.is('deleted_at', null)),
+      countRows('re_recommendations', String(sourceDocument.id), (q) => q.in('status', CARRY_FORWARD_RECOMMENDATION_STATUSES).or('is_suppressed.is.false,is_suppressed.is.null')),
+      countRows('re_recommendations', String(newDocument.id), (q) => q.in('status', CARRY_FORWARD_RECOMMENDATION_STATUSES).or('is_suppressed.is.false,is_suppressed.is.null')),
+    ]);
+
+    console.info('[createNewVersion carry-forward audit]', {
+      sourceDocumentId: sourceDocument.id,
+      newDocumentId: newDocument.id,
+      moduleInstances: { source: sourceModules.length, new: newModules.length },
+      actions: { sourceCarriedEligible: sourceActionCount, newCarried: newActionCount },
+      recommendations: { sourceCarriedEligible: sourceRecommendationCount, newCarried: newRecommendationCount },
+      evidenceAttachments: { source: sourceAttachmentCount, new: newAttachmentCount },
+      executiveSummaryPresent: { source: hasExecutiveSummary(sourceDocument), new: hasExecutiveSummary(newDocument) },
+      imagePhotoReferences: { source: countModulePhotoReferences(sourceModules), new: countModulePhotoReferences(newModules) },
+      metaKeys: { source: countMetaKeys(sourceDocument.meta), new: countMetaKeys(newDocument.meta) },
+      lockedIssueFieldsCleared: Array.from(LOCKED_ISSUE_DOCUMENT_FIELDS).every((field) => !newDocument[field]),
+    });
+  } catch (auditError) {
+    console.warn('[createNewVersion carry-forward audit] Failed to collect diagnostic counts:', auditError);
+  }
+}
+
 function isDuplicateDraftVersionError(error: unknown): boolean {
   const maybeError = error as { code?: string; message?: string; details?: string };
   const message = String(maybeError.message || maybeError.details || '').toLowerCase();
@@ -389,37 +532,7 @@ export async function createNewVersion(
   try {
     const { data: currentIssued, error: currentError } = await supabase
       .from('documents')
-      .select(`
-        id,
-        organisation_id,
-        base_document_id,
-        version_number,
-        site_id,
-        building_id,
-        title,
-        document_type,
-        responsible_person,
-        meta,
-        assessor_name,
-        assessor_role,
-        display_author_name,
-        display_author_role,
-        display_author_organisation,
-        author_name_snapshot,
-        author_role_snapshot,
-        assessment_date,
-        issue_date,
-        review_date,
-        scope_description,
-        limitations_assumptions,
-        standards_selected,
-        enabled_modules,
-        jurisdiction,
-        executive_summary_ai,
-        executive_summary_author,
-        executive_summary_mode,
-        approval_status
-      `)
+      .select('*')
       .eq('base_document_id', baseDocumentId)
       .eq('issue_status', 'issued')
       .order('version_number', { ascending: false })
@@ -453,47 +566,44 @@ export async function createNewVersion(
       };
     }
 
-    const newVersionNumber = currentIssued.version_number + 1;
-
+    const newVersionNumber = (currentIssued.version_number || 1) + 1;
     const currentDate = new Date().toISOString().slice(0, 10);
     const sourceIdentity = resolveDocumentIdentity(currentIssued);
     const carriedMeta = mergeIdentityIntoMeta(currentIssued.meta as Record<string, unknown> | null, sourceIdentity);
-
     const newDocData = {
+      ...cloneRowForInsert(currentIssued, DOCUMENT_INSERT_EXCLUDE_FIELDS),
       organisation_id: currentIssued.organisation_id || organisationId,
       base_document_id: baseDocumentId,
       version_number: newVersionNumber,
       site_id: currentIssued.site_id ?? sourceIdentity.siteId,
       building_id: currentIssued.building_id ?? sourceIdentity.buildingId,
-      title: currentIssued.title,
-      document_type: currentIssued.document_type,
       responsible_person: currentIssued.responsible_person ?? sourceIdentity.clientName,
       meta: carriedMeta,
-      assessor_name: currentIssued.assessor_name,
-      assessor_role: currentIssued.assessor_role,
       display_author_name: currentIssued.display_author_name ?? currentIssued.assessor_name,
       display_author_role: currentIssued.display_author_role ?? currentIssued.assessor_role,
       display_author_organisation: currentIssued.display_author_organisation ?? null,
       author_name_snapshot: currentIssued.author_name_snapshot ?? currentIssued.assessor_name,
       author_role_snapshot: currentIssued.author_role_snapshot ?? currentIssued.assessor_role,
+      created_by_user_id: userId,
+      author_profile_id: userId,
       assessment_date: currentIssued.assessment_date || currentIssued.issue_date || currentDate,
-      review_date: currentIssued.review_date,
-      scope_description: currentIssued.scope_description,
-      limitations_assumptions: currentIssued.limitations_assumptions,
-      standards_selected: currentIssued.standards_selected,
-      enabled_modules: currentIssued.enabled_modules,
-      jurisdiction: currentIssued.jurisdiction,
       issue_status: 'draft' as const,
       issue_date: null,
       issued_by: null,
       status: 'draft' as const,
+      is_immutable: false,
+      client_visible: false,
+      superseded_by_document_id: null,
+      superseded_date: null,
       executive_summary_ai: currentIssued.executive_summary_ai ?? null,
       executive_summary_author: currentIssued.executive_summary_author ?? null,
       executive_summary_mode: currentIssued.executive_summary_mode || 'ai',
-      approval_status: currentIssued.approval_status ?? 'approved',
+      approval_status: currentIssued.approval_status ?? 'not_required',
       locked_pdf_path: null,
+      locked_pdf_checksum: null,
       locked_pdf_generated_at: null,
-      locked_pdf_size_bytes: null,      
+      locked_pdf_size_bytes: null,
+      pdf_generation_error: null,
     };
 
     const { data: newDocument, error: newDocError } = await supabase
@@ -506,106 +616,96 @@ export async function createNewVersion(
 
     const { data: modules, error: moduleError } = await supabase
       .from('module_instances')
-      .select('id, module_key, module_scope, site_id, building_id, data, outcome, assessor_notes, completed_at')
+      .select('*')
       .eq('document_id', currentIssued.id)
       .eq('organisation_id', organisationId);
 
     if (moduleError) throw moduleError;
 
-    if (modules && modules.length > 0) {
-      const newModules = modules.map((m) => ({
+    const moduleIdMap: Record<string, string> = {};
+    const insertedModules: AnyRow[] = [];
+
+    for (const module of modules || []) {
+      const newModuleData = {
+        ...cloneRowForInsert(module, ROW_INSERT_EXCLUDE_FIELDS),
         organisation_id: organisationId,
         document_id: newDocument.id,
-        module_key: m.module_key,
-        module_scope: m.module_scope,
-        site_id: m.site_id,
-        building_id: m.building_id,
-        data: m.data,
-        outcome: m.outcome,
-        assessor_notes: m.assessor_notes,
-        completed_at: m.completed_at,
-      }));
+        site_id: module.site_id ?? newDocument.site_id ?? null,
+        building_id: module.building_id ?? newDocument.building_id ?? null,
+      };
 
-      const { error: moduleInsertError } = await supabase
+      const { data: insertedModule, error: moduleInsertError } = await supabase
         .from('module_instances')
-        .insert(newModules);
+        .insert([newModuleData])
+        .select('*')
+        .single();
 
       if (moduleInsertError) throw moduleInsertError;
+      if (insertedModule?.id) {
+        moduleIdMap[module.id] = insertedModule.id;
+        insertedModules.push(insertedModule);
+      }
     }
 
     const { data: actions, error: actionsError } = await supabase
       .from('actions')
-      .select(`
-        id,
-        organisation_id,
-        document_id,
-        source_document_id,
-        module_instance_id,
-        recommended_action,
-        status,
-        priority_band,
-        timescale,
-        target_date,
-        override_justification,
-        source,
-        owner_user_id,
-        origin_action_id
-      `)
+      .select('*')
       .eq('document_id', currentIssued.id)
-      .in('status', ['open', 'in_progress', 'deferred'])
+      .in('status', CARRY_FORWARD_ACTION_STATUSES)
       .is('deleted_at', null);
 
     if (actionsError) throw actionsError;
 
-    if (actions && actions.length > 0) {
-      const { data: newModuleInstances } = await supabase
-        .from('module_instances')
-        .select('id, module_key')
-        .eq('document_id', newDocument.id);
+    const actionIdMap: Record<string, string> = {};
+    for (const action of actions || []) {
+      const carriedAction = {
+        ...cloneRowForInsert(action, ROW_INSERT_EXCLUDE_FIELDS),
+        organisation_id: organisationId,
+        document_id: newDocument.id,
+        source_document_id: action.source_document_id || currentIssued.id,
+        module_instance_id: action.module_instance_id ? (moduleIdMap[action.module_instance_id] || null) : null,
+        origin_action_id: action.origin_action_id || action.id,
+        carried_from_document_id: currentIssued.id,
+        superseded_by_action_id: null,
+        superseded_at: null,
+      };
 
-      const moduleKeyToNewId: Record<string, string> = {};
-      newModuleInstances?.forEach((m) => {
-        moduleKeyToNewId[m.module_key] = m.id;
-      });
-
-      const { data: oldModuleInstances } = await supabase
-        .from('module_instances')
-        .select('id, module_key')
-        .eq('document_id', currentIssued.id);
-
-      const oldModuleIdToKey: Record<string, string> = {};
-      oldModuleInstances?.forEach((m) => {
-        oldModuleIdToKey[m.id] = m.module_key;
-      });
-
-      const carriedActions = actions.map((action) => {
-        const oldModuleKey = oldModuleIdToKey[action.module_instance_id];
-        const newModuleInstanceId = oldModuleKey ? moduleKeyToNewId[oldModuleKey] : action.module_instance_id;
-
-        return {
-          organisation_id: organisationId,
-          document_id: newDocument.id,
-          source_document_id: action.source_document_id || currentIssued.id,
-          module_instance_id: newModuleInstanceId,
-          recommended_action: action.recommended_action,
-          status: action.status,
-          priority_band: action.priority_band,
-          timescale: action.timescale,
-          target_date: action.target_date,
-          override_justification: action.override_justification,
-          source: action.source,
-          owner_user_id: action.owner_user_id,
-          origin_action_id: action.origin_action_id || action.id,
-          carried_from_document_id: currentIssued.id,
-        };
-      });
-
-      const { error: actionsInsertError } = await supabase
+      const { data: insertedAction, error: actionsInsertError } = await supabase
         .from('actions')
-        .insert(carriedActions);
+        .insert([carriedAction])
+        .select('id')
+        .single();
 
       if (actionsInsertError) {
-        console.error('Error carrying forward actions:', actionsInsertError);
+        console.error('Error carrying forward action:', actionsInsertError);
+        continue;
+      }
+      if (insertedAction?.id) actionIdMap[action.id] = insertedAction.id;
+    }
+
+    const { data: recommendations, error: recommendationsError } = await supabase
+      .from('re_recommendations')
+      .select('*')
+      .eq('document_id', currentIssued.id)
+      .in('status', CARRY_FORWARD_RECOMMENDATION_STATUSES)
+      .or('is_suppressed.is.false,is_suppressed.is.null');
+
+    if (recommendationsError) throw recommendationsError;
+
+    for (const recommendation of recommendations || []) {
+      const carriedRecommendation = {
+        ...cloneRowForInsert(recommendation, ROW_INSERT_EXCLUDE_FIELDS),
+        document_id: newDocument.id,
+        module_instance_id: recommendation.module_instance_id ? (moduleIdMap[recommendation.module_instance_id] || null) : null,
+        created_by: userId,
+      };
+
+      const { error: recommendationInsertError } = await supabase
+        .from('re_recommendations')
+        .insert([carriedRecommendation]);
+
+      if (recommendationInsertError) {
+        console.error('Error carrying forward RE recommendation:', recommendationInsertError);
       }
     }
 
@@ -615,7 +715,9 @@ export async function createNewVersion(
           currentIssued.id,
           newDocument.id,
           baseDocumentId,
-          organisationId
+          organisationId,
+          moduleIdMap,
+          actionIdMap
         );
 
         if (!evidenceResult.success) {
@@ -625,6 +727,13 @@ export async function createNewVersion(
         console.error('Exception carrying forward evidence:', evidenceError);
       }
     }
+
+    await logCreateNewVersionCarryForwardAudit({
+      sourceDocument: currentIssued,
+      newDocument,
+      sourceModules: modules || [],
+      newModules: insertedModules,
+    });
 
     try {
       await createInitialIssueSummary(newDocument.id, userId);
