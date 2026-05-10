@@ -19,7 +19,7 @@ interface Document {
 
 export default function FireSafetyDashboard() {
   const navigate = useNavigate();
-  const { organisation } = useAuth();
+  const { organisation, user } = useAuth();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -41,6 +41,7 @@ export default function FireSafetyDashboard() {
         .select('*')
         .eq('organisation_id', organisation.id)
         .in('document_type', ['FRA', 'FSD'])
+        .is('deleted_at', null)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -58,11 +59,19 @@ export default function FireSafetyDashboard() {
   };
 
   const handleDeleteDocument = async (documentId: string) => {
+    if (!user?.id) return;
+
     try {
       const { error } = await supabase
         .from('documents')
-        .delete()
-        .eq('id', documentId);
+        .update({
+          status: 'deleted',
+          deleted_at: new Date().toISOString(),
+          deleted_by: user.id,
+        })
+        .eq('id', documentId)
+        .eq('issue_status', 'draft')
+        .is('deleted_at', null);
 
       if (error) throw error;
 
@@ -70,7 +79,7 @@ export default function FireSafetyDashboard() {
       fetchDocuments();
     } catch (error) {
       console.error('Error deleting document:', error);
-      alert('Failed to delete document. It may be issued or have associated data.');
+      alert('Failed to delete document. Only draft documents can be deleted.');
     }
   };
 
