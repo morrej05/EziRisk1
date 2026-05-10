@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { computeExplosionSummary } from '../dsear/criticalityEngine';
 import { compareActionsByDisplayReference, filterActiveActions } from './actionContracts';
-import { listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment, listAttachments, type Attachment } from '../supabase/attachments';
 import { getModuleName } from '../modules/moduleCatalog';
 import { resolveExplosionRegime } from '../jurisdictions';
 import { detectInfoGapsForModule } from '../../utils/infoGapQuickActions';
@@ -1019,6 +1019,31 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
         color: rgb(0.1, 0.1, 0.1),
       });
       yPosition -= 20;
+    }
+
+    const documentLevelImages = attachments.filter((attachment) =>
+      isDocumentLevelAttachment(attachment) && isRenderableImageAttachment(attachment)
+    );
+
+    for (const attachment of documentLevelImages) {
+      page = addNewPage(pdfDoc, isDraft, totalPages).page;
+      yPosition = PAGE_TOP_Y;
+      page.drawText('Document-level Photo Evidence', { x: MARGIN, y: yPosition, size: 14, font: fontBold, color: rgb(0, 0, 0) });
+      yPosition -= 22;
+      page.drawText(sanitizePdfText(attachment.caption || attachment.file_name), { x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.2, 0.2, 0.2) });
+      yPosition -= 18;
+      const bytes = await fetchAttachmentBytes(attachment);
+      if (!bytes) continue;
+      const fileType = String(attachment.file_type || '').toLowerCase();
+      const fileName = String(attachment.file_name || '').toLowerCase();
+      const image = fileType === 'image/png' || fileName.endsWith('.png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+      const raw = image.scale(1);
+      const maxWidth = CONTENT_WIDTH * 0.75;
+      const maxHeight = yPosition - MARGIN;
+      const scale = Math.min(maxWidth / raw.width, maxHeight / raw.height, 1);
+      const width = raw.width * scale;
+      const height = raw.height * scale;
+      page.drawImage(image, { x: MARGIN + ((CONTENT_WIDTH - width) / 2), y: yPosition - height, width, height });
     }
   }
 

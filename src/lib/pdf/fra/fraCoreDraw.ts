@@ -38,7 +38,7 @@ import { CRITICAL_FIELDS } from './fraConstants';
 import { safeArray, mapModuleKeyToSectionName } from './fraUtils';
 import type { Cursor, Document, ModuleInstance, Action, ActionRating, Organisation } from './fraTypes';
 import type { Attachment } from '../../supabase/attachments';
-import { fetchAttachmentBytes } from '../../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment } from '../../supabase/attachments';
 import { getJurisdictionConfig, getJurisdictionLabel } from '../../jurisdictions';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
 import { getFraReportOutcomeLabel, resolveFraOutcomeValue } from './fraOutcome';
@@ -1032,19 +1032,14 @@ cursorY -= (GAP_AFTER_LABEL + LINE_H);
  * Helper: Determine if attachment is an image type we can embed
  */
 function isImageAttachment(attachment: Attachment): boolean {
-  const fileType = attachment.file_type.toLowerCase();
-  const fileName = attachment.file_name.toLowerCase();
+  const fileName = String(attachment.file_name || '').toLowerCase();
 
   // Exclude logos
   if (fileName.includes('logo')) {
     return false;
   }
 
-  // Check for supported image types
-  return fileType === 'image/png' ||
-         fileType === 'image/jpg' ||
-         fileType === 'image/jpeg' ||
-         fileType === 'image/webp';
+  return isRenderableImageAttachment(attachment);
 }
 
 /**
@@ -1063,11 +1058,12 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
     }
 
     let image: PDFImage;
-    const fileType = attachment.file_type.toLowerCase();
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
 
-    if (fileType === 'image/png' || fileType === 'image/webp') {
+    if (fileType === 'image/png' || fileName.endsWith('.png')) {
       image = await pdfDoc.embedPng(bytes);
-    } else if (fileType === 'image/jpg' || fileType === 'image/jpeg') {
+    } else if (fileType === 'image/jpg' || fileType === 'image/jpeg' || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
       image = await pdfDoc.embedJpg(bytes);
     } else {
       return null;
@@ -1088,7 +1084,7 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
 async function drawImageGrid(
   page: PDFPage,
   yPosition: number,
-  images: Array<{ image: PDFImage; refNum: string; fileName: string }>,
+  images: Array<{ image: PDFImage; refNum: string; label?: string }>,
   font: any,
   pdfDoc: PDFDocument,
   isDraft: boolean,
@@ -1110,7 +1106,7 @@ async function drawImageGrid(
   let currentRow = 0;
   let currentCol = 0;
 
-  for (const { image, refNum, fileName } of imagesToShow) {
+  for (const { image, refNum, label } of imagesToShow) {
     // Check if we need a new page
     if (yPosition < MARGIN + rowHeight + 50) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
@@ -1152,7 +1148,7 @@ async function drawImageGrid(
 
     // Draw caption below image
     const captionY = y - 10;
-    const caption = sanitizePdfText(refNum);
+    const caption = sanitizePdfText(label ? `${refNum} – ${label}` : refNum);
     page.drawText(caption, {
       x: x + thumbWidth / 2 - (caption.length * 2.5),
       y: captionY,
@@ -1298,7 +1294,7 @@ export async function drawInlineEvidenceBlock(
   const imageAttachments = sectionAttachments.filter(sa => isImageAttachment(sa.attachment));
 
   // Try to embed images (up to 6 for sections)
-  const embeddedImages: Array<{ image: PDFImage; refNum: string; fileName: string }> = [];
+  const embeddedImages: Array<{ image: PDFImage; refNum: string; label?: string }> = [];
   for (const { attachment, refNum } of imageAttachments.slice(0, 6)) {
     if (!refNum) continue;
 
@@ -1307,7 +1303,7 @@ export async function drawInlineEvidenceBlock(
       embeddedImages.push({
         image,
         refNum,
-        fileName: attachment.file_name,
+        label: attachment.caption || attachment.file_name,
       });
     }
   }
@@ -1668,7 +1664,7 @@ export async function drawActionRegister(
         const imageAttachments = actionAttachments.filter(att => isImageAttachment(att));
 
         // Try to embed images (up to 3 for actions - 1 row)
-        const embeddedImages: Array<{ image: PDFImage; refNum: string; fileName: string }> = [];
+        const embeddedImages: Array<{ image: PDFImage; refNum: string; label?: string }> = [];
         for (const att of imageAttachments.slice(0, 3)) {
           const refNum = evidenceRefMap.get(att.id);
           if (!refNum) continue;
@@ -2042,7 +2038,7 @@ export function drawResponsiblePersonDuties(
 /**
  * Draw Attachments Index
  */
-export function drawAttachmentsIndex(
+export async function drawAttachmentsIndex(
   cursor: Cursor,
   attachments: Attachment[],
   moduleInstances: ModuleInstance[],
@@ -2052,7 +2048,7 @@ export function drawAttachmentsIndex(
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[]
-): { page: PDFPage; yPosition: number } {
+): Promise<{ page: PDFPage; yPosition: number }> {
   let { page, yPosition } = cursor;
   yPosition -= 20;
   page.drawText('ATTACHMENTS & EVIDENCE INDEX', {
@@ -2185,6 +2181,52 @@ export function drawAttachmentsIndex(
     });
 
     yPosition -= 15;
+  }
+
+  const documentLevelImages = filteredAttachments.filter((attachment) =>
+    isDocumentLevelAttachment(attachment) && isImageAttachment(attachment)
+  );
+
+  if (documentLevelImages.length > 0) {
+    if (yPosition < MARGIN + 120) {
+      const result = addNewPage(pdfDoc, isDraft, totalPages);
+      page = result.page;
+      yPosition = PAGE_TOP_Y;
+    }
+
+    yPosition -= 5;
+    page.drawText('Document-level Photos', {
+      x: MARGIN,
+      y: yPosition,
+      size: 12,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    yPosition -= 20;
+
+    const embeddedImages: Array<{ image: PDFImage; refNum: string; label?: string }> = [];
+    for (const attachment of documentLevelImages) {
+      const refNum = `E-${String(filteredAttachments.indexOf(attachment) + 1).padStart(3, '0')}`;
+      const image = await embedImage(pdfDoc, attachment);
+      if (image) {
+        embeddedImages.push({
+          image,
+          refNum,
+          label: attachment.caption || attachment.file_name,
+        });
+      }
+    }
+
+    ({ page, yPosition } = await drawImageGrid(
+      page,
+      yPosition,
+      embeddedImages,
+      font,
+      pdfDoc,
+      isDraft,
+      totalPages,
+      documentLevelImages.length
+    ));
   }
 
   return { page, yPosition };

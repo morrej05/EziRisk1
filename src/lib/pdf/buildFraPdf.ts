@@ -891,7 +891,7 @@ if (attachments.length > 0) {
   page = attStart.page;
   yPosition = PAGE_TOP_Y;
 
-  ({ page, yPosition } = drawAttachmentsIndex(
+  ({ page, yPosition } = await drawAttachmentsIndex(
     { page, yPosition },
     attachments,
     moduleInstances,
