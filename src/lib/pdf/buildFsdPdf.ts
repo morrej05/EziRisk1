@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { getModuleName } from '../modules/moduleCatalog';
 import { detectInfoGaps } from '../../utils/infoGapQuickActions';
-import { fetchAttachmentBytes, listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment, listAttachments, type Attachment } from '../supabase/attachments';
 import {
   fsdPurposeAndScopeText,
   fsdLimitationsText,
@@ -169,8 +169,7 @@ function stripModuleCodePrefix(moduleName: string): string {
 }
 
 function isEmbeddableImageAttachment(attachment: Attachment): boolean {
-  const fileType = attachment.file_type.toLowerCase();
-  return fileType === 'image/png' || fileType === 'image/jpg' || fileType === 'image/jpeg';
+  return isRenderableImageAttachment(attachment);
 }
 function drawTableOfContents(
   pdfDoc: PDFDocument,
@@ -1211,7 +1210,7 @@ function drawAttachmentsIndex(
 
     ({ page, yPosition } = ensurePageSpace(110, page, yPosition, pdfDoc, isDraft, totalPages));
 
-    const refNum = `E-${String(i + 1).padStart(3, '0')}`;
+    const refNum = `E-${String(attachments.indexOf(attachment) + 1).padStart(3, '0')}`;
 
     page.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
       x: MARGIN,
@@ -1240,8 +1239,8 @@ function drawAttachmentsIndex(
       }
     }
 
-    if (attachment.linked_module_instance_id) {
-      const linkedModule = moduleInstances.find((m) => m.id === attachment.linked_module_instance_id);
+    if (attachment.module_instance_id) {
+      const linkedModule = moduleInstances.find((m) => m.id === attachment.module_instance_id);
       if (linkedModule) {
         const moduleName = getModuleName(linkedModule.module_key);
         page.drawText(`Linked to: ${sanitizePdfText(moduleName)}`, {
@@ -1255,8 +1254,8 @@ function drawAttachmentsIndex(
       }
     }
 
-    if (attachment.linked_action_id) {
-      const linkedAction = actions.find((a) => a.id === attachment.linked_action_id);
+    if (attachment.action_id) {
+      const linkedAction = actions.find((a) => a.id === attachment.action_id);
       if (linkedAction) {
         const actionRef = linkedAction.reference_number || 'Action';
         page.drawText(`Linked to: ${sanitizePdfText(actionRef)}`, {
@@ -1311,7 +1310,7 @@ async function drawAttachmentPages(
     ({ page: currentPage } = addNewPage(pdfDoc, isDraft, totalPages));
     yPosition = PAGE_TOP_Y;
 
-    const refNum = `E-${String(i + 1).padStart(3, '0')}`;
+    const refNum = `E-${String(attachments.indexOf(attachment) + 1).padStart(3, '0')}`;
 
     currentPage.drawText('ATTACHMENT EVIDENCE', {
       x: MARGIN,
@@ -1331,8 +1330,9 @@ async function drawAttachmentPages(
     });
     yPosition -= 18;
 
-    if (attachment.caption) {
-      const captionLines = wrapText(attachment.caption, CONTENT_WIDTH, 9, font);
+    const caption = attachment.caption || (isDocumentLevelAttachment(attachment) ? attachment.file_name : null);
+    if (caption) {
+      const captionLines = wrapText(caption, CONTENT_WIDTH, 9, font);
       for (const line of captionLines) {
         currentPage.drawText(line, {
           x: MARGIN,
@@ -1345,8 +1345,8 @@ async function drawAttachmentPages(
       }
     }
 
-    if (attachment.linked_module_instance_id) {
-      const linkedModule = moduleInstances.find((m) => m.id === attachment.linked_module_instance_id);
+    if (attachment.module_instance_id) {
+      const linkedModule = moduleInstances.find((m) => m.id === attachment.module_instance_id);
       if (linkedModule) {
         const moduleName = stripModuleCodePrefix(getModuleName(linkedModule.module_key));
         currentPage.drawText(`Module: ${sanitizePdfText(moduleName)}`, {
@@ -1360,8 +1360,8 @@ async function drawAttachmentPages(
       }
     }
 
-    if (attachment.linked_action_id) {
-      const linkedAction = actions.find((a) => a.id === attachment.linked_action_id);
+    if (attachment.action_id) {
+      const linkedAction = actions.find((a) => a.id === attachment.action_id);
       if (linkedAction?.reference_number) {
         currentPage.drawText(`Action: ${sanitizePdfText(linkedAction.reference_number)}`, {
           x: MARGIN,
@@ -1389,8 +1389,9 @@ async function drawAttachmentPages(
     }
 
     let embeddedImage;
-    const fileType = attachment.file_type.toLowerCase();
-    if (fileType === 'image/png') {
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
+    if (fileType === 'image/png' || fileName.endsWith('.png')) {
       embeddedImage = await pdfDoc.embedPng(bytes);
     } else {
       embeddedImage = await pdfDoc.embedJpg(bytes);
