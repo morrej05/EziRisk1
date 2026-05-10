@@ -40,18 +40,14 @@ export type DocumentIssueStatus =
 
 export const ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES = [
   'draft',
-  'in_progress_draft',
-  'pending_review_draft',
 ] as const;
 
 const INACTIVE_DOCUMENT_LIFECYCLE_STATUSES = [
   'archived',
   'deleted',
-  'superseded',
-  'issued',
 ] as const;
 
-const INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER = `(${INACTIVE_DOCUMENT_LIFECYCLE_STATUSES.join(',')})`;
+const ACTIVE_DRAFT_LIFECYCLE_STATUS_OR_FILTER = `status.is.null,status.not.in.(${INACTIVE_DOCUMENT_LIFECYCLE_STATUSES.join(',')})`;
 
 export function isActiveEditableDraftVersion(document: {
   issue_status?: string | null;
@@ -697,7 +693,7 @@ export async function createNewVersion(
       .eq('base_document_id', baseDocumentId)
       .in('issue_status', [...ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES])
       .is('deleted_at', null)
-      .not('status', 'in', INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER)
+      .or(ACTIVE_DRAFT_LIFECYCLE_STATUS_OR_FILTER)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();

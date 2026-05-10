@@ -214,6 +214,8 @@ export async function getAllDocumentVersions(baseDocumentId: string): Promise<{
       .from('documents')
       .select('*')
       .eq('base_document_id', baseDocumentId)
+      .is('deleted_at', null)
+      .or('status.is.null,status.not.in.(archived,deleted)')
       .order('version_number', { ascending: false });
 
     if (error) throw error;

@@ -104,7 +104,7 @@ interface ReRecommendationEntry {
   updated_at: string;
 }
 
-const INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER = '(archived,deleted,superseded,issued)';
+const ACTIVE_DRAFT_LIFECYCLE_STATUS_OR_FILTER = 'status.is.null,status.not.in.(archived,deleted)';
 
 const isRecommendationActiveStatus = (status: string | null | undefined): boolean => {
   const normalized = (status || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -289,7 +289,7 @@ export default function DocumentOverview() {
         .eq('organisation_id', organisation.id)
         .in('issue_status', [...ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES])
         .is('deleted_at', null)
-        .not('status', 'in', INACTIVE_DOCUMENT_LIFECYCLE_STATUS_FILTER)
+        .or(ACTIVE_DRAFT_LIFECYCLE_STATUS_OR_FILTER)
         .neq('id', currentDocumentId)
         .order('version_number', { ascending: false })
         .limit(1)
@@ -737,25 +737,25 @@ const handleDownloadDefencePack = async () => {
 
     setIsDeleting(true);
     try {
-      // Only allow archiving draft documents. This is a soft delete: set deleted_at and deleted_by.
+      // Only allow deleting draft documents. This is a soft delete: set status, deleted_at, and deleted_by.
       if (document?.issue_status !== 'draft') {
-        alert('Only draft documents can be archived');
+        alert('Only draft documents can be deleted');
         return;
       }
 
-      // Soft delete and move the issue lifecycle out of the active draft state so archived drafts do not block new versions.
+      // Soft delete and move the lifecycle status out of draft so deleted drafts do not block new versions.
       const archivedAt = new Date().toISOString();
       const { error } = await supabase
         .from('documents')
         .update({
           deleted_at: archivedAt,
           deleted_by: user.id,
-          issue_status: 'archived',
-          status: 'archived'
+          status: 'deleted'
         })
         .eq('id', id)
         .eq('organisation_id', organisation.id)
-        .eq('issue_status', 'draft');
+        .eq('issue_status', 'draft')
+        .is('deleted_at', null);
 
       if (error) {
         console.error('Error archiving document:', error);
