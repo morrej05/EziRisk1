@@ -46,6 +46,59 @@ export interface ExistingActionOption extends LinkedAction {
   module_instance_id: string | null;
 }
 
+
+export function normalizeActionText(text: string | null | undefined): string {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitutionCost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + substitutionCost
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+
+  return previous[b.length];
+}
+
+export function areActionTextsNearDuplicate(a: string | null | undefined, b: string | null | undefined): boolean {
+  const normalizedA = normalizeActionText(a);
+  const normalizedB = normalizeActionText(b);
+
+  if (!normalizedA || !normalizedB) return false;
+  if (normalizedA === normalizedB) return true;
+
+  const shorterLength = Math.min(normalizedA.length, normalizedB.length);
+  const longerLength = Math.max(normalizedA.length, normalizedB.length);
+  if (shorterLength < 24) return false;
+
+  if (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA)) {
+    return shorterLength / longerLength >= 0.82;
+  }
+
+  const distance = levenshteinDistance(normalizedA, normalizedB);
+  const similarity = 1 - distance / longerLength;
+  return similarity >= 0.9;
+}
+
 export function detailedFindingNeedsRecommendation(assessment: DetailedFindingAssessment): boolean {
   const risk = String(assessment.risk_significance || '').toLowerCase();
   const trigger = String(assessment.recommended_action_trigger || '').toLowerCase();

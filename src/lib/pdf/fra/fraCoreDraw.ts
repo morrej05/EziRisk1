@@ -47,15 +47,25 @@ import { type ScoringResult } from '../../fra/scoring/scoringEngine';
 
 function getLinkedActionText(data: Record<string, unknown>, sourceAssessmentType: string, sourceAssessmentKey: string): string | null {
   const links = Array.isArray(data.__action_source_links) ? data.__action_source_links as Array<Record<string, unknown>> : [];
-  const link = links.find((item) =>
+  const matchingLinks = links.filter((item) =>
     item.source_assessment_type === sourceAssessmentType &&
     item.source_assessment_key === sourceAssessmentKey &&
     !item.deleted_at
   );
-  if (!link) return null;
-  const action = (link.action || link.actions || {}) as Record<string, unknown>;
-  const reference = String(action.reference_number || '').trim();
-  return reference ? `Linked recommendation/action: ${reference}` : 'Linked recommendation/action recorded';
+  if (matchingLinks.length === 0) return null;
+
+  const references = matchingLinks
+    .map((link) => {
+      const action = (link.action || link.actions || {}) as Record<string, unknown>;
+      return String(action.reference_number || '').trim();
+    })
+    .filter(Boolean);
+
+  if (references.length > 0) {
+    return `Linked recommendation/action${references.length > 1 ? 's' : ''}: ${references.join(', ')}`;
+  }
+
+  return matchingLinks.length > 1 ? 'Linked recommendations/actions recorded' : 'Linked recommendation/action recorded';
 }
 
 /**

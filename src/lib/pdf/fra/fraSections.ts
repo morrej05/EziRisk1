@@ -630,15 +630,25 @@ export function renderSection5FireHazards(
     s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
   const getLinkedActionText = (sourceAssessmentKey: string): string | null => {
     const links = Array.isArray(d.__action_source_links) ? d.__action_source_links as Array<Record<string, unknown>> : [];
-    const link = links.find((item) =>
+    const matchingLinks = links.filter((item) =>
       item.source_assessment_type === 'ignition_source_assessments' &&
       item.source_assessment_key === sourceAssessmentKey &&
       !item.deleted_at
     );
-    if (!link) return null;
-    const actionRecord = (link.action || link.actions || {}) as Record<string, unknown>;
-    const reference = norm(actionRecord.reference_number);
-    return reference ? `Linked recommendation/action: ${reference}` : 'Linked recommendation/action recorded';
+    if (matchingLinks.length === 0) return null;
+
+    const references = matchingLinks
+      .map((link) => {
+        const actionRecord = (link.action || link.actions || {}) as Record<string, unknown>;
+        return norm(actionRecord.reference_number);
+      })
+      .filter(Boolean);
+
+    if (references.length > 0) {
+      return `Linked recommendation/action${references.length > 1 ? 's' : ''}: ${references.join(', ')}`;
+    }
+
+    return matchingLinks.length > 1 ? 'Linked recommendations/actions recorded' : 'Linked recommendation/action recorded';
   };
 
   const list = (arr: any, other?: any) => {
