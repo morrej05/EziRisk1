@@ -6,6 +6,8 @@ const CONSENT_KEY = 'ezirisk_cookie_consent';
 const PUBLIC_PATHS = new Set([
   '/',
   '/signin',
+  '/pricing',
+  '/contact',
   '/reset-password',
   '/public/documents',
   '/privacy',
@@ -77,7 +79,7 @@ export default function CookieConsentBanner() {
             to="/privacy"
             className="rounded-md px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
           >
-            Cookie Policy
+            Privacy & Cookie Policy
           </Link>
         </div>
       </div>

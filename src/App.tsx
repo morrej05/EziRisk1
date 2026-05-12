@@ -47,6 +47,7 @@ import SubProcessorsInfrastructurePage from './pages/legal/SubProcessorsInfrastr
 import CookieConsentBanner from './components/CookieConsentBanner';
 import SeoManager from './components/SeoManager';
 import PricingPage from './pages/PricingPage';
+import ContactPage from './pages/ContactPage';
 
 function App() {
   return (
@@ -57,6 +58,7 @@ function App() {
             <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/login" element={<SignIn />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
