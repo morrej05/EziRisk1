@@ -150,7 +150,7 @@ export async function canIssueDocument(documentId: string, organisationId: strin
   try {
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('approval_status, issue_status')
+      .select('approval_status, issue_status, approved_by, approval_date')
       .eq('id', documentId)
       .single();
 
@@ -170,6 +170,13 @@ export async function canIssueDocument(documentId: string, organisationId: strin
       return {
         canIssue: false,
         reason: 'Document must be approved before it can be issued. Current approval status: ' + document.approval_status
+      };
+    }
+
+    if (approvalRequired && document.approval_status === 'approved' && (!document.approved_by || !document.approval_date)) {
+      return {
+        canIssue: false,
+        reason: 'Document approval is incomplete. Approved documents must include approved_by and approval_date before issue.'
       };
     }
 

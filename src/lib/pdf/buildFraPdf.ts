@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts, PDFPage, PDFFont } from 'pdf-lib';
 import { getFraOutcomeLabel, getModuleName } from '../modules/moduleCatalog';
 import { listAttachments, type Attachment } from '../supabase/attachments';
 import { type Jurisdiction, getJurisdictionConfig, getJurisdictionLabel } from '../jurisdictions';
@@ -116,6 +116,158 @@ import {
 function getDisplaySectionNumber(sectionId: number): number {
   const section = FRA_REPORT_STRUCTURE.find(s => s.id === sectionId);
   return section?.displayNumber ?? section?.id ?? sectionId;
+}
+
+function getTextValue(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return sanitizePdfText(value.trim());
+  }
+  return null;
+}
+
+function drawFrontMatterHeading(page: PDFPage, fontBold: PDFFont, title: string, yPosition: number): number {
+  page.drawText(title, {
+    x: MARGIN,
+    y: yPosition,
+    size: 22,
+    font: fontBold,
+    color: rgb(0.12, 0.16, 0.22),
+  });
+  page.drawLine({
+    start: { x: MARGIN, y: yPosition - 8 },
+    end: { x: MARGIN + CONTENT_WIDTH, y: yPosition - 8 },
+    thickness: 1,
+    color: rgb(0.8, 0.82, 0.85),
+  });
+  return yPosition - 32;
+}
+
+function drawFrontMatterBlock(
+  page: PDFPage,
+  font: PDFFont,
+  fontBold: PDFFont,
+  heading: string,
+  body: string | string[],
+  yPosition: number
+): number {
+  const bodyItems = Array.isArray(body) ? body : [body];
+  page.drawText(heading, {
+    x: MARGIN,
+    y: yPosition,
+    size: 12,
+    font: fontBold,
+    color: rgb(0.12, 0.16, 0.22),
+  });
+  yPosition -= 18;
+
+  for (const item of bodyItems) {
+    const lines = wrapText(sanitizePdfText(item), CONTENT_WIDTH, 10, font);
+    for (const line of lines) {
+      page.drawText(line, {
+        x: MARGIN,
+        y: yPosition,
+        size: 10,
+        font,
+        color: rgb(0.18, 0.22, 0.28),
+      });
+      yPosition -= 14;
+    }
+    yPosition -= 5;
+  }
+
+  return yPosition - 8;
+}
+
+type FrontMatterDocument = Document & Record<string, unknown>;
+
+type FrontMatterData = Record<string, unknown>;
+
+function fieldText(source: FrontMatterData | FrontMatterDocument, key: string): string | null {
+  const value = source[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function drawFraConsultancyFrontMatter(
+  pdfDoc: PDFDocument,
+  document: Document,
+  moduleInstances: ModuleInstance[],
+  organisation: Organisation,
+  fonts: { bold: PDFFont; regular: PDFFont },
+  isDraft: boolean,
+  totalPages: PDFPage[]
+): void {
+  const { page } = addNewPage(pdfDoc, isDraft, totalPages);
+  let yPosition = PAGE_TOP_Y;
+  const a1Data: FrontMatterData = moduleInstances.find((m) => m.module_key === 'A1_DOC_CONTROL')?.data || {};
+  const fra4Data: FrontMatterData = moduleInstances.find((m) => m.module_key === 'FRA_4_PASSIVE_PROTECTION')?.data || {};
+  const jurisdictionConfig = getJurisdictionConfig(document.jurisdiction || 'england_wales');
+  const jurisdictionLabel = getJurisdictionLabel(jurisdictionConfig.code);
+  const frontMatterDocument = document as FrontMatterDocument;
+  const version = frontMatterDocument.version_number || document.version || 1;
+  const issueDate = fieldText(frontMatterDocument, 'issue_date') || document.assessment_date || new Date().toISOString();
+  const assessorName = getTextValue(document.assessor_name, fieldText(frontMatterDocument, 'display_author_name')) || '-';
+  const assessorRole = getTextValue(document.assessor_role, fieldText(frontMatterDocument, 'display_author_role'));
+  const assessorOrganisation = getTextValue(fieldText(frontMatterDocument, 'display_author_organisation'), organisation.name);
+  const scopeDescription = getTextValue(
+    document.scope_description,
+    fieldText(a1Data, 'scope_description'),
+    fieldText(a1Data, 'scopeDescription'),
+    fieldText(a1Data, 'scope')
+  ) || 'The assessment scope is as described in the document control information and detailed assessment sections.';
+  const limitations = getTextValue(
+    document.limitations_assumptions,
+    fieldText(a1Data, 'limitations_assumptions'),
+    fieldText(a1Data, 'limitationsAssumptions'),
+    fieldText(a1Data, 'limitations')
+  ) || 'No additional limitations were recorded in the document fields. The assessment remains limited to the information available at the time of inspection/report issue.';
+  const assumptions = getTextValue(
+    fieldText(a1Data, 'assumptions'),
+    fieldText(a1Data, 'key_assumptions'),
+    fieldText(fra4Data, 'key_assumptions'),
+    document.limitations_assumptions
+  ) || 'No separate assumptions were recorded in the document fields.';
+  const selectedStandards = Array.isArray(document.standards_selected) && document.standards_selected.length > 0
+    ? document.standards_selected.filter(Boolean).join('; ')
+    : null;
+
+  yPosition = drawFrontMatterHeading(page, fonts.bold, 'Assessment Basis and Scope', yPosition);
+  yPosition = drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Scope of Assessment', [
+    scopeDescription,
+    `Jurisdiction: ${jurisdictionLabel}. Client/responsible person: ${getTextValue(document.responsible_person) || 'Not recorded'}.`,
+  ], yPosition);
+  yPosition = drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Methodology', [
+    'The fire risk assessment has been structured with reference to recognised fire risk assessment methodologies and applicable jurisdictional guidance. The assessment records observed fire hazards, persons at risk, existing controls, significant findings and prioritised recommendations based on information available during the assessment process.',
+    'The report should be read together with the action plan, supporting evidence and any stated limitations before decisions are made on remedial works or operational controls.',
+  ], yPosition);
+  yPosition = drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Standards / Guidance Basis', [
+    `Applicable jurisdictional basis: ${jurisdictionConfig.primaryLegislation.join('; ')}.`,
+    selectedStandards ? `Document-selected guidance/standards: ${selectedStandards}.` : 'No additional document-selected standards were recorded.',
+    'References to standards or guidance are used as assessment context only and should not be read as a certification of compliance with any specific standard.',
+  ], yPosition);
+  drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Assumptions & Limitations', [
+    `Assumptions: ${assumptions}`,
+    `Limitations: ${limitations}`,
+  ], yPosition);
+
+  const declarationPage = addNewPage(pdfDoc, isDraft, totalPages).page;
+  yPosition = PAGE_TOP_Y;
+  yPosition = drawFrontMatterHeading(declarationPage, fonts.bold, 'Assessor Declaration', yPosition);
+  const declarationItems = [
+    `Assessor: ${assessorName}`,
+    assessorRole ? `Role: ${assessorRole}` : null,
+    assessorOrganisation ? `Organisation: ${assessorOrganisation}` : null,
+    `Issue date: ${formatDate(issueDate)}`,
+    `Report version: ${version}.0`,
+    'Declaration: This assessment reflects the information available at the time of inspection/report issue and the conditions recorded within the stated scope of assessment.',
+    'Limitations acknowledgement: The findings and recommendations should be interpreted subject to the assumptions, limitations, exclusions and evidence availability recorded in this report.',
+  ].filter(Boolean) as string[];
+
+  const reviewerName = getTextValue(fieldText(frontMatterDocument, 'reviewer_name'), fieldText(a1Data, 'reviewerName'), fieldText(a1Data, 'reviewer_name'));
+  const approverName = getTextValue(fieldText(frontMatterDocument, 'approver_name'), fieldText(a1Data, 'approverName'), fieldText(a1Data, 'approver_name'), fieldText(frontMatterDocument, 'approved_by_name'));
+  if (reviewerName) declarationItems.push(`Reviewer: ${reviewerName}`);
+  if (approverName) declarationItems.push(`Approver: ${approverName}`);
+
+  drawFrontMatterBlock(declarationPage, fonts.regular, fonts.bold, 'Professional Declaration', declarationItems, yPosition);
 }
 
 /**
@@ -283,6 +435,8 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
 
   const buildingProfileModule = moduleInstances.find((m) => m.module_key === 'A2_BUILDING_PROFILE');
   const documentControlModule = moduleInstances.find((m) => m.module_key === 'A1_DOC_CONTROL');
+
+  drawFraConsultancyFrontMatter(pdfDoc, document, moduleInstances, organisation, { bold: fontBold, regular: font }, isDraft, totalPages);
 
   // B) INITIALISE CURSOR ONCE, BEFORE ANY USE
   // ✅ Ensure we have a working cursor before any rendering logic

@@ -172,6 +172,56 @@ const ROW_INSERT_EXCLUDE_FIELDS = new Set([
   'deleted_by',
 ]);
 
+
+const DRAFT_APPROVAL_RESET_FIELDS = {
+  approval_status: 'not_required',
+  approved_by: null,
+  approval_date: null,
+  approval_notes: null,
+} as const;
+
+const MODULE_APPROVAL_STATUS_KEYS = new Set(['approval_status', 'approvalStatus']);
+const MODULE_APPROVAL_METADATA_KEYS = new Set([
+  'approved_at',
+  'approvedAt',
+  'approved_by',
+  'approvedBy',
+  'approval_date',
+  'approvalDate',
+  'approval_notes',
+  'approvalNotes',
+  'reviewer',
+  'reviewer_name',
+  'reviewerName',
+  'reviewer_email',
+  'reviewerEmail',
+  'reviewed_by',
+  'reviewedBy',
+  'reviewed_at',
+  'reviewedAt',
+  'approver',
+  'approver_name',
+  'approverName',
+  'approver_email',
+  'approverEmail',
+  'approvedByName',
+]);
+
+function resetModuleApprovalMetadata(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value as JsonRecord).map(([key, nestedValue]) => {
+      if (MODULE_APPROVAL_STATUS_KEYS.has(key)) return [key, 'draft'];
+      if (MODULE_APPROVAL_METADATA_KEYS.has(key)) return [key, null];
+      if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+        return [key, resetModuleApprovalMetadata(nestedValue)];
+      }
+      return [key, nestedValue];
+    })
+  );
+}
+
 const CARRY_FORWARD_ACTION_STATUSES = ['open', 'in_progress', 'deferred'];
 const CARRY_FORWARD_RECOMMENDATION_STATUSES = ['Open', 'In Progress'];
 
@@ -299,6 +349,10 @@ async function logCreateNewVersionCarryForwardAudit(params: {
       imagePhotoReferences: { source: countModulePhotoReferences(sourceModules), new: countModulePhotoReferences(newModules) },
       metaKeys: { source: countMetaKeys(sourceDocument.meta), new: countMetaKeys(newDocument.meta) },
       lockedIssueFieldsCleared: Array.from(LOCKED_ISSUE_DOCUMENT_FIELDS).every((field) => !newDocument[field]),
+      approvalGovernanceReset: Object.entries(DRAFT_APPROVAL_RESET_FIELDS).every(
+        ([field, expectedValue]) => newDocument[field] === expectedValue
+      ),
+      approvalFieldsReset: Object.keys(DRAFT_APPROVAL_RESET_FIELDS),
     });
   } catch (auditError) {
     console.warn('[createNewVersion carry-forward audit] Failed to collect diagnostic counts:', auditError);
@@ -741,7 +795,7 @@ export async function createNewVersion(
       executive_summary_ai: currentIssued.executive_summary_ai ?? null,
       executive_summary_author: currentIssued.executive_summary_author ?? null,
       executive_summary_mode: currentIssued.executive_summary_mode || 'ai',
-      approval_status: currentIssued.approval_status ?? 'not_required',
+      ...DRAFT_APPROVAL_RESET_FIELDS,
       locked_pdf_path: null,
       locked_pdf_checksum: null,
       locked_pdf_generated_at: null,
@@ -775,6 +829,7 @@ export async function createNewVersion(
         document_id: newDocument.id,
         site_id: module.site_id ?? newDocument.site_id ?? null,
         building_id: module.building_id ?? newDocument.building_id ?? null,
+        data: resetModuleApprovalMetadata(module.data),
       };
 
       const { data: insertedModule, error: moduleInsertError } = await supabase

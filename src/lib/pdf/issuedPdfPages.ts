@@ -208,7 +208,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
         revisionHistory = typedVersions.map((v) => {
           const summary = latestSummaryByDocumentId.get(v.id);
           const summaryText = stripSimpleMarkdown(summary?.summary_text || summary?.summary_markdown);
-          const fallbackSummary = v.version_number === firstIssuedVersion ? 'Initial issue' : 'Changes Since Last Issue';
+          const fallbackSummary = v.version_number === firstIssuedVersion ? 'Initial issue' : 'Changes since previous issue';
 
           if (!summaryText) {
             console.info('[Issued PDF] Revision history summary fallback selected.', {
@@ -244,7 +244,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
     revisionHistory.push({
       version_number: document.version_number,
       issue_date: document.issue_date,
-      change_summary: isInitialVersion ? 'Initial issue' : 'Revision issued',
+      change_summary: isInitialVersion ? 'Initial issue' : 'Changes since previous issue',
       issued_by_name: document.issued_author_name_snapshot || document.author_name_snapshot || document.assessor_name || null,
     });
   }
