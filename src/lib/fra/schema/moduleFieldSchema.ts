@@ -60,6 +60,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     exit_signage_adequacy: [],
     disabled_egress_arrangements: [],
     escape_strategy: [],
+    means_of_escape_assessments: ['meansOfEscapeAssessments'],
   },
 
   FRA_3_ACTIVE_SYSTEMS: {

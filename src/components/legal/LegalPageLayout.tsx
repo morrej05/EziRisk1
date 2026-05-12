@@ -27,7 +27,7 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
 
           <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
             <p><span className="font-semibold text-slate-900">Operator / Data Controller:</span> {PUBLIC_LEGAL_DETAILS.dataController}</p>
-            <p><span className="font-semibold text-slate-900">ICO application number:</span> {PUBLIC_LEGAL_DETAILS.icoApplicationNumber}</p>
+            <p><span className="font-semibold text-slate-900">ICO registration number:</span> {PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}</p>
             <p>
               <span className="font-semibold text-slate-900">Contact email:</span>{' '}
               <a href={getSupportMailto(PUBLIC_LEGAL_DETAILS.contactEmail)} className="text-slate-900 underline hover:text-slate-700">
@@ -40,7 +40,6 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
                 {PUBLIC_LEGAL_DETAILS.website}
               </a>
             </p>
-            <p className="text-slate-600">{PUBLIC_LEGAL_DETAILS.registrationPendingNote}</p>
           </div>
 
           <div className="mt-8 space-y-7">

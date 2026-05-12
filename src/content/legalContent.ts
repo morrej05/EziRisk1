@@ -18,8 +18,7 @@ export const privacyPolicyContent: LegalDocumentContent = {
   lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'This Privacy Policy explains how EziRisk (the “platform”) collects, uses, stores, and protects personal data when people use EziRisk.',
-    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. For data protection purposes, ${PUBLIC_LEGAL_DETAILS.dataController} is the data controller for the personal data processed through this website and platform, unless otherwise stated. ICO application number: ${PUBLIC_LEGAL_DETAILS.icoApplicationNumber}.`,
-    PUBLIC_LEGAL_DETAILS.registrationPendingNote,
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. For data protection purposes, ${PUBLIC_LEGAL_DETAILS.dataController} is the data controller for the personal data processed through this website and platform, unless otherwise stated. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -102,8 +101,7 @@ export const termsOfUseContent: LegalDocumentContent = {
   lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'These Terms of Use govern access to and use of EziRisk.',
-    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO application number: ${PUBLIC_LEGAL_DETAILS.icoApplicationNumber}. Contact: ${PUBLIC_LEGAL_DETAILS.contactEmail}.`,
-    PUBLIC_LEGAL_DETAILS.registrationPendingNote,
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}. Contact: ${PUBLIC_LEGAL_DETAILS.contactEmail}.`,
     'By accessing or using EziRisk, you agree to these terms on behalf of yourself and, where applicable, your organisation.',
   ],
   sections: [
@@ -166,7 +164,7 @@ export const professionalLiabilityDisclaimerContent: LegalDocumentContent = {
   lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk provides report generation support tools. It does not replace professional expertise, legal duties, or site-specific judgement.',
-    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO application number: ${PUBLIC_LEGAL_DETAILS.icoApplicationNumber}.`,
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -192,7 +190,7 @@ export const securityTrustContent: LegalDocumentContent = {
   lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk is designed with practical safeguards to help organisations and consultants use the platform with confidence.',
-    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO application number: ${PUBLIC_LEGAL_DETAILS.icoApplicationNumber}.`,
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -239,7 +237,7 @@ export const acceptableUsePolicyContent: LegalDocumentContent = {
   lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk Acceptable Use Policy',
-    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO application number: ${PUBLIC_LEGAL_DETAILS.icoApplicationNumber}.`,
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -333,7 +331,7 @@ export const subProcessorsInfrastructureContent: LegalDocumentContent = {
   lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk Sub-processors / Infrastructure',
-    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO application number: ${PUBLIC_LEGAL_DETAILS.icoApplicationNumber}.`,
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {

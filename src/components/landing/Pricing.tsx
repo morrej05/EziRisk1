@@ -66,9 +66,6 @@ export default function Pricing() {
         <p className="mt-3 text-center text-sm text-neutral-500">
           {PUBLIC_LEGAL_DETAILS.footerStatement}
         </p>
-        <p className="mt-1 text-center text-xs text-neutral-500">
-          {PUBLIC_LEGAL_DETAILS.registrationPendingNote}
-        </p>
       </div>
     </section>
   );
