@@ -24,8 +24,8 @@ const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
 };
 
 function getPopulatedMeansOfEscapeAssessments(data: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
-  const assessments = data.means_of_escape_assessments;
-  if (!assessments || typeof assessments !== 'object') return [];
+  const assessments = data.means_of_escape_assessments || data.meansOfEscapeAssessments;
+  if (!assessments || typeof assessments !== 'object' || Array.isArray(assessments)) return [];
 
   return Object.entries(assessments).filter(([, value]) => {
     const assessment = value as Record<string, unknown>;
@@ -35,7 +35,7 @@ function getPopulatedMeansOfEscapeAssessments(data: Record<string, unknown>): Ar
       String(assessment.deficiencies || '').trim() ||
       String(assessment.existing_controls || assessment.existingControls || '').trim() ||
       String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim() ||
-      (assessment.risk_significance && assessment.risk_significance !== 'unknown') ||
+      ((assessment.risk_significance || assessment.riskSignificance) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
       String(assessment.evidence_references || assessment.evidenceReferences || '').trim() ||
       assessment.action_trigger ||
       assessment.actionTrigger ||
@@ -314,8 +314,9 @@ function extractSection6Drivers(data: Record<string, any>): string[] {
     .filter(([, assessment]) => assessment.status === 'inadequate')
     .map(([key, assessment]) => {
       const label = MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
-      const risk = assessment.risk_significance && assessment.risk_significance !== 'unknown'
-        ? ` (${String(assessment.risk_significance).replace(/_/g, ' ')} significance)`
+      const riskValue = assessment.risk_significance || assessment.riskSignificance;
+      const risk = riskValue && riskValue !== 'unknown'
+        ? ` (${String(riskValue).replace(/_/g, ' ')} significance)`
         : '';
       return `${label} recorded as inadequate${risk}`;
     });
