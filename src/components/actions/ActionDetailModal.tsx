@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { X, ExternalLink, FileText, Layers, Paperclip, Camera, Upload, AlertCircle, CheckCircle, Clock, XCircle, ArrowLeft, Download, Trash2, Eye } from 'lucide-react';
+import { X, ExternalLink, FileText, Layers, Paperclip, Camera, Upload, AlertCircle, CheckCircle, Clock, XCircle, ArrowLeft, Download, Trash2, Eye, Link2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { uploadEvidenceFile, createAttachmentRow, getSignedUrl, isValidAttachment, deleteAttachment } from '../../lib/supabase/attachments';
@@ -66,6 +66,15 @@ function formatTimescale(value?: string | null): string {
   }
 }
 
+interface ActionSourceLinkDetail {
+  id: string;
+  source_assessment_type: string;
+  source_assessment_key: string;
+  source_assessment_label: string | null;
+  module_instance_id: string | null;
+  module_instance?: { module_key: string | null } | null;
+}
+
 interface Attachment {
   id: string;
   file_name: string;
@@ -109,10 +118,12 @@ export default function ActionDetailModal({
   const [isClosing, setIsClosing] = useState(false);
   const [isSavingDetail, setIsSavingDetail] = useState(false);
   const [detail, setDetail] = useState<RecommendationDetail>(() => normalizeRecommendationDetail(action.recommendation_detail));
+  const [sourceLinks, setSourceLinks] = useState<ActionSourceLinkDetail[]>([]);
 
   useEffect(() => {
     fetchAttachments();
     fetchDocumentStatus();
+    fetchSourceLinks();
     setDetail(normalizeRecommendationDetail(action.recommendation_detail));
   }, [action.id, action.recommendation_detail]);
 
@@ -131,6 +142,24 @@ export default function ActionDetailModal({
       console.error('Error fetching attachments:', error);
     } finally {
       setIsLoadingAttachments(false);
+    }
+  };
+
+
+  const fetchSourceLinks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('action_source_links')
+        .select('id, source_assessment_type, source_assessment_key, source_assessment_label, module_instance_id, module_instance:module_instances(module_key)')
+        .eq('action_id', action.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setSourceLinks((data || []) as ActionSourceLinkDetail[]);
+    } catch (error) {
+      console.error('Error fetching action source links:', error);
+      setSourceLinks([]);
     }
   };
 
@@ -453,6 +482,16 @@ export default function ActionDetailModal({
     });
   };
 
+  const formatSourceType = (value: string): string => {
+    const labels: Record<string, string> = {
+      ignition_source_assessments: 'Fire hazards / ignition source finding',
+      means_of_escape_assessments: 'Means of escape finding',
+      passive_fire_protection_assessments: 'Passive fire protection finding',
+      fire_safety_management_assessments: 'Fire safety management finding',
+    };
+    return labels[value] || value.replace(/_/g, ' ');
+  };
+
   const formatFileSize = (bytes: number | null) => {
     if (!bytes) return '—';
     if (bytes < 1024) return `${bytes} B`;
@@ -664,6 +703,27 @@ export default function ActionDetailModal({
               <p className="text-neutral-900">{formatDate(action.updated_at)}</p>
             </div>
           </div>
+
+
+          {sourceLinks.length > 0 && (
+            <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Link2 className="w-4 h-4 text-blue-700" />
+                <h3 className="text-sm font-semibold text-neutral-900">Linked detailed finding references</h3>
+              </div>
+              <div className="space-y-2">
+                {sourceLinks.map((link) => (
+                  <div key={link.id} className="text-sm text-blue-950">
+                    <span className="font-medium">{formatSourceType(link.source_assessment_type)}</span>
+                    <span> — {link.source_assessment_label || link.source_assessment_key}</span>
+                    {link.module_instance?.module_key && (
+                      <span className="text-blue-700"> ({link.module_instance.module_key})</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-neutral-200 pt-4">
             <h3 className="text-sm font-medium text-neutral-700 mb-3">Navigation</h3>

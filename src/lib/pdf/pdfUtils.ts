@@ -1840,7 +1840,9 @@ export function drawRecommendationsSection(
     const priorityText = `Priority: ${action.priority_band}`;
     const statusText = `Status: ${safeStatus}`;
     const versionText = action.first_raised_in_version ? `First raised: Version ${action.first_raised_in_version}.0` : '';
-    const timeframeText = normalizeRecommendationDetail(action.recommendation_detail).timeframe_guidance || (action.target_date ? `Target: ${formatDate(action.target_date)}` : '');
+    const detailTimeframe = normalizeRecommendationDetail(action.recommendation_detail).timeframe_guidance;
+    const targetDateText = action.target_date ? `Target date: ${formatDate(action.target_date)}` : '';
+    const timeframeText = [detailTimeframe ? `Timescale: ${detailTimeframe}` : '', targetDateText].filter(Boolean).join(' | ');
 
     page.drawText(priorityText, {
       x: MARGIN + 10,
@@ -1871,7 +1873,7 @@ export function drawRecommendationsSection(
     yPosition -= 15;
 
     if (timeframeText) {
-      page.drawText(`Timeframe: ${sanitizePdfText(timeframeText)}`, {
+      page.drawText(sanitizePdfText(timeframeText), {
         x: MARGIN + 10,
         y: yPosition,
         size: 8,

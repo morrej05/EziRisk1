@@ -363,6 +363,7 @@ export default function FRA1FireHazardsForm({
     return warnings;
   };
 
+  const hasDetailedIgnitionSource = Object.values(formData.ignition_source_assessments).some(sourceHasNarrativeDetail);
   const qualityGateWarnings = getQualityGateWarnings();
 
   const getSuggestedOutcome = (): { outcome: string; reason: string } | null => {
@@ -513,6 +514,12 @@ export default function FRA1FireHazardsForm({
       </div>
 
       <div className="space-y-6">
+        {hasDetailedIgnitionSource && (
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            Detailed ignition source findings are present, so use the per-finding recommendation controls in the detailed assessment area. Legacy Quick Add shortcuts are hidden as a simple-mode fallback.
+          </div>
+        )}
+
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Ignition Sources
@@ -548,7 +555,7 @@ export default function FRA1FireHazardsForm({
             </div>
           )}
 
-          {formData.ignition_sources.includes('smoking') && (
+          {formData.ignition_sources.includes('smoking') && !hasDetailedIgnitionSource && (
             <div className="mt-4 pt-4 border-t border-neutral-200">
               <button
                 onClick={() =>
@@ -786,7 +793,7 @@ export default function FRA1FireHazardsForm({
           )}
 
           {(formData.fuel_sources.includes('flammable_liquids') ||
-            formData.fuel_sources.includes('lpg_cylinders')) && (
+            formData.fuel_sources.includes('lpg_cylinders')) && !hasDetailedIgnitionSource && (
             <div className="mt-4 pt-4 border-t border-neutral-200">
               <button
                 onClick={() =>
@@ -822,7 +829,7 @@ export default function FRA1FireHazardsForm({
             </select>
           </div>
 
-          {formData.housekeeping_fire_load === 'high' && (
+          {formData.housekeeping_fire_load === 'high' && !hasDetailedIgnitionSource && (
             <div className="mt-4">
               <button
                 onClick={() =>
@@ -921,7 +928,7 @@ export default function FRA1FireHazardsForm({
             </div>
           )}
 
-          {formData.high_risk_activities.includes('lithium_ion_charging') && (
+          {formData.high_risk_activities.includes('lithium_ion_charging') && !hasDetailedIgnitionSource && (
             <div className="mt-4 pt-4 border-t border-neutral-200">
               <button
                 onClick={() =>
@@ -966,7 +973,7 @@ export default function FRA1FireHazardsForm({
               </p>
             </div>
 
-            {(formData.arson_risk === 'medium' || formData.arson_risk === 'high') && (
+            {(formData.arson_risk === 'medium' || formData.arson_risk === 'high') && !hasDetailedIgnitionSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
@@ -1179,7 +1186,7 @@ export default function FRA1FireHazardsForm({
             </div>
 
             {(formData.electrical_safety.eicr_evidence_seen === 'no' ||
-              formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes') && (
+              formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes') && !hasDetailedIgnitionSource && (
               <div className="pt-4 border-t border-neutral-200">
                 <button
                   onClick={() =>

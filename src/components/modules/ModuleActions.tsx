@@ -19,6 +19,7 @@ interface Action {
   status: string;
   priority_band: string | null;
   target_date: string | null;
+  timescale?: string | null;
   updated_at: string;
   source: string | null;
   owner_user_id: string | null;
@@ -175,6 +176,7 @@ export default function ModuleActions({
             status: statusMap[rec.status] || 'open',
             priority_band: priorityMap[rec.priority] || 'P3',
             target_date: rec.target_date,
+            timescale: null,
             updated_at: rec.updated_at,
             source: 're_recommendations',
             owner_user_id: null,
@@ -196,6 +198,7 @@ export default function ModuleActions({
           status,
           priority_band,
           target_date,
+          timescale,
           updated_at,
           source,
           owner_user_id,

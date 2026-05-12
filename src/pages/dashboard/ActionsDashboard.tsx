@@ -18,6 +18,7 @@ interface Action {
   status: string;
   priority_band: string | null;
   target_date: string | null;
+  timescale?: string | null;
   owner_user_id: string | null;
   updated_at: string;
   source: string | null;

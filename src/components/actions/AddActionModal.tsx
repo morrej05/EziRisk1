@@ -12,6 +12,7 @@ import {
 import { deriveExplosionSeverity } from '../../lib/dsear/criticalityEngine';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 import { compactRecommendationDetail, type RecommendationDetail } from '../../lib/actions/recommendationDetail';
+import { areActionTextsNearDuplicate } from '../../lib/actions/actionSourceLinks';
 import { getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
 import { deriveFsdProfessionalActionText } from '../../lib/fsd/fsdActionWording';
 
@@ -40,6 +41,10 @@ function toLocalIsoDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function formatTimescale(value: string): string {
+  return TIMESCALE_OPTIONS.find((option) => option.value === value)?.label || value || 'Not set';
 }
 
 function targetDateFromTimescale(timescale: string, baseDate = new Date()): string {
@@ -535,6 +540,16 @@ export default function AddActionModal({
         alert('This action already exists in this module.');
         return;
       }
+
+      const nearDuplicate = existingActions?.find(
+        (action) => areActionTextsNearDuplicate(normalizedActionText, action.recommended_action)
+      );
+
+      if (nearDuplicate && !window.confirm('A very similar action already exists in this module. Create this additional recommendation anyway?')) {
+        setIsSubmitting(false);
+        return;
+      }
+
       const targetDate = formData.targetDate || targetDateFromTimescale(effectiveTimescale) || null;
 
       // Resolve source based on whether user edited the text
@@ -1072,7 +1087,7 @@ export default function AddActionModal({
             </div>
           )}
 
-          <div>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             <label className="block text-sm font-medium text-neutral-700 mb-2">
               Timescale <span className="text-red-600">*</span>
             </label>
@@ -1097,6 +1112,9 @@ export default function AddActionModal({
                 </option>
               ))}
             </select>
+            <p className="text-xs text-neutral-600 mt-2">
+              Selected timeframe <strong>{formatTimescale(effectiveTimescale)}</strong> will create target date <strong>{formData.targetDate || 'manual / not set'}</strong>.
+            </p>
             {isTimescaleOverride && (
               <div className="mt-2 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -1126,8 +1144,8 @@ export default function AddActionModal({
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
+            <label className="block text-sm font-semibold text-neutral-800 mb-2">
               Due Date / Target Date
             </label>
             <input
@@ -1137,7 +1155,7 @@ export default function AddActionModal({
                 setUserEditedTargetDate(true);
                 setFormData({ ...formData, targetDate: e.target.value });
               }}
-              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
             />
             <p className="text-xs text-neutral-500 mt-1">
               Auto-populated from the selected timescale (7, 30 or 90 days where applicable). You can override it manually, or clear it for custom/manual scheduling.

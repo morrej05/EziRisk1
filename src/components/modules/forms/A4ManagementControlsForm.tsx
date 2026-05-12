@@ -230,6 +230,7 @@ export default function A4ManagementControlsForm({
   };
 
   const detailedManagementAssessments = Object.values(formData.fire_safety_management_assessments).filter(hasManagementAssessmentContent);
+  const hasDetailedManagementSource = detailedManagementAssessments.length > 0;
 
   const qualityWarnings = useMemo(() => {
     const assessments = formData.fire_safety_management_assessments;
@@ -397,6 +398,12 @@ export default function A4ManagementControlsForm({
       )}
 
       <div className="space-y-6">
+        {hasDetailedManagementSource && (
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            Detailed fire safety management findings are present, so use the per-finding recommendation controls below. Legacy Quick Add shortcuts are hidden as a simple-mode fallback.
+          </div>
+        )}
+
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Responsibilities & Policy
@@ -440,7 +447,7 @@ export default function A4ManagementControlsForm({
               </select>
             </div>
 
-            {formData.fire_safety_policy_exists === 'no' && (
+            {formData.fire_safety_policy_exists === 'no' && !hasDetailedManagementSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
@@ -518,7 +525,7 @@ export default function A4ManagementControlsForm({
 
             {(formData.training_induction_provided === 'no' ||
               formData.training_refresher_frequency === 'none' ||
-              formData.fire_warden_marshal_provision === 'inadequate') && (
+              formData.fire_warden_marshal_provision === 'inadequate') && !hasDetailedManagementSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
@@ -599,7 +606,7 @@ export default function A4ManagementControlsForm({
               </select>
             </div>
 
-            {formData.ptw_hot_work === 'no' && (
+            {formData.ptw_hot_work === 'no' && !hasDetailedManagementSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
@@ -789,7 +796,7 @@ export default function A4ManagementControlsForm({
             </div>
 
             {(formData.inspection_fire_doors_frequency === 'none' ||
-              formData.inspection_records_available === 'no') && (
+              formData.inspection_records_available === 'no') && !hasDetailedManagementSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
@@ -869,7 +876,7 @@ export default function A4ManagementControlsForm({
 
             {(formData.housekeeping_waste_control === 'inadequate' ||
               formData.housekeeping_storage_control === 'inadequate' ||
-              formData.housekeeping_combustible_accumulation_risk === 'high') && (
+              formData.housekeeping_combustible_accumulation_risk === 'high') && !hasDetailedManagementSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
@@ -930,7 +937,7 @@ export default function A4ManagementControlsForm({
             </div>
 
             {(formData.change_management_process_exists === 'no' ||
-              formData.change_management_review_triggers_defined === 'no') && (
+              formData.change_management_review_triggers_defined === 'no') && !hasDetailedManagementSource && (
               <button
                 onClick={() =>
                   handleQuickAction({
