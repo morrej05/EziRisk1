@@ -3,6 +3,7 @@ import { getFraOutcomeLabel, getModuleName } from '../modules/moduleCatalog';
 import { listAttachments, type Attachment } from '../supabase/attachments';
 import { type Jurisdiction, getJurisdictionConfig, getJurisdictionLabel } from '../jurisdictions';
 import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
+import { getRecommendationFindingText } from '../actions/recommendationDetail';
 import {
   deriveExecutiveOutcome,
   checkMaterialDeficiency,
@@ -556,6 +557,9 @@ drawTableOfContents(page, font, fontBold);
     title: a.title || null,
     summary: a.summary || null,
     short_description: a.short_description || null,
+    recommendation_detail: a.recommendation_detail || null,
+    trigger_text: a.trigger_text || null,
+    target_date: a.target_date || null,
     priority_band: a.priority_band,
     status: a.status,
     section_reference: a.section_reference, // Derived from FRA_REPORT_STRUCTURE
@@ -998,6 +1002,9 @@ if (section.id === 5) {
       title: action.title || null,
       summary: action.summary || null,
       short_description: action.short_description || null,
+      recommendation_detail: action.recommendation_detail || null,
+      trigger_text: action.trigger_text || null,
+      target_date: action.target_date || null,
       priority_band: action.priority_band,
       status: action.status,
       source: action.source, // Needed for deriveSystemActionTitle
@@ -1685,7 +1692,7 @@ page.drawText(outcomeLabel, {
 
     for (let i = 0; i < topActions.length; i++) {
       const action = topActions[i];
-      const actionText = action.recommended_action || '(No action text)';
+      const actionText = getRecommendationFindingText(action) || '(No action text)';
       const truncatedText = actionText.length > 100 ? actionText.substring(0, 100) + '...' : actionText;
 
       if (yPosition < MARGIN + 80) {

@@ -6,6 +6,7 @@ import { computeFraSummary, normalizeFraPriority, type FraComputedSummary } from
 import { deriveStoreysForScoring, type FraComplexityBand } from '../../../lib/modules/fra/complexityEngine';
 import type { FraContext, FraPriority, FraFindingCategory } from '../../../lib/modules/fra/severityEngine';
 import { scoreFraDocument, type ScoringResult } from '../../../lib/fra/scoring/scoringEngine';
+import { getRecommendationFindingText } from '../../../lib/actions/recommendationDetail';
 
 interface Document {
   id: string;
@@ -45,6 +46,7 @@ interface ActionRow {
   trigger_text?: string | null;
   severity_tier?: string | null;
   module_instance_id?: string | null;
+  recommendation_detail?: Record<string, unknown> | null;
   status: string | null;
   created_at: string;
 }
@@ -101,7 +103,7 @@ export default function FRA4SignificantFindingsForm({
 
       const { data: actionsData, error: actionsError } = await supabase
         .from('actions')
-        .select('id, recommended_action, priority_band, finding_category, trigger_text, status, created_at, severity_tier, module_instance_id')
+        .select('id, recommended_action, priority_band, finding_category, trigger_text, status, created_at, severity_tier, module_instance_id, recommendation_detail')
         .eq('document_id', document.id)
         .is('deleted_at', null)
         .order('priority_band', { ascending: true })
@@ -118,7 +120,7 @@ export default function FRA4SignificantFindingsForm({
 
         return {
           id: action.id,
-          title: action.recommended_action || action.title || 'Untitled action',
+          title: getRecommendationFindingText(action) || action.recommended_action || action.title || 'Untitled action',
           priority,
           priority_band: action.priority_band,
           severity_tier: action.severity_tier,

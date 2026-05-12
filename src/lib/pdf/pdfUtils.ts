@@ -1,5 +1,11 @@
 import { PDFDocument, PDFPage, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { compareActionsByDisplayReference, filterActiveActions } from './actionContracts';
+import {
+  getRecommendationActionText,
+  hasRecommendationDetail,
+  normalizeRecommendationDetail,
+  type RecommendationDetail,
+} from '../actions/recommendationDetail';
 
 export const PAGE_WIDTH = 595.28;
 export const PAGE_HEIGHT = 841.89;
@@ -1469,6 +1475,9 @@ export interface ActionForPdf {
   title?: string | null;
   summary?: string | null;
   short_description?: string | null;
+  target_date?: string | null;
+  trigger_text?: string | null;
+  recommendation_detail?: RecommendationDetail | null;
 }
 
 /**
@@ -1573,7 +1582,7 @@ export function drawActionPlanSnapshot(
         context.yPosition = PAGE_TOP_Y;
       }
 
-      const actionText = sanitizePdfText(getActionSnapshotText(action));
+      const actionText = sanitizePdfText(getActionSnapshotText({ ...action, recommended_action: getRecommendationActionText(action) }));
 
       // Reference and section - reference_number from DB or undefined
       const ref = action.reference_number;
@@ -1742,26 +1751,84 @@ export function drawRecommendationsSection(
       yPosition -= 20;
     }
 
-    // Keep the full recommendation text in the Recommendations section;
-    // only the Action Plan Snapshot is condensed for quick scanning.
-    const recommendationText = sanitizePdfText(action.recommended_action || '(No action text provided)');
-    const descLines = wrapText(recommendationText, CONTENT_WIDTH - 20, 10, fonts.regular);
-    for (const line of descLines) {
-      if (yPosition < MARGIN + 40) {
-        const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
-        page = newPage;
-        yPosition = PAGE_TOP_Y;
-        pagesAdded++;
-      }
+    const drawLabelledText = (label: string, value: string | null | undefined, options: { boldValue?: boolean } = {}) => {
+      const clean = sanitizePdfText(value || '').trim();
+      if (!clean) return;
 
-      page.drawText(line, {
-        x: MARGIN + 10,
-        y: yPosition,
-        size: 10,
-        font: fonts.regular,
-        color: rgb(0, 0, 0),
-      });
-      yPosition -= 13;
+      const labelPrefix = `${label}: `;
+      const lines = wrapText(`${labelPrefix}${clean}`, CONTENT_WIDTH - 20, 9, fonts.regular);
+      for (const line of lines) {
+        if (yPosition < MARGIN + 40) {
+          const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
+          page = newPage;
+          yPosition = PAGE_TOP_Y;
+          pagesAdded++;
+        }
+
+        const isFirst = line.startsWith(labelPrefix);
+        if (isFirst) {
+          page.drawText(labelPrefix, {
+            x: MARGIN + 10,
+            y: yPosition,
+            size: 9,
+            font: fonts.bold,
+            color: rgb(0.15, 0.15, 0.15),
+          });
+          page.drawText(line.slice(labelPrefix.length), {
+            x: MARGIN + 10 + fonts.bold.widthOfTextAtSize(labelPrefix, 9),
+            y: yPosition,
+            size: 9,
+            font: options.boldValue ? fonts.bold : fonts.regular,
+            color: rgb(0, 0, 0),
+          });
+        } else {
+          page.drawText(line, {
+            x: MARGIN + 10,
+            y: yPosition,
+            size: 9,
+            font: options.boldValue ? fonts.bold : fonts.regular,
+            color: rgb(0, 0, 0),
+          });
+        }
+        yPosition -= 12;
+      }
+      yPosition -= 3;
+    };
+
+    const detail = normalizeRecommendationDetail(action.recommendation_detail);
+    if (hasRecommendationDetail(detail)) {
+      drawLabelledText('Finding / observation', detail.observation || action.trigger_text || null);
+      drawLabelledText('Risk implication', detail.consequence || null);
+      drawLabelledText('Recommendation', detail.recommendation || action.recommended_action || '(No action text provided)', { boldValue: true });
+      drawLabelledText('Rationale', detail.rationale || null);
+      drawLabelledText('Standards / guidance', detail.standards_reference || null);
+      drawLabelledText('Existing controls', detail.existing_controls || null);
+      drawLabelledText('Evidence basis', detail.evidence_notes || null);
+      drawLabelledText('Linked area', detail.linked_module || action.section_reference || null);
+      drawLabelledText('Assessor commentary', detail.assessor_commentary || null);
+      drawLabelledText('Management response / status notes', detail.management_response || detail.status_notes || null);
+    } else {
+      // Keep the full recommendation text in the Recommendations section;
+      // only the Action Plan Snapshot is condensed for quick scanning.
+      const recommendationText = sanitizePdfText(action.recommended_action || '(No action text provided)');
+      const descLines = wrapText(recommendationText, CONTENT_WIDTH - 20, 10, fonts.regular);
+      for (const line of descLines) {
+        if (yPosition < MARGIN + 40) {
+          const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
+          page = newPage;
+          yPosition = PAGE_TOP_Y;
+          pagesAdded++;
+        }
+
+        page.drawText(line, {
+          x: MARGIN + 10,
+          y: yPosition,
+          size: 10,
+          font: fonts.regular,
+          color: rgb(0, 0, 0),
+        });
+        yPosition -= 13;
+      }
     }
 
     yPosition -= 5;
@@ -1773,6 +1840,7 @@ export function drawRecommendationsSection(
     const priorityText = `Priority: ${action.priority_band}`;
     const statusText = `Status: ${safeStatus}`;
     const versionText = action.first_raised_in_version ? `First raised: Version ${action.first_raised_in_version}.0` : '';
+    const timeframeText = normalizeRecommendationDetail(action.recommendation_detail).timeframe_guidance || (action.target_date ? `Target: ${formatDate(action.target_date)}` : '');
 
     page.drawText(priorityText, {
       x: MARGIN + 10,
@@ -1801,6 +1869,17 @@ export function drawRecommendationsSection(
     }
 
     yPosition -= 15;
+
+    if (timeframeText) {
+      page.drawText(`Timeframe: ${sanitizePdfText(timeframeText)}`, {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 8,
+        font: fonts.regular,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+      yPosition -= 12;
+    }
 
     if (action.closed_at) {
       const closedText = `Closed: ${formatDate(action.closed_at)}`;

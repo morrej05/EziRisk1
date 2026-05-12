@@ -221,6 +221,7 @@ Deno.serve(async (req: Request) => {
         document_id: survey_id,
         module_instance_id: action.module_instance_id,
         recommended_action: action.recommended_action,
+        recommendation_detail: action.recommendation_detail ?? null,
         owner_user_id: action.owner_user_id,
         target_date: action.target_date,
         status: 'open',

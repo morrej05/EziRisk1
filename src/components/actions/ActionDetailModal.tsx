@@ -6,6 +6,12 @@ import { supabase } from '../../lib/supabase';
 import { uploadEvidenceFile, createAttachmentRow, getSignedUrl, isValidAttachment, deleteAttachment } from '../../lib/supabase/attachments';
 import ConfirmModal from '../ConfirmModal';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
+import {
+  compactRecommendationDetail,
+  hasRecommendationDetail,
+  normalizeRecommendationDetail,
+  type RecommendationDetail,
+} from '../../lib/actions/recommendationDetail';
 
 interface ActionDetailModalProps {
   action: {
@@ -32,6 +38,8 @@ interface ActionDetailModalProps {
       name: string | null;
     } | null;
     attachment_count: number;
+    recommendation_detail?: RecommendationDetail | null;
+    trigger_text?: string | null;
   };
   onClose: () => void;
   onActionUpdated: () => void;
@@ -79,11 +87,14 @@ export default function ActionDetailModal({
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closureNotes, setClosureNotes] = useState('');
   const [isClosing, setIsClosing] = useState(false);
+  const [isSavingDetail, setIsSavingDetail] = useState(false);
+  const [detail, setDetail] = useState<RecommendationDetail>(() => normalizeRecommendationDetail(action.recommendation_detail));
 
   useEffect(() => {
     fetchAttachments();
     fetchDocumentStatus();
-  }, [action.id]);
+    setDetail(normalizeRecommendationDetail(action.recommendation_detail));
+  }, [action.id, action.recommendation_detail]);
 
   const fetchAttachments = async () => {
     setIsLoadingAttachments(true);
@@ -253,6 +264,31 @@ export default function ActionDetailModal({
     } catch (error) {
       console.error('Error finding linked actions:', error);
       return [actionId];
+    }
+  };
+
+
+  const handleSaveRecommendationDetail = async () => {
+    setIsSavingDetail(true);
+    try {
+      const { error } = await supabase
+        .from('actions')
+        .update({
+          recommendation_detail: compactRecommendationDetail(detail),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', action.id);
+
+      if (error) throw error;
+
+      bumpActionsVersion();
+      onActionUpdated();
+      alert('Recommendation detail saved.');
+    } catch (error) {
+      console.error('Error saving recommendation detail:', error);
+      alert('Failed to save recommendation detail.');
+    } finally {
+      setIsSavingDetail(false);
     }
   };
 
@@ -500,6 +536,57 @@ export default function ActionDetailModal({
           <div>
             <h3 className="text-sm font-medium text-neutral-700 mb-2">Recommended Action</h3>
             <p className="text-neutral-900 text-base">{action.recommended_action}</p>
+          </div>
+
+          <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">Consultancy recommendation detail</h3>
+                <p className="text-xs text-neutral-600 mt-1">Optional structured finding, rationale, standards and evidence context used in professional PDF recommendations.</p>
+              </div>
+              {documentStatus === 'draft' && (
+                <button
+                  type="button"
+                  onClick={handleSaveRecommendationDetail}
+                  disabled={isSavingDetail}
+                  className="px-3 py-1.5 text-sm bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  {isSavingDetail ? 'Saving...' : 'Save detail'}
+                </button>
+              )}
+            </div>
+            {!hasRecommendationDetail(detail) && documentStatus !== 'draft' ? (
+              <p className="text-sm text-neutral-500">No enhanced recommendation detail has been recorded.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  ['observation', 'Observation / finding'],
+                  ['consequence', 'Risk implication / consequence'],
+                  ['rationale', 'Recommendation rationale'],
+                  ['standards_reference', 'Standards / guidance reference'],
+                  ['timeframe_guidance', 'Suggested timeframe'],
+                  ['existing_controls', 'Existing controls noted'],
+                  ['evidence_notes', 'Evidence basis / linked evidence'],
+                  ['linked_module', 'Linked assessment area / module'],
+                  ['assessor_commentary', 'Assessor commentary'],
+                  ['management_response', 'Management response / status notes'],
+                ].map(([key, label]) => (
+                  <div key={key} className={key === 'observation' || key === 'consequence' || key === 'rationale' ? 'md:col-span-2' : ''}>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                    {documentStatus === 'draft' ? (
+                      <textarea
+                        value={String(detail[key as keyof RecommendationDetail] || '')}
+                        onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
+                        rows={key === 'observation' || key === 'consequence' || key === 'rationale' ? 3 : 2}
+                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                      />
+                    ) : (
+                      <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || '—')}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
