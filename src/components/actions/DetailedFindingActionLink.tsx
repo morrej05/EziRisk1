@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ExternalLink, Link2, Plus, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -100,6 +101,22 @@ export default function DetailedFindingActionLink({
   const needsRecommendation = useMemo(() => detailedFindingNeedsRecommendation(assessment), [assessment]);
   const activeLink = links.find(isActiveLinkedAction);
   const visibleLinks = links.filter((link) => link.actions && !link.actions.deleted_at);
+  const unavailableLink = links.find((link) => !link.actions || link.actions.deleted_at);
+
+  const linkedActionUrl = useMemo(() => {
+    if (!activeLink?.actions?.id) return null;
+
+    const params = new URLSearchParams({
+      actionId: activeLink.actions.id,
+      document: documentId,
+    });
+
+    if (moduleInstanceId) {
+      params.set('moduleInstance', moduleInstanceId);
+    }
+
+    return `/remediation/actions?${params.toString()}`;
+  }, [activeLink?.actions?.id, documentId, moduleInstanceId]);
 
   const loadLinks = useCallback(async () => {
     if (!documentId || !moduleInstanceId) return;
@@ -315,10 +332,19 @@ export default function DetailedFindingActionLink({
         </button>
       </div>
 
-      {activeLink?.actions && (
-        <a href={`/actions/${activeLink.actions.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900">
+      {linkedActionUrl && (
+        <Link
+          to={linkedActionUrl}
+          className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-900"
+        >
           <ExternalLink className="w-4 h-4" /> View/Open action
-        </a>
+        </Link>
+      )}
+
+      {unavailableLink && !activeLink && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">
+          The linked action could not be opened because it is missing, deleted, or no longer active. Refresh the linkage or create a new recommendation.
+        </p>
       )}
 
       {needsRecommendation && !activeLink && (

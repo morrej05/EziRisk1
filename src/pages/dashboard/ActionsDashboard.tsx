@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { ArrowLeft, Filter, X, ClipboardList, AlertTriangle, Paperclip, Camera, ExternalLink, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Filter, X, ClipboardList, AlertTriangle, Paperclip, ExternalLink, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
 import EvidencePanel from '../../components/actions/EvidencePanel';
-import { actionPriorityClasses, actionStatusClasses, focusRingClass } from '../../theme/semanticClasses';
+import { actionPriorityClasses, actionStatusClasses } from '../../theme/semanticClasses';
 
 interface ActionOwner {
   id: string;
@@ -44,12 +44,15 @@ interface SummaryMetrics {
 
 export default function ActionsDashboard() {
   const navigate = useNavigate();
-  const { organisation, isPlatformAdmin } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedActionIdFromUrl = searchParams.get('actionId');
+  const { organisation } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [evidenceActionId, setEvidenceActionId] = useState<string | null>(null);
+  const [actionNavigationError, setActionNavigationError] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
@@ -69,6 +72,20 @@ export default function ActionsDashboard() {
       fetchActions();
     }
   }, [organisation?.id, statusFilter, priorityFilter, documentTypeFilter, infoGapFilter]);
+
+  useEffect(() => {
+    if (!selectedActionIdFromUrl || isLoading) return;
+
+    const linkedAction = actions.find((action) => action.id === selectedActionIdFromUrl);
+    if (linkedAction) {
+      setSelectedAction(linkedAction);
+      setActionNavigationError(null);
+      return;
+    }
+
+    setSelectedAction(null);
+    setActionNavigationError('The linked action could not be found in this action register. It may have been deleted, moved, or you may no longer have access.');
+  }, [actions, isLoading, selectedActionIdFromUrl]);
 
   const fetchActions = async () => {
     if (!organisation?.id) return;
@@ -110,7 +127,7 @@ export default function ActionsDashboard() {
 
       const actionIds = (actionsData || []).map((a) => a.id);
 
-      let attachmentCounts: Record<string, number> = {};
+      const attachmentCounts: Record<string, number> = {};
       if (actionIds.length > 0) {
         const { data: attachmentData } = await supabase
           .from('attachments')
@@ -242,7 +259,29 @@ export default function ActionsDashboard() {
   };
 
   const handleActionClick = (action: Action) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('actionId', action.id);
+    if (action.document?.id) {
+      nextParams.set('document', action.document.id);
+    } else {
+      nextParams.delete('document');
+    }
+    if (action.module_instance?.id) {
+      nextParams.set('moduleInstance', action.module_instance.id);
+    } else {
+      nextParams.delete('moduleInstance');
+    }
+    setSearchParams(nextParams, { replace: false });
     setSelectedAction(action);
+    setActionNavigationError(null);
+  };
+
+  const handleActionModalClose = () => {
+    setSelectedAction(null);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('actionId');
+    nextParams.delete('moduleInstance');
+    setSearchParams(nextParams, { replace: true });
   };
 
   const handleActionUpdated = () => {
@@ -347,6 +386,12 @@ export default function ActionsDashboard() {
                 <Filter className="w-4 h-4" />
                 Filters {showFilters ? '▼' : '▶'}
               </button>
+              {actionNavigationError && (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+                  {actionNavigationError}
+                </div>
+              )}
+
               <div className="flex items-center gap-4">
                 <div className="text-sm text-neutral-600">
                   Showing {actions.length} action{actions.length !== 1 ? 's' : ''}
@@ -498,7 +543,7 @@ export default function ActionsDashboard() {
                     {actions.map((action) => (
                       <tr
                         key={action.id}
-                        className="hover:bg-neutral-50 transition-colors cursor-pointer"
+                        className={`${action.id === selectedActionIdFromUrl ? 'bg-blue-50 ring-2 ring-inset ring-blue-300' : 'hover:bg-neutral-50'} transition-colors cursor-pointer`}
                         onClick={() => handleActionClick(action)}
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -586,7 +631,7 @@ export default function ActionsDashboard() {
       {selectedAction && (
         <ActionDetailModal
           action={selectedAction}
-          onClose={() => setSelectedAction(null)}
+          onClose={handleActionModalClose}
           onActionUpdated={handleActionUpdated}
           returnTo="/dashboard"
         />
