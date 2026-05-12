@@ -628,6 +628,18 @@ export function renderSection5FireHazards(
   const norm = (v: any) => sanitizePdfText(String(v ?? '')).replace(/_/g, ' ').trim();
   const titleCase = (s: string) =>
     s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  const getLinkedActionText = (sourceAssessmentKey: string): string | null => {
+    const links = Array.isArray(d.__action_source_links) ? d.__action_source_links as Array<Record<string, unknown>> : [];
+    const link = links.find((item) =>
+      item.source_assessment_type === 'ignition_source_assessments' &&
+      item.source_assessment_key === sourceAssessmentKey &&
+      !item.deleted_at
+    );
+    if (!link) return null;
+    const actionRecord = (link.action || link.actions || {}) as Record<string, unknown>;
+    const reference = norm(actionRecord.reference_number);
+    return reference ? `Linked recommendation/action: ${reference}` : 'Linked recommendation/action recorded';
+  };
 
   const list = (arr: any, other?: any) => {
     const a = Array.isArray(arr) ? arr.map(norm).filter(Boolean) : [];
@@ -756,7 +768,8 @@ export function renderSection5FireHazards(
       const risk = norm(assessment.risk_significance);
       const action = norm(assessment.recommended_action_trigger);
       const evidence = norm(assessment.evidence_references);
-      const linkedAction = norm(assessment.linked_action_reference);
+      const linkedAction = getLinkedActionText(sourceKey);
+      const legacyLinkedAction = norm(assessment.linked_action_reference);
 
       if (presence) parts.push(`Presence: ${titleCase(presence)}`);
       if (condition) parts.push(`Adequacy/condition: ${condition}`);
@@ -767,7 +780,7 @@ export function renderSection5FireHazards(
         const actionBits = [
           risk ? `risk significance ${titleCase(risk)}` : '',
           action ? `action trigger ${titleCase(action)}` : '',
-          linkedAction ? `reference ${linkedAction}` : '',
+          linkedAction || (legacyLinkedAction ? `legacy reference ${legacyLinkedAction}` : ''),
         ].filter(Boolean).join('; ');
         parts.push(`Risk/action: ${actionBits}`);
       }

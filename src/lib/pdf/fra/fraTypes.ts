@@ -53,6 +53,11 @@ export interface Action {
   reference_number?: string | null;
   trigger_text?: string | null;
   recommendation_detail?: Record<string, unknown> | null;
+  source_links?: Array<{
+    source_assessment_type: string;
+    source_assessment_key: string;
+    source_assessment_label?: string | null;
+  }>;
 }
 
 export interface ActionRating {

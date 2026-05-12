@@ -4,6 +4,7 @@ import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
+import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
@@ -826,12 +827,22 @@ export default function FRA3FireProtectionForm({
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <input value={assessment.evidence_references} onChange={(e) => updatePassiveAssessment(area.key, { evidence_references: e.target.value })} placeholder="Evidence/photo references (e.g. E-003, photo 12)" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
-                        <input value={assessment.linked_action_reference} onChange={(e) => updatePassiveAssessment(area.key, { linked_action_reference: e.target.value })} placeholder="Linked action reference" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
+                        <input value={assessment.linked_action_reference} onChange={(e) => updatePassiveAssessment(area.key, { linked_action_reference: e.target.value })} placeholder="Legacy linked action reference (fallback only)" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
                       </div>
                       <label className="flex items-center gap-2 text-sm text-neutral-700">
                         <input type="checkbox" checked={assessment.action_trigger} onChange={(e) => updatePassiveAssessment(area.key, { action_trigger: e.target.checked })} className="rounded border-neutral-300" />
                         Action trigger / consider adding this to the action register
                       </label>
+                      <DetailedFindingActionLink
+                        documentId={document.id}
+                        moduleInstanceId={moduleInstance.id}
+                        moduleKey={moduleInstance.module_key}
+                        sourceAssessmentType="passive_fire_protection_assessments"
+                        sourceAssessmentKey={area.key}
+                        sourceAssessmentLabel={area.title}
+                        assessment={assessment}
+                        legacyLinkedActionReference={assessment.linked_action_reference}
+                      />
                     </div>
                   </details>
                 );

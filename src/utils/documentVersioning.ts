@@ -881,6 +881,46 @@ export async function createNewVersion(
       if (insertedAction?.id) actionIdMap[action.id] = insertedAction.id;
     }
 
+    const { data: actionSourceLinks, error: actionSourceLinksError } = await supabase
+      .from('action_source_links')
+      .select('*')
+      .eq('document_id', currentIssued.id)
+      .is('deleted_at', null);
+
+    if (actionSourceLinksError) throw actionSourceLinksError;
+
+    for (const link of actionSourceLinks || []) {
+      const remappedActionId = actionIdMap[link.action_id];
+      const remappedModuleInstanceId = moduleIdMap[link.module_instance_id];
+
+      if (!remappedActionId || !remappedModuleInstanceId) {
+        console.warn('[createNewVersion] Skipping action source link carry-forward due to missing remap', {
+          linkId: link.id,
+          actionId: link.action_id,
+          moduleInstanceId: link.module_instance_id,
+        });
+        continue;
+      }
+
+      const carriedLink = {
+        ...cloneRowForInsert(link, ROW_INSERT_EXCLUDE_FIELDS),
+        organisation_id: organisationId,
+        document_id: newDocument.id,
+        module_instance_id: remappedModuleInstanceId,
+        action_id: remappedActionId,
+        carried_from_link_id: link.id,
+        deleted_at: null,
+      };
+
+      const { error: sourceLinkInsertError } = await supabase
+        .from('action_source_links')
+        .insert([carriedLink]);
+
+      if (sourceLinkInsertError) {
+        console.error('Error carrying forward action source link:', sourceLinkInsertError);
+      }
+    }
+
     const { data: recommendations, error: recommendationsError } = await supabase
       .from('re_recommendations')
       .select('*')

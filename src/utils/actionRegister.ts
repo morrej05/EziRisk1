@@ -22,6 +22,15 @@ export interface ActionRegisterEntry {
   owner_user_id: string | null;
   owner_name: string | null;
   source: string;
+  source_context?: string | null;
+  source_links?: Array<{
+    id: string;
+    module_key?: string | null;
+    source_assessment_type: string;
+    source_assessment_key: string;
+    source_assessment_label?: string | null;
+    source_finding_hash?: string | null;
+  }> | null;
   created_at: string;
   closed_at: string | null;
   carried_from_document_id: string | null;
@@ -159,6 +168,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     'Tracking Status',
     'Timescale',
     'Source',
+    'Source Context',
     'Age (Days)',
     'Created Date',
     'Closed Date',
@@ -179,6 +189,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     action.tracking_status,
     action.timescale || '',
     action.source,
+    action.source_context || '',
     action.age_days.toString(),
     new Date(action.created_at).toLocaleDateString(),
     action.closed_at ? new Date(action.closed_at).toLocaleDateString() : '',
