@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { getUserLimitForOrganisation } from '../utils/planLimits';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
+import { PUBLIC_LEGAL_DETAILS, SUPPORT_CONFIG, getSupportMailto } from '../config/support';
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('en-US', {
@@ -433,7 +434,13 @@ export default function AdminBillingPanel() {
       {planChangeMessage && <p className="text-sm text-green-700 mt-3">{planChangeMessage}</p>}
       {planChangeError && <p className="text-sm text-red-700 mt-3">{planChangeError}</p>}
 
-      <p className="text-xs text-slate-500 mt-4">Need a larger deployment? Contact us.</p>
+      <p className="text-xs text-slate-500 mt-4">
+        Need a larger deployment? Contact{' '}
+        <a href={getSupportMailto()} className="underline hover:text-slate-700">
+          {SUPPORT_CONFIG.email}
+        </a>
+        . {PUBLIC_LEGAL_DETAILS.footerStatement}
+      </p>
 
 
       {isConfirmingUpgrade && (

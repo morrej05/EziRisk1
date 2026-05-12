@@ -3,6 +3,7 @@ import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AlertCircle, ArrowLeft } from 'lucide-react';
 import LegalLinks from '../components/legal/LegalLinks';
+import { PUBLIC_LEGAL_DETAILS } from '../config/support';
 import { resolveLogoUrl } from '../utils/logo';
 
 type SignupPlan = 'free' | 'standard' | 'professional';
@@ -268,7 +269,10 @@ export default function SignIn() {
       <footer className="bg-neutral-900 text-neutral-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <p className="text-sm text-neutral-500">© {new Date().getFullYear()} EziRisk. All rights reserved.</p>
+            <div className="space-y-1">
+              <p className="text-sm text-neutral-500">© {new Date().getFullYear()} EziRisk. All rights reserved.</p>
+              <p className="text-sm text-neutral-500">{PUBLIC_LEGAL_DETAILS.footerStatement}</p>
+            </div>
             <LegalLinks
               className="flex flex-wrap items-center gap-4"
               itemClassName="text-sm text-neutral-400 hover:text-white transition-colors"

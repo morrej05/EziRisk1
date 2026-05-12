@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { getDefaultRegion, getPricing } from '../../config/pricing';
+import { PUBLIC_LEGAL_DETAILS } from '../../config/support';
 
 const region = getDefaultRegion();
 
@@ -61,6 +62,12 @@ export default function Pricing() {
         <p className="mt-8 text-center text-sm text-neutral-500">No long-term contracts. Upgrade or cancel anytime.</p>
         <p className="mt-1 text-center text-sm text-neutral-500">
           All plans include access to FRA, FSD, DSEAR / ATEX and risk engineering reports.
+        </p>
+        <p className="mt-3 text-center text-sm text-neutral-500">
+          {PUBLIC_LEGAL_DETAILS.footerStatement}
+        </p>
+        <p className="mt-1 text-center text-xs text-neutral-500">
+          {PUBLIC_LEGAL_DETAILS.registrationPendingNote}
         </p>
       </div>
     </section>

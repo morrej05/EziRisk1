@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { LegalDocumentContent } from '../../content/legalContent';
-import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
+import { PUBLIC_LEGAL_DETAILS, SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 interface LegalPageLayoutProps {
   content: LegalDocumentContent;
@@ -25,6 +25,24 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
             ))}
           </div>
 
+          <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
+            <p><span className="font-semibold text-slate-900">Operator / Data Controller:</span> {PUBLIC_LEGAL_DETAILS.dataController}</p>
+            <p><span className="font-semibold text-slate-900">ICO application number:</span> {PUBLIC_LEGAL_DETAILS.icoApplicationNumber}</p>
+            <p>
+              <span className="font-semibold text-slate-900">Contact email:</span>{' '}
+              <a href={getSupportMailto(PUBLIC_LEGAL_DETAILS.contactEmail)} className="text-slate-900 underline hover:text-slate-700">
+                {PUBLIC_LEGAL_DETAILS.contactEmail}
+              </a>
+            </p>
+            <p>
+              <span className="font-semibold text-slate-900">Website:</span>{' '}
+              <a href={PUBLIC_LEGAL_DETAILS.website} className="text-slate-900 underline hover:text-slate-700">
+                {PUBLIC_LEGAL_DETAILS.website}
+              </a>
+            </p>
+            <p className="text-slate-600">{PUBLIC_LEGAL_DETAILS.registrationPendingNote}</p>
+          </div>
+
           <div className="mt-8 space-y-7">
             {content.sections.map((section) => (
               <section key={section.heading} className="space-y-3">
@@ -47,7 +65,8 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
 
           <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-600 space-y-2">
             <p>
-              Return to <Link to="/" className="text-slate-900 underline hover:text-slate-700">EziRisk home</Link>.
+              Return to <Link to="/" className="text-slate-900 underline hover:text-slate-700">EziRisk home</Link> or visit the{' '}
+              <Link to="/contact" className="text-slate-900 underline hover:text-slate-700">Contact page</Link>.
             </p>
             <p>
               Need help? Contact us at{' '}

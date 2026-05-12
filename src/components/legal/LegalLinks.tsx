@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 const legalLinks = [
+  { to: '/contact', label: 'Contact' },
   { to: '/privacy', label: 'Privacy Policy' },
   { to: '/terms', label: 'Terms of Use' },
   { to: '/disclaimer', label: 'Professional Liability Disclaimer' },

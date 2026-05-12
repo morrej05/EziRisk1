@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Shield } from 'lucide-react';
 import LegalLinks from '../legal/LegalLinks';
+import { PUBLIC_LEGAL_DETAILS } from '../../config/support';
 
 export default function Footer() {
   const [logoError, setLogoError] = useState(false);
@@ -39,6 +40,9 @@ export default function Footer() {
             <p className="text-neutral-300 mb-4 max-w-md leading-relaxed">
               Professional risk assessment and reporting platform for engineering and assessment consultants. Structured workflows, consistent outputs, and insurer-grade reporting.
             </p>
+            <p className="text-sm text-neutral-400 max-w-md leading-relaxed">
+              {PUBLIC_LEGAL_DETAILS.footerStatement}
+            </p>
           </div>
 
           <div>
@@ -60,7 +64,7 @@ export default function Footer() {
                   Who it's for
                 </button>
               </li>
-                            <li>
+              <li>
                 <Link
                   to="/pricing"
                   className="text-neutral-400 hover:text-white transition-colors"
@@ -76,7 +80,15 @@ export default function Footer() {
                   Security
                 </Link>
               </li>
-<li>
+              <li>
+                <Link
+                  to="/contact"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  Contact
+                </Link>
+              </li>
+              <li>
                 <Link
                   to="/signin"
                   className="text-neutral-400 hover:text-white transition-colors"
@@ -99,7 +111,7 @@ export default function Footer() {
               © {new Date().getFullYear()} EziRisk. All rights reserved.
             </p>
             <p className="text-sm text-neutral-500">
-              Reports should be reviewed by qualified professionals before use.
+              {PUBLIC_LEGAL_DETAILS.registrationPendingNote}
             </p>
           </div>
         </div>
