@@ -53,13 +53,16 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
   },
 
   FRA_2_ESCAPE_ASIS: {
+    escape_strategy_current: ['escape_strategy'],
+    escape_routes_description: ['routes_description'],
     travel_distances_compliant: [],
     escape_route_obstructions: [],
     final_exits_adequate: [],
     stair_protection_status: [],
-    exit_signage_adequacy: [],
-    disabled_egress_arrangements: [],
-    escape_strategy: [],
+    inner_rooms_present: [],
+    basement_present: [],
+    exit_signage_adequacy: ['signage_adequacy'],
+    disabled_egress_arrangements: ['disabled_egress_adequacy'],
     means_of_escape_assessments: ['meansOfEscapeAssessments'],
   },
 

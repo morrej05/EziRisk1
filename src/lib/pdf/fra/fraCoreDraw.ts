@@ -70,6 +70,11 @@ const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
   assembly_external_routes: 'Assembly / external escape routes',
 };
 
+function getMeansOfEscapeAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
+  const assessments = data.means_of_escape_assessments || data.meansOfEscapeAssessments;
+  return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
+}
+
 function hasMeansOfEscapeDetailContent(assessment: Record<string, unknown>): boolean {
   if (!assessment || typeof assessment !== 'object') return false;
 
@@ -78,7 +83,7 @@ function hasMeansOfEscapeDetailContent(assessment: Record<string, unknown>): boo
     Boolean(String(assessment.deficiencies || '').trim()) ||
     Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
     Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
-    (assessment.risk_significance !== undefined && assessment.risk_significance !== 'unknown') ||
+    (((assessment.risk_significance || assessment.riskSignificance) !== undefined) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
     Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
     Boolean(assessment.action_trigger || assessment.actionTrigger) ||
     Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
@@ -402,8 +407,9 @@ export function drawModuleKeyDetails(
 
     case 'FRA_2_ESCAPE_ASIS':
       if (data.escape_strategy_current) keyDetails.push(['Escape Strategy', data.escape_strategy_current]);
-      if (data.escape_strategy) keyDetails.push(['Escape Strategy', data.escape_strategy]);
-      if (data.routes_description) keyDetails.push(['Routes Description', data.routes_description]);
+      else if (data.escape_strategy) keyDetails.push(['Escape Strategy', data.escape_strategy]);
+      if (data.escape_routes_description) keyDetails.push(['Routes Description', data.escape_routes_description]);
+      else if (data.routes_description) keyDetails.push(['Routes Description', data.routes_description]);
       if (data.travel_distances_compliant) keyDetails.push(['Travel Distances Compliant', data.travel_distances_compliant]);
       if (data.travel_distances) keyDetails.push(['Travel Distances', data.travel_distances]);
       if (data.final_exits_adequate) keyDetails.push(['Final Exits Adequate', data.final_exits_adequate]);
@@ -411,16 +417,21 @@ export function drawModuleKeyDetails(
       if (data.escape_route_obstructions) keyDetails.push(['Escape Route Obstructions', data.escape_route_obstructions]);
       if (data.stair_protection_status) keyDetails.push(['Stair Protection Status', data.stair_protection_status]);
       if (data.stair_protection) keyDetails.push(['Stair Protection', data.stair_protection]);
-      if (data.signage_adequacy) keyDetails.push(['Signage Adequacy', data.signage_adequacy]);
+      if (data.exit_signage_adequacy) keyDetails.push(['Exit Signage Adequacy', data.exit_signage_adequacy]);
+      else if (data.signage_adequacy) keyDetails.push(['Signage Adequacy', data.signage_adequacy]);
       if (data.signage) keyDetails.push(['Signage', data.signage]);
-      if (data.disabled_egress_adequacy) keyDetails.push(['Disabled Egress Adequacy', data.disabled_egress_adequacy]);
+      if (data.disabled_egress_arrangements) keyDetails.push(['Assisted Evacuation Provisions', data.disabled_egress_arrangements]);
+      else if (data.disabled_egress_adequacy) keyDetails.push(['Disabled Egress Adequacy', data.disabled_egress_adequacy]);
       if (data.disabled_egress) keyDetails.push(['Disabled Egress', data.disabled_egress]);
       if (data.inner_rooms_present) keyDetails.push(['Inner Rooms Present', data.inner_rooms_present]);
       if (data.inner_rooms) keyDetails.push(['Inner Rooms', data.inner_rooms]);
       if (data.basement_present) keyDetails.push(['Basement Present', data.basement_present]);
       if (data.basement) keyDetails.push(['Basement', data.basement]);
-      if (data.means_of_escape_assessments && typeof data.means_of_escape_assessments === 'object') {
-        Object.entries(data.means_of_escape_assessments).forEach(([key, value]) => {
+      {
+        const assessments = getMeansOfEscapeAssessments(data);
+        if (!assessments) break;
+
+        Object.entries(assessments).forEach(([key, value]) => {
           const assessment = value as Record<string, unknown>;
           if (!hasMeansOfEscapeDetailContent(assessment)) return;
 

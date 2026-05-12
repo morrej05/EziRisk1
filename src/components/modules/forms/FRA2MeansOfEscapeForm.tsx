@@ -48,6 +48,21 @@ interface EscapeAssessmentDetail {
   linked_action_reference: string;
 }
 
+type FormDataState = {
+  escape_strategy_current: string;
+  escape_routes_description: string;
+  travel_distances_compliant: string;
+  final_exits_adequate: string;
+  escape_route_obstructions: string;
+  stair_protection_status: string;
+  inner_rooms_present: string;
+  basement_present: string;
+  exit_signage_adequacy: string;
+  disabled_egress_arrangements: string;
+  notes: string;
+  means_of_escape_assessments: Record<string, EscapeAssessmentDetail>;
+};
+
 interface AssessmentAreaConfig {
   key: string;
   title: string;
@@ -83,6 +98,31 @@ const normaliseRiskSignificance = (value: unknown): RiskSignificance => {
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
 const asString = (value: unknown): string => typeof value === 'string' ? value : '';
+
+const toCamelAssessment = (assessment: EscapeAssessmentDetail) => ({
+  status: assessment.status,
+  observations: assessment.observations,
+  deficiencies: assessment.deficiencies,
+  existingControls: assessment.existing_controls,
+  assessorCommentary: assessment.assessor_commentary,
+  riskSignificance: assessment.risk_significance,
+  evidenceReferences: assessment.evidence_references,
+  actionTrigger: assessment.action_trigger,
+  linkedActionReference: assessment.linked_action_reference,
+});
+
+const buildSaveData = (existingData: Record<string, unknown>, formData: FormDataState): Record<string, unknown> => ({
+  ...existingData,
+  ...formData,
+  // Maintain legacy aliases that older PDF/report consumers may still read.
+  escape_strategy: formData.escape_strategy_current,
+  routes_description: formData.escape_routes_description,
+  signage_adequacy: formData.exit_signage_adequacy,
+  disabled_egress_adequacy: formData.disabled_egress_arrangements,
+  meansOfEscapeAssessments: Object.fromEntries(
+    Object.entries(formData.means_of_escape_assessments).map(([key, assessment]) => [key, toCamelAssessment(assessment)])
+  ),
+});
 
 const buildInitialAssessments = (data: Record<string, unknown>): Record<string, EscapeAssessmentDetail> => {
   const rawSource = data.means_of_escape_assessments || data.meansOfEscapeAssessments;
@@ -164,14 +204,21 @@ export default function FRA2MeansOfEscapeForm({
   const qualityWarnings = useMemo(() => {
     const assessments = formData.means_of_escape_assessments;
     const commentaryMissing = (key: string) => !(assessments[key]?.assessor_commentary || '').trim();
-    const actionOrExplanationMissing = (key: string) =>
+    const evidenceMissing = (key: string) => !(assessments[key]?.evidence_references || '').trim();
+    const actionMissing = (key: string) =>
       !(assessments[key]?.linked_action_reference || '').trim() &&
+      !assessments[key]?.action_trigger;
+    const actionOrExplanationMissing = (key: string) =>
+      actionMissing(key) &&
       !(assessments[key]?.assessor_commentary || '').trim() &&
       !(assessments[key]?.deficiencies || '').trim();
     const warnings: string[] = [];
 
     if (assessments.escape_route_adequacy?.status === 'inadequate' && commentaryMissing('escape_route_adequacy')) {
       warnings.push('Inadequate escape routes are selected without assessor commentary.');
+    }
+    if (assessments.escape_route_adequacy?.status === 'inadequate' && evidenceMissing('escape_route_adequacy') && actionMissing('escape_route_adequacy')) {
+      warnings.push('Escape route inadequacy is recorded without evidence references or an action/recommendation link.');
     }
     if ((assessments.travel_distances?.status === 'inadequate' || formData.travel_distances_compliant === 'no') && commentaryMissing('travel_distances')) {
       warnings.push('Excessive travel distances are selected without rationale.');
@@ -191,6 +238,9 @@ export default function FRA2MeansOfEscapeForm({
     }
     if ((assessments.occupant_capacity_vulnerable_occupants?.status === 'inadequate' || formData.disabled_egress_arrangements === 'inadequate') && commentaryMissing('occupant_capacity_vulnerable_occupants')) {
       warnings.push('Vulnerable occupant or PEEP dependency is selected without management commentary.');
+    }
+    if ((assessments.staircases_vertical_escape?.status === 'inadequate' || formData.stair_protection_status === 'inadequate') && commentaryMissing('staircases_vertical_escape')) {
+      warnings.push('Staircase or vertical escape protection concerns are recorded without narrative.');
     }
 
     return warnings;
@@ -238,7 +288,7 @@ export default function FRA2MeansOfEscapeForm({
 
     try {
       const payload = sanitizeModuleInstancePayload({
-        data: formData,
+        data: buildSaveData(moduleInstance.data, formData),
         outcome,
         assessor_notes: assessorNotes,
         updated_at: new Date().toISOString(),
