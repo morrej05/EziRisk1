@@ -1647,7 +1647,18 @@ try {
                             ? ((action as ReRecommendationEntry).source_module_key
                                 ? getModuleName((action as ReRecommendationEntry).source_module_key as string)
                                 : '—')
-                            : ((action as ActionRegisterEntry).module_key ? getModuleName((action as ActionRegisterEntry).module_key as string) : '—')}
+                            : (
+                                <span>
+                                  {(action as ActionRegisterEntry).module_key ? getModuleName((action as ActionRegisterEntry).module_key as string) : '—'}
+                                  {(((action as ActionRegisterEntry).source_links?.length || (action as ActionRegisterEntry).source_context) && (
+                                    <span className="block text-xs text-neutral-500">
+                                      Source: {(action as ActionRegisterEntry).source_links?.length
+                                        ? (action as ActionRegisterEntry).source_links!.map((link) => `${link.module_key ? getModuleName(link.module_key) : 'Module'} — ${link.source_assessment_label || link.source_assessment_key}`).join('; ')
+                                        : (action as ActionRegisterEntry).source_context}
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
                         </td>
                         <td className="px-4 py-3 text-sm text-neutral-900 max-w-md">
                           {isReDocument ? (

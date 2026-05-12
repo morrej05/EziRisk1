@@ -44,6 +44,20 @@ import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
 import { getFraReportOutcomeLabel, resolveFraOutcomeValue } from './fraOutcome';
 import { type ScoringResult } from '../../fra/scoring/scoringEngine';
 
+
+function getLinkedActionText(data: Record<string, unknown>, sourceAssessmentType: string, sourceAssessmentKey: string): string | null {
+  const links = Array.isArray(data.__action_source_links) ? data.__action_source_links as Array<Record<string, unknown>> : [];
+  const link = links.find((item) =>
+    item.source_assessment_type === sourceAssessmentType &&
+    item.source_assessment_key === sourceAssessmentKey &&
+    !item.deleted_at
+  );
+  if (!link) return null;
+  const action = (link.action || link.actions || {}) as Record<string, unknown>;
+  const reference = String(action.reference_number || '').trim();
+  return reference ? `Linked recommendation/action: ${reference}` : 'Linked recommendation/action recorded';
+}
+
 /**
  * In-memory cache for embedded PDF images
  * Key: attachment.id, Value: embedded PDFImage
@@ -93,7 +107,7 @@ function hasFireSafetyManagementDetailContent(assessment: Record<string, unknown
     Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
 }
 
-function formatFireSafetyManagementDetail(assessment: Record<string, unknown>): string {
+function formatFireSafetyManagementDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
     const text = String(value ?? '').trim();
@@ -109,7 +123,8 @@ function formatFireSafetyManagementDetail(assessment: Record<string, unknown>): 
   add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
   add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
   if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
-  add('Linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+  if (linkedActionText) parts.push(linkedActionText);
+  else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
 
   return parts.join('; ');
 }
@@ -164,7 +179,7 @@ function hasPassiveProtectionDetailContent(assessment: Record<string, unknown>):
     Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
 }
 
-function formatPassiveProtectionDetail(assessment: Record<string, unknown>): string {
+function formatPassiveProtectionDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
     const text = String(value ?? '').trim();
@@ -180,7 +195,8 @@ function formatPassiveProtectionDetail(assessment: Record<string, unknown>): str
   add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
   add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
   if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
-  add('Linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+  if (linkedActionText) parts.push(linkedActionText);
+  else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
 
   return parts.join('; ');
 }
@@ -204,7 +220,7 @@ function hasMeansOfEscapeDetailContent(assessment: Record<string, unknown>): boo
     Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
 }
 
-function formatMeansOfEscapeDetail(assessment: Record<string, unknown>): string {
+function formatMeansOfEscapeDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
     const text = String(value ?? '').trim();
@@ -220,7 +236,8 @@ function formatMeansOfEscapeDetail(assessment: Record<string, unknown>): string 
   add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
   add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
   if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
-  add('Linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+  if (linkedActionText) parts.push(linkedActionText);
+  else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
 
   return parts.join('; ');
 }
@@ -476,7 +493,7 @@ export function drawModuleKeyDetails(
             if (!hasFireSafetyManagementDetailContent(assessment)) return;
 
             const label = FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
-            const detailText = formatFireSafetyManagementDetail(assessment);
+            const detailText = formatFireSafetyManagementDetail(assessment, getLinkedActionText(data, 'fire_safety_management_assessments', key));
             if (detailText) keyDetails.push([label, detailText]);
           });
         }
@@ -579,7 +596,7 @@ export function drawModuleKeyDetails(
           if (!hasMeansOfEscapeDetailContent(assessment)) return;
 
           const label = MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
-          const detailText = formatMeansOfEscapeDetail(assessment);
+          const detailText = formatMeansOfEscapeDetail(assessment, getLinkedActionText(data, 'means_of_escape_assessments', key));
           if (detailText) keyDetails.push([label, detailText]);
         });
       }
@@ -641,7 +658,7 @@ export function drawModuleKeyDetails(
               if (!hasPassiveProtectionDetailContent(assessment)) return;
 
               const label = PASSIVE_PROTECTION_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
-              const detailText = formatPassiveProtectionDetail(assessment);
+              const detailText = formatPassiveProtectionDetail(assessment, getLinkedActionText(data, 'passive_fire_protection_assessments', key));
               if (detailText) keyDetails.push([label, detailText]);
             });
           }
@@ -661,7 +678,7 @@ export function drawModuleKeyDetails(
               if (!hasPassiveProtectionDetailContent(assessment)) return;
 
               const label = PASSIVE_PROTECTION_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
-              const detailText = formatPassiveProtectionDetail(assessment);
+              const detailText = formatPassiveProtectionDetail(assessment, getLinkedActionText(data, 'passive_fire_protection_assessments', key));
               if (detailText) keyDetails.push([label, detailText]);
             });
           }
@@ -1889,6 +1906,37 @@ export async function drawActionRegister(
       status,
       fonts: { regular: font, bold: fontBold },
     });
+
+    const sourceLinks = Array.isArray(action.source_links) ? action.source_links : [];
+    if (sourceLinks.length > 0) {
+      const sourceTypeLabels: Record<string, string> = {
+        ignition_source_assessments: 'Fire hazards',
+        means_of_escape_assessments: 'Means of Escape',
+        passive_fire_protection_assessments: 'Passive Fire Protection',
+        fire_safety_management_assessments: 'Fire Safety Management',
+      };
+      const sourceText = sourceLinks
+        .map((link) => {
+          const typeLabel = sourceTypeLabels[String(link.source_assessment_type || '')] || String(link.source_assessment_type || 'Source');
+          const findingLabel = String(link.source_assessment_label || link.source_assessment_key || '').trim();
+          return findingLabel ? `${typeLabel} — ${findingLabel}` : typeLabel;
+        })
+        .filter(Boolean)
+        .join('; ');
+      if (sourceText) {
+        const sourceLines = wrapText(`Source: ${sourceText}`, 105);
+        sourceLines.slice(0, 2).forEach((line) => {
+          page.drawText(sanitizePdfText(line), {
+            x: MARGIN + 28,
+            y: yPosition,
+            size: 8,
+            font,
+            color: rgb(0.35, 0.35, 0.35),
+          });
+          yPosition -= 10;
+        });
+      }
+    }
 
     // Add inline evidence for this action
     if (attachments && evidenceRefMap) {

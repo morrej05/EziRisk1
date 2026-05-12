@@ -683,6 +683,13 @@ export default function ActionRegisterPage() {
                           {getModuleKeyLabel(action.module_key)}
                         </div>
                       )}
+                      {(action.source_links?.length || action.source_context) && (
+                        <div className="text-xs text-neutral-500 mt-0.5">
+                          Source: {action.source_links?.length
+                            ? action.source_links.map((link) => `${link.module_key ? getModuleKeyLabel(link.module_key) : 'Module'} — ${link.source_assessment_label || link.source_assessment_key}`).join('; ')
+                            : action.source_context}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm text-neutral-700 max-w-md truncate">

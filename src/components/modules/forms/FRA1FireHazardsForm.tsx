@@ -5,6 +5,7 @@ import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanit
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
+import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
@@ -713,7 +714,7 @@ export default function FRA1FireHazardsForm({
                           type="text"
                           value={assessment.linked_action_reference || ''}
                           onChange={(e) => updateSourceAssessment(source.key, { linked_action_reference: e.target.value })}
-                          placeholder="e.g., Action FRA-1.03 or client ref"
+                          placeholder="Legacy linked action reference (fallback only)"
                           className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
                         />
                       </div>
@@ -731,17 +732,16 @@ export default function FRA1FireHazardsForm({
                     </div>
 
                     {needsAction && (
-                      <button
-                        onClick={() => handleQuickAction({
-                          action: source.actionText,
-                          likelihood: assessment.risk_significance === 'high' || assessment.recommended_action_trigger === 'urgent' ? 5 : 4,
-                          impact: assessment.risk_significance === 'high' || assessment.recommended_action_trigger === 'urgent' ? 4 : 3,
-                        })}
-                        className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Quick Add: Create/link action for this source
-                      </button>
+                      <DetailedFindingActionLink
+                        documentId={document.id}
+                        moduleInstanceId={moduleInstance.id}
+                        moduleKey={moduleInstance.module_key}
+                        sourceAssessmentType="ignition_source_assessments"
+                        sourceAssessmentKey={source.key}
+                        sourceAssessmentLabel={source.label}
+                        assessment={assessment}
+                        legacyLinkedActionReference={assessment.linked_action_reference}
+                      />
                     )}
                   </div>
                 </details>

@@ -120,11 +120,43 @@ export async function buildIssuedPdfForDocument(
   if (moduleError) throw moduleError;
   if (actionsError) throw actionsError;
 
-  let migratedActions = actions || [];
+  const { data: sourceLinks, error: sourceLinksError } = await supabase
+    .from('action_source_links')
+    .select('*, actions(id, reference_number, status, recommended_action, deleted_at)')
+    .eq('document_id', document.id)
+    .eq('organisation_id', organisationId)
+    .is('deleted_at', null);
+
+  if (sourceLinksError) throw sourceLinksError;
+
+  const linksByModule = new Map<string, Array<Record<string, unknown>>>();
+  const linksByAction = new Map<string, Array<Record<string, unknown>>>();
+  for (const link of sourceLinks || []) {
+    const moduleLinks = linksByModule.get(link.module_instance_id) || [];
+    moduleLinks.push({ ...link, action: link.actions });
+    linksByModule.set(link.module_instance_id, moduleLinks);
+
+    const actionLinks = linksByAction.get(link.action_id) || [];
+    actionLinks.push(link);
+    linksByAction.set(link.action_id, actionLinks);
+  }
+
+  const moduleInstancesWithSourceLinks = (moduleInstances || []).map((module) => ({
+    ...module,
+    data: {
+      ...(module.data || {}),
+      __action_source_links: linksByModule.get(module.id) || [],
+    },
+  }));
+
+  let migratedActions = (actions || []).map((action) => ({
+    ...action,
+    source_links: linksByAction.get(action.id) || [],
+  }));
   if (document.document_type === 'DSEAR') {
     migratedActions = migrateLegacyDsearActions(migratedActions);
   } else if (document.document_type === 'FRA' || document.document_type === 'FSD') {
-    const buildingProfile = ((moduleInstances || []) as ModuleInstanceLike[]).find((m) => m.module_key === 'A2_BUILDING_PROFILE');
+    const buildingProfile = (moduleInstancesWithSourceLinks as ModuleInstanceLike[]).find((m) => m.module_key === 'A2_BUILDING_PROFILE');
     const fraContext: FraContext = {
       occupancyRisk: (buildingProfile?.data?.occupancy_risk || 'NonSleeping') as 'NonSleeping' | 'Sleeping' | 'Vulnerable',
       storeys: buildingProfile?.data?.number_of_storeys || null,
@@ -163,7 +195,7 @@ export async function buildIssuedPdfForDocument(
 
   const pdfOptions = {
     document,
-    moduleInstances: moduleInstances || [],
+    moduleInstances: moduleInstancesWithSourceLinks,
     actions: migratedActions,
     actionRatings,
     organisation: {
