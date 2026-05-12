@@ -143,6 +143,18 @@ export default function DetailedFindingActionLink({
   }, [loadLinks]);
 
   const confirmNearDuplicateForSource = (candidateText: string, currentLinks: ActionSourceLink[], actionLabel = 'recommendation') => {
+    const normalizedCandidate = candidateText.trim().toLowerCase();
+    const exactDuplicateLink = currentLinks.find((link) =>
+      link.actions &&
+      !link.actions.deleted_at &&
+      link.actions.recommended_action.trim().toLowerCase() === normalizedCandidate
+    );
+
+    if (exactDuplicateLink?.actions) {
+      setError(`This finding already has an identical linked recommendation (${formatActionRef(exactDuplicateLink.actions)}). Open that action or write a genuinely different additional recommendation.`);
+      return false;
+    }
+
     const duplicateLink = currentLinks.find((link) =>
       link.actions &&
       !link.actions.deleted_at &&
@@ -153,7 +165,7 @@ export default function DetailedFindingActionLink({
 
     return window.confirm(
       `A linked recommendation for this finding already has very similar action text (${formatActionRef(duplicateLink.actions)}). ` +
-      `Create or link this additional ${actionLabel} anyway?`
+      `Only create or link this additional ${actionLabel} if it is genuinely different. Continue?`
     );
   };
 
