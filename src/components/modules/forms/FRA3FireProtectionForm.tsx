@@ -252,6 +252,7 @@ export default function FRA3FireProtectionForm({
   };
 
   const detailedPassiveAssessments = Object.values(formData.passive_fire_protection_assessments).filter(hasPassiveAssessmentContent);
+  const hasDetailedPassiveSource = detailedPassiveAssessments.length > 0;
 
   const qualityWarnings = useMemo(() => {
     const assessments = formData.passive_fire_protection_assessments;
@@ -659,7 +660,7 @@ export default function FRA3FireProtectionForm({
               </p>
             </div>
 
-            {(formData.fire_doors_condition === 'inadequate' ||
+            {!hasDetailedPassiveSource && (formData.fire_doors_condition === 'inadequate' ||
               formData.fire_doors_condition === 'unknown') && (
               <button
                 onClick={() =>
@@ -724,7 +725,11 @@ export default function FRA3FireProtectionForm({
               </p>
             </div>
 
-            {(formData.compartmentation_condition === 'inadequate' ||
+            {hasDetailedPassiveSource ? (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                Detailed passive protection findings are present, so use the per-finding recommendation controls below instead of these broad Quick Add shortcuts.
+              </div>
+            ) : (formData.compartmentation_condition === 'inadequate' ||
               formData.compartmentation_condition === 'unknown') && (
               <button
                 onClick={() =>
@@ -761,7 +766,7 @@ export default function FRA3FireProtectionForm({
               </p>
             </div>
 
-            {formData.fire_stopping_confidence === 'unknown' && (
+            {!hasDetailedPassiveSource && formData.fire_stopping_confidence === 'unknown' && (
               <button
                 onClick={() =>
                   handleQuickAction({
