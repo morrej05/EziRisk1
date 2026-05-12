@@ -185,6 +185,21 @@ export function extractSectionDrivers(sectionId: number, moduleInstances: Module
 function extractSection5Drivers(data: Record<string, any>): string[] {
   const drivers: string[] = [];
 
+  const detailedIgnitionAssessments = Object.entries(
+    data.ignition_source_assessments || data.ignitionSourceAssessments || {}
+  ).filter(([, value]) => value && typeof value === 'object') as Array<[string, Record<string, unknown>]>;
+
+  detailedIgnitionAssessments.forEach(([sourceKey, assessment]) => {
+    const risk = String(assessment.risk_significance || '').toLowerCase();
+    const trigger = String(assessment.recommended_action_trigger || '').toLowerCase();
+    const deficiencies = String(assessment.deficiencies || '').trim();
+    if (risk === 'high' || trigger === 'urgent' || trigger === 'action_required') {
+      drivers.push(`${sourceKey.replace(/_/g, ' ')} ignition source assessment indicates ${risk === 'high' ? 'high risk significance' : 'action is required'}`);
+    } else if (deficiencies) {
+      drivers.push(`${sourceKey.replace(/_/g, ' ')} ignition source deficiencies recorded`);
+    }
+  });
+
   // EICR status - C1/C2 takes absolute precedence
   const electrical = data.electrical_safety || {};
   const hasC1C2 = electrical.eicr_outstanding_c1_c2 === 'yes' ||
@@ -609,6 +624,19 @@ export function generateAssessorSummary(
 function generateSection5Summary(module: ModuleInstance, document: Document): string | null {
   const data = module.data;
   const parts: string[] = [];
+
+  const detailedIgnitionAssessments = Object.entries(
+    data.ignition_source_assessments || data.ignitionSourceAssessments || {}
+  ).filter(([, value]) => value && typeof value === 'object') as Array<[string, Record<string, unknown>]>;
+
+  const significantSource = detailedIgnitionAssessments.find(([, assessment]) =>
+    ['high', 'medium'].includes(String(assessment.risk_significance || '').toLowerCase()) ||
+    ['urgent', 'action_required'].includes(String(assessment.recommended_action_trigger || '').toLowerCase()) ||
+    Boolean(String(assessment.deficiencies || '').trim())
+  );
+  if (significantSource) {
+    parts.push(`Source-specific ignition assessment recorded for ${significantSource[0].replace(/_/g, ' ')}`);
+  }
 
   // Electrical safety
   const eicr = data.electrical_safety || {};

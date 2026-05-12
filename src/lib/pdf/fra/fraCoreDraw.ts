@@ -315,7 +315,7 @@ export function drawModuleKeyDetails(
 
     case 'FRA_1_HAZARDS':
       if (data.ignition_sources && safeArray(data.ignition_sources).length > 0) {
-        const ignitionFiltered = safeArray(data.ignition_sources).filter((x: string) => x !== 'hot_work');
+        const ignitionFiltered = safeArray(data.ignition_sources);
         if (ignitionFiltered.length > 0) {
           keyDetails.push(['Ignition Sources', ignitionFiltered.join(', ')]);
         }
@@ -325,7 +325,7 @@ export function drawModuleKeyDetails(
       }
       if (data.oxygen_enrichment) keyDetails.push(['Oxygen Enrichment', data.oxygen_enrichment]);
       if (data.high_risk_activities && safeArray(data.high_risk_activities).length > 0) {
-        const activitiesFiltered = safeArray(data.high_risk_activities).filter((x: string) => x !== 'hot_work');
+        const activitiesFiltered = safeArray(data.high_risk_activities);
         if (activitiesFiltered.length > 0) {
           keyDetails.push(['High-Risk Activities', activitiesFiltered.join(', ')]);
         }

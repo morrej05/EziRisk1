@@ -44,6 +44,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     high_risk_activities: [],
     oxygen_enrichment: [],
     ignition_sources: [],
+    ignition_source_assessments: ['ignitionSourceAssessments'],
     fuel_sources: [],
     electrical_safety: [],
     'electrical_safety.eicr_satisfactory': [],

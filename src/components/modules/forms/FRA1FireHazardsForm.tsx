@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flame, CheckCircle, Plus, Zap } from 'lucide-react';
+import { Flame, CheckCircle, Plus, Zap, ChevronDown } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
@@ -16,9 +16,10 @@ interface Document {
 
 interface ModuleInstance {
   id: string;
+  module_key: string;
   outcome: string | null;
   assessor_notes: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 interface FRA1FireHazardsFormProps {
@@ -34,6 +35,118 @@ interface QuickActionTemplate {
   source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
 }
 
+type IgnitionAssessment = {
+  presence?: 'present' | 'not_present' | 'unknown' | '';
+  condition_adequacy?: string;
+  existing_controls?: string;
+  deficiencies?: string;
+  evidence_references?: string;
+  assessor_commentary?: string;
+  risk_significance?: 'low' | 'medium' | 'high' | 'unknown' | '';
+  recommended_action_trigger?: 'none' | 'consider' | 'action_required' | 'urgent' | '';
+  linked_action_reference?: string;
+};
+
+type IgnitionAssessmentMap = Record<string, IgnitionAssessment>;
+
+type IgnitionSourceDefinition = {
+  key: string;
+  label: string;
+  legacyIgnition?: string;
+  legacyHighRisk?: string;
+  prompt: string;
+  actionText: string;
+};
+
+const SOURCE_ASSESSMENT_FIELDS: Array<keyof IgnitionAssessment> = [
+  'condition_adequacy',
+  'existing_controls',
+  'deficiencies',
+  'evidence_references',
+  'assessor_commentary',
+  'risk_significance',
+  'recommended_action_trigger',
+  'linked_action_reference',
+];
+
+const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
+  {
+    key: 'electrical',
+    label: 'Electrical ignition sources',
+    legacyIgnition: 'electrical_equipment',
+    prompt: 'Fixed wiring, distribution boards, portable appliances, charging, extension leads and electrical maintenance evidence.',
+    actionText: 'Review and strengthen electrical ignition source controls, including evidence of inspection/testing, remediation of defects, safe use of portable appliances and management of temporary wiring or charging arrangements.',
+  },
+  {
+    key: 'portable_heaters',
+    label: 'Portable heaters / temporary heating',
+    legacyIgnition: 'portable_heaters',
+    prompt: 'Temporary or supplementary heating, siting, guarding, fuel type and separation from combustibles.',
+    actionText: 'Control portable or temporary heating by removing unsuitable heaters, maintaining safe separation from combustibles, prohibiting high-risk heater types where appropriate and briefing staff on permitted use.',
+  },
+  {
+    key: 'smoking',
+    label: 'Smoking and smoking controls',
+    legacyIgnition: 'smoking',
+    prompt: 'Smoking policy, designated areas, disposal arrangements, enforcement and proximity to combustible storage.',
+    actionText: 'Strengthen smoking controls: designate smoking areas away from combustibles, provide suitable disposal bins, enforce no-smoking rules in high-risk areas and include controls in staff/contractor briefings.',
+  },
+  {
+    key: 'cooking',
+    label: 'Cooking / kitchen processes',
+    legacyIgnition: 'cooking',
+    legacyHighRisk: 'commercial_kitchens',
+    prompt: 'Commercial or domestic cooking, deep fat frying, extract systems, cleaning regime and supervision.',
+    actionText: 'Review cooking and kitchen fire controls, including supervision, safe isolation, extract cleaning frequency, combustible separation and suitable firefighting provisions for the cooking process.',
+  },
+  {
+    key: 'hot_works',
+    label: 'Hot works',
+    legacyHighRisk: 'hot_work',
+    prompt: 'Planned or contractor hot works, permits, fire watch, isolation, post-work checks and combustible clearance.',
+    actionText: 'Implement or strengthen hot work controls with permit-to-work arrangements, pre-work inspections, combustible clearance, fire watch and post-work monitoring by competent persons.',
+  },
+  {
+    key: 'plant_machinery',
+    label: 'Plant, machinery and mechanical heat sources',
+    legacyIgnition: 'plant_rooms',
+    prompt: 'Plant rooms, motors, bearings, friction heat, boilers, process equipment and maintenance standards.',
+    actionText: 'Improve controls for plant, machinery and mechanical heat sources through maintenance, guarding, housekeeping, inspection of overheating indicators and segregation from combustible storage.',
+  },
+  {
+    key: 'lighting_high_temp',
+    label: 'Lighting and high-temperature equipment',
+    prompt: 'Luminaires, halogen/high-intensity lighting, heat lamps, process heaters and clearance from combustible materials.',
+    actionText: 'Review lighting and high-temperature equipment controls, replacing unsuitable fittings, maintaining clearance from combustibles and verifying maintenance of high-temperature equipment.',
+  },
+  {
+    key: 'arson',
+    label: 'Arson / deliberate ignition',
+    legacyIgnition: 'arson_ignition_points',
+    prompt: 'External combustibles, waste security, unauthorised access, history of incidents, perimeter lighting and CCTV.',
+    actionText: 'Improve arson prevention measures by securing waste and external combustibles, strengthening access control, lighting, CCTV or patrols and managing vulnerable perimeter areas.',
+  },
+  {
+    key: 'lightning',
+    label: 'Lightning exposure / protection',
+    prompt: 'Lightning exposure, protection system, inspection/testing evidence and risk assessment status.',
+    actionText: 'Verify lightning exposure and protection arrangements, including risk assessment status, inspection/test records and remediation of any identified defects.',
+  },
+  {
+    key: 'hazardous_substances_dsear',
+    label: 'Hazardous substances / DSEAR relevance',
+    prompt: 'Flammable liquids/gases/dusts, explosive atmosphere potential, ignition control interfaces and DSEAR assessment relevance.',
+    actionText: 'Review hazardous substances and DSEAR relevance, confirming dangerous substances present, whether explosive atmospheres could occur, and whether a suitable specialist assessment or controls are required.',
+  },
+  {
+    key: 'other',
+    label: 'Other ignition sources',
+    legacyIgnition: 'other',
+    prompt: 'Any ignition sources not captured above, including site-specific process or operational factors.',
+    actionText: 'Assess and control other identified ignition sources using proportionate controls, responsible ownership and a documented action plan where deficiencies are present.',
+  },
+];
+
 const IGNITION_OPTIONS = [
   'smoking',
   'electrical_equipment',
@@ -43,6 +156,52 @@ const IGNITION_OPTIONS = [
   'arson_ignition_points',
   'other',
 ];
+
+
+const createEmptySourceAssessments = (): IgnitionAssessmentMap =>
+  IGNITION_SOURCE_AREAS.reduce((acc, source) => {
+    acc[source.key] = {
+      presence: '',
+      condition_adequacy: '',
+      existing_controls: '',
+      deficiencies: '',
+      evidence_references: '',
+      assessor_commentary: '',
+      risk_significance: '',
+      recommended_action_trigger: '',
+      linked_action_reference: '',
+    };
+    return acc;
+  }, {} as IgnitionAssessmentMap);
+
+const normaliseSourceAssessments = (data: Record<string, unknown>): IgnitionAssessmentMap => {
+  const existing = data.ignition_source_assessments || data.ignitionSourceAssessments || {};
+  const defaults = createEmptySourceAssessments();
+
+  return IGNITION_SOURCE_AREAS.reduce((acc, source) => {
+    const value = existing?.[source.key] || {};
+    acc[source.key] = {
+      ...defaults[source.key],
+      ...value,
+    };
+    return acc;
+  }, {} as IgnitionAssessmentMap);
+};
+
+const sourceHasDetail = (assessment?: IgnitionAssessment): boolean => {
+  if (!assessment) return false;
+  return Boolean(
+    assessment.presence ||
+    SOURCE_ASSESSMENT_FIELDS.some((field) => String(assessment[field] ?? '').trim())
+  );
+};
+
+const sourceHasNarrativeDetail = (assessment?: IgnitionAssessment): boolean => {
+  if (!assessment) return false;
+  return ['condition_adequacy', 'existing_controls', 'deficiencies', 'assessor_commentary'].some((field) =>
+    String(assessment[field as keyof IgnitionAssessment] ?? '').trim()
+  );
+};
 
 const FUEL_OPTIONS = [
   'waste_storage',
@@ -61,6 +220,7 @@ const HIGH_RISK_ACTIVITIES = [
   'laundry_operations',
   'contractor_works',
   'maintenance_activities',
+  'hot_work',
   'other',
 ];
 
@@ -74,20 +234,29 @@ export default function FRA1FireHazardsForm({
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
+  const moduleData = moduleInstance.data || {};
+  const getString = (key: string, fallback = ''): string =>
+    typeof moduleData[key] === 'string' ? String(moduleData[key]) : fallback;
+  const getStringArray = (key: string): string[] =>
+    Array.isArray(moduleData[key]) ? (moduleData[key] as string[]) : [];
+  const getObject = <T extends object>(key: string, fallback: T): T =>
+    moduleData[key] && typeof moduleData[key] === 'object' && !Array.isArray(moduleData[key])
+      ? { ...fallback, ...(moduleData[key] as Partial<T>) }
+      : fallback;
 
   const [formData, setFormData] = useState({
-    ignition_sources: (moduleInstance.data.ignition_sources || []).filter((x: string) => x !== 'hot_work'),
-    ignition_other: moduleInstance.data.ignition_other || '',
-    fuel_sources: moduleInstance.data.fuel_sources || [],
-    fuel_other: moduleInstance.data.fuel_other || '',
-    oxygen_enrichment: moduleInstance.data.oxygen_enrichment || 'none',
-    oxygen_sources_notes: moduleInstance.data.oxygen_sources_notes || '',
-    high_risk_activities: (moduleInstance.data.high_risk_activities || []).filter((x: string) => x !== 'hot_work'),
-    high_risk_other: moduleInstance.data.high_risk_other || '',
-    arson_risk: moduleInstance.data.arson_risk || 'unknown',
-    housekeeping_fire_load: moduleInstance.data.housekeeping_fire_load || 'unknown',
-    notes: moduleInstance.data.notes || '',
-    electrical_safety: moduleInstance.data.electrical_safety || {
+    ignition_sources: getStringArray('ignition_sources'),
+    ignition_other: getString('ignition_other'),
+    fuel_sources: getStringArray('fuel_sources'),
+    fuel_other: getString('fuel_other'),
+    oxygen_enrichment: getString('oxygen_enrichment', 'none'),
+    oxygen_sources_notes: getString('oxygen_sources_notes'),
+    high_risk_activities: getStringArray('high_risk_activities'),
+    high_risk_other: getString('high_risk_other'),
+    arson_risk: getString('arson_risk', 'unknown'),
+    housekeeping_fire_load: getString('housekeeping_fire_load', 'unknown'),
+    notes: getString('notes'),
+    electrical_safety: getObject('electrical_safety', {
       eicr_last_date: null,
       eicr_interval_years: '',
       eicr_satisfactory: 'unknown',
@@ -95,32 +264,33 @@ export default function FRA1FireHazardsForm({
       eicr_outstanding_c1_c2: 'unknown',
       eicr_notes: '',
       pat_in_place: 'unknown',
-    },
-    lightning: moduleInstance.data.lightning || {
+    }),
+    lightning: getObject('lightning', {
       lightning_protection_present: null,
       lightning_risk_assessment_completed: null,
       assessment_date: null,
       notes: '',
-    },
-    duct_cleaning: moduleInstance.data.duct_cleaning || {
+    }),
+    duct_cleaning: getObject('duct_cleaning', {
       ducts_present: null,
       dust_grease_risk: null,
       cleaning_frequency: null,
       last_cleaned: null,
       notes: '',
-    },
-    dsear_screen: moduleInstance.data.dsear_screen || {
+    }),
+    dsear_screen: getObject('dsear_screen', {
       flammables_present: null,
       explosive_atmospheres_possible: null,
       dsear_assessment_status: null,
       assessor: null,
       notes: '',
-    },
+    }),
+    ignition_source_assessments: normaliseSourceAssessments(moduleData),
   });
 
   const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
-  const [scoringData, setScoringData] = useState(moduleInstance.data.scoring || {});
+  const [scoringData, setScoringData] = useState(moduleData.scoring || {});
 
   const toggleMultiSelect = (field: 'ignition_sources' | 'fuel_sources' | 'high_risk_activities', value: string) => {
     const current = formData[field] as string[];
@@ -129,6 +299,70 @@ export default function FRA1FireHazardsForm({
       : [...current, value];
     setFormData({ ...formData, [field]: updated });
   };
+
+  const updateSourceAssessment = (sourceKey: string, updates: Partial<IgnitionAssessment>) => {
+    const currentAssessment = formData.ignition_source_assessments[sourceKey] || {};
+    setFormData({
+      ...formData,
+      ignition_source_assessments: {
+        ...formData.ignition_source_assessments,
+        [sourceKey]: {
+          ...currentAssessment,
+          ...updates,
+        },
+      },
+    });
+  };
+
+  const getSourcePresence = (source: IgnitionSourceDefinition, assessment: IgnitionAssessment): string => {
+    if (assessment.presence) return assessment.presence;
+    if (source.legacyIgnition && formData.ignition_sources.includes(source.legacyIgnition)) return 'present';
+    if (source.legacyHighRisk && formData.high_risk_activities.includes(source.legacyHighRisk)) return 'present';
+    if (source.key === 'arson' && ['medium', 'high'].includes(formData.arson_risk)) return 'present';
+    if (source.key === 'lightning' && sourceHasDetail(assessment)) return assessment.presence || 'unknown';
+    if (source.key === 'hazardous_substances_dsear' && (
+      formData.dsear_screen.flammables_present === 'yes' ||
+      formData.dsear_screen.explosive_atmospheres_possible === 'yes'
+    )) return 'present';
+    return '';
+  };
+
+  const getQualityGateWarnings = (): string[] => {
+    const warnings: string[] = [];
+    const hasBroadIgnition = formData.ignition_sources.length > 0;
+    const hasDetailedAssessment = Object.values(formData.ignition_source_assessments).some(sourceHasNarrativeDetail);
+
+    if (hasBroadIgnition && !String(formData.notes ?? '').trim() && !hasDetailedAssessment) {
+      warnings.push('Ignition sources have been selected broadly, but no assessor commentary or source-specific assessment detail has been recorded.');
+    }
+
+    const dsearAssessment = formData.ignition_source_assessments.hazardous_substances_dsear;
+    const dsearSelected =
+      formData.fuel_sources.includes('flammable_liquids') ||
+      formData.fuel_sources.includes('lpg_cylinders') ||
+      formData.dsear_screen.flammables_present === 'yes' ||
+      formData.dsear_screen.explosive_atmospheres_possible === 'yes' ||
+      dsearAssessment?.presence === 'present';
+
+    if (dsearSelected && !String(formData.dsear_screen.notes ?? '').trim() && !String(dsearAssessment?.assessor_commentary ?? '').trim()) {
+      warnings.push('Hazardous substances / DSEAR relevance is indicated, but no DSEAR commentary has been provided.');
+    }
+
+    const hotWorks = formData.ignition_source_assessments.hot_works;
+    if ((formData.high_risk_activities.includes('hot_work') || hotWorks?.presence === 'present') && !String(hotWorks?.existing_controls ?? '').trim()) {
+      warnings.push('Hot works are marked present, but controls such as permit, fire watch or post-work checks are not described.');
+    }
+
+    const smoking = formData.ignition_source_assessments.smoking;
+    const smokingPresent = formData.ignition_sources.includes('smoking') || smoking?.presence === 'present';
+    if (smokingPresent && !String(smoking?.existing_controls ?? '').trim()) {
+      warnings.push('Smoking is marked present, but smoking controls/disposal/enforcement arrangements are not described.');
+    }
+
+    return warnings;
+  };
+
+  const qualityGateWarnings = getQualityGateWarnings();
 
   const getSuggestedOutcome = (): { outcome: string; reason: string } | null => {
     const unknowns = [
@@ -180,11 +414,11 @@ export default function FRA1FireHazardsForm({
   // Detect info gaps
   const infoGapDetection = detectInfoGaps(moduleInstance.module_key, formData, outcome);
 
-  const handleCreateQuickAction = (actionText: string, priority: 'P2' | 'P3') => {
+  const handleCreateQuickAction = (actionText: string, defaultLikelihood: number, defaultImpact: number) => {
     setQuickActionTemplate({
       action: actionText,
-      likelihood: priority === 'P2' ? 4 : 3,
-      impact: priority === 'P2' ? 3 : 2,
+      likelihood: defaultLikelihood,
+      impact: defaultImpact,
       source: 'info_gap',
     });
     setShowActionModal(true);
@@ -330,6 +564,190 @@ export default function FRA1FireHazardsForm({
               </button>
             </div>
           )}
+        </div>
+
+
+
+        {qualityGateWarnings.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <h3 className="text-sm font-bold text-amber-900 mb-2">Advisory quality checks</h3>
+            <ul className="space-y-1 text-sm text-amber-800 list-disc list-inside">
+              {qualityGateWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-700 mt-2">
+              Advisory only — these checks do not block saving or issue.
+            </p>
+          </div>
+        )}
+
+        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <h3 className="text-lg font-bold text-neutral-900 mb-2">
+            Source-Specific Ignition Assessment
+          </h3>
+          <p className="text-sm text-neutral-600 mb-4">
+            Optional expandable areas for assessor judgement. Leave sections collapsed or blank where not relevant; broad selections above remain supported.
+          </p>
+
+          <div className="space-y-3">
+            {IGNITION_SOURCE_AREAS.map((source) => {
+              const assessment = formData.ignition_source_assessments[source.key] || {};
+              const effectivePresence = getSourcePresence(source, assessment);
+              const needsAction = ['high'].includes(String(assessment.risk_significance || '')) ||
+                ['action_required', 'urgent'].includes(String(assessment.recommended_action_trigger || '')) ||
+                Boolean(String(assessment.deficiencies || '').trim());
+
+              return (
+                <details key={source.key} className="group rounded-lg border border-neutral-200 bg-neutral-50">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-semibold text-neutral-900">{source.label}</h4>
+                        {effectivePresence && (
+                          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-neutral-600 border border-neutral-200">
+                            {formatLabel(effectivePresence)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-neutral-500 mt-1">{source.prompt}</p>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
+                  </summary>
+
+                  <div className="border-t border-neutral-200 bg-white p-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Presence</label>
+                        <select
+                          value={assessment.presence || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { presence: e.target.value as IgnitionAssessment['presence'] })}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+                        >
+                          <option value="">Not assessed in detail</option>
+                          <option value="present">Present</option>
+                          <option value="not_present">Not present</option>
+                          <option value="unknown">Unknown</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Risk significance</label>
+                        <select
+                          value={assessment.risk_significance || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { risk_significance: e.target.value as IgnitionAssessment['risk_significance'] })}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+                        >
+                          <option value="">Not stated</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="unknown">Unknown</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Recommended action trigger</label>
+                        <select
+                          value={assessment.recommended_action_trigger || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { recommended_action_trigger: e.target.value as IgnitionAssessment['recommended_action_trigger'] })}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+                        >
+                          <option value="">Not stated</option>
+                          <option value="none">No action required</option>
+                          <option value="consider">Consider action</option>
+                          <option value="action_required">Action required</option>
+                          <option value="urgent">Urgent action</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-2">Condition / adequacy</label>
+                      <textarea
+                        value={assessment.condition_adequacy || ''}
+                        onChange={(e) => updateSourceAssessment(source.key, { condition_adequacy: e.target.value })}
+                        placeholder="Brief judgement on condition, adequacy or uncertainty..."
+                        rows={2}
+                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Existing controls</label>
+                        <textarea
+                          value={assessment.existing_controls || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { existing_controls: e.target.value })}
+                          placeholder="Controls observed or evidenced..."
+                          rows={3}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Deficiencies identified</label>
+                        <textarea
+                          value={assessment.deficiencies || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { deficiencies: e.target.value })}
+                          placeholder="Deficiencies, gaps or concerns..."
+                          rows={3}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Evidence / photo references</label>
+                        <input
+                          type="text"
+                          value={assessment.evidence_references || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { evidence_references: e.target.value })}
+                          placeholder="e.g., Photo 12, EICR dated March 2026"
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 mb-2">Linked action/reference</label>
+                        <input
+                          type="text"
+                          value={assessment.linked_action_reference || ''}
+                          onChange={(e) => updateSourceAssessment(source.key, { linked_action_reference: e.target.value })}
+                          placeholder="e.g., Action FRA-1.03 or client ref"
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-neutral-700 mb-2">Assessor commentary</label>
+                      <textarea
+                        value={assessment.assessor_commentary || ''}
+                        onChange={(e) => updateSourceAssessment(source.key, { assessor_commentary: e.target.value })}
+                        placeholder="Professional judgement, limitations, rationale and follow-up considerations..."
+                        rows={3}
+                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+                      />
+                    </div>
+
+                    {needsAction && (
+                      <button
+                        onClick={() => handleQuickAction({
+                          action: source.actionText,
+                          likelihood: assessment.risk_significance === 'high' || assessment.recommended_action_trigger === 'urgent' ? 5 : 4,
+                          impact: assessment.risk_significance === 'high' || assessment.recommended_action_trigger === 'urgent' ? 4 : 3,
+                        })}
+                        className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Quick Add: Create/link action for this source
+                      </button>
+                    )}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
@@ -1199,8 +1617,6 @@ export default function FRA1FireHazardsForm({
             setQuickActionTemplate(null);
           }}
           defaultAction={quickActionTemplate?.action}
-          defaultLikelihood={quickActionTemplate?.likelihood}
-          defaultImpact={quickActionTemplate?.impact}
           source={quickActionTemplate?.source}
         />
       )}
