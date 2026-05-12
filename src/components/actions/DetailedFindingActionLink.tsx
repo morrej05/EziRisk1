@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Link2, Plus, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import type { PostgrestError } from '@supabase/supabase-js';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 import {
   ACTIVE_ACTION_STATUSES,
@@ -35,6 +36,46 @@ function formatActionRef(action?: ActionSourceLink['actions'] | ExistingActionOp
 function isActiveLinkedAction(link: ActionSourceLink): boolean {
   const action = link.actions;
   return Boolean(action && !action.deleted_at && ACTIVE_ACTION_STATUSES.includes(action.status as typeof ACTIVE_ACTION_STATUSES[number]));
+}
+
+function isSupabaseError(error: unknown): error is PostgrestError {
+  return Boolean(error && typeof error === 'object' && 'message' in error);
+}
+
+function describeSupabaseError(error: unknown): string {
+  if (!isSupabaseError(error)) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  return [
+    error.code ? `code=${error.code}` : null,
+    error.message ? `message=${error.message}` : null,
+    error.details ? `details=${error.details}` : null,
+    error.hint ? `hint=${error.hint}` : null,
+  ].filter(Boolean).join('; ');
+}
+
+function getLinkedActionCreateErrorMessage(error: unknown): string {
+  if (import.meta.env.DEV) {
+    return `Could not create the linked recommendation. ${describeSupabaseError(error)}`;
+  }
+  return 'Could not create the linked recommendation.';
+}
+
+function logSupabaseFailure(target: string, payload: Record<string, unknown>, error: unknown) {
+  console.error('Detailed finding recommendation write failed', {
+    target,
+    payload,
+    error,
+    supabase: isSupabaseError(error)
+      ? {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        }
+      : null,
+  });
 }
 
 export default function DetailedFindingActionLink({
@@ -83,26 +124,63 @@ export default function DetailedFindingActionLink({
     void loadLinks();
   }, [loadLinks]);
 
+  const archiveInactiveFindingLinks = async (currentLinks: ActionSourceLink[]) => {
+    const inactiveLinkIds = currentLinks
+      .filter((link) => !isActiveLinkedAction(link))
+      .map((link) => link.id);
+
+    if (inactiveLinkIds.length === 0) return;
+
+    const archivePayload = {
+      deleted_at: new Date().toISOString(),
+      document_id: documentId,
+      module_instance_id: moduleInstanceId,
+      source_assessment_type: sourceAssessmentType,
+      source_assessment_key: sourceAssessmentKey,
+      archived_link_ids: inactiveLinkIds,
+    };
+
+    const { error: archiveError } = await supabase
+      .from('action_source_links')
+      .update({ deleted_at: archivePayload.deleted_at })
+      .in('id', inactiveLinkIds)
+      .eq('document_id', documentId)
+      .eq('module_instance_id', moduleInstanceId)
+      .eq('source_assessment_type', sourceAssessmentType)
+      .eq('source_assessment_key', sourceAssessmentKey)
+      .is('deleted_at', null);
+
+    if (archiveError) {
+      logSupabaseFailure('action_source_links.update', archivePayload, archiveError);
+      throw archiveError;
+    }
+  };
+
   const createSourceLink = async (actionId: string) => {
     const organisationId = organisation?.id;
     if (!organisationId) throw new Error('No organisation is selected.');
 
+    const linkPayload = {
+      organisation_id: organisationId,
+      document_id: documentId,
+      module_instance_id: moduleInstanceId,
+      action_id: actionId,
+      source_assessment_type: sourceAssessmentType,
+      source_assessment_key: sourceAssessmentKey,
+      source_assessment_label: sourceAssessmentLabel,
+      source_finding_hash: buildFindingHash(assessment),
+    };
+
     const { data, error: linkError } = await supabase
       .from('action_source_links')
-      .insert([{
-        organisation_id: organisationId,
-        document_id: documentId,
-        module_instance_id: moduleInstanceId,
-        action_id: actionId,
-        source_assessment_type: sourceAssessmentType,
-        source_assessment_key: sourceAssessmentKey,
-        source_assessment_label: sourceAssessmentLabel,
-        source_finding_hash: buildFindingHash(assessment),
-      }])
+      .insert([linkPayload])
       .select('*, actions(id, recommended_action, status, priority_band, reference_number, deleted_at)')
       .single();
 
-    if (linkError) throw linkError;
+    if (linkError) {
+      logSupabaseFailure('action_source_links.insert', linkPayload, linkError);
+      throw linkError;
+    }
     setLinks((current) => [...current, data as ActionSourceLink]);
     bumpActionsVersion();
     onLinked?.();
@@ -118,6 +196,7 @@ export default function DetailedFindingActionLink({
 
     setIsCreating(true);
     setError(null);
+    let createdActionId: string | null = null;
     try {
       const latestLinks = await fetchFindingLinks({ documentId, moduleInstanceId, sourceAssessmentType, sourceAssessmentKey });
       const existingActive = latestLinks.find(isActiveLinkedAction);
@@ -125,33 +204,60 @@ export default function DetailedFindingActionLink({
         setLinks(latestLinks);
         return;
       }
+      await archiveInactiveFindingLinks(latestLinks);
 
       const recommendation = buildRecommendationFromFinding({ assessment, sourceAssessmentLabel, moduleKey });
+      const actionPayload = {
+        organisation_id: organisationId,
+        document_id: documentId,
+        source_document_id: documentId,
+        module_instance_id: moduleInstanceId,
+        recommended_action: recommendation.recommendedAction,
+        status: 'open',
+        priority_band: recommendation.priority,
+        severity_tier: recommendation.severity,
+        timescale: recommendation.timescale,
+        source: 'recommendation',
+        finding_category: 'Other',
+        recommendation_detail: recommendation.detail,
+      };
+
       const { data: action, error: actionError } = await supabase
         .from('actions')
-        .insert([{
-          organisation_id: organisationId,
-          document_id: documentId,
-          source_document_id: documentId,
-          module_instance_id: moduleInstanceId,
-          recommended_action: recommendation.recommendedAction,
-          status: 'open',
-          priority_band: recommendation.priority,
-          severity_tier: recommendation.severity,
-          timescale: recommendation.timescale,
-          source: 'recommendation',
-          finding_category: 'Other',
-          recommendation_detail: recommendation.detail,
-        }])
+        .insert([actionPayload])
         .select('id')
         .single();
 
-      if (actionError) throw actionError;
+      if (actionError) {
+        logSupabaseFailure('actions.insert', actionPayload, actionError);
+        throw actionError;
+      }
+      createdActionId = action.id;
       await createSourceLink(action.id);
+      createdActionId = null;
       await loadLinks();
     } catch (createError) {
+      if (createdActionId) {
+        const rollbackPayload = {
+          id: createdActionId,
+          document_id: documentId,
+          module_instance_id: moduleInstanceId,
+          deleted_at: new Date().toISOString(),
+        };
+        const { error: rollbackError } = await supabase
+          .from('actions')
+          .update({ deleted_at: rollbackPayload.deleted_at })
+          .eq('id', createdActionId)
+          .eq('document_id', documentId)
+          .eq('module_instance_id', moduleInstanceId);
+
+        if (rollbackError) {
+          logSupabaseFailure('actions.update.rollback_soft_delete', rollbackPayload, rollbackError);
+        }
+      }
+
       console.error('Failed to create recommendation from detailed finding:', createError);
-      setError('Could not create the linked recommendation.');
+      setError(getLinkedActionCreateErrorMessage(createError));
     } finally {
       setIsCreating(false);
     }
@@ -168,12 +274,13 @@ export default function DetailedFindingActionLink({
         setLinks(latestLinks);
         return;
       }
+      await archiveInactiveFindingLinks(latestLinks);
       await createSourceLink(selectedActionId);
       setSelectedActionId('');
       await loadLinks();
     } catch (linkError) {
       console.error('Failed to link existing action to detailed finding:', linkError);
-      setError('Could not link the selected action.');
+      setError(import.meta.env.DEV ? `Could not link the selected action. ${describeSupabaseError(linkError)}` : 'Could not link the selected action.');
     } finally {
       setIsCreating(false);
     }
