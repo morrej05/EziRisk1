@@ -55,6 +55,65 @@ const REPORT_LAYOUT_SPACING = getReportLayoutSpacing();
 const FRA_OUTCOME_TAG_WIDTH = 140;
 const FRA_OUTCOME_TAG_HEIGHT = 14;
 
+
+const FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS: Record<string, string> = {
+  fire_safety_policy_arrangements: 'Fire safety policy and arrangements',
+  responsible_person_duty_holder: 'Responsible person / duty holder arrangements',
+  staff_training_awareness: 'Staff training and fire awareness',
+  fire_drills_evacuation_testing: 'Fire drills and evacuation testing',
+  emergency_procedures: 'Emergency procedures',
+  maintenance_inspection_regimes: 'Maintenance and inspection regimes',
+  contractor_control_ptw: 'Contractor control / permit-to-work systems',
+  hot_work_management: 'Hot work management',
+  housekeeping_waste_management: 'Housekeeping and waste management',
+  testing_record_keeping: 'Testing and record keeping',
+  peeps_vulnerable_persons: 'PEEPs / vulnerable persons management',
+  communication_coordination: 'Communication and coordination',
+  management_review_continuous_improvement: 'Management review / continuous improvement',
+  occupancy_control_supervision: 'Occupancy control and supervision',
+  other_management_concerns: 'Other fire safety management concerns',
+};
+
+function getFireSafetyManagementAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
+  const assessments = data.fire_safety_management_assessments || data.fireSafetyManagementAssessments;
+  return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
+}
+
+function hasFireSafetyManagementDetailContent(assessment: Record<string, unknown>): boolean {
+  if (!assessment || typeof assessment !== 'object') return false;
+
+  return (assessment.status !== undefined && assessment.status !== 'unknown') ||
+    Boolean(String(assessment.observations || '').trim()) ||
+    Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
+    Boolean(String(assessment.deficiencies || '').trim()) ||
+    Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
+    (((assessment.risk_significance || assessment.riskSignificance) !== undefined) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+    Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
+    Boolean(assessment.action_trigger || assessment.actionTrigger) ||
+    Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
+}
+
+function formatFireSafetyManagementDetail(assessment: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const text = String(value ?? '').trim();
+    if (!text || text === 'unknown') return;
+    parts.push(`${label}: ${text.replace(/_/g, ' ')}`);
+  };
+
+  add('Adequacy', assessment.status);
+  add('Observations', assessment.observations);
+  add('Controls', assessment.existing_controls || assessment.existingControls);
+  add('Deficiencies', assessment.deficiencies);
+  add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
+  add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
+  add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
+  if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
+  add('Linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+
+  return parts.join('; ');
+}
+
 const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
   escape_route_adequacy: 'Escape route adequacy',
   travel_distances: 'Travel distances',
@@ -388,13 +447,41 @@ export function drawModuleKeyDetails(
     case 'A4_MANAGEMENT_CONTROLS':
     case 'FRA_6_MANAGEMENT_SYSTEMS':
       if (data.responsibilities_defined) keyDetails.push(['Responsibilities Defined', data.responsibilities_defined]);
-      if (data.fire_safety_policy) keyDetails.push(['Fire Policy Exists', data.fire_safety_policy]);
-      if (data.training_induction) keyDetails.push(['Induction Training', data.training_induction]);
-      if (data.training_refresher) keyDetails.push(['Refresher Training', data.training_refresher]);
+      if (data.fire_safety_policy_exists) keyDetails.push(['Fire Policy Exists', data.fire_safety_policy_exists]);
+      else if (data.fire_safety_policy) keyDetails.push(['Fire Policy Exists', data.fire_safety_policy]);
+      if (data.training_induction_provided) keyDetails.push(['Induction Training', data.training_induction_provided]);
+      else if (data.training_induction) keyDetails.push(['Induction Training', data.training_induction]);
+      if (data.training_refresher_frequency) keyDetails.push(['Refresher Training', data.training_refresher_frequency]);
+      else if (data.training_refresher) keyDetails.push(['Refresher Training', data.training_refresher]);
+      if (data.fire_warden_marshal_provision) keyDetails.push(['Fire Wardens / Marshals', data.fire_warden_marshal_provision]);
+      if (data.contractor_induction) keyDetails.push(['Contractor Induction', data.contractor_induction]);
+      if (data.contractor_supervision) keyDetails.push(['Contractor Supervision', data.contractor_supervision]);
       if (data.ptw_hot_work) keyDetails.push(['PTW Hot Work', data.ptw_hot_work]);
-      if (data.testing_records) keyDetails.push(['Testing Records Available', data.testing_records]);
-      if (data.housekeeping_rating) keyDetails.push(['Housekeeping Rating', data.housekeeping_rating]);
-      if (data.change_management_exists) keyDetails.push(['Change Management Exists', data.change_management_exists]);
+      if (data.ptw_electrical_isolation_loto) keyDetails.push(['Electrical Isolation / LOTO', data.ptw_electrical_isolation_loto]);
+      if (data.ptw_confined_space) keyDetails.push(['Confined Space PTW', data.ptw_confined_space]);
+      if (data.inspection_records_available) keyDetails.push(['Testing Records Available', data.inspection_records_available]);
+      else if (data.testing_records) keyDetails.push(['Testing Records Available', data.testing_records]);
+      if (data.housekeeping_waste_control) keyDetails.push(['Waste Control', data.housekeeping_waste_control]);
+      if (data.housekeeping_storage_control) keyDetails.push(['Storage Control', data.housekeeping_storage_control]);
+      if (data.housekeeping_combustible_accumulation_risk) keyDetails.push(['Combustible Accumulation Risk', data.housekeeping_combustible_accumulation_risk]);
+      else if (data.housekeeping_rating) keyDetails.push(['Housekeeping Rating', data.housekeeping_rating]);
+      if (data.change_management_process_exists) keyDetails.push(['Change Management Exists', data.change_management_process_exists]);
+      else if (data.change_management_exists) keyDetails.push(['Change Management Exists', data.change_management_exists]);
+      if (data.change_management_review_triggers_defined) keyDetails.push(['Review Triggers Defined', data.change_management_review_triggers_defined]);
+      {
+        const assessments = getFireSafetyManagementAssessments(data);
+        if (assessments) {
+          Object.entries(assessments).forEach(([key, value]) => {
+            const assessment = value as Record<string, unknown>;
+            if (!hasFireSafetyManagementDetailContent(assessment)) return;
+
+            const label = FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+            const detailText = formatFireSafetyManagementDetail(assessment);
+            if (detailText) keyDetails.push([label, detailText]);
+          });
+        }
+      }
+      if (data.management_notes) keyDetails.push(['Management Notes', data.management_notes]);
       break;
 
     case 'A5_EMERGENCY_ARRANGEMENTS':

@@ -127,6 +127,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     inspection_alarm_weekly_test: [],
     inspection_emergency_lighting_monthly: [],
     inspection_records_available: ['testing_records'],
+    fire_safety_management_assessments: ['fireSafetyManagementAssessments'],
   },
 
   A5_EMERGENCY_ARRANGEMENTS: {

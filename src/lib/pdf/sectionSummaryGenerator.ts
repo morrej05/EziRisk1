@@ -8,6 +8,46 @@
 import type { ModuleInstance } from '../supabase/attachments';
 import type { Document } from './fra/fraTypes';
 
+
+const FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS: Record<string, string> = {
+  fire_safety_policy_arrangements: 'Fire safety policy and arrangements',
+  responsible_person_duty_holder: 'Responsible person / duty holder arrangements',
+  staff_training_awareness: 'Staff training and fire awareness',
+  fire_drills_evacuation_testing: 'Fire drills and evacuation testing',
+  emergency_procedures: 'Emergency procedures',
+  maintenance_inspection_regimes: 'Maintenance and inspection regimes',
+  contractor_control_ptw: 'Contractor control / permit-to-work systems',
+  hot_work_management: 'Hot work management',
+  housekeeping_waste_management: 'Housekeeping and waste management',
+  testing_record_keeping: 'Testing and record keeping',
+  peeps_vulnerable_persons: 'PEEPs / vulnerable persons management',
+  communication_coordination: 'Communication and coordination',
+  management_review_continuous_improvement: 'Management review / continuous improvement',
+  occupancy_control_supervision: 'Occupancy control and supervision',
+  other_management_concerns: 'Other fire safety management concerns',
+};
+
+function getPopulatedFireSafetyManagementAssessments(data: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+  const assessments = data.fire_safety_management_assessments || data.fireSafetyManagementAssessments;
+  if (!assessments || typeof assessments !== 'object' || Array.isArray(assessments)) return [];
+
+  return Object.entries(assessments).filter(([, value]) => {
+    const assessment = value as Record<string, unknown>;
+    return Boolean(
+      (assessment.status && assessment.status !== 'unknown') ||
+      String(assessment.observations || '').trim() ||
+      String(assessment.deficiencies || '').trim() ||
+      String(assessment.existing_controls || assessment.existingControls || '').trim() ||
+      String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim() ||
+      ((assessment.risk_significance || assessment.riskSignificance) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+      String(assessment.evidence_references || assessment.evidenceReferences || '').trim() ||
+      assessment.action_trigger ||
+      assessment.actionTrigger ||
+      String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim()
+    );
+  }) as Array<[string, Record<string, unknown>]>;
+}
+
 const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
   escape_route_adequacy: 'Escape route adequacy',
   travel_distances: 'Travel distances',
@@ -583,11 +623,23 @@ function extractSection11Drivers(data: Record<string, any>): string[] {
     drivers.push('Fire safety inspection records are not available or not maintained');
   }
 
+  const detailedAssessments = getPopulatedFireSafetyManagementAssessments(data);
+  for (const [key, assessment] of detailedAssessments) {
+    const isSignificant = assessment.status === 'inadequate' ||
+      assessment.risk_significance === 'high' ||
+      assessment.riskSignificance === 'high' ||
+      assessment.risk_significance === 'critical' ||
+      assessment.riskSignificance === 'critical';
+    if (!isSignificant) continue;
+    drivers.push(`${FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' ')} requires management attention`);
+    if (drivers.length >= 4) break;
+  }
+
   if (drivers.length === 0) {
     return ['No specific issues were recorded in this section.'];
   }
 
-  return drivers.slice(0, 3);
+  return drivers.slice(0, 4);
 }
 
 function extractSection12Drivers(data: Record<string, any>): string[] {
@@ -985,6 +1037,7 @@ function generateSection10Summary(module: ModuleInstance, document: Document): s
 function generateSection11Summary(module: ModuleInstance, document: Document): string | null {
   const data = module.data;
   const parts: string[] = [];
+  const detailedAssessments = getPopulatedFireSafetyManagementAssessments(data);
 
   // PTW Hot Work (provides authority)
   const ptwHotWork = data.ptw_hot_work;
@@ -1028,10 +1081,22 @@ function generateSection11Summary(module: ModuleInstance, document: Document): s
   }
 
   // Housekeeping
-  if (data.housekeeping_rating === 'poor' || data.housekeeping_rating === 'inadequate') {
+  if (data.housekeeping_combustible_accumulation_risk === 'yes' || data.housekeeping_rating === 'poor' || data.housekeeping_rating === 'inadequate') {
     parts.push('Housekeeping standards require improvement');
-  } else if (data.housekeeping_rating === 'good' || data.housekeeping_rating === 'excellent') {
+  } else if (data.housekeeping_combustible_accumulation_risk === 'no' || data.housekeeping_rating === 'good' || data.housekeeping_rating === 'excellent') {
     parts.push('Housekeeping standards satisfactory');
+  }
+
+  const significantDetails = detailedAssessments.filter(([, assessment]) =>
+    assessment.status === 'inadequate' ||
+    assessment.risk_significance === 'high' ||
+    assessment.riskSignificance === 'high' ||
+    assessment.risk_significance === 'critical' ||
+    assessment.riskSignificance === 'critical'
+  );
+  if (significantDetails.length > 0) {
+    const labels = significantDetails.slice(0, 2).map(([key]) => FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' '));
+    parts.push(`Detailed management findings require attention: ${labels.join(', ')}`);
   }
 
   if (parts.length === 0) return null;
