@@ -636,6 +636,40 @@ export function renderSection5FireHazards(
     return a;
   };
 
+  const sourceLabels: Record<string, string> = {
+    electrical: 'Electrical ignition sources',
+    portable_heaters: 'Portable heaters / temporary heating',
+    smoking: 'Smoking and smoking controls',
+    cooking: 'Cooking / kitchen processes',
+    hot_works: 'Hot works',
+    plant_machinery: 'Plant, machinery and mechanical heat sources',
+    lighting_high_temp: 'Lighting and high-temperature equipment',
+    arson: 'Arson / deliberate ignition',
+    lightning: 'Lightning exposure / protection',
+    hazardous_substances_dsear: 'Hazardous substances / DSEAR relevance',
+    other: 'Other ignition sources',
+  };
+
+  const assessmentHasDetail = (assessment: unknown) => {
+    if (!assessment || typeof assessment !== 'object') return false;
+    const detail = assessment as Record<string, unknown>;
+    return [
+      'presence',
+      'condition_adequacy',
+      'existing_controls',
+      'deficiencies',
+      'evidence_references',
+      'assessor_commentary',
+      'risk_significance',
+      'recommended_action_trigger',
+      'linked_action_reference',
+    ].some((key) => norm(detail[key]));
+  };
+
+  const detailedAssessments = Object.entries(
+    d.ignition_source_assessments || d.ignitionSourceAssessments || {}
+  ).filter(([, assessment]) => assessmentHasDetail(assessment));
+
   const drawSubhead = (text: string) => {
     ({ page, yPosition } = ensureSpace(18, page, yPosition, pdfDoc, isDraft, totalPages));
     page.drawText(text.toUpperCase(), {
@@ -707,9 +741,47 @@ export function renderSection5FireHazards(
   // Small divider after outcome/key points area
   drawLine();
 
-  const ignition = list(d.ignition_sources, d.ignition_other).filter((x: string) => x !== 'hot_work');
+  if (detailedAssessments.length) {
+    drawSubhead('Source-specific ignition findings');
+
+    detailedAssessments.forEach(([sourceKey, rawAssessment]) => {
+      const assessment = (rawAssessment || {}) as Record<string, unknown>;
+      const sourceName = sourceLabels[sourceKey] || titleCase(norm(sourceKey));
+      const parts: string[] = [];
+      const presence = norm(assessment.presence);
+      const condition = norm(assessment.condition_adequacy);
+      const controls = norm(assessment.existing_controls);
+      const deficiencies = norm(assessment.deficiencies);
+      const commentary = norm(assessment.assessor_commentary);
+      const risk = norm(assessment.risk_significance);
+      const action = norm(assessment.recommended_action_trigger);
+      const evidence = norm(assessment.evidence_references);
+      const linkedAction = norm(assessment.linked_action_reference);
+
+      if (presence) parts.push(`Presence: ${titleCase(presence)}`);
+      if (condition) parts.push(`Adequacy/condition: ${condition}`);
+      if (controls) parts.push(`Key controls: ${controls}`);
+      if (deficiencies) parts.push(`Deficiencies: ${deficiencies}`);
+      if (commentary) parts.push(`Assessor commentary: ${commentary}`);
+      if (risk || action || linkedAction) {
+        const actionBits = [
+          risk ? `risk significance ${titleCase(risk)}` : '',
+          action ? `action trigger ${titleCase(action)}` : '',
+          linkedAction ? `reference ${linkedAction}` : '',
+        ].filter(Boolean).join('; ');
+        parts.push(`Risk/action: ${actionBits}`);
+      }
+      if (evidence) parts.push(`Evidence/photo refs: ${evidence}`);
+
+      drawFact(sourceName, parts.join(' | '));
+    });
+
+    endGroup();
+  }
+
+  const ignition = list(d.ignition_sources, d.ignition_other);
   const fuels = list(d.fuel_sources, d.fuel_other);
-  const highRisk = list(d.high_risk_activities, d.high_risk_other).filter((x: string) => x !== 'hot_work');
+  const highRisk = list(d.high_risk_activities, d.high_risk_other);
 
   // Group 1: Sources
   if (ignition.length || fuels.length) {
