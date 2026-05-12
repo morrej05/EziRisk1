@@ -106,6 +106,7 @@ interface Action {
   owner_user_id: string | null;
   owner_display_name?: string;
   target_date: string | null;
+  timescale?: string | null;
   module_instance_id: string;
   created_at: string;
 }
@@ -2838,7 +2839,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         sanitizePdfText(getRecommendationBodyText(action)),
         sanitizePdfText(String(action.priority_band || 'Not provided')),
         sanitizePdfText(String(action.owner_display_name || 'Unassigned')),
-        sanitizePdfText(formatDate(action.target_date || '')),
+        sanitizePdfText(action.target_date ? formatDate(action.target_date) : String(action.timescale || 'Not set')),
         sanitizePdfText(String(action.status || 'Not provided')),
       ]);
       ({ page, yPosition } = drawSimpleTable(

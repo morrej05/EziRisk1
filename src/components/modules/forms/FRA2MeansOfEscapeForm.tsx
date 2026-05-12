@@ -201,6 +201,7 @@ export default function FRA2MeansOfEscapeForm({
   };
 
   const detailedAssessments = Object.values(formData.means_of_escape_assessments).filter(hasAssessmentContent);
+  const hasDetailedAssessmentSource = detailedAssessments.length > 0;
 
   const qualityWarnings = useMemo(() => {
     const assessments = formData.means_of_escape_assessments;
@@ -451,6 +452,11 @@ export default function FRA2MeansOfEscapeForm({
             </div>
           </div>
 
+          {hasDetailedAssessmentSource ? (
+            <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Detailed assessment entries are present, so use the per-finding recommendation controls below instead of legacy Quick Add buttons.
+            </div>
+          ) : (
           <div className="flex flex-wrap gap-3 mt-5">
             {(formData.travel_distances_compliant === 'unknown' || formData.travel_distances_compliant === 'no') && (
               <button onClick={() => handleQuickAction({ action: 'Verify and record escape travel distances against the applicable guidance and occupancy profile; reduce travel distances or improve alternative escape where excessive.', likelihood: 3, impact: 4 })} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"><Plus className="w-4 h-4" />Quick Add: Verify travel distances</button>
@@ -462,6 +468,7 @@ export default function FRA2MeansOfEscapeForm({
               <button onClick={() => handleQuickAction({ action: 'Remove obstructions from escape routes and implement routine documented inspections to ensure routes remain clear and available.', likelihood: 4, impact: 4 })} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"><Plus className="w-4 h-4" />Quick Add: Clear escape routes</button>
             )}
           </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">

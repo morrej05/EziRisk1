@@ -58,6 +58,29 @@ export function detailedFindingNeedsRecommendation(assessment: DetailedFindingAs
   );
 }
 
+export function targetDateFromTimescale(timescale: string, baseDate = new Date()): string | null {
+  const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  switch (timescale) {
+    case 'immediate':
+      break;
+    case '7d':
+      dueDate.setDate(dueDate.getDate() + 7);
+      break;
+    case '30d':
+      dueDate.setDate(dueDate.getDate() + 30);
+      break;
+    case '90d':
+      dueDate.setDate(dueDate.getDate() + 90);
+      break;
+    default:
+      return null;
+  }
+  const year = dueDate.getFullYear();
+  const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+  const day = String(dueDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function priorityFromDetailedFinding(assessment: DetailedFindingAssessment): { priority: string; severity: string; timescale: string } {
   const risk = String(assessment.risk_significance || '').toLowerCase();
   const trigger = String(assessment.recommended_action_trigger || '').toLowerCase();

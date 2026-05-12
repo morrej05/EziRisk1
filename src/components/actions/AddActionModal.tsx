@@ -27,11 +27,40 @@ interface AddActionModalProps {
 
 const TIMESCALE_OPTIONS = [
   { value: 'immediate', label: 'Immediate' },
+  { value: '7d', label: '≤ 7 days' },
   { value: '30d', label: '≤ 30 days' },
   { value: '90d', label: '≤ 90 days' },
   { value: 'next_review', label: 'Next Review' },
   { value: 'custom', label: 'Custom' },
 ];
+
+
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function targetDateFromTimescale(timescale: string, baseDate = new Date()): string {
+  const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+
+  switch (timescale) {
+    case 'immediate':
+      return toLocalIsoDate(dueDate);
+    case '7d':
+      dueDate.setDate(dueDate.getDate() + 7);
+      return toLocalIsoDate(dueDate);
+    case '30d':
+      dueDate.setDate(dueDate.getDate() + 30);
+      return toLocalIsoDate(dueDate);
+    case '90d':
+      dueDate.setDate(dueDate.getDate() + 90);
+      return toLocalIsoDate(dueDate);
+    default:
+      return '';
+  }
+}
 
 const DSEAR_TRIGGERS = [
   { id: 'noHac', label: 'Hazardous area classification not completed / not available', category: 'HAC' },
@@ -131,6 +160,8 @@ export default function AddActionModal({
   const [moduleInstances, setModuleInstances] = useState<any[]>([]);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
   const [userEditedActionText, setUserEditedActionText] = useState(false);
+  const [userEditedTimescale, setUserEditedTimescale] = useState(false);
+  const [userEditedTargetDate, setUserEditedTargetDate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -171,7 +202,7 @@ export default function AddActionModal({
     dsrIncomplete: false,
     dustHousekeeping: false,
     // Common fields
-    timescale: 'next_review',
+    timescale: '',
     overrideJustification: '',
     targetDate: '',
     escalateToP1: false,
@@ -421,7 +452,21 @@ export default function AddActionModal({
   };
 
   const suggestedTimescale = getSuggestedTimescale(priorityBand);
-  const isTimescaleOverride = formData.timescale !== suggestedTimescale;
+  const effectiveTimescale = formData.timescale || suggestedTimescale;
+  const isTimescaleOverride = effectiveTimescale !== suggestedTimescale;
+
+  useEffect(() => {
+    setFormData((prev) => {
+      const nextTimescale = userEditedTimescale ? (prev.timescale || suggestedTimescale) : suggestedTimescale;
+      const nextTargetDate = userEditedTargetDate ? prev.targetDate : targetDateFromTimescale(nextTimescale);
+
+      if (prev.timescale === nextTimescale && prev.targetDate === nextTargetDate) {
+        return prev;
+      }
+
+      return { ...prev, timescale: nextTimescale, targetDate: nextTargetDate };
+    });
+  }, [suggestedTimescale, userEditedTargetDate, userEditedTimescale]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -490,31 +535,7 @@ export default function AddActionModal({
         alert('This action already exists in this module.');
         return;
       }
-      let targetDate = null;
-      if (formData.targetDate) {
-        targetDate = formData.targetDate;
-      } else {
-        const today = new Date();
-        switch (formData.timescale) {
-          case 'immediate':
-            targetDate = today.toISOString().split('T')[0];
-            break;
-          case '30d':
-            targetDate = new Date(today.setDate(today.getDate() + 30))
-              .toISOString()
-              .split('T')[0];
-            break;
-          case '90d':
-            targetDate = new Date(today.setDate(today.getDate() + 90))
-              .toISOString()
-              .split('T')[0];
-            break;
-          case 'next_review':
-          case 'custom':
-          default:
-            targetDate = null;
-        }
-      }
+      const targetDate = formData.targetDate || targetDateFromTimescale(effectiveTimescale) || null;
 
       // Resolve source based on whether user edited the text
       const resolvedSource: 'manual' | 'system' =
@@ -529,7 +550,7 @@ export default function AddActionModal({
       const recommendationDetail = compactRecommendationDetail({
         ...formData.recommendationDetail,
         recommendation: formData.recommendationDetail.recommendation || normalizedActionText,
-        timeframe_guidance: formData.recommendationDetail.timeframe_guidance || formData.timescale,
+        timeframe_guidance: formData.recommendationDetail.timeframe_guidance || effectiveTimescale,
         linked_module: formData.recommendationDetail.linked_module || sourceModuleKey || '',
       });
 
@@ -545,7 +566,7 @@ export default function AddActionModal({
         trigger_id: triggerId,
         trigger_text: triggerText,
         finding_category: formData.category,
-        timescale: formData.timescale,
+        timescale: effectiveTimescale,
         target_date: targetDate,
         override_justification: isTimescaleOverride
           ? formData.overrideJustification.trim()
@@ -1056,10 +1077,16 @@ export default function AddActionModal({
               Timescale <span className="text-red-600">*</span>
             </label>
             <select
-              value={formData.timescale}
-              onChange={(e) =>
-                setFormData({ ...formData, timescale: e.target.value })
-              }
+              value={effectiveTimescale}
+              onChange={(e) => {
+                const nextTimescale = e.target.value;
+                setUserEditedTimescale(true);
+                setFormData({
+                  ...formData,
+                  timescale: nextTimescale,
+                  targetDate: userEditedTargetDate ? formData.targetDate : targetDateFromTimescale(nextTimescale),
+                });
+              }}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               required
             >
@@ -1101,18 +1128,19 @@ export default function AddActionModal({
 
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Target Date (Optional)
+              Due Date / Target Date
             </label>
             <input
               type="date"
               value={formData.targetDate}
-              onChange={(e) =>
-                setFormData({ ...formData, targetDate: e.target.value })
-              }
+              onChange={(e) => {
+                setUserEditedTargetDate(true);
+                setFormData({ ...formData, targetDate: e.target.value });
+              }}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
             />
             <p className="text-xs text-neutral-500 mt-1">
-              Leave blank to auto-calculate based on timescale
+              Auto-populated from the selected timescale (7, 30 or 90 days where applicable). You can override it manually, or clear it for custom/manual scheduling.
             </p>
           </div>
 

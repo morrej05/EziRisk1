@@ -19,6 +19,7 @@ interface ActionDetailModalProps {
     recommended_action: string;
     status: string;
     priority_band: string | null;
+    timescale?: string | null;
     target_date: string | null;
     owner_user_id: string | null;
     updated_at: string;
@@ -44,6 +45,25 @@ interface ActionDetailModalProps {
   onClose: () => void;
   onActionUpdated: () => void;
   returnTo?: string;
+}
+
+function formatTimescale(value?: string | null): string {
+  switch (value) {
+    case 'immediate':
+      return 'Immediate';
+    case '7d':
+      return '≤ 7 days';
+    case '30d':
+      return '≤ 30 days';
+    case '90d':
+      return '≤ 90 days';
+    case 'next_review':
+      return 'Next review';
+    case 'custom':
+      return 'Custom / manual';
+    default:
+      return value || 'Not set';
+  }
 }
 
 interface Attachment {
@@ -620,7 +640,12 @@ export default function ActionDetailModal({
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-2">Due Date</h3>
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Timescale</h3>
+              <p className="text-neutral-900 font-medium">{formatTimescale(action.timescale)}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Due Date / Target Date</h3>
               <div className="flex items-center gap-2 h-full">
                 {getStatusIcon(status)}
                 <span className="text-neutral-900 font-medium">

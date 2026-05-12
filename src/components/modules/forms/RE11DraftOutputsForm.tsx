@@ -242,8 +242,7 @@ export default function RE11DraftOutputsForm({
       localisedLine,
       evidenceLine,
       overallLine,
-    ].join('
-');
+    ].join('\n');
   };
 
   const generateUtilitiesContent = (data: any): string => {

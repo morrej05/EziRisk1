@@ -12,6 +12,7 @@ import {
   detailedFindingNeedsRecommendation,
   fetchExistingActionsForFinding,
   fetchFindingLinks,
+  targetDateFromTimescale,
   type ActionSourceLink,
   type DetailedFindingAssessment,
   type ExistingActionOption,
@@ -224,6 +225,16 @@ export default function DetailedFindingActionLink({
       await archiveInactiveFindingLinks(latestLinks);
 
       const recommendation = buildRecommendationFromFinding({ assessment, sourceAssessmentLabel, moduleKey });
+      const matchingExistingAction = existingActions.find(
+        (action) => action.recommended_action.trim().toLowerCase() === recommendation.recommendedAction.trim().toLowerCase()
+      );
+
+      if (matchingExistingAction) {
+        await createSourceLink(matchingExistingAction.id);
+        await loadLinks();
+        return;
+      }
+
       const actionPayload = {
         organisation_id: organisationId,
         document_id: documentId,
@@ -234,6 +245,7 @@ export default function DetailedFindingActionLink({
         priority_band: recommendation.priority,
         severity_tier: recommendation.severity,
         timescale: recommendation.timescale,
+        target_date: targetDateFromTimescale(recommendation.timescale),
         source: 'recommendation',
         finding_category: 'Other',
         recommendation_detail: recommendation.detail,
