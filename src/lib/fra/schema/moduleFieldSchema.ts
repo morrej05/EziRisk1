@@ -87,6 +87,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     compartmentation_condition: [],
     fire_stopping_confidence: [],
     cavity_barriers_adequate: [],
+    passive_fire_protection_assessments: ['passiveFireProtectionAssessments'],
   },
 
   FRA_5_EXTERNAL_FIRE_SPREAD: {

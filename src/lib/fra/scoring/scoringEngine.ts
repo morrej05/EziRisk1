@@ -112,6 +112,20 @@ function hasEicrIssues(moduleInstance: ModuleInstance): boolean {
   );
 }
 
+function hasSignificantPassiveProtectionFindings(moduleInstance: ModuleInstance): boolean {
+  const source = moduleInstance.data.passive_fire_protection_assessments || moduleInstance.data.passiveFireProtectionAssessments;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return false;
+
+  return Object.values(source as Record<string, any>).some((assessment) => {
+    if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment)) return false;
+    return assessment.status === 'inadequate' ||
+      assessment.risk_significance === 'high' ||
+      assessment.riskSignificance === 'high' ||
+      assessment.risk_significance === 'critical' ||
+      assessment.riskSignificance === 'critical';
+  });
+}
+
 function hasFixedFirefightingIssues(moduleInstance: ModuleInstance, profile: BuildingProfile): boolean {
   const firefighting = moduleInstance.data.firefighting;
   if (!firefighting || !firefighting.fixed_facilities) return false;
@@ -210,6 +224,12 @@ export function scoreFraDocument(args: ScoringArgs): ScoringResult {
     if (instance.module_key === 'FRA_1_HAZARDS' && hasEicrIssues(instance)) {
       if (likelihood === 'Low') likelihood = 'Medium';
       ruleTriggers.push('Electrical safety concerns (EICR)');
+    }
+
+    if (instance.module_key === 'FRA_4_PASSIVE_PROTECTION' && hasSignificantPassiveProtectionFindings(instance)) {
+      if (likelihood === 'Low') likelihood = 'Medium';
+      if (consequence === 'Slight') consequence = 'Moderate';
+      ruleTriggers.push('Significant detailed passive fire protection findings');
     }
 
     if (instance.module_key === 'FRA_8_FIREFIGHTING_EQUIPMENT' && hasFixedFirefightingIssues(instance, buildingProfile)) {

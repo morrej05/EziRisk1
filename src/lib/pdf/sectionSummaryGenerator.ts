@@ -379,6 +379,25 @@ function extractSection7Drivers(data: Record<string, any>): string[] {
   return drivers.slice(0, 4); // Increased limit to accommodate merged content
 }
 
+
+function getDetailedPassiveProtectionFindings(data: Record<string, any>): Array<{ key: string; assessment: Record<string, any> }> {
+  const source = data.passive_fire_protection_assessments || data.passiveFireProtectionAssessments;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return [];
+
+  return Object.entries(source as Record<string, any>)
+    .filter(([, assessment]) => assessment && typeof assessment === 'object' && !Array.isArray(assessment))
+    .map(([key, assessment]) => ({ key, assessment: assessment as Record<string, any> }));
+}
+
+function getPassiveAssessmentText(assessment: Record<string, any>): string {
+  return String(
+    assessment.deficiencies ||
+    assessment.assessor_commentary ||
+    assessment.assessorCommentary ||
+    assessment.observations ||
+    ''
+  ).trim();
+}
 function extractSection9Drivers(data: Record<string, any>): string[] {
   const drivers: string[] = [];
 
@@ -405,6 +424,21 @@ function extractSection9Drivers(data: Record<string, any>): string[] {
   // Cavity barriers
   if (data.cavity_barriers_adequate === 'no') {
     drivers.push('Cavity barriers are inadequate or missing in concealed spaces');
+  }
+
+
+  const detailedFindings = getDetailedPassiveProtectionFindings(data);
+  const significantFinding = detailedFindings.find(({ assessment }) =>
+    assessment.risk_significance === 'critical' ||
+    assessment.riskSignificance === 'critical' ||
+    assessment.risk_significance === 'high' ||
+    assessment.riskSignificance === 'high'
+  );
+  if (significantFinding) {
+    drivers.push('Detailed passive fire protection assessment includes high-significance findings');
+  }
+  if (detailedFindings.some(({ assessment }) => assessment.status === 'inadequate')) {
+    drivers.push('Detailed passive fire protection deficiencies have been identified');
   }
 
   if (drivers.length === 0) {
@@ -851,6 +885,21 @@ function generateSection9Summary(module: ModuleInstance, document: Document): st
     parts.push('Fire stopping provision adequate');
   } else if (data.fire_stopping_adequacy === 'inadequate' || data.fire_stopping_adequacy === 'poor') {
     parts.push('Fire stopping deficiencies noted');
+  }
+
+
+  const detailedFindings = getDetailedPassiveProtectionFindings(data);
+  const highFinding = detailedFindings.find(({ assessment }) =>
+    assessment.risk_significance === 'critical' ||
+    assessment.riskSignificance === 'critical' ||
+    assessment.risk_significance === 'high' ||
+    assessment.riskSignificance === 'high'
+  );
+  if (highFinding) {
+    const detail = getPassiveAssessmentText(highFinding.assessment);
+    parts.push(detail ? `High-significance passive fire protection finding: ${detail}` : 'High-significance passive fire protection finding recorded');
+  } else if (detailedFindings.some(({ assessment }) => assessment.status === 'inadequate')) {
+    parts.push('Detailed passive fire protection deficiencies recorded');
   }
 
   if (parts.length === 0) return null;

@@ -70,6 +70,62 @@ const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
   assembly_external_routes: 'Assembly / external escape routes',
 };
 
+
+const PASSIVE_PROTECTION_DETAIL_LABELS: Record<string, string> = {
+  compartmentation_lines: 'Compartmentation lines / fire-resisting construction',
+  fire_doors: 'Fire doors',
+  service_penetrations_fire_stopping: 'Service penetrations and fire stopping',
+  cavity_barriers_concealed_spaces: 'Cavity barriers / concealed spaces',
+  fire_dampers_ductwork: 'Fire dampers / ductwork penetrations',
+  protected_routes_shafts: 'Protected routes / protected shafts',
+  structural_fire_protection: 'Structural fire protection',
+  cladding_external_walls: 'Cladding / external wall considerations',
+  fire_resisting_glazing: 'Fire-resisting glazing',
+  voids_risers_service_cupboards: 'Voids, risers and service cupboards',
+  maintenance_inspection_records: 'Maintenance / inspection records',
+  other_passive_concerns: 'Other passive fire protection concerns',
+};
+
+function getPassiveProtectionAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
+  const assessments = data.passive_fire_protection_assessments || data.passiveFireProtectionAssessments;
+  return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
+}
+
+function hasPassiveProtectionDetailContent(assessment: Record<string, unknown>): boolean {
+  if (!assessment || typeof assessment !== 'object') return false;
+
+  return (assessment.status !== undefined && assessment.status !== 'unknown') ||
+    Boolean(String(assessment.observations || '').trim()) ||
+    Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
+    Boolean(String(assessment.deficiencies || '').trim()) ||
+    Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
+    (((assessment.risk_significance || assessment.riskSignificance) !== undefined) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+    Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
+    Boolean(assessment.action_trigger || assessment.actionTrigger) ||
+    Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
+}
+
+function formatPassiveProtectionDetail(assessment: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const text = String(value ?? '').trim();
+    if (!text || text === 'unknown') return;
+    parts.push(`${label}: ${text.replace(/_/g, ' ')}`);
+  };
+
+  add('Adequacy', assessment.status);
+  add('Observations', assessment.observations);
+  add('Controls', assessment.existing_controls || assessment.existingControls);
+  add('Deficiencies', assessment.deficiencies);
+  add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
+  add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
+  add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
+  if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
+  add('Linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+
+  return parts.join('; ');
+}
+
 function getMeansOfEscapeAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
   const assessments = data.means_of_escape_assessments || data.meansOfEscapeAssessments;
   return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
@@ -490,6 +546,19 @@ export function drawModuleKeyDetails(
         if (data.compartmentation_condition) keyDetails.push(['Compartmentation', data.compartmentation_condition]);
         if (data.fire_stopping_confidence) keyDetails.push(['Fire Stopping Confidence', data.fire_stopping_confidence]);
         if (data.penetrations_sealing) keyDetails.push(['Service Penetrations Sealing', data.penetrations_sealing]);
+        {
+          const assessments = getPassiveProtectionAssessments(data);
+          if (assessments) {
+            Object.entries(assessments).forEach(([key, value]) => {
+              const assessment = value as Record<string, unknown>;
+              if (!hasPassiveProtectionDetailContent(assessment)) return;
+
+              const label = PASSIVE_PROTECTION_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+              const detailText = formatPassiveProtectionDetail(assessment);
+              if (detailText) keyDetails.push([label, detailText]);
+            });
+          }
+        }
         if (data.notes) keyDetails.push(['Notes', data.notes]);
       } else {
         // Legacy/fallback rendering for other sections (should not occur)
@@ -497,6 +566,19 @@ export function drawModuleKeyDetails(
         if (data.compartmentation_condition) keyDetails.push(['Compartmentation', data.compartmentation_condition]);
         if (data.penetrations_sealing) keyDetails.push(['Service Penetrations Sealing', data.penetrations_sealing]);
         if (data.fire_stopping_confidence) keyDetails.push(['Fire Stopping Confidence', data.fire_stopping_confidence]);
+        {
+          const assessments = getPassiveProtectionAssessments(data);
+          if (assessments) {
+            Object.entries(assessments).forEach(([key, value]) => {
+              const assessment = value as Record<string, unknown>;
+              if (!hasPassiveProtectionDetailContent(assessment)) return;
+
+              const label = PASSIVE_PROTECTION_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+              const detailText = formatPassiveProtectionDetail(assessment);
+              if (detailText) keyDetails.push([label, detailText]);
+            });
+          }
+        }
         if (data.notes) keyDetails.push(['Notes', data.notes]);
       }
       break;
