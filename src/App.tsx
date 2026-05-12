@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
 import LandingPage from './pages/LandingPage';
 import SignIn from './pages/SignIn';
@@ -48,6 +48,23 @@ import CookieConsentBanner from './components/CookieConsentBanner';
 import SeoManager from './components/SeoManager';
 import PricingPage from './pages/PricingPage';
 import ContactPage from './pages/ContactPage';
+
+
+
+function LegacyActionRegisterRedirect() {
+  const location = useLocation();
+
+  return <Navigate to={`/remediation/actions${location.search}`} replace />;
+}
+
+function LegacyActionRouteRedirect() {
+  const { actionId } = useParams();
+  const target = actionId
+    ? `/remediation/actions?actionId=${encodeURIComponent(actionId)}`
+    : '/remediation/actions';
+
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   return (
@@ -118,11 +135,19 @@ function App() {
           </Route>
           <Route
             path="/dashboard/action-register"
-            element={<Navigate to="/remediation/actions" replace />}
+            element={<LegacyActionRegisterRedirect />}
           />
           <Route
             path="/dashboard/actions"
-            element={<Navigate to="/remediation/actions" replace />}
+            element={<LegacyActionRegisterRedirect />}
+          />
+          <Route
+            path="/actions/:actionId"
+            element={
+              <AuthedLayout>
+                <LegacyActionRouteRedirect />
+              </AuthedLayout>
+            }
           />
           <Route
             path="/documents/:id"
