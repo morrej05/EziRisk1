@@ -110,9 +110,6 @@ export default function Footer() {
             <p className="text-sm text-neutral-500">
               © {new Date().getFullYear()} EziRisk. All rights reserved.
             </p>
-            <p className="text-sm text-neutral-500">
-              {PUBLIC_LEGAL_DETAILS.registrationPendingNote}
-            </p>
           </div>
         </div>
       </div>

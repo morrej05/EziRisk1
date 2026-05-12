@@ -55,6 +55,57 @@ const REPORT_LAYOUT_SPACING = getReportLayoutSpacing();
 const FRA_OUTCOME_TAG_WIDTH = 140;
 const FRA_OUTCOME_TAG_HEIGHT = 14;
 
+const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
+  escape_route_adequacy: 'Escape route adequacy',
+  travel_distances: 'Travel distances',
+  dead_ends_inner_rooms: 'Dead ends / inner rooms',
+  final_exits: 'Final exits',
+  staircases_vertical_escape: 'Staircases and vertical escape',
+  doors_fastenings_security: 'Doors / fastenings / security',
+  exit_signage: 'Exit signage',
+  emergency_lighting_interface: 'Emergency lighting interface',
+  occupant_capacity_vulnerable_occupants: 'Occupant capacity / vulnerable occupants',
+  housekeeping_obstruction: 'Housekeeping / obstruction',
+  management_escape_routes: 'Management of escape routes',
+  assembly_external_routes: 'Assembly / external escape routes',
+};
+
+function hasMeansOfEscapeDetailContent(assessment: Record<string, unknown>): boolean {
+  if (!assessment || typeof assessment !== 'object') return false;
+
+  return (assessment.status !== undefined && assessment.status !== 'unknown') ||
+    Boolean(String(assessment.observations || '').trim()) ||
+    Boolean(String(assessment.deficiencies || '').trim()) ||
+    Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
+    Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
+    (assessment.risk_significance !== undefined && assessment.risk_significance !== 'unknown') ||
+    Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
+    Boolean(assessment.action_trigger || assessment.actionTrigger) ||
+    Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
+}
+
+function formatMeansOfEscapeDetail(assessment: Record<string, unknown>): string {
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const text = String(value ?? '').trim();
+    if (!text || text === 'unknown') return;
+    parts.push(`${label}: ${text.replace(/_/g, ' ')}`);
+  };
+
+  add('Status', assessment.status);
+  add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
+  add('Observations', assessment.observations);
+  add('Deficiencies', assessment.deficiencies);
+  add('Existing controls', assessment.existing_controls || assessment.existingControls);
+  add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
+  add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
+  if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
+  add('Linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+
+  return parts.join('; ');
+}
+
+
 export function drawFraOutcomeTag(args: {
   page: PDFPage;
   yPosition: number;
@@ -368,6 +419,16 @@ export function drawModuleKeyDetails(
       if (data.inner_rooms) keyDetails.push(['Inner Rooms', data.inner_rooms]);
       if (data.basement_present) keyDetails.push(['Basement Present', data.basement_present]);
       if (data.basement) keyDetails.push(['Basement', data.basement]);
+      if (data.means_of_escape_assessments && typeof data.means_of_escape_assessments === 'object') {
+        Object.entries(data.means_of_escape_assessments).forEach(([key, value]) => {
+          const assessment = value as Record<string, unknown>;
+          if (!hasMeansOfEscapeDetailContent(assessment)) return;
+
+          const label = MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+          const detailText = formatMeansOfEscapeDetail(assessment);
+          if (detailText) keyDetails.push([label, detailText]);
+        });
+      }
       break;
 
     case 'FRA_3_PROTECTION_ASIS':

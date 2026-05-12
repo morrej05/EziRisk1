@@ -8,6 +8,42 @@
 import type { ModuleInstance } from '../supabase/attachments';
 import type { Document } from './fra/fraTypes';
 
+const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
+  escape_route_adequacy: 'Escape route adequacy',
+  travel_distances: 'Travel distances',
+  dead_ends_inner_rooms: 'Dead ends / inner rooms',
+  final_exits: 'Final exits',
+  staircases_vertical_escape: 'Staircases and vertical escape',
+  doors_fastenings_security: 'Doors / fastenings / security',
+  exit_signage: 'Exit signage',
+  emergency_lighting_interface: 'Emergency lighting interface',
+  occupant_capacity_vulnerable_occupants: 'Occupant capacity / vulnerable occupants',
+  housekeeping_obstruction: 'Housekeeping / obstruction',
+  management_escape_routes: 'Management of escape routes',
+  assembly_external_routes: 'Assembly / external escape routes',
+};
+
+function getPopulatedMeansOfEscapeAssessments(data: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+  const assessments = data.means_of_escape_assessments;
+  if (!assessments || typeof assessments !== 'object') return [];
+
+  return Object.entries(assessments).filter(([, value]) => {
+    const assessment = value as Record<string, unknown>;
+    return Boolean(
+      (assessment.status && assessment.status !== 'unknown') ||
+      String(assessment.observations || '').trim() ||
+      String(assessment.deficiencies || '').trim() ||
+      String(assessment.existing_controls || assessment.existingControls || '').trim() ||
+      String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim() ||
+      (assessment.risk_significance && assessment.risk_significance !== 'unknown') ||
+      String(assessment.evidence_references || assessment.evidenceReferences || '').trim() ||
+      assessment.action_trigger ||
+      assessment.actionTrigger ||
+      String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim()
+    );
+  }) as Array<[string, Record<string, unknown>]>;
+}
+
 interface Action {
   id: string;
   priority: number;
@@ -273,6 +309,17 @@ function extractSection6Drivers(data: Record<string, any>): string[] {
   if (data.disabled_egress_arrangements === 'inadequate') {
     drivers.push('Physical provisions for assisted evacuation are inadequate (refuges, equipment, communications)');
   }
+
+  const deficientAssessments = getPopulatedMeansOfEscapeAssessments(data)
+    .filter(([, assessment]) => assessment.status === 'inadequate')
+    .map(([key, assessment]) => {
+      const label = MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+      const risk = assessment.risk_significance && assessment.risk_significance !== 'unknown'
+        ? ` (${String(assessment.risk_significance).replace(/_/g, ' ')} significance)`
+        : '';
+      return `${label} recorded as inadequate${risk}`;
+    });
+  drivers.push(...deficientAssessments);
 
   if (drivers.length === 0) {
     return ['No specific issues were recorded in this section.'];
@@ -704,10 +751,21 @@ function generateSection6Summary(module: ModuleInstance, document: Document): st
   }
 
   // Signage
-  if (data.signage_adequacy === 'adequate' || data.signage === 'adequate') {
+  if (data.signage_adequacy === 'adequate' || data.exit_signage_adequacy === 'adequate' || data.signage === 'adequate') {
     parts.push('Exit signage provision adequate');
-  } else if (data.signage_adequacy === 'inadequate' || data.signage === 'inadequate') {
+  } else if (data.signage_adequacy === 'inadequate' || data.exit_signage_adequacy === 'inadequate' || data.signage === 'inadequate') {
     parts.push('Exit signage requires enhancement');
+  }
+
+  const populatedAssessments = getPopulatedMeansOfEscapeAssessments(data);
+  const deficientAssessments = populatedAssessments.filter(([, assessment]) => assessment.status === 'inadequate');
+  if (deficientAssessments.length > 0) {
+    const labels = deficientAssessments
+      .slice(0, 2)
+      .map(([key]) => MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ').toLowerCase());
+    parts.push(`Detailed means-of-escape assessment identifies deficiencies in ${labels.join(' and ')}`);
+  } else if (populatedAssessments.length > 0) {
+    parts.push(`${populatedAssessments.length} detailed means-of-escape assessment area${populatedAssessments.length === 1 ? '' : 's'} recorded`);
   }
 
   if (parts.length === 0) return null;

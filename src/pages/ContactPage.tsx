@@ -52,8 +52,7 @@ export default function ContactPage() {
               <div className="mt-4 space-y-3 text-sm text-slate-700 leading-relaxed">
                 <p>EziRisk is operated by {PUBLIC_LEGAL_DETAILS.operator}.</p>
                 <p><span className="font-medium text-slate-900">Operator / Data Controller:</span> {PUBLIC_LEGAL_DETAILS.dataController}</p>
-                <p><span className="font-medium text-slate-900">ICO application number:</span> {PUBLIC_LEGAL_DETAILS.icoApplicationNumber}</p>
-                <p>{PUBLIC_LEGAL_DETAILS.registrationPendingNote}</p>
+                <p><span className="font-medium text-slate-900">ICO registration number:</span> {PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}</p>
               </div>
             </section>
           </div>
