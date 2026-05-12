@@ -2,7 +2,7 @@
  * Report Quality Gates & Validation
  *
  * Validates report completeness and data quality before PDF generation.
- * Detects placeholders, missing IDs, missing outcomes, and other issues.
+ * Detects placeholders, missing IDs, missing outcomes, advisory recommendation depth issues, and other issues.
  */
 
 interface ModuleInstance {
@@ -10,13 +10,29 @@ interface ModuleInstance {
   module_key: string;
   outcome: string | null;
   assessor_notes: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   completed_at: string | null;
   updated_at: string;
 }
 
+
+interface ActionQualityInput {
+  id?: string | null;
+  module_instance_id?: string | null;
+  reference_number?: string | null;
+  recommended_action?: string | null;
+  priority?: string | null;
+  priority_band?: string | null;
+  status?: string | null;
+  target_date?: string | null;
+  trigger_text?: string | null;
+  escalation_justification?: string | null;
+  closure_notes?: string | null;
+  recommendation_detail?: unknown;
+}
+
 export interface QualityIssue {
-  type: 'placeholder' | 'missing_action_id' | 'missing_action_text' | 'empty_commentary' | 'missing_outcome';
+  type: 'placeholder' | 'missing_action_id' | 'missing_action_text' | 'empty_commentary' | 'missing_outcome' | 'missing_recommendation_rationale' | 'missing_recommendation_observation' | 'missing_recommendation_timeframe' | 'standards_reference_detail' | 'closure_notes_advisory' | 'major_deficiency_without_recommendation';
   severity: 'blocking' | 'warning';
   message: string;
   moduleKey?: string;
@@ -92,10 +108,25 @@ function isEmptyCommentary(text: string | null | undefined): boolean {
   return false;
 }
 
+
+function getRecommendationDetail(action: ActionQualityInput): Record<string, string> {
+  const raw = action?.recommendation_detail;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const detail: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && value.trim()) detail[key] = value.trim();
+  }
+  return detail;
+}
+
+function hasMeaningfulText(value: unknown, minLength = 8): boolean {
+  return typeof value === 'string' && value.trim().length >= minLength;
+}
+
 /**
  * Validate actions for quality issues
  */
-function validateActions(actions: any[]): QualityIssue[] {
+function validateActions(actions: ActionQualityInput[]): QualityIssue[] {
   const issues: QualityIssue[] = [];
 
   for (const action of actions) {
@@ -123,6 +154,50 @@ function validateActions(actions: any[]): QualityIssue[] {
         type: 'missing_action_text',
         severity: 'blocking',
         message: 'Action description is too short or missing',
+      });
+    }
+
+    const detail = getRecommendationDetail(action);
+    const priority = String(action.priority_band || action.priority || '').toUpperCase();
+    const hasAnyDetail = Object.keys(detail).length > 0;
+
+    if ((priority === 'P1' || priority === 'P2') && !hasMeaningfulText(detail.rationale) && !hasMeaningfulText(action.escalation_justification)) {
+      issues.push({
+        type: 'missing_recommendation_rationale',
+        severity: 'warning',
+        message: `High-priority action lacks recorded rationale: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (hasAnyDetail && !hasMeaningfulText(detail.observation) && !hasMeaningfulText(action.trigger_text)) {
+      issues.push({
+        type: 'missing_recommendation_observation',
+        severity: 'warning',
+        message: `Structured recommendation lacks an observation/finding: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (!action.target_date && !hasMeaningfulText(detail.timeframe_guidance) && (priority === 'P1' || priority === 'P2' || priority === 'P3')) {
+      issues.push({
+        type: 'missing_recommendation_timeframe',
+        severity: 'warning',
+        message: `Recommendation has no target date or timeframe guidance: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (/\b(bs|pas|en|approved document|regulation|order|guidance|standard)\b/i.test(action.recommended_action || '') && !hasMeaningfulText(detail.standards_reference)) {
+      issues.push({
+        type: 'standards_reference_detail',
+        severity: 'warning',
+        message: `Recommendation references standards/guidance but has no structured standards detail: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (String(action.status || '').toLowerCase() === 'closed' && 'closure_notes' in action && !hasMeaningfulText(action.closure_notes)) {
+      issues.push({
+        type: 'closure_notes_advisory',
+        severity: 'warning',
+        message: `Closed action has no closure notes: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
       });
     }
   }
@@ -209,7 +284,7 @@ function generateAssuranceGaps(issues: QualityIssue[]): string[] {
  */
 export function validateReportQuality(
   modules: ModuleInstance[],
-  actions: any[]
+  actions: ActionQualityInput[]
 ): QualityGateResult {
   const allIssues: QualityIssue[] = [];
 
@@ -218,6 +293,18 @@ export function validateReportQuality(
 
   // Validate actions
   allIssues.push(...validateActions(actions));
+
+  const actionModuleIds = new Set(actions.map((action) => action.module_instance_id).filter(Boolean));
+  for (const module of modules) {
+    if (module.outcome === 'material_def' && !actionModuleIds.has(module.id)) {
+      allIssues.push({
+        type: 'major_deficiency_without_recommendation',
+        severity: 'warning',
+        message: `Material deficiency module "${module.module_key}" has no linked recommendation/action`,
+        moduleKey: module.module_key,
+      });
+    }
+  }
 
   // Separate blocking vs warnings
   const blockingIssues = allIssues.filter(i => i.severity === 'blocking');

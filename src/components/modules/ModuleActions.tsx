@@ -23,6 +23,8 @@ interface Action {
   source: string | null;
   owner_user_id: string | null;
   reference_number?: string;
+  recommendation_detail?: Record<string, unknown> | null;
+  trigger_text?: string | null;
   document: {
     id: string;
     title: string;
@@ -198,6 +200,8 @@ export default function ModuleActions({
           source,
           owner_user_id,
           reference_number,
+          recommendation_detail,
+          trigger_text,
           created_at,
           document:documents!actions_document_id_fkey(id,title,document_type),
           module_instance:module_instances(id,module_key,outcome),

@@ -51,6 +51,8 @@ export interface Action {
   module_instance_id: string;
   created_at: string;
   reference_number?: string | null;
+  trigger_text?: string | null;
+  recommendation_detail?: Record<string, unknown> | null;
 }
 
 export interface ActionRating {

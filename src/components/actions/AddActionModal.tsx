@@ -11,6 +11,7 @@ import {
 } from '../../lib/modules/fra/severityEngine';
 import { deriveExplosionSeverity } from '../../lib/dsear/criticalityEngine';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { compactRecommendationDetail, type RecommendationDetail } from '../../lib/actions/recommendationDetail';
 import { getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
 import { deriveFsdProfessionalActionText } from '../../lib/fsd/fsdActionWording';
 
@@ -121,6 +122,7 @@ export default function AddActionModal({
   const { organisation, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAttachmentPrompt, setShowAttachmentPrompt] = useState(false);
+  const [showConsultancyDetail, setShowConsultancyDetail] = useState(false);
   const [createdActionId, setCreatedActionId] = useState<string | null>(null);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [uploadedFilesCount, setUploadedFilesCount] = useState(0);
@@ -133,6 +135,20 @@ export default function AddActionModal({
 
   const [formData, setFormData] = useState({
     recommendedAction: defaultAction,
+    recommendationDetail: {
+      observation: '',
+      consequence: '',
+      recommendation: defaultAction,
+      rationale: '',
+      standards_reference: '',
+      timeframe_guidance: '',
+      existing_controls: '',
+      evidence_notes: '',
+      linked_module: sourceModuleKey || '',
+      assessor_commentary: '',
+      management_response: '',
+      status_notes: '',
+    } as RecommendationDetail,
     category: 'Other' as ActionCategory,
     // FRA triggers
     finalExitLocked: false,
@@ -165,7 +181,16 @@ export default function AddActionModal({
   // Reset edit tracking when modal opens with new props
   useEffect(() => {
     setUserEditedActionText(false);
-  }, [defaultAction, documentId, moduleInstanceId]);
+    setFormData((prev) => ({
+      ...prev,
+      recommendedAction: defaultAction,
+      recommendationDetail: {
+        ...prev.recommendationDetail,
+        recommendation: defaultAction,
+        linked_module: sourceModuleKey || prev.recommendationDetail.linked_module || '',
+      },
+    }));
+  }, [defaultAction, documentId, moduleInstanceId, sourceModuleKey]);
 
   useEffect(() => {
     if (documentType === 'FSD') {
@@ -492,16 +517,21 @@ export default function AddActionModal({
       }
 
       // Resolve source based on whether user edited the text
-      const resolvedSource: 'manual' | 'library' | 'system' | 'ai' =
-        source === 'library' || source === 'ai'
-          ? source
-          : source === 'system' || source === 'info_gap' || source === 'recommendation'
-            ? 'system'
-            : userEditedActionText
-              ? 'manual'
-              : defaultAction.trim()
-                ? 'system'
-                : 'manual';
+      const resolvedSource: 'manual' | 'system' =
+        source === 'system' || source === 'info_gap' || source === 'recommendation'
+          ? 'system'
+          : userEditedActionText
+            ? 'manual'
+            : defaultAction.trim()
+              ? 'system'
+              : 'manual';
+
+      const recommendationDetail = compactRecommendationDetail({
+        ...formData.recommendationDetail,
+        recommendation: formData.recommendationDetail.recommendation || normalizedActionText,
+        timeframe_guidance: formData.recommendationDetail.timeframe_guidance || formData.timescale,
+        linked_module: formData.recommendationDetail.linked_module || sourceModuleKey || '',
+      });
 
       const actionData = {
         organisation_id: organisation.id,
@@ -524,6 +554,7 @@ export default function AddActionModal({
           ? formData.escalationJustification.trim()
           : null,
         source: resolvedSource,
+        recommendation_detail: recommendationDetail,
       };
 
       const { data: action, error: actionError } = await supabase
@@ -732,6 +763,75 @@ export default function AddActionModal({
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
               required
             />
+          </div>
+
+          <div className="border border-blue-100 rounded-lg bg-blue-50/40">
+            <button
+              type="button"
+              onClick={() => setShowConsultancyDetail(!showConsultancyDetail)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+            >
+              <div>
+                <div className="text-sm font-semibold text-neutral-900">Consultancy detail (optional)</div>
+                <div className="text-xs text-neutral-600">Add finding, rationale, standards context and evidence basis for client-ready reports.</div>
+              </div>
+              <span className="text-sm font-medium text-blue-700">{showConsultancyDetail ? 'Hide' : 'Expand'}</span>
+            </button>
+
+            {showConsultancyDetail && (
+              <div className="px-4 pb-4 grid grid-cols-1 gap-3">
+                {[
+                  ['observation', 'Observation / finding', 'What was found or observed?'],
+                  ['consequence', 'Risk implication / consequence', 'Why does this matter from a fire safety perspective?'],
+                  ['rationale', 'Recommendation rationale', 'Explain why the recommendation is proportionate and defensible.'],
+                  ['standards_reference', 'Standards / guidance reference', 'e.g. Fire Safety Order, PAS 79, BS 9999, BS 5839, BS 5266, Approved Document B...'],
+                  ['existing_controls', 'Existing controls noted', 'Record relevant existing controls or interim measures.'],
+                  ['evidence_notes', 'Evidence basis / linked evidence', 'Photo refs, inspection notes, document refs or witness evidence.'],
+                  ['assessor_commentary', 'Assessor commentary', 'Professional judgement, limitations or client-specific context.'],
+                  ['management_response', 'Management response / status notes', 'Optional client response, agreed action or deferral note.'],
+                ].map(([key, label, placeholder]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                    <textarea
+                      value={String(formData.recommendationDetail[key as keyof RecommendationDetail] || '')}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        recommendationDetail: { ...formData.recommendationDetail, [key]: e.target.value },
+                      })}
+                      placeholder={placeholder}
+                      rows={key === 'rationale' || key === 'consequence' ? 3 : 2}
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                    />
+                  </div>
+                ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Suggested timeframe</label>
+                    <input
+                      value={String(formData.recommendationDetail.timeframe_guidance || '')}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        recommendationDetail: { ...formData.recommendationDetail, timeframe_guidance: e.target.value },
+                      })}
+                      placeholder="e.g. Immediate, 30 days, next review"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Linked assessment area / module</label>
+                    <input
+                      value={String(formData.recommendationDetail.linked_module || '')}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        recommendationDetail: { ...formData.recommendationDetail, linked_module: e.target.value },
+                      })}
+                      placeholder="Module or report section"
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 text-sm bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

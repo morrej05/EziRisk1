@@ -50,6 +50,7 @@ interface ActionRow {
   module_code: string | null;
   priority: string | null;
   recommended_action: string | null;
+  recommendation_detail?: Record<string, unknown> | null;
 }
 
 interface ExecutiveSummaryJson {
@@ -176,7 +177,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: actions, error: actionsError } = await supabase
       .from("actions")
-      .select("module_code, priority, recommended_action")
+      .select("module_code, priority, recommended_action, recommendation_detail")
       .eq("document_id", document.id)
       .eq("status", "open")
       .is("deleted_at", null)
@@ -287,7 +288,7 @@ function buildPayload(
     sampleActions: actions.slice(0, MAX_ACTION_SAMPLES).map((action) => ({
       moduleCode: action.module_code,
       priority: action.priority,
-      recommendedAction: trimText(action.recommended_action ?? "", 220),
+      recommendedAction: trimText(getStructuredRecommendationSummary(action), 220),
     })),
   };
 
@@ -433,6 +434,18 @@ function validateAiSummary(parsed: unknown): ExecutiveSummaryJson {
 
 function countModules(modules: ModuleInstanceRow[], status: string): number {
   return modules.reduce((count, module) => count + (module.outcome === status ? 1 : 0), 0);
+}
+
+function getStructuredRecommendationSummary(action: ActionRow): string {
+  const detail = action.recommendation_detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const observation = typeof detail.observation === "string" ? detail.observation.trim() : "";
+    const consequence = typeof detail.consequence === "string" ? detail.consequence.trim() : "";
+    const recommendation = typeof detail.recommendation === "string" ? detail.recommendation.trim() : "";
+    return [observation, consequence, recommendation || action.recommended_action || ""].filter(Boolean).join(" | ");
+  }
+
+  return action.recommended_action ?? "";
 }
 
 function countActions(actions: ActionRow[], priority: string): number {
