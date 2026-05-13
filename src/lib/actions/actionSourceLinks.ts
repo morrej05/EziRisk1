@@ -143,6 +143,42 @@ export function priorityFromDetailedFinding(assessment: DetailedFindingAssessmen
   return { priority: 'P4', severity: 'T1', timescale: 'next_review' };
 }
 
+
+function buildProfessionalConsequence(assessment: DetailedFindingAssessment, sourceAssessmentLabel: string, moduleKey: string): string {
+  const explicit = String((assessment as Record<string, unknown>).risk_implication || (assessment as Record<string, unknown>).consequence || '').trim();
+  if (explicit) return explicit;
+
+  const label = sourceAssessmentLabel.toLowerCase();
+  if (label.includes('electrical') || label.includes('fixed wiring')) {
+    return 'Deficiencies in electrical ignition source control can increase the likelihood of fire starting and may compromise the effectiveness of existing fire precautions.';
+  }
+  if (label.includes('lightning')) {
+    return 'Unverified lightning exposure or protection arrangements can leave the premises vulnerable to ignition, damage to safety-critical systems and avoidable interruption following storm activity.';
+  }
+  if (label.includes('smoking')) {
+    return 'Weak smoking controls can increase the likelihood of accidental ignition in or near combustible materials and undermine day-to-day fire prevention arrangements.';
+  }
+  if (label.includes('hot work')) {
+    return 'Inadequate hot work control can introduce high-energy ignition sources and allow smouldering or concealed fire spread after work has finished.';
+  }
+  if (label.includes('cooking') || label.includes('kitchen') || label.includes('duct')) {
+    return 'Deficiencies in cooking, extract or duct-cleaning controls can allow grease or combustible deposits to accumulate and increase the likelihood and severity of a kitchen-related fire.';
+  }
+  if (label.includes('management') || moduleKey.includes('MANAGEMENT')) {
+    return 'Weaknesses in fire safety management arrangements can reduce assurance that precautions are maintained, responsibilities are understood and deficiencies are corrected in a timely manner.';
+  }
+  if (moduleKey === 'FRA_2_ESCAPE_ASIS') {
+    return 'Deficiencies affecting means of escape can compromise safe evacuation and may increase risk to occupants during a fire event.';
+  }
+  if (moduleKey === 'FRA_3_ACTIVE_SYSTEMS') {
+    return 'Deficiencies in active fire protection can delay warning, reduce intervention effectiveness and compromise the overall fire strategy.';
+  }
+
+  const risk = String(assessment.risk_significance || '').trim().toLowerCase();
+  const qualifier = risk && risk !== 'unknown' ? ` The assessor has identified this as a ${risk}-significance matter.` : '';
+  return `The recorded deficiency may reduce the reliability of the relevant fire precaution and should be addressed proportionately to maintain life safety and property protection.${qualifier}`;
+}
+
 export function buildFindingHash(assessment: DetailedFindingAssessment): string {
   const source = [
     assessment.status,
@@ -173,9 +209,7 @@ export function buildRecommendationFromFinding(args: {
   const priority = priorityFromDetailedFinding(assessment);
   const observation = String(assessment.observations || assessment.condition_adequacy || '').trim();
   const recommendation = String(assessment.deficiencies || '').trim() || `Review and address the finding recorded for ${sourceAssessmentLabel}.`;
-  const consequence = String(assessment.risk_significance || '').trim()
-    ? `Risk significance: ${assessment.risk_significance}`
-    : '';
+  const consequence = buildProfessionalConsequence(assessment, sourceAssessmentLabel, moduleKey);
 
   const detail = compactRecommendationDetail({
     schema_version: 1,
@@ -187,7 +221,11 @@ export function buildRecommendationFromFinding(args: {
     evidence_notes: String(assessment.evidence_references || '').trim(),
     linked_module: `${moduleKey} — ${sourceAssessmentLabel}`,
     assessor_commentary: String(assessment.assessor_commentary || '').trim(),
-    timeframe_guidance: priority.timescale,
+    timeframe_guidance: priority.timescale === 'immediate'
+      ? 'Suggested: complete immediately'
+      : priority.timescale === 'next_review'
+        ? 'Suggested: complete by next scheduled review'
+        : `Suggested: complete within ${priority.timescale.replace('d', ' days')}`,
   });
 
   return {

@@ -730,6 +730,7 @@ export default function ModuleActions({
 
       {!isReModule && selectedAction && (
         <ActionDetailModal
+          returnTo={`/documents/${documentId}/workspace?m=${moduleInstanceId}`}
           action={selectedAction}
           onClose={() => setSelectedAction(null)}
           onActionUpdated={() => {

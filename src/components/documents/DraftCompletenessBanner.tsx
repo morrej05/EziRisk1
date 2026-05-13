@@ -1,4 +1,4 @@
-import { CheckCircle, Circle, FileText, ListTodo, Image, CheckSquare, Sparkles, Edit3 } from 'lucide-react';
+import { CheckCircle, Circle, FileText, ListTodo, Image, CheckSquare, Edit3 } from 'lucide-react';
 import { canUseApprovalWorkflow, type Organisation } from '../../utils/entitlements';
 
 interface DraftCompletenessBannerProps {
@@ -28,7 +28,6 @@ export default function DraftCompletenessBanner({
   evidenceCount,
   approvalStatus,
   organisation,
-  onGenerateAiSummary,
   onAddAuthorCommentary,
   onViewActions,
   onAddEvidence,
@@ -69,11 +68,11 @@ export default function DraftCompletenessBanner({
 
   const getSummaryMessage = (): string => {
     if (executiveSummaryMode === 'none') return 'No executive summary required';
-    if (executiveSummaryMode === 'ai' && !executiveSummaryAi) return 'Generate AI summary';
+    if (executiveSummaryMode === 'ai' && !executiveSummaryAi) return 'Executive summary not yet prepared';
     if (executiveSummaryMode === 'author' && !executiveSummaryAuthor) return 'Add author commentary';
     if (executiveSummaryMode === 'both') {
-      if (!executiveSummaryAi && !executiveSummaryAuthor) return 'Generate AI summary and add commentary';
-      if (!executiveSummaryAi) return 'Generate AI summary';
+      if (!executiveSummaryAi && !executiveSummaryAuthor) return 'Executive summary not yet prepared';
+      if (!executiveSummaryAi) return 'Auto summary not yet prepared';
       if (!executiveSummaryAuthor) return 'Add author commentary';
     }
     return 'Executive summary complete';
@@ -109,15 +108,6 @@ export default function DraftCompletenessBanner({
               </p>
               {!summaryComplete && executiveSummaryMode !== 'none' && (
                 <div className="flex gap-2 flex-shrink-0">
-                  {(executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !executiveSummaryAi && onGenerateAiSummary && (
-                    <button
-                      onClick={onGenerateAiSummary}
-                      className="text-xs px-3 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors flex items-center gap-1 font-medium"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      Generate AI
-                    </button>
-                  )}
                   {(executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !executiveSummaryAuthor && onAddAuthorCommentary && (
                     <button
                       onClick={onAddAuthorCommentary}

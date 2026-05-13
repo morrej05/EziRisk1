@@ -123,16 +123,13 @@ export default function DetailedFindingActionLink({
   const unavailableLink = links.find((link) => !link.actions || link.actions.deleted_at);
 
   const buildLinkedActionUrl = useCallback((actionId: string) => {
-    const params = new URLSearchParams({
-      actionId,
-      document: documentId,
-    });
+    const params = new URLSearchParams({ openAction: actionId });
 
     if (moduleInstanceId) {
-      params.set('moduleInstance', moduleInstanceId);
+      params.set('m', moduleInstanceId);
     }
 
-    return `/remediation/actions?${params.toString()}`;
+    return `/documents/${documentId}/workspace?${params.toString()}`;
   }, [documentId, moduleInstanceId]);
 
   const loadLinks = useCallback(async () => {
@@ -383,7 +380,7 @@ export default function DetailedFindingActionLink({
                     to={buildLinkedActionUrl(link.actions.id)}
                     className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
                   >
-                    <ExternalLink className="w-3 h-3" /> View action
+                    <ExternalLink className="w-3 h-3" /> View recommendation
                   </Link>
                 </div>
               ))}
@@ -414,7 +411,7 @@ export default function DetailedFindingActionLink({
 
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <button type="button" onClick={handleCreateRecommendation} disabled={isCreating} className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-60">
-          <Plus className="w-4 h-4" /> {activeLinks.length > 0 ? 'Create additional recommendation' : 'Create recommendation from this finding'}
+          <Plus className="w-4 h-4" /> {activeLinks.length > 0 ? 'Add another recommendation' : 'Add recommendation'}
         </button>
         <div className="flex min-w-0 flex-1 gap-2">
           <select value={selectedActionId} onChange={(event) => setSelectedActionId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-neutral-800">

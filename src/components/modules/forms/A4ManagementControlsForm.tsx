@@ -116,6 +116,23 @@ const normaliseRiskSignificance = (value: unknown): RiskSignificance => {
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const asString = (value: unknown): string => typeof value === 'string' ? value : '';
 
+
+const getManagementStateClasses = (assessment: ManagementAssessmentDetail): string => {
+  if (assessment.risk_significance === 'critical') return 'border-red-300 bg-red-50';
+  if (assessment.risk_significance === 'high' || assessment.action_trigger) return 'border-orange-300 bg-orange-50';
+  if (assessment.status === 'inadequate' || assessment.risk_significance === 'medium') return 'border-amber-300 bg-amber-50';
+  if (assessment.status === 'adequate' || assessment.risk_significance === 'low') return 'border-emerald-200 bg-emerald-50';
+  return 'border-neutral-200 bg-neutral-50';
+};
+
+const getManagementStateLabel = (assessment: ManagementAssessmentDetail): string => {
+  if (assessment.risk_significance === 'critical') return 'Critical issue';
+  if (assessment.risk_significance === 'high' || assessment.action_trigger) return 'Action required';
+  if (assessment.status === 'inadequate' || assessment.risk_significance === 'medium') return 'Needs attention';
+  if (assessment.status === 'adequate' || assessment.risk_significance === 'low') return 'Adequate';
+  return 'Not assessed';
+};
+
 const toCamelAssessment = (assessment: ManagementAssessmentDetail) => ({
   status: assessment.status,
   observations: assessment.observations,
@@ -949,7 +966,7 @@ export default function A4ManagementControlsForm({
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Quick Add: Introduce change control review process
+                Add recommendation: Introduce change control review process
               </button>
             )}
           </div>
@@ -965,9 +982,10 @@ export default function A4ManagementControlsForm({
               const assessment = formData.fire_safety_management_assessments[area.key];
               const hasContent = hasManagementAssessmentContent(assessment);
               return (
-                <details key={area.key} className="border border-neutral-200 rounded-lg overflow-hidden bg-neutral-50">
+                <details key={area.key} className={`border rounded-lg overflow-hidden ${getManagementStateClasses(assessment)}`}>
                   <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-3 text-sm font-semibold text-neutral-900">
                     <span>{area.title}</span>
+                    <span className="text-xs font-medium rounded-full px-2 py-0.5 border bg-white/70 text-neutral-700">{getManagementStateLabel(assessment)}</span>
                     {hasContent && <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">Populated</span>}
                   </summary>
                   <div className="border-t border-neutral-200 bg-white p-4 space-y-4">
