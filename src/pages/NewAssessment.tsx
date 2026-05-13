@@ -124,7 +124,7 @@ export default function NewAssessment() {
 
       if (moduleError) throw moduleError;
 
-      navigate(`/documents/${document.id}/workspace`);
+      navigate(`/documents/${document.id}`);
     } catch (error) {
       console.error('Error creating document:', error);
       alert('Failed to create document. Please try again.');

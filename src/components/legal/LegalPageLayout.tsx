@@ -40,6 +40,12 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
                 {PUBLIC_LEGAL_DETAILS.website}
               </a>
             </p>
+            <p>
+              <span className="font-semibold text-slate-900">Phone:</span>{' '}
+              <a href={`tel:${PUBLIC_LEGAL_DETAILS.phone.replace(/\s/g, '')}`} className="text-slate-900 underline hover:text-slate-700">
+                {PUBLIC_LEGAL_DETAILS.phone}
+              </a>
+            </p>
           </div>
 
           <div className="mt-8 space-y-7">

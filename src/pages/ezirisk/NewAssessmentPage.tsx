@@ -117,7 +117,7 @@ export default function NewAssessmentPage() {
           throw new Error('Document creation returned no ID');
         }
         console.log('[NewAssessment] Created FRA document:', documentId);
-        navigate(`/documents/${documentId}/workspace`);
+        navigate(`/documents/${documentId}`);
       } else if (typeId === 'fire_explosion') {
         const payload = {
           organisationId: organisation.id,
@@ -131,7 +131,7 @@ export default function NewAssessmentPage() {
           throw new Error('Document creation returned no ID');
         }
         console.log('[NewAssessment] Created Fire + Explosion document:', documentId);
-        navigate(`/documents/${documentId}/workspace`);
+        navigate(`/documents/${documentId}`);
       } else if (typeId === 'fsd') {
         const payload = {
           organisationId: organisation.id,
@@ -144,7 +144,7 @@ export default function NewAssessmentPage() {
           throw new Error('Document creation returned no ID');
         }
         console.log('[NewAssessment] Created FSD document:', documentId);
-        navigate(`/documents/${documentId}/workspace`);
+        navigate(`/documents/${documentId}`);
       } else if (typeId === 'dsear') {
         const payload = {
           organisationId: organisation.id,
@@ -157,7 +157,7 @@ export default function NewAssessmentPage() {
           throw new Error('Document creation returned no ID');
         }
         console.log('[NewAssessment] Created DSEAR document:', documentId);
-        navigate(`/documents/${documentId}/workspace`);
+        navigate(`/documents/${documentId}`);
       } else if (typeId === 'property') {
         const payload = {
           organisationId: organisation.id,
@@ -170,7 +170,7 @@ export default function NewAssessmentPage() {
           throw new Error('Document creation returned no ID');
         }
         console.log('[NewAssessment] Created RE document:', documentId);
-        navigate(`/documents/${documentId}/workspace`);
+        navigate(`/documents/${documentId}`);
       }
     } catch (error) {
       console.error('[NewAssessment] ERROR creating assessment:', error);
