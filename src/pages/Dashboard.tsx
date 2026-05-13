@@ -995,7 +995,7 @@ export default function Dashboard() {
   if (isFRA) {
     navigate(`/report/${survey.id}`);
   } else {
-    navigate(`/documents/${survey.document_id}/workspace`);
+    navigate(`/documents/${survey.document_id}`);
   }
 }}
 

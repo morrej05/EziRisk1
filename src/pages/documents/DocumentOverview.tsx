@@ -125,6 +125,8 @@ export default function DocumentOverview() {
   const [actionCounts, setActionCounts] = useState({ P1: 0, P2: 0, P3: 0, P4: 0 });
   const [totalActions, setTotalActions] = useState(0);
   const [evidenceCount, setEvidenceCount] = useState(0);
+  const [unlinkedEvidenceCount, setUnlinkedEvidenceCount] = useState(0);
+  const [p1P2ActionsWithoutEvidence, setP1P2ActionsWithoutEvidence] = useState(0);
   const [explosionSummary, setExplosionSummary] = useState<ExplosionSummary | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [showIssueModal, setShowIssueModal] = useState(false);
@@ -187,6 +189,7 @@ export default function DocumentOverview() {
       fetchDocument();
       fetchModules();
       fetchEvidenceCount();
+      fetchEvidenceQuality();
       fetchDefencePack();
     }
   }, [id, organisation?.id]);
@@ -212,6 +215,7 @@ export default function DocumentOverview() {
 
     fetchActionCounts();
     fetchActions();
+    fetchEvidenceQuality();
   }, [id, organisation?.id, document]);
 
   useEffect(() => {
@@ -417,6 +421,44 @@ export default function DocumentOverview() {
       setEvidenceCount(count || 0);
     } catch (error) {
       console.error('Error fetching evidence count:', error);
+    }
+  };
+
+  const fetchEvidenceQuality = async () => {
+    if (!id || !organisation?.id) return;
+
+    try {
+      const { data: attachments, error: attachmentError } = await supabase
+        .from('attachments')
+        .select('id, module_instance_id, action_id')
+        .eq('document_id', id)
+        .eq('organisation_id', organisation.id)
+        .is('deleted_at', null);
+
+      if (attachmentError) throw attachmentError;
+
+      setUnlinkedEvidenceCount((attachments || []).filter((item) => !item.module_instance_id && !item.action_id).length);
+
+      if (document?.document_type === 'RE') {
+        setP1P2ActionsWithoutEvidence(0);
+        return;
+      }
+
+      const { data: highPriorityActions, error: actionsError } = await supabase
+        .from('actions')
+        .select('id, priority_band, status')
+        .eq('document_id', id)
+        .eq('organisation_id', organisation.id)
+        .in('priority_band', ['P1', 'P2'])
+        .in('status', ['open', 'in_progress'])
+        .is('deleted_at', null);
+
+      if (actionsError) throw actionsError;
+
+      const linkedActionIds = new Set((attachments || []).map((item) => item.action_id).filter(Boolean));
+      setP1P2ActionsWithoutEvidence((highPriorityActions || []).filter((action) => !linkedActionIds.has(action.id)).length);
+    } catch (error) {
+      console.error('Error fetching evidence quality:', error);
     }
   };
 
@@ -961,6 +1003,44 @@ try {
     );
   }
 
+
+  const firstRunChecklist = [
+    { label: 'Confirm site identity and assessment scope', complete: Boolean(document.meta?.site?.address?.line1 || document.scope_description) },
+    { label: 'Complete site setup modules', complete: modules.some((m) => ['A1_DOC_CONTROL', 'A2_BUILDING_PROFILE', 'A3_PERSONS_AT_RISK'].includes(m.module_key) && isModuleCompleteForUi(m)) },
+    { label: 'Capture first evidence item', complete: evidenceCount > 0 },
+    { label: 'Generate findings/actions from observations', complete: totalActions > 0 },
+    { label: 'Preview report before review', complete: Boolean(document.meta?.report_previewed_at || document.locked_pdf_generated_at) },
+  ];
+  const setupCompleteCount = firstRunChecklist.filter((item) => item.complete).length;
+
+  const qualityGateItems = [
+    { label: 'Mandatory modules', detail: `${completedModules}/${totalModules} complete`, state: completedModules === totalModules ? 'Ready' : 'Needs attention' },
+    { label: isReDocument ? 'Open High/Medium recommendations' : 'Open P1/P2 actions', detail: `${actionCounts.P1 + actionCounts.P2} open`, state: actionCounts.P1 > 0 ? 'Blocks issue' : actionCounts.P2 > 0 ? 'Needs attention' : 'Ready' },
+    { label: 'P1/P2 findings or actions without evidence', detail: `${p1P2ActionsWithoutEvidence} missing evidence`, state: p1P2ActionsWithoutEvidence > 0 ? 'Blocks issue' : 'Ready' },
+    { label: 'Unlinked evidence', detail: `${unlinkedEvidenceCount} unlinked`, state: unlinkedEvidenceCount > 0 ? 'Needs attention' : 'Ready' },
+    { label: 'Executive summary', detail: document.executive_summary_ai || document.executive_summary_author ? 'Present' : 'Missing', state: document.executive_summary_ai || document.executive_summary_author ? 'Ready' : 'Needs attention' },
+    { label: 'Review / assurance', detail: modules.some((m) => m.module_key === 'A7_REVIEW_ASSURANCE' && isModuleCompleteForUi(m)) ? 'Complete' : 'Incomplete', state: modules.some((m) => m.module_key === 'A7_REVIEW_ASSURANCE' && isModuleCompleteForUi(m)) ? 'Ready' : 'Blocks issue' },
+    { label: 'Report preview', detail: document.meta?.report_previewed_at || document.locked_pdf_generated_at ? 'Previewed' : 'Not previewed', state: document.meta?.report_previewed_at || document.locked_pdf_generated_at ? 'Ready' : 'Needs attention' },
+    { label: 'Approval / sign-off', detail: document.approval_status || 'Not started', state: document.approval_status === 'approved' ? 'Ready' : document.approval_status === 'rejected' ? 'Blocks issue' : 'Needs attention' },
+  ] as Array<{ label: string; detail: string; state: 'Ready' | 'Needs attention' | 'Blocks issue' }>;
+
+  const getGateStateClass = (state: 'Ready' | 'Needs attention' | 'Blocks issue') => {
+    if (state === 'Ready') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (state === 'Blocks issue') return 'bg-red-50 text-red-700 border-red-200';
+    return 'bg-amber-50 text-amber-700 border-amber-200';
+  };
+
+  const workflowStages = [
+    'Overview',
+    'Site setup',
+    'Site walk & hazards',
+    'Technical assessment',
+    'Findings & actions',
+    'Evidence library',
+    'Report preview',
+    'Review & issue',
+  ];
+
   return (
     <div className="min-h-screen bg-neutral-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1273,6 +1353,66 @@ try {
             )}
           </Card>
         )}
+
+
+        {/* First-run setup checklist */}
+        {document.issue_status === 'draft' && setupCompleteCount < firstRunChecklist.length && (
+          <Card className="mb-6 border-blue-100 bg-blue-50/30">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-neutral-900">First-run setup checklist</h2>
+                <p className="text-sm text-blue-800 mt-1">Start from the overview, then work through the stages in order.</p>
+              </div>
+              <Badge variant="info">{setupCompleteCount}/{firstRunChecklist.length} complete</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {firstRunChecklist.map((item) => (
+                <div key={item.label} className="flex items-start gap-2 rounded-lg bg-white border border-blue-100 px-3 py-2">
+                  {item.complete ? <CheckCircle className="w-4 h-4 text-emerald-600 mt-0.5" /> : <Circle className="w-4 h-4 text-blue-400 mt-0.5" />}
+                  <span className="text-sm text-neutral-800">{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Workflow order */}
+        <Card className="mb-6">
+          <h2 className="text-lg font-semibold text-neutral-900 mb-3">Assessment workflow</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+            {workflowStages.map((stage, index) => (
+              <div key={stage} className={`rounded-lg border px-3 py-2 ${index === 0 ? 'bg-blue-50 border-blue-200 text-blue-900' : index === workflowStages.length - 1 ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-white border-neutral-200 text-neutral-800'}`}>
+                <span className="text-xs font-semibold text-neutral-500">{index + 1}</span>
+                <p className="text-sm font-medium">{stage}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Issue-readiness quality gates */}
+        <Card className="mb-6">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-neutral-900">Issue-readiness quality gates</h2>
+              <p className="text-sm text-neutral-600 mt-1">Resolve blockers before Review & issue.</p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/documents/${id}/preview`)}>
+              <FileText className="w-4 h-4 mr-2" />
+              Preview report
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {qualityGateItems.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 bg-white">
+                <div>
+                  <p className="text-sm font-medium text-neutral-900">{item.label}</p>
+                  <p className="text-xs text-neutral-500">{item.detail}</p>
+                </div>
+                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${getGateStateClass(item.state)}`}>{item.state}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
 
         {/* Identity Completeness Nudge */}
         {document && !document.meta?.site?.address?.line1 && !document.meta?.site?.address?.postcode && (
