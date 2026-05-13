@@ -58,7 +58,7 @@ export default function ContactPage() {
           </div>
 
           <section className="mt-6 rounded-lg border border-slate-200 p-5">
-            <h2 className="text-lg font-semibold text-slate-900">Operational note</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Platform overview</h2>
             <p className="mt-3 text-sm text-slate-700 leading-relaxed">
               {PUBLIC_LEGAL_DETAILS.operationalNote}
             </p>

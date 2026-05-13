@@ -10,9 +10,9 @@ export const PUBLIC_LEGAL_DETAILS = {
   icoRegistrationNumber: 'ICO:00014056799',
   contactEmail: SUPPORT_CONFIG.email,
   website: 'https://www.ezirisk.co.uk',
-  phone: '07766 504361',
-  footerStatement: `EziRisk is operated by EziSoft Solutions. ICO registration number: ICO:00014056799. Contact: ${SUPPORT_CONFIG.email}.`,
-  operationalNote: 'EziRisk is currently in an early operational rollout phase focused on structured fire and risk reporting workflows across FRA, FSD and DSEAR disciplines.',
+  phone: '+44 01904 922362',
+  footerStatement: `EziRisk is operated by EziSoft Solutions. ICO registration number: ICO:00014056799. Contact: ${SUPPORT_CONFIG.email} or +44 01904 922362.`,
+  operationalNote: 'Structured fire and risk reporting workflows for FRA, FSD and DSEAR.',
 } as const;
 
 export function getSupportMailto(email: string = SUPPORT_CONFIG.email): string {
