@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { RecommendationWorkflowShell, formatSuggestedCompletion } from '../recommendations/RecommendationWorkflow';
 
 interface Photo {
   path: string;
@@ -35,6 +36,28 @@ const MODULE_SECTIONS = [
 const MAX_PHOTOS_PER_RECOMMENDATION = 3;
 const MAX_PHOTO_SIZE_BYTES = 15 * 1024 * 1024;
 
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function timescaleForPriority(priority: 'High' | 'Medium' | 'Low'): '7d' | '30d' | '90d' {
+  if (priority === 'High') return '7d';
+  if (priority === 'Medium') return '30d';
+  return '90d';
+}
+
+function targetDateFromTimescale(timescale: string): string {
+  const dueDate = new Date();
+  dueDate.setHours(0, 0, 0, 0);
+  if (timescale === '7d') dueDate.setDate(dueDate.getDate() + 7);
+  if (timescale === '30d') dueDate.setDate(dueDate.getDate() + 30);
+  if (timescale === '90d') dueDate.setDate(dueDate.getDate() + 90);
+  return toLocalIsoDate(dueDate);
+}
+
 export default function CanonicalReRecommendationModal({
   isOpen,
   onClose,
@@ -52,6 +75,7 @@ export default function CanonicalReRecommendationModal({
   const [priority, setPriority] = useState<'High' | 'Medium' | 'Low'>('Medium');
   const [status, setStatus] = useState<'Open' | 'In Progress' | 'Completed'>('Open');
   const [targetDate, setTargetDate] = useState('');
+  const [userEditedTargetDate, setUserEditedTargetDate] = useState(false);
   const [owner, setOwner] = useState('');
   const [relatedModule, setRelatedModule] = useState(sourceModuleKey || 'OTHER');
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -73,6 +97,11 @@ export default function CanonicalReRecommendationModal({
     setPhotoUrls({});
   }, [isOpen, defaultModule]);
 
+  useEffect(() => {
+    if (!isOpen || userEditedTargetDate) return;
+    setTargetDate(targetDateFromTimescale(timescaleForPriority(priority)));
+  }, [isOpen, priority, userEditedTargetDate]);
+
   const resetForm = () => {
     setTitle('');
     setObservation('');
@@ -81,7 +110,8 @@ export default function CanonicalReRecommendationModal({
     setComments('');
     setPriority('Medium');
     setStatus('Open');
-    setTargetDate('');
+    setTargetDate(targetDateFromTimescale(timescaleForPriority('Medium')));
+    setUserEditedTargetDate(false);
     setOwner('');
     setRelatedModule(defaultModule);
     setPhotos([]);
@@ -219,6 +249,14 @@ export default function CanonicalReRecommendationModal({
           </button>
         </div>
 
+        <RecommendationWorkflowShell
+          title="Add Recommendation"
+          context={{ documentId, moduleInstanceId, sourceKey: relatedModule || defaultModule, sourceLabel: MODULE_SECTIONS.find((module) => module.key === (relatedModule || defaultModule))?.label || relatedModule || defaultModule }}
+          priority={priority}
+          suggestedTimescale={timescaleForPriority(priority)}
+          targetDate={targetDate}
+          evidenceCount={photos.length}
+        >
         <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Title *</label>
@@ -242,7 +280,7 @@ export default function CanonicalReRecommendationModal({
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Action Required</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Recommended action</label>
             <textarea
               value={actionRequired}
               onChange={(e) => setActionRequired(e.target.value)}
@@ -256,7 +294,7 @@ export default function CanonicalReRecommendationModal({
             <div className="mb-2 flex items-start gap-2">
               <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
               <label className="block text-sm font-medium text-amber-900">
-                Hazard / Risk Description
+                Risk implication / consequence
               </label>
             </div>
             <textarea
@@ -307,13 +345,14 @@ export default function CanonicalReRecommendationModal({
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Target Date</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">Target completion date</label>
               <input
                 type="date"
                 value={targetDate}
-                onChange={(e) => setTargetDate(e.target.value)}
+                onChange={(e) => { setUserEditedTargetDate(true); setTargetDate(e.target.value); }}
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               />
+              <p className="mt-1 text-xs text-blue-700">Suggested completion: {formatSuggestedCompletion(timescaleForPriority(priority))}. A later date should be supported by assessor rationale.</p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Owner</label>
@@ -413,6 +452,7 @@ export default function CanonicalReRecommendationModal({
             {uploadingPhoto && <div className="mt-2 text-sm text-blue-600">Uploading photo...</div>}
           </div>
         </div>
+        </RecommendationWorkflowShell>
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button

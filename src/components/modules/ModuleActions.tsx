@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, AlertCircle, ChevronRight, Trash2, Upload } from 'lucide-react';
+import { Plus, AlertCircle, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import AddActionModal from '../actions/AddActionModal';
@@ -13,6 +13,7 @@ import {
   isReRecommendationsRegisterModule,
 } from '../../lib/re/recommendations/moduleRecommendationFilters';
 import CanonicalReRecommendationModal from '../re/CanonicalReRecommendationModal';
+import { RecommendationCard } from '../recommendations/RecommendationWorkflow';
 
 interface Action {
   id: string;
@@ -60,8 +61,7 @@ const isValidUUID = (id: string | undefined | null): boolean => {
 export default function ModuleActions({
   documentId,
   moduleInstanceId,
-  buttonLabel = 'Add Action',
-  useInPlaceReRecommendationModal = false,
+  buttonLabel = 'Add Recommendation',
 }: ModuleActionsProps) {
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
@@ -378,38 +378,6 @@ export default function ModuleActions({
   };
 
 
-  const getPriorityColor = (priority: string | null) => {
-    switch (priority) {
-      case 'P1':
-        return 'bg-red-100 text-red-700 border-red-200';
-      case 'P2':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'P3':
-        return 'bg-amber-100 text-amber-700 border-amber-200';
-      case 'P4':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
-      default:
-        return 'bg-neutral-100 text-neutral-600 border-neutral-200';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open':
-        return 'bg-red-100 text-red-700';
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-700';
-      case 'closed':
-        return 'bg-green-100 text-green-700';
-      case 'deferred':
-        return 'bg-amber-100 text-amber-700';
-      case 'not_applicable':
-        return 'bg-neutral-100 text-neutral-600';
-      default:
-        return 'bg-neutral-100 text-neutral-600';
-    }
-  };
-
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '—';
     return new Date(dateString).toLocaleDateString('en-GB', {
@@ -458,7 +426,10 @@ export default function ModuleActions({
   return (
     <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-neutral-900">{isReModule ? 'Recommendations from this Module' : 'Actions from this Module'}</h3>
+        <div>
+          <h3 className="text-lg font-bold text-neutral-900">Recommendations from this Module</h3>
+          <p className="text-sm text-neutral-500">Unified finding, evidence, priority and due-date workflow for this module.</p>
+        </div>
         {documentStatus === 'draft' && (
         <div className="flex items-center gap-2">
           <label className={`flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium ${isUploadingEvidence ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}>
@@ -475,55 +446,17 @@ export default function ModuleActions({
           </label>
           <button
           onClick={() => {
-            if (!isReModule) {
-              setShowAddModal(true);
-              return;
-            }
-
-            if (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') {
+            if (isReModule) {
               setShowReRecommendationModal(true);
               return;
             }
 
-            const openRecommendationComposer = async () => {
-              console.info('[RE04 Add Recommendation] click', {
-                documentId,
-                sourceModuleInstanceId: moduleInstanceId,
-                sourceModuleKey,
-              });
-
-              const { data: registerModule } = await supabase
-                .from('module_instances')
-                .select('id')
-                .eq('document_id', documentId)
-                .eq('module_key', 'RE_13_RECOMMENDATIONS')
-                .maybeSingle();
-
-              const params = new URLSearchParams({
-                openAddRec: 'true',
-                sourceModuleInstanceId: moduleInstanceId,
-                sourceModuleKey: sourceModuleKey || 'OTHER',
-                openRecSource: 'module-actions',
-              });
-
-              if (registerModule?.id) {
-                params.set('m', registerModule.id);
-              }
-
-              console.info('[RE04 Add Recommendation] navigate', {
-                registerModuleId: registerModule?.id || null,
-                query: params.toString(),
-              });
-
-              window.location.assign(`/documents/${documentId}/workspace?${params.toString()}`);
-            };
-
-            void openRecommendationComposer();
+            setShowAddModal(true);
           }}
           className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
         >
           <Plus className="w-4 h-4" />
-          {isReModule ? 'Add Recommendation' : buttonLabel}
+          {buttonLabel}
         </button>
         </div>
         )}
@@ -536,168 +469,32 @@ export default function ModuleActions({
       ) : actions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
-          <p className="text-neutral-500 text-sm">No actions added yet</p>
+          <p className="text-neutral-500 text-sm">No recommendations added yet</p>
           <p className="text-neutral-400 text-xs">
-            Click "{isReModule ? 'Add Recommendation' : buttonLabel}" to create a recommended action for this module
+            Click "{buttonLabel}" to create a recommendation for this module
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-           <table className="min-w-full divide-y divide-neutral-200">
-            <thead className="bg-neutral-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Ref
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Priority
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Action
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Due Date
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-neutral-200">
-              {actions.map((action) => (
-                <tr
-                  key={action.id}
-                  className="hover:bg-neutral-50 transition-colors"
-                >
-                  <td
-                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <span className="text-sm font-mono text-neutral-900">
-                      {action.reference_number ?? '—'}
-                    </span>
-                  </td>
-                  <td
-                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-bold rounded border ${getPriorityColor(
-                        action.priority_band
-                      )}`}
-                    >
-                      {action.priority_band || '—'}
-                    </span>
-                  </td>
-                  <td
-                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                        action.status
-                      )}`}
-                    >
-                      {formatStatus(action.status)}
-                    </span>
-                  </td>
-                  <td
-                    className="px-4 py-3 cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <div className="text-sm text-neutral-900 max-w-lg hover:text-neutral-600 transition-colors">
-                      {action.recommended_action}
-                    </div>
-                    {(action.carried_from_document_id || action.origin_action_id) && (
-                      <span className="inline-flex px-1.5 py-0.5 mt-1 text-xs font-medium rounded bg-purple-100 text-purple-700">
-                        Carried forward
-                      </span>
-                    )}
-                    {['P1', 'P2'].includes(action.priority_band || '') && action.attachment_count === 0 && (
-                      <span className="inline-flex px-1.5 py-0.5 mt-1 ml-1 text-xs font-medium rounded bg-red-50 text-red-700 border border-red-200">
-                        Evidence needed
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className="px-4 py-3 whitespace-nowrap text-sm text-neutral-600 cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    {formatDate(action.target_date)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedAction(action);
-                        }}
-                        className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors"
-                        title="View details"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                      {isDeletable && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActionToDelete(action.id);
-                          }}
-                          className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
-                          title="Delete action"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {actions.map((action) => (
+            <RecommendationCard
+              key={action.id}
+              item={{
+                id: action.id,
+                findingSummary: action.recommendation_detail?.observation as string || action.trigger_text || action.recommended_action,
+                recommendationText: action.recommended_action,
+                priority: action.priority_band,
+                status: formatStatus(action.status),
+                dueDate: formatDate(action.target_date),
+                evidenceCount: action.attachment_count,
+                sourceLabel: sourceModuleKey || action.module_instance?.module_key || null,
+                referenceNumber: action.reference_number,
+              }}
+              onOpen={() => setSelectedAction(action)}
+              onDelete={isDeletable && action.source !== 're_recommendations' ? () => setActionToDelete(action.id) : undefined}
+              deleteLabel="Delete"
+            />
+          ))}
         </div>
       )}
 
@@ -713,7 +510,7 @@ export default function ModuleActions({
         />
       )}
 
-      {isReModule && (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') && showReRecommendationModal && sourceModuleKey && (
+      {isReModule && showReRecommendationModal && sourceModuleKey && (
         <CanonicalReRecommendationModal
           isOpen={showReRecommendationModal}
           onClose={() => setShowReRecommendationModal(false)}
@@ -728,7 +525,7 @@ export default function ModuleActions({
         />
       )}
 
-      {!isReModule && selectedAction && (
+      {selectedAction && selectedAction.source !== 're_recommendations' && (
         <ActionDetailModal
           returnTo={`/documents/${documentId}/workspace?m=${moduleInstanceId}`}
           action={selectedAction}
