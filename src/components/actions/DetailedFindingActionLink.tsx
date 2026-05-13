@@ -58,6 +58,22 @@ function describeSupabaseError(error: unknown): string {
   ].filter(Boolean).join('; ');
 }
 
+function deriveFindingCategory(moduleKey: string, sourceAssessmentLabel: string): string {
+  if (moduleKey.startsWith('FRA_')) {
+    const normalized = sourceAssessmentLabel.toLowerCase();
+    if (normalized.includes('electrical')) return 'Electrical';
+    if (normalized.includes('smoking')) return 'Smoking controls';
+    if (normalized.includes('hot work')) return 'Hot works';
+    if (normalized.includes('cooking') || normalized.includes('kitchen')) return 'Cooking / kitchen processes';
+    if (normalized.includes('portable heater') || normalized.includes('heating')) return 'Heating / appliances';
+    if (normalized.includes('dsear') || normalized.includes('hazardous substances')) return 'Dangerous substances / DSEAR';
+    if (normalized.includes('arson')) return 'Arson / security';
+    return 'Fire hazards / ignition sources';
+  }
+
+  return moduleKey || 'Other';
+}
+
 function getLinkedActionCreateErrorMessage(error: unknown): string {
   if (import.meta.env.DEV) {
     return `Could not create the linked recommendation. ${describeSupabaseError(error)}`;
@@ -276,7 +292,7 @@ export default function DetailedFindingActionLink({
         timescale: recommendation.timescale,
         target_date: targetDateFromTimescale(recommendation.timescale),
         source: 'recommendation',
-        finding_category: 'Other',
+        finding_category: deriveFindingCategory(moduleKey, sourceAssessmentLabel),
         recommendation_detail: recommendation.detail,
       };
 

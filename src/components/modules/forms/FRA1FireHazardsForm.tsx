@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flame, CheckCircle, Plus, Zap, ChevronDown } from 'lucide-react';
+import { Flame, CheckCircle, Plus, Zap, ChevronDown, AlertTriangle, Link as LinkIcon } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
@@ -9,6 +9,11 @@ import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
+import {
+  getActiveIgnitionSourceCards,
+  getEffectiveIgnitionPresence,
+  getHazardMappingsForSource,
+} from '../../../lib/fra/ignitionSourceActivation';
 
 interface Document {
   id: string;
@@ -58,17 +63,6 @@ type IgnitionSourceDefinition = {
   prompt: string;
   actionText: string;
 };
-
-const SOURCE_ASSESSMENT_FIELDS: Array<keyof IgnitionAssessment> = [
-  'condition_adequacy',
-  'existing_controls',
-  'deficiencies',
-  'evidence_references',
-  'assessor_commentary',
-  'risk_significance',
-  'recommended_action_trigger',
-  'linked_action_reference',
-];
 
 const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
   {
@@ -189,14 +183,6 @@ const normaliseSourceAssessments = (data: Record<string, unknown>): IgnitionAsse
   }, {} as IgnitionAssessmentMap);
 };
 
-const sourceHasDetail = (assessment?: IgnitionAssessment): boolean => {
-  if (!assessment) return false;
-  return Boolean(
-    assessment.presence ||
-    SOURCE_ASSESSMENT_FIELDS.some((field) => String(assessment[field] ?? '').trim())
-  );
-};
-
 const sourceHasNarrativeDetail = (assessment?: IgnitionAssessment): boolean => {
   if (!assessment) return false;
   return ['condition_adequacy', 'existing_controls', 'deficiencies', 'assessor_commentary'].some((field) =>
@@ -315,18 +301,25 @@ export default function FRA1FireHazardsForm({
     });
   };
 
-  const getSourcePresence = (source: IgnitionSourceDefinition, assessment: IgnitionAssessment): string => {
-    if (assessment.presence) return assessment.presence;
-    if (source.legacyIgnition && formData.ignition_sources.includes(source.legacyIgnition)) return 'present';
-    if (source.legacyHighRisk && formData.high_risk_activities.includes(source.legacyHighRisk)) return 'present';
-    if (source.key === 'arson' && ['medium', 'high'].includes(formData.arson_risk)) return 'present';
-    if (source.key === 'lightning' && sourceHasDetail(assessment)) return assessment.presence || 'unknown';
-    if (source.key === 'hazardous_substances_dsear' && (
-      formData.dsear_screen.flammables_present === 'yes' ||
-      formData.dsear_screen.explosive_atmospheres_possible === 'yes'
-    )) return 'present';
-    return '';
+  const broadSelections = {
+    ignition_sources: formData.ignition_sources,
+    high_risk_activities: formData.high_risk_activities,
+    fuel_sources: formData.fuel_sources,
+    arson_risk: formData.arson_risk,
+    dsear_screen: formData.dsear_screen,
   };
+
+  const sourceCardState = getActiveIgnitionSourceCards({
+    broadSelections,
+    sourceAssessments: formData.ignition_source_assessments,
+    sourceKeys: IGNITION_SOURCE_AREAS.map((source) => source.key),
+  });
+
+  const getSourcePresence = (source: IgnitionSourceDefinition, assessment: IgnitionAssessment): string =>
+    getEffectiveIgnitionPresence({ sourceKey: source.key, assessment, broadSelections });
+
+  const getActivationLabels = (sourceKey: string): string[] =>
+    getHazardMappingsForSource(sourceKey, broadSelections).map((mapping) => mapping.label);
 
   const getQualityGateWarnings = (): string[] => {
     const warnings: string[] = [];
@@ -474,6 +467,184 @@ export default function FRA1FireHazardsForm({
       .join(' ');
   };
 
+  const renderSourceCard = (source: IgnitionSourceDefinition, isActive: boolean) => {
+    const assessment = formData.ignition_source_assessments[source.key] || {};
+    const effectivePresence = getSourcePresence(source, assessment);
+    const activationLabels = getActivationLabels(source.key);
+    const presenceIsDerived = effectivePresence === 'present' && !assessment.presence && activationLabels.length > 0;
+    const needsAction = ['high'].includes(String(assessment.risk_significance || '')) ||
+      ['action_required', 'urgent'].includes(String(assessment.recommended_action_trigger || '')) ||
+      Boolean(String(assessment.deficiencies || '').trim());
+    const highPriorityNoEvidence = ['high'].includes(String(assessment.risk_significance || '')) &&
+      !String(assessment.evidence_references || '').trim();
+    const defaultOpen = isActive;
+
+    return (
+      <details key={source.key} open={defaultOpen} className={`group rounded-lg border ${isActive ? 'border-blue-200 bg-blue-50/40' : 'border-neutral-200 bg-neutral-50'}`}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="font-semibold text-neutral-900">{source.label}</h4>
+              {effectivePresence && (
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-neutral-600 border border-neutral-200">
+                  {presenceIsDerived ? 'Present (derived)' : formatLabel(effectivePresence)}
+                </span>
+              )}
+              {sourceCardState.completedLegacySourceKeys.includes(source.key) && !activationLabels.length && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+                  Existing detail preserved
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-neutral-500 mt-1">{source.prompt}</p>
+            {activationLabels.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {activationLabels.map((label) => (
+                  <span key={label} className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                    <LinkIcon className="h-3 w-3" />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
+        </summary>
+
+        <div className="border-t border-neutral-200 bg-white p-4 space-y-4">
+          {presenceIsDerived && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Presence is derived from the broad hazard selection. No duplicate present/not-present answer is required unless you need to override it below.
+            </div>
+          )}
+
+          <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-neutral-700">Change presence status</summary>
+            <div className="mt-3 max-w-sm">
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Manual presence override</label>
+              <select
+                value={assessment.presence || ''}
+                onChange={(e) => updateSourceAssessment(source.key, { presence: e.target.value as IgnitionAssessment['presence'] })}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              >
+                <option value="">Use derived / not assessed in detail</option>
+                <option value="present">Present</option>
+                <option value="not_present">Not present</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+          </details>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Controls adequacy</label>
+              <select
+                value={assessment.risk_significance || ''}
+                onChange={(e) => updateSourceAssessment(source.key, { risk_significance: e.target.value as IgnitionAssessment['risk_significance'] })}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              >
+                <option value="">Not stated</option>
+                <option value="low">Adequate / low significance</option>
+                <option value="medium">Partially adequate / medium significance</option>
+                <option value="high">Inadequate / high significance</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Recommended action required?</label>
+              <select
+                value={assessment.recommended_action_trigger || ''}
+                onChange={(e) => updateSourceAssessment(source.key, { recommended_action_trigger: e.target.value as IgnitionAssessment['recommended_action_trigger'] })}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              >
+                <option value="">Not stated</option>
+                <option value="none">No action required</option>
+                <option value="consider">Consider action</option>
+                <option value="action_required">Action required</option>
+                <option value="urgent">Urgent action</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">Controls / adequacy notes</label>
+            <textarea
+              value={assessment.condition_adequacy || ''}
+              onChange={(e) => updateSourceAssessment(source.key, { condition_adequacy: e.target.value })}
+              placeholder="Brief judgement on control adequacy or uncertainty..."
+              rows={2}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Existing controls</label>
+              <textarea
+                value={assessment.existing_controls || ''}
+                onChange={(e) => updateSourceAssessment(source.key, { existing_controls: e.target.value })}
+                placeholder="Controls observed or evidenced..."
+                rows={3}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Deficiency observed</label>
+              <textarea
+                value={assessment.deficiencies || ''}
+                onChange={(e) => updateSourceAssessment(source.key, { deficiencies: e.target.value })}
+                placeholder="Deficiencies, gaps or concerns. Leave blank if controls are adequate."
+                rows={3}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 mb-2">Evidence</label>
+            <input
+              type="text"
+              value={assessment.evidence_references || ''}
+              onChange={(e) => updateSourceAssessment(source.key, { evidence_references: e.target.value })}
+              placeholder="Evidence chips/uploads are linked at document/module/action level where available; add legacy references only if needed."
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+            />
+            <p className="mt-1 text-xs text-neutral-500">
+              Evidence uploaded through linked recommendations inherits the document and module context. Source key: {source.key}.
+            </p>
+          </div>
+
+          {(needsAction || highPriorityNoEvidence) && (
+            <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              {needsAction && <p><AlertTriangle className="mr-1 inline h-4 w-4" />Action relationship required where a deficiency/action trigger is recorded.</p>}
+              {highPriorityNoEvidence && <p><AlertTriangle className="mr-1 inline h-4 w-4" />High-significance source issue has no evidence reference yet.</p>}
+            </div>
+          )}
+
+          {needsAction && (
+            <DetailedFindingActionLink
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+              moduleKey={moduleInstance.module_key}
+              sourceAssessmentType="ignition_source_assessments"
+              sourceAssessmentKey={source.key}
+              sourceAssessmentLabel={source.label}
+              assessment={assessment}
+              legacyLinkedActionReference={assessment.linked_action_reference}
+            />
+          )}
+
+          {assessment.linked_action_reference && !needsAction && (
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+              Legacy linked action reference preserved: {assessment.linked_action_reference}
+            </div>
+          )}
+        </div>
+      </details>
+    );
+  };
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
@@ -590,171 +761,61 @@ export default function FRA1FireHazardsForm({
           </div>
         )}
 
+        {sourceCardState.dsearPrompt && (
+          <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
+            <h3 className="text-sm font-bold text-purple-900 mb-1">DSEAR relevance prompt</h3>
+            <p className="text-sm text-purple-800">
+              This hazard may indicate a DSEAR exposure. Review dangerous substances / explosive atmosphere sections?
+            </p>
+            <button
+              type="button"
+              onClick={() => updateSourceAssessment('hazardous_substances_dsear', { assessor_commentary: formData.ignition_source_assessments.hazardous_substances_dsear?.assessor_commentary || 'DSEAR relevance flagged for review from FRA hazard selection.' })}
+              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-medium text-purple-800 hover:bg-purple-100"
+            >
+              Review DSEAR relevance
+            </button>
+          </div>
+        )}
+
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-2">
-            Source-Specific Ignition Assessment
+            Contextual Ignition Source Cards
           </h3>
           <p className="text-sm text-neutral-600 mb-4">
-            Optional expandable areas for assessor judgement. Leave sections collapsed or blank where not relevant; broad selections above remain supported.
+            Broad selections activate the source cards below. Present status is derived from the triage checklist unless you choose an override.
           </p>
 
-          <div className="space-y-3">
-            {IGNITION_SOURCE_AREAS.map((source) => {
-              const assessment = formData.ignition_source_assessments[source.key] || {};
-              const effectivePresence = getSourcePresence(source, assessment);
-              const needsAction = ['high'].includes(String(assessment.risk_significance || '')) ||
-                ['action_required', 'urgent'].includes(String(assessment.recommended_action_trigger || '')) ||
-                Boolean(String(assessment.deficiencies || '').trim());
+          {sourceCardState.activeSourceKeys.length === 0 ? (
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+              No contextual source cards are active yet. Select broad ignition, fuel or high-risk activity items above, or expand “Other ignition sources” to complete a detailed card.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Selected / present sources</h4>
+              {sourceCardState.activeSourceKeys.map((sourceKey) => {
+                const source = IGNITION_SOURCE_AREAS.find((item) => item.key === sourceKey);
+                return source ? renderSourceCard(source, true) : null;
+              })}
+            </div>
+          )}
 
-              return (
-                <details key={source.key} className="group rounded-lg border border-neutral-200 bg-neutral-50">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-neutral-900">{source.label}</h4>
-                        {effectivePresence && (
-                          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-neutral-600 border border-neutral-200">
-                            {formatLabel(effectivePresence)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-neutral-500 mt-1">{source.prompt}</p>
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
-                  </summary>
-
-                  <div className="border-t border-neutral-200 bg-white p-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Presence</label>
-                        <select
-                          value={assessment.presence || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { presence: e.target.value as IgnitionAssessment['presence'] })}
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                        >
-                          <option value="">Not assessed in detail</option>
-                          <option value="present">Present</option>
-                          <option value="not_present">Not present</option>
-                          <option value="unknown">Unknown</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Risk significance</label>
-                        <select
-                          value={assessment.risk_significance || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { risk_significance: e.target.value as IgnitionAssessment['risk_significance'] })}
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                        >
-                          <option value="">Not stated</option>
-                          <option value="low">Low</option>
-                          <option value="medium">Medium</option>
-                          <option value="high">High</option>
-                          <option value="unknown">Unknown</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Recommended action trigger</label>
-                        <select
-                          value={assessment.recommended_action_trigger || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { recommended_action_trigger: e.target.value as IgnitionAssessment['recommended_action_trigger'] })}
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                        >
-                          <option value="">Not stated</option>
-                          <option value="none">No action required</option>
-                          <option value="consider">Consider action</option>
-                          <option value="action_required">Action required</option>
-                          <option value="urgent">Urgent action</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-2">Condition / adequacy</label>
-                      <textarea
-                        value={assessment.condition_adequacy || ''}
-                        onChange={(e) => updateSourceAssessment(source.key, { condition_adequacy: e.target.value })}
-                        placeholder="Brief judgement on condition, adequacy or uncertainty..."
-                        rows={2}
-                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Existing controls</label>
-                        <textarea
-                          value={assessment.existing_controls || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { existing_controls: e.target.value })}
-                          placeholder="Controls observed or evidenced..."
-                          rows={3}
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Deficiencies identified</label>
-                        <textarea
-                          value={assessment.deficiencies || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { deficiencies: e.target.value })}
-                          placeholder="Deficiencies, gaps or concerns..."
-                          rows={3}
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Evidence / photo references</label>
-                        <input
-                          type="text"
-                          value={assessment.evidence_references || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { evidence_references: e.target.value })}
-                          placeholder="e.g., Photo 12, EICR dated March 2026"
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-2">Linked action/reference</label>
-                        <input
-                          type="text"
-                          value={assessment.linked_action_reference || ''}
-                          onChange={(e) => updateSourceAssessment(source.key, { linked_action_reference: e.target.value })}
-                          placeholder="Legacy linked action reference (fallback only)"
-                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-neutral-700 mb-2">Assessor commentary</label>
-                      <textarea
-                        value={assessment.assessor_commentary || ''}
-                        onChange={(e) => updateSourceAssessment(source.key, { assessor_commentary: e.target.value })}
-                        placeholder="Professional judgement, limitations, rationale and follow-up considerations..."
-                        rows={3}
-                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
-                      />
-                    </div>
-
-                    {needsAction && (
-                      <DetailedFindingActionLink
-                        documentId={document.id}
-                        moduleInstanceId={moduleInstance.id}
-                        moduleKey={moduleInstance.module_key}
-                        sourceAssessmentType="ignition_source_assessments"
-                        sourceAssessmentKey={source.key}
-                        sourceAssessmentLabel={source.label}
-                        assessment={assessment}
-                        legacyLinkedActionReference={assessment.linked_action_reference}
-                      />
-                    )}
-                  </div>
-                </details>
-              );
-            })}
-          </div>
+          {sourceCardState.optionalSourceKeys.length > 0 && (
+            <details className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+                <div>
+                  <h4 className="font-semibold text-neutral-900">Other ignition sources</h4>
+                  <p className="text-xs text-neutral-500">Collapsed by default to avoid showing the full source catalogue.</p>
+                </div>
+                <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="border-t border-neutral-200 bg-white p-4 space-y-3">
+                {sourceCardState.optionalSourceKeys.map((sourceKey) => {
+                  const source = IGNITION_SOURCE_AREAS.find((item) => item.key === sourceKey);
+                  return source ? renderSourceCard(source, false) : null;
+                })}
+              </div>
+            </details>
+          )}
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
