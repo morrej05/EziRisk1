@@ -9,7 +9,6 @@ import {
   type FraActionInput,
   type FraContext,
 } from '../../lib/modules/fra/severityEngine';
-import { deriveExplosionSeverity } from '../../lib/dsear/criticalityEngine';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 import { compactRecommendationDetail, type RecommendationDetail } from '../../lib/actions/recommendationDetail';
 import { areActionTextsNearDuplicate } from '../../lib/actions/actionSourceLinks';
@@ -144,6 +143,44 @@ function getDefaultFsdCategory(sourceModuleKey?: string): FsdFindingCategory {
   }
 }
 
+
+function getDefaultFraCategory(sourceModuleKey?: string): FraFindingCategory {
+  switch (sourceModuleKey) {
+    case 'FRA_2_ESCAPE_ASIS':
+      return 'MeansOfEscape';
+    case 'FRA_3_ACTIVE_SYSTEMS':
+      return 'DetectionAlarm';
+    case 'FRA_4_PASSIVE_PROTECTION':
+      return 'Compartmentation';
+    case 'FRA_8_FIREFIGHTING_EQUIPMENT':
+      return 'FireFighting';
+    case 'FRA_6_MANAGEMENT_SYSTEMS':
+    case 'FRA_7_EMERGENCY_ARRANGEMENTS':
+      return 'Management';
+    case 'FRA_1_HAZARDS':
+      return 'Housekeeping';
+    default:
+      return 'Other';
+  }
+}
+
+function categoryLabel(category: ActionCategory): string {
+  const fsd = FSD_CATEGORY_OPTIONS.find((option) => option.value === category);
+  if (fsd) return fsd.label;
+  const labels: Record<string, string> = {
+    MeansOfEscape: 'Means of Escape',
+    DetectionAlarm: 'Detection & Alarm',
+    EmergencyLighting: 'Emergency Lighting',
+    Compartmentation: 'Compartmentation',
+    FireDoors: 'Fire Doors',
+    FireFighting: 'Fire Fighting Equipment',
+    Management: 'Management & Procedures',
+    Housekeeping: 'Housekeeping',
+    Other: 'Other',
+  };
+  return labels[String(category)] || String(category);
+}
+
 export default function AddActionModal({
   documentId,
   moduleInstanceId,
@@ -157,12 +194,13 @@ export default function AddActionModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAttachmentPrompt, setShowAttachmentPrompt] = useState(false);
   const [showConsultancyDetail, setShowConsultancyDetail] = useState(false);
+  const [showCategoryOverride, setShowCategoryOverride] = useState(false);
+  const [showRuleInputs, setShowRuleInputs] = useState(false);
   const [createdActionId, setCreatedActionId] = useState<string | null>(null);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [uploadedFilesCount, setUploadedFilesCount] = useState(0);
   const [documentType, setDocumentType] = useState<string | null>(null);
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
-  const [moduleInstances, setModuleInstances] = useState<any[]>([]);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
   const [userEditedActionText, setUserEditedActionText] = useState(false);
   const [userEditedTimescale, setUserEditedTimescale] = useState(false);
@@ -231,7 +269,9 @@ export default function AddActionModal({
   useEffect(() => {
     if (documentType === 'FSD') {
       setFormData((prev) => ({ ...prev, category: getDefaultFsdCategory(sourceModuleKey) }));
+      return;
     }
+    setFormData((prev) => ({ ...prev, category: getDefaultFraCategory(sourceModuleKey) }));
   }, [documentType, sourceModuleKey]);
 
   useEffect(() => {
@@ -247,13 +287,6 @@ export default function AddActionModal({
         setDocumentType(doc.document_type);
         setEnabledModules(doc.enabled_modules || [doc.document_type]);
 
-        const { data: modules, error: modulesError } = await supabase
-          .from('module_instances')
-          .select('module_key, outcome, assessor_notes, data')
-          .eq('document_id', documentId);
-
-        if (modulesError) throw modulesError;
-        setModuleInstances(modules || []);
       } catch (error) {
         console.error('Error fetching context:', error);
       } finally {
@@ -459,6 +492,8 @@ export default function AddActionModal({
   const suggestedTimescale = getSuggestedTimescale(priorityBand);
   const effectiveTimescale = formData.timescale || suggestedTimescale;
   const isTimescaleOverride = effectiveTimescale !== suggestedTimescale;
+  const timescaleRank: Record<string, number> = { immediate: 0, '7d': 1, '30d': 2, '90d': 3, next_review: 4, custom: 5 };
+  const isTimescaleRelaxation = isTimescaleOverride && (timescaleRank[effectiveTimescale] ?? 99) > (timescaleRank[suggestedTimescale] ?? 99);
 
   useEffect(() => {
     setFormData((prev) => {
@@ -506,7 +541,7 @@ export default function AddActionModal({
       return;
     }
 
-    if (isTimescaleOverride && !formData.overrideJustification.trim()) {
+    if (isTimescaleRelaxation && !formData.overrideJustification.trim()) {
       alert('Please provide a justification for overriding the suggested timescale.');
       return;
     }
@@ -870,43 +905,66 @@ export default function AddActionModal({
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Finding Category <span className="text-red-600">*</span>
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) =>
-                setFormData({ ...formData, category: e.target.value as ActionCategory })
-              }
-              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              required
-            >
-              {documentType === 'FSD' ? (
-                FSD_CATEGORY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))
-              ) : (
-                <>
-                  <option value="MeansOfEscape">Means of Escape</option>
-                  <option value="DetectionAlarm">Detection & Alarm</option>
-                  <option value="EmergencyLighting">Emergency Lighting</option>
-                  <option value="Compartmentation">Compartmentation</option>
-                  <option value="FireDoors">Fire Doors</option>
-                  <option value="FireFighting">Fire Fighting Equipment</option>
-                  <option value="Management">Management & Procedures</option>
-                  <option value="Housekeeping">Housekeeping</option>
-                  <option value="Other">Other</option>
-                </>
-              )}
-            </select>
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-neutral-800">Category derived from module context</p>
+                <p className="text-sm text-blue-800 mt-1">{categoryLabel(formData.category)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCategoryOverride(!showCategoryOverride)}
+                className="text-sm font-medium text-blue-700 hover:text-blue-900"
+              >
+                {showCategoryOverride ? 'Hide category' : 'Change category'}
+              </button>
+            </div>
+            {showCategoryOverride && (
+              <select
+                value={formData.category}
+                onChange={(e) =>
+                  setFormData({ ...formData, category: e.target.value as ActionCategory })
+                }
+                className="mt-3 w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+                required
+              >
+                {documentType === 'FSD' ? (
+                  FSD_CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="MeansOfEscape">Means of Escape</option>
+                    <option value="DetectionAlarm">Detection & Alarm</option>
+                    <option value="EmergencyLighting">Emergency Lighting</option>
+                    <option value="Compartmentation">Compartmentation</option>
+                    <option value="FireDoors">Fire Doors</option>
+                    <option value="FireFighting">Fire Fighting Equipment</option>
+                    <option value="Management">Management & Procedures</option>
+                    <option value="Housekeeping">Housekeeping</option>
+                    <option value="Other">Other</option>
+                  </>
+                )}
+              </select>
+            )}
           </div>
 
-          {documentType !== 'FSD' && (
-          <div className="border border-neutral-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-neutral-700 mb-3">
-              Critical Triggers (check if applicable)
-            </label>
+          {documentType !== 'FSD' && <div className="border border-neutral-200 rounded-lg p-4">
+            <button
+              type="button"
+              onClick={() => setShowRuleInputs(!showRuleInputs)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div>
+                <span className="block text-sm font-medium text-neutral-700">Advanced rule inputs</span>
+                <span className="block text-xs text-neutral-500 mt-1">Hidden by default. Use only when observed triggers must change the derived priority.</span>
+              </div>
+              <span className="text-sm font-medium text-blue-700">{showRuleInputs ? 'Hide' : 'Show'}</span>
+            </button>
+            <div className={showRuleInputs ? 'mt-4' : 'hidden'}>
+                <label className="block text-sm font-medium text-neutral-700 mb-3">
+                  Critical Triggers (check if applicable)
+                </label>
             <div className="space-y-2">
               {/* Show FRA triggers if FRA is enabled */}
               {hasFra && (
@@ -1037,17 +1095,17 @@ export default function AddActionModal({
                   ))}
                 </>
               )}
+              </div>
             </div>
-          </div>
-          )}
+          </div>}
 
-          <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-neutral-700">Computed Severity:</span>
+              <span className="text-sm font-medium text-neutral-700">Derived severity:</span>
               <span className="text-lg font-bold text-neutral-900">{severityTier}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-neutral-700">Priority Band:</span>
+              <span className="text-sm font-medium text-neutral-700">Suggested priority:</span>
               <span
                 className={`inline-flex px-3 py-1 text-sm font-bold rounded border ${getPriorityColor(
                   priorityBand
@@ -1057,7 +1115,7 @@ export default function AddActionModal({
               </span>
             </div>
             <p className="text-xs text-neutral-500 mt-2">
-              T4 → P1 (Material Life Safety Risk) • T3 → P2 (Significant Deficiency) • T2 → P3 (Improvement Required) • T1 → P4 (Minor)
+              Why this priority? It is calculated from the module category, source context and any advanced rule inputs. T4 → P1, T3 → P2, T2 → P3, T1 → P4.
             </p>
           </div>
 
@@ -1115,7 +1173,7 @@ export default function AddActionModal({
             <p className="text-xs text-neutral-600 mt-2">
               Selected timeframe <strong>{formatTimescale(effectiveTimescale)}</strong> will create target date <strong>{formData.targetDate || 'manual / not set'}</strong>.
             </p>
-            {isTimescaleOverride && (
+            {isTimescaleRelaxation && (
               <div className="mt-2 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-700">
@@ -1126,7 +1184,7 @@ export default function AddActionModal({
             )}
           </div>
 
-          {isTimescaleOverride && (
+          {isTimescaleRelaxation && (
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
                 Override Justification <span className="text-red-600">*</span>

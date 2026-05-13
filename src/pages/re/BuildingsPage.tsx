@@ -10,7 +10,7 @@ export default function BuildingsPage() {
   return (
     <div className="p-4">
       <button
-        onClick={() => navigate(`/documents/${id}/workspace`)}
+        onClick={() => navigate(`/documents/${id}`)}
         className="mb-4 px-3 py-2 border rounded"
       >
         ← Back to Modules

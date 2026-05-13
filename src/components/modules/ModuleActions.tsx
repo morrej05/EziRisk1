@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Plus, AlertCircle, ChevronRight, Trash2 } from 'lucide-react';
+import { Plus, AlertCircle, ChevronRight, Trash2, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import AddActionModal from '../actions/AddActionModal';
 import ActionDetailModal from '../actions/ActionDetailModal';
 import FeedbackModal from '../FeedbackModal';
 import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { uploadAttachment } from '../../utils/evidenceManagement';
 import {
   filterReRecommendationsByScope,
   hasReRecommendationWorkflow,
@@ -74,6 +75,7 @@ export default function ModuleActions({
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
+  const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
 
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -125,6 +127,57 @@ export default function ModuleActions({
     fetchActions();
     fetchDocumentStatus();
   }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey, isModuleTypeLoaded]);
+
+
+  const handleInlineEvidenceUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0 || !user?.id) return;
+
+    setIsUploadingEvidence(true);
+    try {
+      const { data: docData, error: docError } = await supabase
+        .from('documents')
+        .select('organisation_id, base_document_id')
+        .eq('id', documentId)
+        .single();
+
+      if (docError || !docData) throw docError || new Error('Document not found');
+
+      let successCount = 0;
+      for (const file of Array.from(files)) {
+        const result = await uploadAttachment(
+          docData.organisation_id,
+          documentId,
+          docData.base_document_id,
+          file,
+          undefined,
+          moduleInstanceId
+        );
+        if (!result.success) throw new Error(result.error || 'Upload failed');
+        successCount++;
+      }
+
+      setFeedback({
+        isOpen: true,
+        type: 'success',
+        title: 'Evidence linked',
+        message: `${successCount} file${successCount === 1 ? '' : 's'} linked to this module.`,
+        autoClose: true,
+      });
+      fetchActions();
+    } catch (error) {
+      console.error('Error uploading inline evidence:', error);
+      setFeedback({
+        isOpen: true,
+        type: 'error',
+        title: 'Evidence upload failed',
+        message: error instanceof Error ? error.message : 'Please try again.',
+      });
+    } finally {
+      setIsUploadingEvidence(false);
+      event.target.value = '';
+    }
+  };
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -406,7 +459,21 @@ export default function ModuleActions({
     <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-neutral-900">{isReModule ? 'Recommendations from this Module' : 'Actions from this Module'}</h3>
-        <button
+        {documentStatus === 'draft' && (
+        <div className="flex items-center gap-2">
+          <label className={`flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium ${isUploadingEvidence ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}>
+            <Upload className="w-4 h-4" />
+            {isUploadingEvidence ? 'Uploading...' : 'Add evidence'}
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
+              onChange={handleInlineEvidenceUpload}
+              disabled={isUploadingEvidence}
+              className="hidden"
+            />
+          </label>
+          <button
           onClick={() => {
             if (!isReModule) {
               setShowAddModal(true);
@@ -458,6 +525,8 @@ export default function ModuleActions({
           <Plus className="w-4 h-4" />
           {isReModule ? 'Add Recommendation' : buttonLabel}
         </button>
+        </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -577,6 +646,11 @@ export default function ModuleActions({
                     {(action.carried_from_document_id || action.origin_action_id) && (
                       <span className="inline-flex px-1.5 py-0.5 mt-1 text-xs font-medium rounded bg-purple-100 text-purple-700">
                         Carried forward
+                      </span>
+                    )}
+                    {['P1', 'P2'].includes(action.priority_band || '') && action.attachment_count === 0 && (
+                      <span className="inline-flex px-1.5 py-0.5 mt-1 ml-1 text-xs font-medium rounded bg-red-50 text-red-700 border border-red-200">
+                        Evidence needed
                       </span>
                     )}
                   </td>
