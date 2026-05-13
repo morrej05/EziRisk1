@@ -14,6 +14,7 @@ import { compactRecommendationDetail, type RecommendationDetail } from '../../li
 import { areActionTextsNearDuplicate } from '../../lib/actions/actionSourceLinks';
 import { getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
 import { deriveFsdProfessionalActionText } from '../../lib/fsd/fsdActionWording';
+import { getPriorityExplanation } from '../recommendations/RecommendationWorkflow';
 
 interface AddActionModalProps {
   documentId: string;
@@ -27,9 +28,9 @@ interface AddActionModalProps {
 
 const TIMESCALE_OPTIONS = [
   { value: 'immediate', label: 'Immediate' },
-  { value: '7d', label: '≤ 7 days' },
-  { value: '30d', label: '≤ 30 days' },
-  { value: '90d', label: '≤ 90 days' },
+  { value: '7d', label: 'Within 7 days' },
+  { value: '30d', label: 'Within 30 days' },
+  { value: '90d', label: 'Within 90 days' },
   { value: 'next_review', label: 'Next Review' },
   { value: 'custom', label: 'Custom' },
 ];
@@ -45,17 +46,17 @@ function toLocalIsoDate(date: Date): string {
 function formatSuggestedCompletion(value: string): string {
   switch (value) {
     case 'immediate':
-      return 'Suggested: complete immediately';
+      return 'Suggested completion: Immediately';
     case '7d':
-      return 'Suggested: complete within 7 days';
+      return 'Suggested completion: Within 7 days';
     case '30d':
-      return 'Suggested: complete within 30 days';
+      return 'Suggested completion: Within 30 days';
     case '90d':
-      return 'Suggested: complete within 90 days';
+      return 'Suggested completion: Within 90 days';
     case 'next_review':
-      return 'Suggested: complete by next scheduled review';
+      return 'Suggested completion: By the next scheduled review';
     default:
-      return 'Suggested timeframe to be agreed';
+      return 'Suggested completion: To be agreed';
   }
 }
 
@@ -822,7 +823,7 @@ export default function AddActionModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-neutral-900">Add Action</h2>
+          <h2 className="text-xl font-bold text-neutral-900">Add Recommendation</h2>
           <button
             onClick={onClose}
             className="text-neutral-400 hover:text-neutral-600 transition-colors"
@@ -890,7 +891,7 @@ export default function AddActionModal({
                 ))}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Priority-derived timeframe</label>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Suggested completion</label>
                     <div className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800">
                       {formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale)}
                     </div>
@@ -1123,7 +1124,7 @@ export default function AddActionModal({
               </span>
             </div>
             <p className="text-xs text-neutral-500 mt-2">
-              Why this priority? It is calculated from the module category, source context and any advanced rule inputs. T4 → P1, T3 → P2, T2 → P3, T1 → P4.
+              Why this priority? {getPriorityExplanation(priorityBand)}
             </p>
           </div>
 
@@ -1155,7 +1156,7 @@ export default function AddActionModal({
 
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Priority-derived timeframe <span className="text-red-600">*</span>
+              Suggested completion <span className="text-red-600">*</span>
             </label>
             <select
               value={effectiveTimescale}
@@ -1245,7 +1246,7 @@ export default function AddActionModal({
                   : 'bg-neutral-900 text-white hover:bg-neutral-800'
               }`}
             >
-              {isSubmitting ? 'Creating...' : 'Create Action'}
+              {isSubmitting ? 'Creating...' : 'Create Recommendation'}
             </button>
           </div>
         </form>
