@@ -145,6 +145,7 @@ export function buildModuleSections(modules: ModuleInstance[]): ModuleSection[] 
           && !key.startsWith('FSD_')
           && !key.startsWith('DSEAR_')
           && !key.startsWith('RE_')
+          && key !== 'A7_REVIEW_ASSURANCE'
           && key !== 'RISK_ENGINEERING';
       })),
     },

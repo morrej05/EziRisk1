@@ -42,8 +42,21 @@ function toLocalIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function formatTimescale(value: string): string {
-  return TIMESCALE_OPTIONS.find((option) => option.value === value)?.label || value || 'Not set';
+function formatSuggestedCompletion(value: string): string {
+  switch (value) {
+    case 'immediate':
+      return 'Suggested: complete immediately';
+    case '7d':
+      return 'Suggested: complete within 7 days';
+    case '30d':
+      return 'Suggested: complete within 30 days';
+    case '90d':
+      return 'Suggested: complete within 90 days';
+    case 'next_review':
+      return 'Suggested: complete by next scheduled review';
+    default:
+      return 'Suggested timeframe to be agreed';
+  }
 }
 
 function targetDateFromTimescale(timescale: string, baseDate = new Date()): string {
@@ -600,7 +613,7 @@ export default function AddActionModal({
       const recommendationDetail = compactRecommendationDetail({
         ...formData.recommendationDetail,
         recommendation: formData.recommendationDetail.recommendation || normalizedActionText,
-        timeframe_guidance: formData.recommendationDetail.timeframe_guidance || effectiveTimescale,
+        timeframe_guidance: formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale),
         linked_module: formData.recommendationDetail.linked_module || sourceModuleKey || '',
       });
 
@@ -877,16 +890,11 @@ export default function AddActionModal({
                 ))}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Suggested timeframe</label>
-                    <input
-                      value={String(formData.recommendationDetail.timeframe_guidance || '')}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        recommendationDetail: { ...formData.recommendationDetail, timeframe_guidance: e.target.value },
-                      })}
-                      placeholder="e.g. Immediate, 30 days, next review"
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 text-sm bg-white"
-                    />
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Priority-derived timeframe</label>
+                    <div className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800">
+                      {formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale)}
+                    </div>
+                    <p className="mt-1 text-xs text-neutral-500">Adjust the editable target completion date below if assessor judgement requires a different date.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 mb-1">Linked assessment area / module</label>
@@ -1147,7 +1155,7 @@ export default function AddActionModal({
 
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Timescale <span className="text-red-600">*</span>
+              Priority-derived timeframe <span className="text-red-600">*</span>
             </label>
             <select
               value={effectiveTimescale}
@@ -1171,13 +1179,13 @@ export default function AddActionModal({
               ))}
             </select>
             <p className="text-xs text-neutral-600 mt-2">
-              Selected timeframe <strong>{formatTimescale(effectiveTimescale)}</strong> will create target date <strong>{formData.targetDate || 'manual / not set'}</strong>.
+              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 font-medium text-blue-800">{formatSuggestedCompletion(suggestedTimescale)}</span>
             </p>
             {isTimescaleRelaxation && (
               <div className="mt-2 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-700">
-                  You've selected a different timescale than suggested for {priorityBand}.
+                  The selected target timeframe is later than the priority-derived suggestion for {priorityBand}.
                   Please provide a justification below.
                 </p>
               </div>
@@ -1187,14 +1195,14 @@ export default function AddActionModal({
           {isTimescaleRelaxation && (
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Override Justification <span className="text-red-600">*</span>
+                Later target date justification <span className="text-red-600">*</span>
               </label>
               <textarea
                 value={formData.overrideJustification}
                 onChange={(e) =>
                   setFormData({ ...formData, overrideJustification: e.target.value })
                 }
-                placeholder="Explain why this timescale is more appropriate than the suggested timescale..."
+                placeholder="Explain why a later target completion date is appropriate..."
                 rows={3}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
                 required
@@ -1204,7 +1212,7 @@ export default function AddActionModal({
 
           <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
             <label className="block text-sm font-semibold text-neutral-800 mb-2">
-              Due Date / Target Date
+              Target completion date
             </label>
             <input
               type="date"
@@ -1216,7 +1224,7 @@ export default function AddActionModal({
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
             />
             <p className="text-xs text-neutral-500 mt-1">
-              Auto-populated from the selected timescale (7, 30 or 90 days where applicable). You can override it manually, or clear it for custom/manual scheduling.
+              Auto-populated from the priority-derived timeframe. You can change it manually; a later target requires justification.
             </p>
           </div>
 

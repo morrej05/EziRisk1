@@ -455,8 +455,9 @@ export default function FRA1FireHazardsForm({
     }
   };
 
-  const handleQuickAction = (template: QuickActionTemplate) => {
-    setQuickActionTemplate(template);
+  const handleQuickAction = async (template: QuickActionTemplate) => {
+    await handleSave();
+    setQuickActionTemplate({ ...template, source: template.source || 'recommendation' });
     setShowActionModal(true);
   };
 
@@ -739,7 +740,7 @@ export default function FRA1FireHazardsForm({
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Quick Add: Strengthen smoking controls
+                Add recommendation: Strengthen smoking controls
               </button>
             </div>
           )}
@@ -1002,7 +1003,7 @@ export default function FRA1FireHazardsForm({
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Quick Add: Implement Li-ion charging controls
+                Add recommendation: Implement Li-ion charging controls
               </button>
             </div>
           )}
@@ -1262,7 +1263,7 @@ export default function FRA1FireHazardsForm({
                   className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
                 >
                   <Plus className="w-4 h-4" />
-                  Quick Add: {formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' ? 'Rectify C1/C2 Observations' : 'Request EICR Evidence'}
+                  Add recommendation: {formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' ? 'Rectify C1/C2 Observations' : 'Request EICR Evidence'}
                 </button>
               </div>
             )}
@@ -1367,6 +1368,28 @@ export default function FRA1FireHazardsForm({
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
               />
             </div>
+
+
+            {(formData.lightning.lightning_protection_present === 'unknown' ||
+              formData.lightning.lightning_risk_assessment_completed === 'no' ||
+              formData.lightning.lightning_risk_assessment_completed === 'unknown') && !hasDetailedIgnitionSource && (
+              <div className="pt-4 border-t border-neutral-200">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleQuickAction({
+                      action: 'Verify lightning exposure and protection arrangements, including lightning risk assessment status, inspection/test records and remediation of any identified defects.',
+                      likelihood: 3,
+                      impact: 4,
+                    })
+                  }
+                  className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add recommendation: Verify lightning protection arrangements
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1375,7 +1398,7 @@ export default function FRA1FireHazardsForm({
             Duct & Extract Cleaning
           </h3>
           <p className="text-sm text-neutral-600 mb-4">
-            Extract ventilation and cleaning regimes
+            Primary extract ventilation and cleaning record. Use cooking / kitchen source-card recommendations for action linkage to avoid duplicate duct-cleaning actions.
           </p>
 
           <div className="space-y-4">
@@ -1686,6 +1709,7 @@ export default function FRA1FireHazardsForm({
           }}
           defaultAction={quickActionTemplate?.action}
           source={quickActionTemplate?.source}
+          sourceModuleKey={moduleInstance.module_key}
         />
       )}
     </div>

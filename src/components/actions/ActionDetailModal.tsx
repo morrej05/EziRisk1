@@ -623,7 +623,7 @@ export default function ActionDetailModal({
                   ['consequence', 'Risk implication / consequence'],
                   ['rationale', 'Recommendation rationale'],
                   ['standards_reference', 'Standards / guidance reference'],
-                  ['timeframe_guidance', 'Suggested timeframe'],
+                  ['timeframe_guidance', 'Priority-derived timeframe'],
                   ['existing_controls', 'Existing controls noted'],
                   ['evidence_notes', 'Evidence basis / linked evidence'],
                   ['linked_module', 'Linked assessment area / module'],
@@ -684,7 +684,7 @@ export default function ActionDetailModal({
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-2">Due Date / Target Date</h3>
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Target completion date</h3>
               <div className="flex items-center gap-2 h-full">
                 {getStatusIcon(status)}
                 <span className="text-neutral-900 font-medium">
@@ -734,7 +734,7 @@ export default function ActionDetailModal({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                Back to Actions Register
+                {returnToPath && returnToPath !== '/dashboard/actions' ? 'Back to originating module' : 'Back to Actions Register'}
               </button>
               <button
                 type="button"

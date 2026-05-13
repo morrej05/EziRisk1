@@ -928,6 +928,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
 
       {modalAction && user?.id && organisation?.id && (
         <ActionDetailModal
+          returnTo={returnToPath || (selectedModuleId ? `/documents/${id}/workspace?m=${selectedModuleId}` : undefined)}
           action={{
             ...modalAction,
             document: document
