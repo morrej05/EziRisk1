@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Link2, Plus, RefreshCw } from 'lucide-react';
+import AddActionModal from './AddActionModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
@@ -13,7 +14,6 @@ import {
   detailedFindingNeedsRecommendation,
   fetchExistingActionsForFinding,
   fetchFindingLinks,
-  targetDateFromTimescale,
   type ActionSourceLink,
   type DetailedFindingAssessment,
   type ExistingActionOption,
@@ -58,22 +58,6 @@ function describeSupabaseError(error: unknown): string {
   ].filter(Boolean).join('; ');
 }
 
-function deriveFindingCategory(moduleKey: string, sourceAssessmentLabel: string): string {
-  if (moduleKey.startsWith('FRA_')) {
-    const normalized = sourceAssessmentLabel.toLowerCase();
-    if (normalized.includes('electrical')) return 'Electrical';
-    if (normalized.includes('smoking')) return 'Smoking controls';
-    if (normalized.includes('hot work')) return 'Hot works';
-    if (normalized.includes('cooking') || normalized.includes('kitchen')) return 'Cooking / kitchen processes';
-    if (normalized.includes('portable heater') || normalized.includes('heating')) return 'Heating / appliances';
-    if (normalized.includes('dsear') || normalized.includes('hazardous substances')) return 'Dangerous substances / DSEAR';
-    if (normalized.includes('arson')) return 'Arson / security';
-    return 'Fire hazards / ignition sources';
-  }
-
-  return moduleKey || 'Other';
-}
-
 function getLinkedActionCreateErrorMessage(error: unknown): string {
   if (import.meta.env.DEV) {
     return `Could not create the linked recommendation. ${describeSupabaseError(error)}`;
@@ -115,6 +99,8 @@ export default function DetailedFindingActionLink({
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [defaultRecommendationText, setDefaultRecommendationText] = useState('');
 
   const needsRecommendation = useMemo(() => detailedFindingNeedsRecommendation(assessment), [assessment]);
   const activeLinks = links.filter(isActiveLinkedAction);
@@ -164,7 +150,7 @@ export default function DetailedFindingActionLink({
     );
 
     if (exactDuplicateLink?.actions) {
-      setError(`This finding already has an identical linked recommendation (${formatActionRef(exactDuplicateLink.actions)}). Open that action or write a genuinely different additional recommendation.`);
+      setError(`An identical linked recommendation already exists (${formatActionRef(exactDuplicateLink.actions)}). Linked recommendation shown below; change the wording if you need a genuinely different additional recommendation.`);
       return false;
     }
 
@@ -247,87 +233,33 @@ export default function DetailedFindingActionLink({
     onLinked?.();
   };
 
-  const handleCreateRecommendation = async () => {
-    const organisationId = organisation?.id;
-    if (!organisationId) {
-      setError('No organisation is selected.');
+  const handleCreateRecommendation = () => {
+    const recommendation = buildRecommendationFromFinding({ assessment, sourceAssessmentLabel, moduleKey });
+    setDefaultRecommendationText(recommendation.recommendedAction);
+    setError(null);
+    setShowAddModal(true);
+  };
+
+  const handleRecommendationCreated = async (actionId?: string) => {
+    setShowAddModal(false);
+    if (!actionId) {
+      await loadLinks();
       return;
     }
 
     setIsCreating(true);
     setError(null);
-    let createdActionId: string | null = null;
     try {
       const latestLinks = await fetchFindingLinks({ documentId, moduleInstanceId, sourceAssessmentType, sourceAssessmentKey });
-      await archiveInactiveFindingLinks(latestLinks);
-
-      const recommendation = buildRecommendationFromFinding({ assessment, sourceAssessmentLabel, moduleKey });
-      if (!confirmNearDuplicateForSource(recommendation.recommendedAction, latestLinks)) {
+      if (latestLinks.some((link) => !link.deleted_at && link.action_id === actionId)) {
         setLinks(latestLinks);
         return;
       }
-      const matchingExistingAction = existingActions.find(
-        (action) => !latestLinks.some((link) => !link.deleted_at && link.action_id === action.id) &&
-          action.recommended_action.trim().toLowerCase() === recommendation.recommendedAction.trim().toLowerCase()
-      );
-
-      if (matchingExistingAction) {
-        await createSourceLink(matchingExistingAction.id);
-        await loadLinks();
-        return;
-      }
-
-      const actionPayload = {
-        organisation_id: organisationId,
-        document_id: documentId,
-        source_document_id: documentId,
-        module_instance_id: moduleInstanceId,
-        recommended_action: recommendation.recommendedAction,
-        status: 'open',
-        priority_band: recommendation.priority,
-        severity_tier: recommendation.severity,
-        timescale: recommendation.timescale,
-        target_date: targetDateFromTimescale(recommendation.timescale),
-        source: 'recommendation',
-        finding_category: deriveFindingCategory(moduleKey, sourceAssessmentLabel),
-        recommendation_detail: recommendation.detail,
-      };
-
-      const { data: action, error: actionError } = await supabase
-        .from('actions')
-        .insert([actionPayload])
-        .select('id')
-        .single();
-
-      if (actionError) {
-        logSupabaseFailure('actions.insert', actionPayload, actionError);
-        throw actionError;
-      }
-      createdActionId = action.id;
-      await createSourceLink(action.id);
-      createdActionId = null;
+      await archiveInactiveFindingLinks(latestLinks);
+      await createSourceLink(actionId);
       await loadLinks();
     } catch (createError) {
-      if (createdActionId) {
-        const rollbackPayload = {
-          id: createdActionId,
-          document_id: documentId,
-          module_instance_id: moduleInstanceId,
-          deleted_at: new Date().toISOString(),
-        };
-        const { error: rollbackError } = await supabase
-          .from('actions')
-          .update({ deleted_at: rollbackPayload.deleted_at })
-          .eq('id', createdActionId)
-          .eq('document_id', documentId)
-          .eq('module_instance_id', moduleInstanceId);
-
-        if (rollbackError) {
-          logSupabaseFailure('actions.update.rollback_soft_delete', rollbackPayload, rollbackError);
-        }
-      }
-
-      console.error('Failed to create recommendation from detailed finding:', createError);
+      console.error('Failed to link recommendation from detailed finding:', createError);
       setError(getLinkedActionCreateErrorMessage(createError));
     } finally {
       setIsCreating(false);
@@ -362,13 +294,11 @@ export default function DetailedFindingActionLink({
     }
   };
 
-  if (!needsRecommendation && visibleLinks.length === 0 && !legacyLinkedActionReference) return null;
-
   return (
     <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-blue-950">Recommendation linkage</p>
+          <p className="text-sm font-semibold text-blue-950">Recommendations</p>
           {visibleLinks.length > 0 ? (
             <div className="mt-1 space-y-1">
               {visibleLinks.map((link) => link.actions && (
@@ -386,10 +316,10 @@ export default function DetailedFindingActionLink({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-blue-900">This finding can be linked to the central action register.</p>
+            <p className="text-sm text-blue-900">Add a recommendation for this area when action is needed, or add one manually for assessor judgement.</p>
           )}
           {legacyLinkedActionReference && (
-            <p className="text-xs text-blue-800 mt-1">Legacy linked action reference: {legacyLinkedActionReference}</p>
+            <p className="text-xs text-blue-800 mt-1">Linked recommendation: {legacyLinkedActionReference}</p>
           )}
         </div>
         <button type="button" onClick={loadLinks} disabled={isLoading} className="text-blue-700 hover:text-blue-900" title="Refresh linked recommendations">
@@ -429,6 +359,18 @@ export default function DetailedFindingActionLink({
       </div>
 
       {error && <p className="text-xs text-red-700">{error}</p>}
+
+      {showAddModal && (
+        <AddActionModal
+          documentId={documentId}
+          moduleInstanceId={moduleInstanceId}
+          defaultAction={defaultRecommendationText}
+          source="recommendation"
+          sourceModuleKey={moduleKey}
+          onClose={() => setShowAddModal(false)}
+          onActionCreated={handleRecommendationCreated}
+        />
+      )}
     </div>
   );
 }

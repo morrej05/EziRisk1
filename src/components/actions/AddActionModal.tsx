@@ -20,7 +20,7 @@ interface AddActionModalProps {
   documentId: string;
   moduleInstanceId: string;
   onClose: () => void;
-  onActionCreated: () => void;
+  onActionCreated: (actionId?: string) => void;
   defaultAction?: string;
   source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
   sourceModuleKey?: string;
@@ -717,7 +717,7 @@ export default function AddActionModal({
   };
 
   const handleFinish = () => {
-    onActionCreated();
+    onActionCreated(createdActionId || undefined);
     onClose();
   };
 
@@ -728,19 +728,19 @@ export default function AddActionModal({
           <div className="bg-green-50 border-b border-green-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <CheckCircle className="w-6 h-6 text-green-600" />
-              <h2 className="text-xl font-bold text-green-900">Action Created!</h2>
+              <h2 className="text-xl font-bold text-green-900">Recommendation Created!</h2>
             </div>
           </div>
 
           <div className="p-6">
             <p className="text-neutral-700 mb-4">
-              Would you like to attach evidence or photos to this action?
+              No evidence added yet. Add photos, documents or notes to support this recommendation.
             </p>
 
             {uploadedFilesCount > 0 && (
               <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm text-green-800 font-medium">
-                  {uploadedFilesCount} file{uploadedFilesCount !== 1 ? 's' : ''} attached successfully
+                  {uploadedFilesCount} evidence item{uploadedFilesCount !== 1 ? 's' : ''} linked to this recommendation.
                 </p>
               </div>
             )}
@@ -835,7 +835,7 @@ export default function AddActionModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Recommended Action <span className="text-red-600">*</span>
+              Recommendation / action required <span className="text-red-600">*</span>
             </label>
             <textarea
               value={formData.recommendedAction}
@@ -850,15 +850,57 @@ export default function AddActionModal({
             />
           </div>
 
-          <div className="border border-blue-100 rounded-lg bg-blue-50/40">
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Observation / finding</label>
+              <textarea
+                value={formData.recommendationDetail.observation || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  recommendationDetail: { ...formData.recommendationDetail, observation: e.target.value },
+                })}
+                placeholder="What was found or observed?"
+                rows={2}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Risk implication / consequence</label>
+              <textarea
+                value={formData.recommendationDetail.consequence || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  recommendationDetail: { ...formData.recommendationDetail, consequence: e.target.value },
+                })}
+                placeholder="Why does this matter from a fire safety perspective?"
+                rows={2}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Evidence</label>
+              <textarea
+                value={formData.recommendationDetail.evidence_notes || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  recommendationDetail: { ...formData.recommendationDetail, evidence_notes: e.target.value },
+                })}
+                placeholder="No evidence added yet. Add photos, documents or notes to support this recommendation."
+                rows={2}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="border border-neutral-200 rounded-lg bg-neutral-50">
             <button
               type="button"
               onClick={() => setShowConsultancyDetail(!showConsultancyDetail)}
               className="w-full flex items-center justify-between px-4 py-3 text-left"
             >
               <div>
-                <div className="text-sm font-semibold text-neutral-900">Consultancy detail (optional)</div>
-                <div className="text-xs text-neutral-600">Add finding, rationale, standards context and evidence basis for client-ready reports.</div>
+                <div className="text-sm font-semibold text-neutral-900">Advanced</div>
+                <div className="text-xs text-neutral-600">Standards, existing controls, assurance commentary, management response and source/module metadata.</div>
               </div>
               <span className="text-sm font-medium text-blue-700">{showConsultancyDetail ? 'Hide' : 'Expand'}</span>
             </button>
@@ -866,12 +908,9 @@ export default function AddActionModal({
             {showConsultancyDetail && (
               <div className="px-4 pb-4 grid grid-cols-1 gap-3">
                 {[
-                  ['observation', 'Observation / finding', 'What was found or observed?'],
-                  ['consequence', 'Risk implication / consequence', 'Why does this matter from a fire safety perspective?'],
                   ['rationale', 'Recommendation rationale', 'Explain why the recommendation is proportionate and defensible.'],
                   ['standards_reference', 'Standards / guidance reference', 'e.g. Fire Safety Order, PAS 79, BS 9999, BS 5839, BS 5266, Approved Document B...'],
                   ['existing_controls', 'Existing controls noted', 'Record relevant existing controls or interim measures.'],
-                  ['evidence_notes', 'Evidence basis / linked evidence', 'Photo refs, inspection notes, document refs or witness evidence.'],
                   ['assessor_commentary', 'Assessor commentary', 'Professional judgement, limitations or client-specific context.'],
                   ['management_response', 'Management response / status notes', 'Optional client response, agreed action or deferral note.'],
                 ].map(([key, label, placeholder]) => (

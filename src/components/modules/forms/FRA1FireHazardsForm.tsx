@@ -5,7 +5,7 @@ import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanit
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
-import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
+import ModuleAreaRecommendationControls from '../ModuleAreaRecommendationControls';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
@@ -608,37 +608,39 @@ export default function FRA1FireHazardsForm({
               type="text"
               value={assessment.evidence_references || ''}
               onChange={(e) => updateSourceAssessment(source.key, { evidence_references: e.target.value })}
-              placeholder="Evidence chips/uploads are linked at document/module/action level where available; add legacy references only if needed."
+              placeholder="No evidence added yet. Add photos, documents or notes to support this recommendation."
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
             />
             <p className="mt-1 text-xs text-neutral-500">
-              Evidence uploaded through linked recommendations inherits the document and module context. Source key: {source.key}.
+              Evidence added through the recommendation is kept with this area.
             </p>
           </div>
 
           {(needsAction || highPriorityNoEvidence) && (
             <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              {needsAction && <p><AlertTriangle className="mr-1 inline h-4 w-4" />Action relationship required where a deficiency/action trigger is recorded.</p>}
-              {highPriorityNoEvidence && <p><AlertTriangle className="mr-1 inline h-4 w-4" />High-significance source issue has no evidence reference yet.</p>}
+              {needsAction && <p><AlertTriangle className="mr-1 inline h-4 w-4" />Action required.</p>}
+              {highPriorityNoEvidence && <p><AlertTriangle className="mr-1 inline h-4 w-4" />Needs evidence.</p>}
             </div>
           )}
 
-          {needsAction && (
-            <DetailedFindingActionLink
+          <ModuleAreaRecommendationControls
               documentId={document.id}
               moduleInstanceId={moduleInstance.id}
               moduleKey={moduleInstance.module_key}
-              sourceAssessmentType="ignition_source_assessments"
-              sourceAssessmentKey={source.key}
-              sourceAssessmentLabel={source.label}
-              assessment={assessment}
-              legacyLinkedActionReference={assessment.linked_action_reference}
-            />
-          )}
+            sourceAssessmentType="ignition_source_assessments"
+            areaKey={source.key}
+            areaLabel={source.label}
+            defaultRecommendation={source.actionText}
+            defaultObservation={assessment.condition_adequacy || source.prompt}
+            severity={assessment.risk_significance}
+            evidenceContext={assessment.evidence_references}
+            assessment={assessment}
+            legacyLinkedActionReference={assessment.linked_action_reference}
+          />
 
           {assessment.linked_action_reference && !needsAction && (
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
-              Legacy linked action reference preserved: {assessment.linked_action_reference}
+              Linked recommendation preserved: {assessment.linked_action_reference}
             </div>
           )}
         </div>
@@ -1267,6 +1269,32 @@ export default function FRA1FireHazardsForm({
                 </button>
               </div>
             )}
+
+            <ModuleAreaRecommendationControls
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+              moduleKey={moduleInstance.module_key}
+              sourceAssessmentType="fixed_wiring"
+              areaKey="fixed_wiring_eicr"
+              areaLabel="Fixed wiring / EICR"
+              defaultObservation={formData.electrical_safety.eicr_notes || 'Fixed wiring and EICR evidence review.'}
+              defaultRiskImplication="Unverified or defective fixed wiring can increase ignition risk and may compromise fire safety management assurance."
+              defaultRecommendation={formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes'
+                ? 'Rectify unresolved C1/C2 electrical observations identified in the EICR using a competent electrical contractor.'
+                : 'Obtain and review current EICR evidence and complete any required remedial works.'}
+              severity={formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' ? 'high' : formData.electrical_safety.eicr_evidence_seen === 'no' ? 'medium' : 'low'}
+              assessment={{
+                status: formData.electrical_safety.eicr_satisfactory === 'unsatisfactory' ? 'inadequate' : 'unknown',
+                observations: formData.electrical_safety.eicr_notes,
+                deficiencies: formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes'
+                  ? 'Unresolved C1/C2 electrical observations require competent remediation.'
+                  : formData.electrical_safety.eicr_evidence_seen === 'no'
+                    ? 'Current EICR evidence has not been seen.'
+                    : '',
+                risk_significance: formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' ? 'high' : formData.electrical_safety.eicr_evidence_seen === 'no' ? 'medium' : 'low',
+                recommended_action_trigger: formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' || formData.electrical_safety.eicr_evidence_seen === 'no' ? 'action_required' : 'none',
+              }}
+            />
           </div>
         </div>
 
@@ -1390,6 +1418,30 @@ export default function FRA1FireHazardsForm({
                 </button>
               </div>
             )}
+
+            <ModuleAreaRecommendationControls
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+              moduleKey={moduleInstance.module_key}
+              sourceAssessmentType="lightning_protection"
+              areaKey="lightning_protection"
+              areaLabel="Lightning protection"
+              defaultObservation={formData.lightning.notes || 'Lightning protection and risk assessment review.'}
+              defaultRiskImplication="Unverified lightning exposure or protection arrangements can leave the premises vulnerable to ignition, damage to safety-critical systems and avoidable interruption following storm activity."
+              defaultRecommendation="Verify lightning exposure and protection arrangements, including risk assessment status, inspection/test records and remediation of any identified defects."
+              severity={formData.lightning.lightning_protection_present === 'no' || formData.lightning.lightning_risk_assessment_completed === 'no' ? 'medium' : 'unknown'}
+              assessment={{
+                status: formData.lightning.lightning_protection_present === 'no' || formData.lightning.lightning_risk_assessment_completed === 'no' ? 'inadequate' : 'unknown',
+                observations: formData.lightning.notes,
+                deficiencies: formData.lightning.lightning_protection_present === 'no'
+                  ? 'Lightning protection is absent or has not been justified by risk assessment.'
+                  : formData.lightning.lightning_risk_assessment_completed === 'no' || formData.lightning.lightning_risk_assessment_completed === 'unknown'
+                    ? 'Lightning risk assessment status is not confirmed.'
+                    : '',
+                risk_significance: formData.lightning.lightning_protection_present === 'no' || formData.lightning.lightning_risk_assessment_completed === 'no' ? 'medium' : 'unknown',
+                recommended_action_trigger: formData.lightning.lightning_protection_present === 'no' || formData.lightning.lightning_risk_assessment_completed === 'no' || formData.lightning.lightning_risk_assessment_completed === 'unknown' ? 'action_required' : 'none',
+              }}
+            />
           </div>
         </div>
 
