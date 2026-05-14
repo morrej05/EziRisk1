@@ -119,6 +119,7 @@ export default function ActionDetailModal({
   const [isSavingDetail, setIsSavingDetail] = useState(false);
   const [detail, setDetail] = useState<RecommendationDetail>(() => normalizeRecommendationDetail(action.recommendation_detail));
   const [sourceLinks, setSourceLinks] = useState<ActionSourceLinkDetail[]>([]);
+  const [showAdvancedDetail, setShowAdvancedDetail] = useState(false);
 
   useEffect(() => {
     fetchAttachments();
@@ -600,8 +601,8 @@ export default function ActionDetailModal({
           <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4">
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
-                <h3 className="text-sm font-semibold text-neutral-900">Consultancy recommendation detail</h3>
-                <p className="text-xs text-neutral-600 mt-1">Optional structured finding, rationale, standards and evidence context used in professional PDF recommendations.</p>
+                <h3 className="text-sm font-semibold text-neutral-900">Recommendation detail</h3>
+                <p className="text-xs text-neutral-600 mt-1">Default view shows assessor-facing action, finding, risk, evidence, priority and target date only.</p>
               </div>
               {documentStatus === 'draft' && (
                 <button
@@ -617,38 +618,129 @@ export default function ActionDetailModal({
             {!hasRecommendationDetail(detail) && documentStatus !== 'draft' ? (
               <p className="text-sm text-neutral-500">No enhanced recommendation detail has been recorded.</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {[
-                  ['observation', 'Observation / finding'],
-                  ['consequence', 'Risk implication / consequence'],
-                  ['rationale', 'Recommendation rationale'],
-                  ['standards_reference', 'Standards / guidance reference'],
-                  ['timeframe_guidance', 'Priority-derived timeframe'],
-                  ['existing_controls', 'Existing controls noted'],
-                  ['evidence_notes', 'Evidence basis / linked evidence'],
-                  ['assessor_commentary', 'Assessor commentary'],
-                  ['management_response', 'Management response / status notes'],
-                ].map(([key, label]) => (
-                  <div key={key} className={key === 'observation' || key === 'consequence' || key === 'rationale' ? 'md:col-span-2' : ''}>
-                    <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
-                    {documentStatus === 'draft' ? (
-                      <textarea
-                        value={String(detail[key as keyof RecommendationDetail] || '')}
-                        onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
-                        rows={key === 'observation' || key === 'consequence' || key === 'rationale' ? 3 : 2}
-                        className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
-                      />
-                    ) : (
-                      <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || '—')}</p>
-                    )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Recommendation / action required</label>
+                  <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 whitespace-pre-wrap">{action.recommended_action}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    ['observation', 'Observation / finding'],
+                    ['consequence', 'Risk implication / consequence'],
+                  ].map(([key, label]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                      {documentStatus === 'draft' ? (
+                        <textarea
+                          value={String(detail[key as keyof RecommendationDetail] || '')}
+                          onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
+                          rows={3}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                        />
+                      ) : (
+                        <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || '—')}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-700">Evidence</p>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {attachments.length > 0
+                          ? `${attachments.length} evidence item${attachments.length === 1 ? '' : 's'} attached`
+                          : 'No evidence added yet'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingFiles || documentStatus !== 'draft'}
+                      className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                      title={documentStatus !== 'draft' ? 'Document is issued - cannot add evidence' : ''}
+                    >
+                      <Upload className="w-4 h-4" />
+                      {isUploadingFiles ? 'Uploading...' : '+ Add evidence'}
+                    </button>
                   </div>
-                ))}
-                {detail.linked_module && (
-                  <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
-                    <div className="text-xs font-semibold text-neutral-700">Linked assessment area</div>
-                    <div className="mt-1 text-sm text-neutral-900">{String(detail.linked_module)}</div>
+                  {attachments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {attachments.slice(0, 4).map((attachment) => (
+                        <span key={attachment.id} className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
+                          <Paperclip className="h-3 w-3" />
+                          {attachment.file_name}
+                        </span>
+                      ))}
+                      {attachments.length > 4 && (
+                        <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600">+{attachments.length - 4} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Priority</label>
+                    <span className={`inline-flex px-3 py-1 text-sm font-bold rounded border ${getPriorityColor(action.priority_band)}`}>
+                      {action.priority_band || 'No Priority'}
+                    </span>
                   </div>
-                )}
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Target completion date</label>
+                    <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{action.target_date ? formatDate(action.target_date) : 'Not set'}</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-blue-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedDetail(!showAdvancedDetail)}
+                    className="text-sm font-medium text-blue-700 hover:text-blue-900"
+                  >
+                    {showAdvancedDetail ? 'Hide Advanced' : 'Show Advanced'}
+                  </button>
+                  {showAdvancedDetail && (
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {[
+                        ['rationale', 'Recommendation rationale'],
+                        ['standards_reference', 'Standards / guidance reference'],
+                        ['existing_controls', 'Existing controls noted'],
+                        ['evidence_notes', 'Legacy evidence notes'],
+                        ['assessor_commentary', 'Assessor commentary'],
+                        ['management_response', 'Management response / status notes'],
+                      ].map(([key, label]) => (
+                        <div key={key} className={key === 'rationale' ? 'md:col-span-2' : ''}>
+                          <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                          {documentStatus === 'draft' ? (
+                            <textarea
+                              value={String(detail[key as keyof RecommendationDetail] || '')}
+                              onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
+                              rows={key === 'rationale' ? 3 : 2}
+                              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                            />
+                          ) : (
+                            <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || '—')}</p>
+                          )}
+                        </div>
+                      ))}
+                      {detail.timeframe_guidance && (
+                        <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                          <div className="text-xs font-semibold text-neutral-700">Legacy priority-derived timeframe</div>
+                          <div className="mt-1 text-sm text-neutral-900">{String(detail.timeframe_guidance)}</div>
+                        </div>
+                      )}
+                      {detail.linked_module && (
+                        <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                          <div className="text-xs font-semibold text-neutral-700">Linked assessment area</div>
+                          <div className="mt-1 text-sm text-neutral-900">{String(detail.linked_module)}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
