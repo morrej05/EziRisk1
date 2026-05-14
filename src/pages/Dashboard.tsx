@@ -173,7 +173,7 @@ export default function Dashboard() {
   };
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return '—';
+    if (!dateString) return 'Not yet recorded';
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
@@ -919,7 +919,7 @@ export default function Dashboard() {
                         return (
                           <tr key={survey.id} className={`hover:bg-slate-50 transition-colors ${isSuperseded ? 'opacity-60' : ''}`}>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                              {survey.company_name || '—'}
+                              {survey.company_name || 'Client not recorded'}
                             </td>
                             <td className="px-6 py-4">
                               <div className="text-sm font-medium text-slate-900">
@@ -939,13 +939,13 @@ export default function Dashboard() {
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                              {industrySector || '—'}
+                              {industrySector || 'Industry sector not recorded'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               {overallScore ? (
                                 <span className="text-2xl font-bold text-slate-900">{overallScore}</span>
                               ) : (
-                                <span className="text-sm text-slate-400">—</span>
+                                <span className="text-sm text-slate-400">Not yet assessed</span>
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -954,7 +954,7 @@ export default function Dashboard() {
                                   {riskBand}
                                 </span>
                               ) : (
-                                <span className="text-sm text-slate-400">—</span>
+                                <span className="text-sm text-slate-400">Not yet assessed</span>
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -991,12 +991,11 @@ export default function Dashboard() {
                                 {permissions.canViewSurveys && (
                                   <button
                                     onClick={() => {
-                                      const isFRA = (survey.survey_type ?? '').toLowerCase() === 'fra';
-  if (isFRA) {
-    navigate(`/report/${survey.id}`);
-  } else {
-    navigate(`/documents/${survey.document_id}`);
-  }
+                                      if (survey.document_id) {
+                                        navigate(`/documents/${survey.document_id}/preview`);
+                                      } else {
+                                        navigate('/reports');
+                                      }
 }}
 
                                     className="text-brand-accent hover:text-brand-accent-hover transition-colors"

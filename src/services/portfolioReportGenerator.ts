@@ -116,15 +116,15 @@ export function generatePortfolioReport(input: PortfolioReportInput): PortfolioR
     portfolioInsights?.summary || '',
     portfolioInsights?.draftCommentary || '',
     ...(portfolioInsights?.priorities || []),
-    !portfolioInsights && input.aiError ? `AI commentary unavailable: ${input.aiError}` : '',
-    !portfolioInsights && !input.aiError ? 'AI commentary has not been generated for this scope.' : '',
+    !portfolioInsights && input.aiError ? `Portfolio commentary unavailable: ${input.aiError}` : '',
+    !portfolioInsights && !input.aiError ? 'Portfolio commentary has not been prepared for this scope.' : '',
   ].filter(Boolean), 'Engineering commentary unavailable.');
 
   const safeguards = [
     'This report reflects only the currently selected portfolio scope and selected window.',
     'Hotspot outputs are prioritisation heuristics and are not validated engineering risk scores.',
     'No underwriting, loss, premium, or compliance certification conclusions are made in this report.',
-    'AI commentary should be reviewed before external circulation.',
+    'Portfolio commentary should be reviewed before external circulation.',
   ];
 
   return {

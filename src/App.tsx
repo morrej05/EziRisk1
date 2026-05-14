@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
 import LandingPage from './pages/LandingPage';
@@ -12,7 +13,6 @@ import DocumentPreviewPage from './pages/documents/DocumentPreviewPage';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import UpgradeSubscription from './pages/UpgradeSubscription';
 import ExternalSurvey from './pages/ExternalSurvey';
-import ReportPreviewPage from './pages/ReportPreviewPage';
 import ArchivedAssessments from './pages/ArchivedAssessments';
 import ClientDocumentView from './pages/ClientDocumentView';
 import PublicDocumentViewer from './pages/PublicDocumentViewer';
@@ -48,6 +48,7 @@ import CookieConsentBanner from './components/CookieConsentBanner';
 import SeoManager from './components/SeoManager';
 import PricingPage from './pages/PricingPage';
 import ContactPage from './pages/ContactPage';
+import { supabase } from './lib/supabase';
 
 
 
@@ -62,6 +63,45 @@ function LegacyActionRouteRedirect() {
   const target = actionId
     ? `/remediation/actions?actionId=${encodeURIComponent(actionId)}`
     : '/remediation/actions';
+
+  return <Navigate to={target} replace />;
+}
+
+
+function LegacyReportRedirect() {
+  const { surveyId } = useParams();
+  const [target, setTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveDocumentPreview() {
+      if (!surveyId) {
+        setTarget('/reports');
+        return;
+      }
+
+      const { data } = await supabase
+        .from('surveys')
+        .select('document_id')
+        .eq('id', surveyId)
+        .maybeSingle();
+
+      if (!cancelled) {
+        setTarget(data?.document_id ? `/documents/${data.document_id}/preview` : '/reports');
+      }
+    }
+
+    resolveDocumentPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [surveyId]);
+
+  if (!target) {
+    return null;
+  }
 
   return <Navigate to={target} replace />;
 }
@@ -271,7 +311,7 @@ function App() {
             path="/report/:surveyId"
             element={
               <AuthedLayout>
-                <ReportPreviewPage />
+                <LegacyReportRedirect />
               </AuthedLayout>
             }
           />

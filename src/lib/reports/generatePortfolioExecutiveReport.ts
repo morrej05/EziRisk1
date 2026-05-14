@@ -100,10 +100,10 @@ export function generatePortfolioExecutiveReport(input: PortfolioExecutiveReport
     aiInsights?.summary || '',
     aiInsights?.draftCommentary || '',
     !aiInsights && input.aiError
-      ? `AI commentary unavailable for this report generation: ${input.aiError}`
+      ? `Portfolio commentary unavailable for this report generation: ${input.aiError}`
       : '',
     !aiInsights && !input.aiError
-      ? 'AI commentary was not generated. This report is based on deterministic scoped portfolio analytics only.'
+      ? 'Portfolio commentary was not prepared. This report is based on deterministic scoped portfolio analytics only.'
       : '',
   ].filter(Boolean), 'Engineering commentary unavailable.');
 
@@ -111,7 +111,7 @@ export function generatePortfolioExecutiveReport(input: PortfolioExecutiveReport
     'This report reflects only the currently selected portfolio scope and selected window.',
     'Hotspot rankings are prioritisation heuristics and are not validated engineering risk scores.',
     'Combined remediation totals are volume-based across different source models and should be interpreted with source context.',
-    'AI-generated commentary should be reviewed before external distribution.',
+    'Portfolio commentary should be reviewed before external distribution.',
   ];
 
   const markdownLines = [

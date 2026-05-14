@@ -285,7 +285,7 @@ export default function SurveyTextEditor({ surveyId, onBack }: SurveyTextEditorP
                 Survey Report Text
               </label>
               <p className="text-sm text-slate-500 mb-4">
-                Write your survey report here. Click "Polish Report" to generate an AI-enhanced version.
+                Write your survey report here. Use polishing to prepare professional wording for review.
               </p>
             </div>
             <AutoExpandTextarea

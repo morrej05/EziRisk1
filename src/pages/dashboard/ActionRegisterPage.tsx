@@ -654,7 +654,7 @@ export default function ActionRegisterPage() {
                     onClick={() => navigate(`/documents/${action.document_id}/workspace?openAction=${action.id}`, { state: { returnTo: '/dashboard/actions' } })}
                   >
                     <td className="px-4 py-3 text-sm font-mono text-neutral-900">
-                      {action.reference_number ?? '—'}
+                      {action.reference_number ?? 'Not assigned'}
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-neutral-900">

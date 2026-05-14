@@ -340,7 +340,7 @@ if (modulesWithoutType.length > 0) {
 
 export function getModuleName(moduleKey: string): string {
   const resolvedKey = resolveModuleKey(moduleKey);
-  return MODULE_CATALOG[resolvedKey]?.name || moduleKey;
+  return MODULE_CATALOG[resolvedKey]?.name || 'Assessment section';
 }
 
 export function getModuleDisplayLabel(moduleKey: string | null | undefined): string {

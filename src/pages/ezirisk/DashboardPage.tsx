@@ -138,7 +138,7 @@ export default function DashboardPage() {
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
           <p className="text-sm text-slate-500">Last Updated Assessment</p>
-          <p className="text-base font-semibold text-slate-900 mt-1">{assessments[0]?.siteName || '—'}</p>
+          <p className="text-base font-semibold text-slate-900 mt-1">{assessments[0]?.siteName || 'No assessment updated yet'}</p>
         </div>
       </div>
 
@@ -242,7 +242,7 @@ export default function DashboardPage() {
                           <div className="text-sm text-slate-500">{assessment.siteName}</div>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-900">{assessment.type}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900">{assessment.surveyor || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900">{assessment.surveyor || 'Not assigned'}</td>
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
