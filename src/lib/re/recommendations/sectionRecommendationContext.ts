@@ -42,9 +42,17 @@ const slugify = (value: string): string =>
 const HOUSEKEEPING_PATTERN = /(^|[_\s:-])housekeeping([_\s:-]|$)/;
 
 const SOURCE_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
-  { pattern: /fixed[_\s:-]*wiring|eicr|electrical[_\s:-]*installation|portable[_\s:-]*(appliance|electrical)|\bpat\b/, category: "Electrical installation" },
-  { pattern: /lithium|battery|charging|electrical[_\s:-]*(ignition|source|equipment|safety)|\belectrical\b/, category: "Electrical ignition sources" },
+  { pattern: /mechanical[_\s:-]*(sparks?|impact|ignition)|impact[_\s:-]*sparks?|friction/, category: "Mechanical ignition sources" },
+  { pattern: /static[_\s:-]*(electricity|control)|electrostatic/, category: "Static electricity control" },
+  { pattern: /hot[_\s:-]*surfaces?/, category: "Hot surfaces" },
+  { pattern: /open[_\s:-]*flames?|smoking[_\s:-]*controls?|open[_\s:-]*flames?[_\s:-]*smoking/, category: "Open flames / smoking controls" },
   { pattern: /hot[_\s:-]*work/, category: "Hot works" },
+  { pattern: /lightning/, category: "Lightning protection" },
+  { pattern: /exothermic|process[_\s:-]*(heat|ignition|control)/, category: "Process ignition control" },
+  { pattern: /battery[_\s:-]*charging|lithium|charging/, category: "Battery charging" },
+  { pattern: /other[_\s:-]*ignition|unknown[_\s:-]*ignition|dsear[_\s:-]*ignition[_\s:-]*source/, category: "DSEAR ignition source control" },
+  { pattern: /electrical[_\s:-]*(ignition|source|equipment|safety)|\belectrical[_\s:-]*equipment\b/, category: "Electrical ignition sources" },
+  { pattern: /fixed[_\s:-]*wiring|eicr|electrical[_\s:-]*installation|portable[_\s:-]*(appliance|electrical)|\bpat\b/, category: "Electrical installation" },
   { pattern: /cooking|kitchen|duct/, category: "Cooking equipment" },
   { pattern: /smoking/, category: "Smoking controls" },
   { pattern: /hazardous[_\s:-]*substances|dangerous[_\s:-]*substances|dsear|explosive[_\s:-]*atmosphere/, category: "Dangerous substances / DSEAR relevance" },
@@ -88,6 +96,7 @@ const MODULE_LABEL_MAP: Record<string, string> = {
   FRA_6_MANAGEMENT_SYSTEMS: "Fire Safety Management",
   FRA_7_EMERGENCY_ARRANGEMENTS: "Emergency Arrangements",
   FRA_8_FIREFIGHTING_EQUIPMENT: "Firefighting Equipment",
+  DSEAR_4_IGNITION_SOURCES: "DSEAR-4 ignition source control",
 };
 
 const MODULE_CATEGORY_MAP: Record<string, string> = {
@@ -105,6 +114,7 @@ const MODULE_CATEGORY_MAP: Record<string, string> = {
   FRA_7_EMERGENCY_ARRANGEMENTS: "Emergency arrangements",
   FRA_8_FIREFIGHTING_EQUIPMENT: "Firefighting equipment",
   FRA_1_HAZARDS: "General fire risk recommendation",
+  DSEAR_4_IGNITION_SOURCES: "DSEAR ignition source control",
 };
 
 function matchPatternCategory(value: string, patterns: Array<{ pattern: RegExp; category: string }>): string | null {
