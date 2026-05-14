@@ -70,6 +70,7 @@ import type { ApprovalStatus } from "../../utils/approvalWorkflow";
 import { getLockedPdfInfo, downloadLockedPdf } from "../../utils/pdfLocking";
 import {
   ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES,
+  validateDocumentForIssue,
   type DocumentIssueStatus,
 } from "../../utils/documentVersioning";
 import {
@@ -97,6 +98,14 @@ import {
 } from "../../utils/actionRegister";
 import ActionDetailModal from "../../components/actions/ActionDetailModal";
 import { buildPdfIdentityOptions } from "../../utils/pdfIdentity";
+import {
+  getValidatorBlockerItems,
+  getValidatorReviewItems,
+  readinessStateLabel,
+  type IssueReadinessItem,
+  type IssueValidatorResult,
+  type ReadinessState,
+} from "../../utils/issueReadiness";
 
 interface Document {
   id: string;
@@ -206,6 +215,10 @@ export default function DocumentOverview() {
   const [unlinkedEvidenceCount, setUnlinkedEvidenceCount] = useState(0);
   const [p1P2ActionsWithoutEvidence, setP1P2ActionsWithoutEvidence] =
     useState(0);
+  const [issueValidation, setIssueValidation] =
+    useState<IssueValidatorResult | null>(null);
+  const [isCheckingIssueReadiness, setIsCheckingIssueReadiness] =
+    useState(false);
   const [explosionSummary, setExplosionSummary] =
     useState<ExplosionSummary | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -294,6 +307,52 @@ export default function DocumentOverview() {
       fetchDefencePack();
     }
   }, [id, organisation?.id]);
+
+
+  useEffect(() => {
+    if (!id || !organisation?.id || !document?.id) {
+      setIssueValidation(null);
+      setIsCheckingIssueReadiness(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const validateReadiness = async () => {
+      setIsCheckingIssueReadiness(true);
+      try {
+        const result = await validateDocumentForIssue(id, organisation.id);
+        if (!cancelled) {
+          setIssueValidation(result);
+        }
+      } catch (error) {
+        console.error("Error validating issue readiness:", error);
+        if (!cancelled) {
+          setIssueValidation({
+            valid: false,
+            errors: ["Unable to validate issue readiness"],
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingIssueReadiness(false);
+        }
+      }
+    };
+
+    validateReadiness();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    id,
+    organisation?.id,
+    document?.id,
+    document?.updated_at,
+    document?.issue_status,
+    document?.approval_status,
+  ]);
 
   useEffect(() => {
     if (!document?.base_document_id || !organisation?.id) {
@@ -1195,93 +1254,137 @@ export default function DocumentOverview() {
     );
   }
 
-  const qualityGateItems = [
+  const hasValidatorModuleBlockers = Boolean(
+    issueValidation?.errors.some((error) =>
+      error.toLowerCase().includes("module"),
+    ),
+  );
+  const hasValidatorApprovalBlockers = Boolean(
+    issueValidation?.errors.some((error) =>
+      error.toLowerCase().includes("approval"),
+    ),
+  );
+  const highPriorityOpenCount = actionCounts.P1 + actionCounts.P2;
+  const reviewAssuranceComplete = modules.some(
+    (m) => m.module_key === "A7_REVIEW_ASSURANCE" && isModuleCompleteForUi(m),
+  );
+  const executiveSummaryPresent = Boolean(
+    document.executive_summary_ai || document.executive_summary_author,
+  );
+  const reportPreviewed = Boolean(
+    document.meta?.report_previewed_at || document.locked_pdf_generated_at,
+  );
+
+  const approvalReadinessDetail = (() => {
+    if (hasValidatorApprovalBlockers) return "Required before issue";
+    if (document.approval_status === "approved") return "Ready to issue";
+    if (document.approval_status === "not_required") {
+      return "Not required for this workflow";
+    }
+    if (document.approval_status === "pending") {
+      return "Awaiting approval. You can still issue if permitted by this workflow.";
+    }
+    return "Approval not yet recorded. You can still issue if permitted by this workflow.";
+  })();
+
+  const reviewGateItems: IssueReadinessItem[] = [
     {
+      key: "mandatory-modules",
       label: "Mandatory modules",
-      detail: `${completedModules}/${totalModules} complete`,
-      state: completedModules === totalModules ? "Ready" : "Needs attention",
+      detail:
+        completedModules === totalModules
+          ? `${completedModules}/${totalModules} complete`
+          : hasValidatorModuleBlockers
+            ? "See issue validator blocker above"
+            : `${completedModules}/${totalModules} complete. Complete remaining enabled modules where professionally required.`,
+      state:
+        completedModules === totalModules || hasValidatorModuleBlockers
+          ? "ready"
+          : "needs_review",
     },
     {
+      key: "high-priority-actions",
       label: isReDocument
         ? "Open High/Medium recommendations"
         : "Open P1/P2 actions",
-      detail: `${actionCounts.P1 + actionCounts.P2} open`,
-      state:
-        actionCounts.P1 > 0
-          ? "Blocks issue"
-          : actionCounts.P2 > 0
-            ? "Needs attention"
-            : "Ready",
+      detail:
+        highPriorityOpenCount > 0
+          ? `${highPriorityOpenCount} open. High-priority recommendations present. Review and confirm before issuing.`
+          : "No open high-priority recommendations",
+      state: highPriorityOpenCount > 0 ? "needs_review" : "ready",
     },
     {
+      key: "high-priority-evidence",
       label: "P1/P2 findings or actions without evidence",
-      detail: `${p1P2ActionsWithoutEvidence} missing evidence`,
-      state: p1P2ActionsWithoutEvidence > 0 ? "Blocks issue" : "Ready",
+      detail:
+        p1P2ActionsWithoutEvidence > 0
+          ? `${p1P2ActionsWithoutEvidence} missing evidence. Confirm before issue.`
+          : "Evidence attached where recorded",
+      state: p1P2ActionsWithoutEvidence > 0 ? "needs_review" : "ready",
     },
     {
+      key: "unlinked-evidence",
       label: "Unlinked evidence",
-      detail: `${unlinkedEvidenceCount} unlinked`,
-      state: unlinkedEvidenceCount > 0 ? "Needs attention" : "Ready",
+      detail:
+        unlinkedEvidenceCount > 0
+          ? `${unlinkedEvidenceCount} unlinked. Review whether it belongs to a module or recommendation.`
+          : "No unlinked evidence",
+      state: unlinkedEvidenceCount > 0 ? "needs_review" : "ready",
     },
     {
+      key: "executive-summary",
       label: "Executive summary",
-      detail:
-        document.executive_summary_ai || document.executive_summary_author
-          ? "Present"
-          : "Missing",
-      state:
-        document.executive_summary_ai || document.executive_summary_author
-          ? "Ready"
-          : "Needs attention",
+      detail: executiveSummaryPresent
+        ? "Present"
+        : "Missing. Recommended before issue.",
+      state: executiveSummaryPresent ? "ready" : "needs_review",
     },
     {
+      key: "review-assurance",
       label: "Review / assurance",
-      detail: modules.some(
-        (m) =>
-          m.module_key === "A7_REVIEW_ASSURANCE" && isModuleCompleteForUi(m),
-      )
+      detail: reviewAssuranceComplete
         ? "Complete"
-        : "Incomplete",
-      state: modules.some(
-        (m) =>
-          m.module_key === "A7_REVIEW_ASSURANCE" && isModuleCompleteForUi(m),
-      )
-        ? "Ready"
-        : "Blocks issue",
+        : "Not yet recorded. Recommended before issue unless this workflow does not require it.",
+      state: reviewAssuranceComplete ? "ready" : "needs_review",
     },
     {
+      key: "report-preview",
       label: "Report preview",
-      detail:
-        document.meta?.report_previewed_at || document.locked_pdf_generated_at
-          ? "Previewed"
-          : "Not previewed",
-      state:
-        document.meta?.report_previewed_at || document.locked_pdf_generated_at
-          ? "Ready"
-          : "Needs attention",
+      detail: reportPreviewed
+        ? "Previewed"
+        : "Not previewed. Confirm generated output before issuing.",
+      state: reportPreviewed ? "ready" : "needs_review",
     },
     {
+      key: "approval-sign-off",
       label: "Approval / sign-off",
-      detail: document.approval_status || "Not started",
+      detail: approvalReadinessDetail,
       state:
-        document.approval_status === "approved"
-          ? "Ready"
-          : document.approval_status === "rejected"
-            ? "Blocks issue"
-            : "Needs attention",
+        hasValidatorApprovalBlockers ||
+        document.approval_status === "approved" ||
+        document.approval_status === "not_required"
+          ? "ready"
+          : "needs_review",
     },
-  ] as Array<{
-    label: string;
-    detail: string;
-    state: "Ready" | "Needs attention" | "Blocks issue";
-  }>;
+  ];
 
-  const getGateStateClass = (
-    state: "Ready" | "Needs attention" | "Blocks issue",
-  ) => {
-    if (state === "Ready")
+  const qualityGateItems = [
+    ...getValidatorBlockerItems(issueValidation),
+    ...getValidatorReviewItems(issueValidation),
+    ...reviewGateItems.filter((item) => item.state === "needs_review"),
+    ...reviewGateItems.filter((item) => item.state === "ready"),
+  ];
+  const primaryQualityGateItems = qualityGateItems.filter(
+    (item) => item.state !== "ready",
+  );
+  const readyQualityGateItems = qualityGateItems.filter(
+    (item) => item.state === "ready",
+  );
+
+  const getGateStateClass = (state: ReadinessState) => {
+    if (state === "ready")
       return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    if (state === "Blocks issue")
+    if (state === "blocked")
       return "bg-red-50 text-red-700 border-red-200";
     return "bg-amber-50 text-amber-700 border-amber-200";
   };
@@ -1667,7 +1770,7 @@ export default function DocumentOverview() {
                 Issue readiness
               </h2>
               <p className="text-sm text-neutral-600 mt-1">
-                One consolidated checklist for blockers before Review & issue.
+                Uses the same issue validator as the issue flow. Review items are advisory unless shown as blocked.
               </p>
             </div>
             <Button
@@ -1679,10 +1782,18 @@ export default function DocumentOverview() {
               Preview report
             </Button>
           </div>
+          {isCheckingIssueReadiness && (
+            <p className="mb-3 text-sm text-neutral-500">
+              Checking issue validator…
+            </p>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {qualityGateItems.map((item) => (
+            {(primaryQualityGateItems.length > 0
+              ? primaryQualityGateItems
+              : readyQualityGateItems.slice(0, 2)
+            ).map((item) => (
               <div
-                key={item.label}
+                key={item.key}
                 className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 bg-white"
               >
                 <div>
@@ -1694,11 +1805,39 @@ export default function DocumentOverview() {
                 <span
                   className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${getGateStateClass(item.state)}`}
                 >
-                  {item.state}
+                  {readinessStateLabel(item.state)}
                 </span>
               </div>
             ))}
           </div>
+          {readyQualityGateItems.length > 0 &&
+            primaryQualityGateItems.length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-sm font-medium text-neutral-600">
+                {readyQualityGateItems.length} ready checks
+              </summary>
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {readyQualityGateItems.map((item) => (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 bg-white"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-neutral-900">
+                        {item.label}
+                      </p>
+                      <p className="text-xs text-neutral-500">{item.detail}</p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${getGateStateClass(item.state)}`}
+                    >
+                      {readinessStateLabel(item.state)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </Card>
 
         {/* Identity Completeness Nudge */}
