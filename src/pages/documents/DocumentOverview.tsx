@@ -176,9 +176,12 @@ const recommendationPriorityToBand = (priority: string | null | undefined): stri
   return "P4";
 };
 
-const recommendationPriorityHelper = (priority: string | null | undefined): string | null => {
+const recommendationPriorityLabel = (priority: string | null | undefined): string => {
   const normalized = (priority || "").trim();
-  return ["High", "Medium", "Low"].includes(normalized) ? normalized : null;
+  if (normalized === "High") return "P1 / High";
+  if (normalized === "Medium") return "P2 / Medium";
+  if (normalized === "Low") return "P3 / Low";
+  return recommendationPriorityToBand(priority);
 };
 
 export default function DocumentOverview() {
@@ -2183,14 +2186,9 @@ export default function DocumentOverview() {
                               }`}
                             >
                               {isReDocument
-                                ? recommendationPriorityToBand((action as ReRecommendationEntry).priority)
+                                ? recommendationPriorityLabel((action as ReRecommendationEntry).priority)
                                 : (action as ActionRegisterEntry).priority_band}
                             </span>
-                            {isReDocument && recommendationPriorityHelper((action as ReRecommendationEntry).priority) && (
-                              <span className="ml-2 text-xs text-neutral-500">
-                                source: {recommendationPriorityHelper((action as ReRecommendationEntry).priority)}
-                              </span>
-                            )}
                           </td>
                           <td className="px-4 py-3">
                             {isReDocument

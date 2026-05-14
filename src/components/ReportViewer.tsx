@@ -46,7 +46,7 @@ export default function ReportViewer({ sections, fullText, onRegenerateSection }
   return (
     <div className="mt-12 bg-white rounded-lg shadow-sm border border-slate-200 p-6">
       <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
-        <h2 className="text-2xl font-bold text-slate-900">Draft Survey Report (AI Generated)</h2>
+        <h2 className="text-2xl font-bold text-slate-900">Draft Survey Report</h2>
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopy}
@@ -81,7 +81,6 @@ export default function ReportViewer({ sections, fullText, onRegenerateSection }
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold text-slate-500">{index + 1}</span>
                 <h3 className="text-lg font-semibold text-slate-900">{section.title}</h3>
-                <span className="text-xs text-slate-400 font-mono">[{section.id}]</span>
               </div>
               <button
                 onClick={() => handleRegenerateSection(section.id)}
@@ -89,7 +88,7 @@ export default function ReportViewer({ sections, fullText, onRegenerateSection }
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${regenerating === section.id ? 'animate-spin' : ''}`} />
-                {regenerating === section.id ? 'Regenerating...' : 'Regenerate Section'}
+                {regenerating === section.id ? 'Refreshing…' : 'Refresh section'}
               </button>
             </div>
             <div className="p-4">
