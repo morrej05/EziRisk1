@@ -97,6 +97,9 @@ interface Action {
   action_required_text?: string | null;
   description?: string | null;
   title?: string | null;
+  hazard_text?: string | null;
+  source_module_key?: string | null;
+  photos?: Array<unknown> | null;
   priority_band: string;
   status: string;
   completed_at?: string | null;
@@ -131,7 +134,7 @@ interface BuildPdfOptions {
 
 type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
 
-type Row = [string, string, string?];
+type Row = string[];
 type FireQuestionGroup = 'adequacy' | 'reliability' | 'localised' | 'evidence';
 
 interface LossValuesSummary {
@@ -2027,6 +2030,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     return moduleInstanceIdSet.has(action.module_instance_id);
   });
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
+  const modulesById = new Map(moduleInstances.map((m) => [m.id, m]));
   const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
   const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
   const sitePhotos = Array.isArray(re10Data.photos)
@@ -2834,22 +2838,31 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     const drawRecommendationSection = (heading: string, rows: Action[]) => {
       yPosition = drawBlockHeading(page, yPosition, heading, fontBold);
       yPosition = sectionBreak(yPosition, 8);
-      const tableRows = rows.map((action) => [
-        sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
-        sanitizePdfText(getRecommendationBodyText(action)),
-        sanitizePdfText(String(action.priority_band || 'Not provided')),
-        sanitizePdfText(String(action.owner_display_name || 'Unassigned')),
-        sanitizePdfText(action.target_date ? formatDate(action.target_date) : String(action.timescale || 'Not set')),
-        sanitizePdfText(String(action.status || 'Not provided')),
-      ]);
+      const tableRows = rows.map((action) => {
+        const linkedModule = modulesById.get(action.module_instance_id);
+        const sectionLabel = getModuleDisplayName(action.source_module_key || linkedModule?.module_key || '');
+        const evidenceCount = Array.isArray(action.photos) ? action.photos.length : 0;
+        const riskImplication = action.hazard_text ? `Risk: ${action.hazard_text}` : 'Risk: Not recorded';
+        const evidenceText = evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached';
+        return [
+          sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
+          sanitizePdfText(sectionLabel),
+          sanitizePdfText(getRecommendationBodyText(action)),
+          sanitizePdfText(riskImplication),
+          sanitizePdfText(String(action.priority_band || 'Not provided')),
+          sanitizePdfText(action.target_date ? formatDate(action.target_date) : String(action.timescale || 'Not set')),
+          sanitizePdfText(evidenceText),
+          sanitizePdfText(String(action.status || 'Not provided')),
+        ];
+      });
       ({ page, yPosition } = drawSimpleTable(
         page,
         yPosition,
-        ['Ref / ID', 'Recommendation', 'Pri.', 'Owner', 'Target', 'Status'],
+        ['Ref / ID', 'Section', 'Recommendation', 'Risk implication', 'Pri.', 'Target', 'Evidence', 'Status'],
         tableRows,
         { regular: font, bold: fontBold },
         {
-          colWidths: [52, 208, 36, 70, 54, CONTENT_WIDTH - 420],
+          colWidths: [42, 70, 120, 95, 28, 45, 55, 40],
           fontSize: 8.25,
           minRowHeight: 18,
           wrapHeader: true,

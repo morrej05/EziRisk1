@@ -37,6 +37,13 @@ function getPriorityBadgeClass(priority: string) {
   return 'bg-slate-100 text-slate-700 border border-slate-200';
 }
 
+function getPriorityLabel(priority: string): string {
+  if (priority === 'High') return 'P1 / High';
+  if (priority === 'Medium') return 'P2 / Medium';
+  if (priority === 'Low') return 'P3 / Low';
+  return priority || 'Unknown';
+}
+
 function getStatusBadgeClass(status: string) {
   if (status === 'Completed') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
   if (status === 'In Progress') return 'bg-blue-50 text-blue-700 border border-blue-200';
@@ -303,12 +310,43 @@ export default function RecommendationsRegisterPage() {
           {loading ? 'Loading recommendations…' : `${filteredRows.length} recommendations`}
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-slate-200 md:hidden">
+          {loading ? (
+            <div className="px-4 py-8 text-sm text-center text-slate-500">Loading register data…</div>
+          ) : rows.length === 0 ? (
+            <div className="px-4 py-8 text-sm text-center text-slate-500">No risk engineering recommendations found yet.</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="px-4 py-8 text-sm text-center text-slate-500">No recommendations match the selected filters.</div>
+          ) : (
+            filteredRows.map((row) => (
+              <article key={row.id} className="p-4">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs font-semibold text-slate-500">{row.recNumber || 'No ref'}</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getPriorityBadgeClass(row.priority)}`}>{getPriorityLabel(row.priority)}</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getStatusBadgeClass(row.status)}`}>{row.status || 'Unknown'}</span>
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">{row.evidenceCount} evidence</span>
+                </div>
+                <h3 className="text-sm font-semibold text-slate-900">{row.title}</h3>
+                <dl className="mt-3 grid gap-2 text-xs text-slate-600">
+                  <div><dt className="font-semibold text-slate-700">Section</dt><dd>{row.sourceLabel}</dd></div>
+                  <div><dt className="font-semibold text-slate-700">Recommendation</dt><dd>{row.recommendationText}</dd></div>
+                  {row.riskImplication ? <div><dt className="font-semibold text-slate-700">Risk implication</dt><dd>{row.riskImplication}</dd></div> : null}
+                  <div className="grid grid-cols-2 gap-2"><div><dt className="font-semibold text-slate-700">Target date</dt><dd>{formatDate(row.targetDate)}</dd></div><div><dt className="font-semibold text-slate-700">Updated</dt><dd>{formatDate(row.updatedAt)}</dd></div></div>
+                  <div><dt className="font-semibold text-slate-700">Client / Site</dt><dd>{row.clientName} — {row.siteName}</dd></div>
+                </dl>
+                <Link to={`/documents/${row.documentId}/workspace`} className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Open recommendation</Link>
+              </article>
+            ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto md:block">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-white">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Client</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Site / Property</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Section</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Recommendation</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Priority</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
@@ -321,17 +359,17 @@ export default function RecommendationsRegisterPage() {
             <tbody className="divide-y divide-slate-200">
               {loading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-sm text-center text-slate-500">Loading register data…</td>
+                  <td colSpan={10} className="px-4 py-8 text-sm text-center text-slate-500">Loading register data…</td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-sm text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-8 text-sm text-center text-slate-500">
                     No risk engineering recommendations found yet.
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-sm text-center text-slate-500">
+                  <td colSpan={10} className="px-4 py-8 text-sm text-center text-slate-500">
                     No recommendations match the selected filters.
                   </td>
                 </tr>
@@ -340,13 +378,19 @@ export default function RecommendationsRegisterPage() {
                   <tr key={row.id}>
                     <td className="px-4 py-3 text-sm text-slate-700">{row.clientName}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{row.siteName}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700 max-w-[12rem]">
+                      <p className="font-medium">{row.sourceLabel}</p>
+                      <p className="text-xs text-slate-500 mt-1">{row.evidenceCount} evidence item{row.evidenceCount === 1 ? '' : 's'}</p>
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-900 max-w-sm">
                       <p className="font-medium truncate" title={row.title}>{row.title}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-600">{row.recommendationText}</p>
+                      {row.riskImplication ? <p className="mt-1 line-clamp-1 text-xs text-amber-700">Risk: {row.riskImplication}</p> : null}
                       <p className="text-xs text-slate-500 mt-1">Ref {row.recNumber}</p>
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${getPriorityBadgeClass(row.priority)}`}>
-                        {row.priority || 'Unknown'}
+                        {getPriorityLabel(row.priority)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm">

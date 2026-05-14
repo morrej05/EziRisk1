@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveDocumentIdentity } from '../lib/documents/documentIdentity';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 
 export const RE_RECOMMENDATION_STATUSES = ['Open', 'In Progress', 'Completed'] as const;
 export const RE_RECOMMENDATION_PRIORITIES = ['High', 'Medium', 'Low'] as const;
@@ -20,6 +21,10 @@ export interface RecommendationsRegisterRow {
   targetDate: string | null;
   sourceModuleKey: string;
   sourceType: string;
+  sourceLabel: string;
+  riskImplication: string;
+  recommendationText: string;
+  evidenceCount: number;
   siteName: string;
   documentName: string;
   clientName: string;
@@ -37,6 +42,13 @@ interface RecommendationDbRow {
   target_date: string | null;
   source_module_key: string;
   source_type: string;
+  source_factor_key?: string | null;
+  observation_text?: string | null;
+  action_required_text?: string | null;
+  hazard_text?: string | null;
+  category?: string | null;
+  photos?: Array<unknown> | null;
+  metadata?: Record<string, unknown> | null;
   documents: {
     id: string;
     title: string;
@@ -54,12 +66,26 @@ interface RecommendationDbRow {
   };
 }
 
+function cleanDisplayLabel(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/\b[A-Z]{2,}_[A-Z0-9_]+\b/.test(trimmed) || /source_context|metadata|source[_ ]key/i.test(trimmed)) return '';
+  return trimmed;
+}
+
 function mapDbRowToRegisterRow(row: RecommendationDbRow): RecommendationsRegisterRow {
   const identity = row.documents
     ? resolveDocumentIdentity(row.documents, row.documents.module_instances || [])
     : null;
   const siteName = identity?.siteName || row.documents?.title || 'Unknown site';
   const clientName = identity?.clientName || (Array.isArray(row.documents?.organisations) ? row.documents?.organisations[0]?.name : row.documents?.organisations?.name) || 'Unassigned client';
+  const metadata = row.metadata || {};
+  const sourceLabel =
+    cleanDisplayLabel(metadata.sourceLabel) ||
+    cleanDisplayLabel(metadata.sectionLabel) ||
+    getModuleDisplayLabel(row.source_module_key);
+  const evidenceCount = Array.isArray(row.photos) ? row.photos.length : 0;
 
   return {
     id: row.id,
@@ -73,6 +99,10 @@ function mapDbRowToRegisterRow(row: RecommendationDbRow): RecommendationsRegiste
     targetDate: row.target_date,
     sourceModuleKey: row.source_module_key,
     sourceType: row.source_type,
+    sourceLabel,
+    riskImplication: row.hazard_text || '',
+    recommendationText: row.action_required_text || row.title,
+    evidenceCount,
     siteName,
     documentName: siteName,
     clientName,
@@ -94,6 +124,8 @@ export function useRecommendationsRegister() {
 
     let cancelled = false;
 
+    const organisationId = organisation.id;
+
     async function fetchRecommendations() {
       try {
         setLoading(true);
@@ -113,6 +145,13 @@ export function useRecommendationsRegister() {
             target_date,
             source_module_key,
             source_type,
+            source_factor_key,
+            observation_text,
+            action_required_text,
+            hazard_text,
+            category,
+            photos,
+            metadata,
             documents!inner(
               id,
               title,
@@ -125,13 +164,13 @@ export function useRecommendationsRegister() {
             )
           `)
           .eq('is_suppressed', false)
-          .eq('documents.organisation_id', organisation.id)
+          .eq('documents.organisation_id', organisationId)
           .order('updated_at', { ascending: false });
 
         if (fetchError) throw fetchError;
 
         if (!cancelled) {
-          setRows(((data || []) as RecommendationDbRow[]).map(mapDbRowToRegisterRow));
+          setRows(((data || []) as unknown as RecommendationDbRow[]).map(mapDbRowToRegisterRow));
         }
       } catch (fetchError) {
         if (!cancelled) {

@@ -311,9 +311,9 @@ export default function CanonicalReRecommendationModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl bg-slate-50 p-6 shadow-2xl">
-        <div className="mb-4 flex items-start justify-between">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+      <div className="max-h-[95vh] w-full max-w-5xl overflow-y-auto rounded-t-2xl bg-slate-50 p-4 shadow-2xl sm:max-h-[90vh] sm:rounded-xl sm:p-6">
+        <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-xl font-bold text-slate-900">
               Add Recommendation
@@ -349,7 +349,7 @@ export default function CanonicalReRecommendationModal({
           targetDate={targetDate}
           evidenceCount={photos.length}
         >
-          <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
+          <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 sm:p-6">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Recommendation / action required *
@@ -405,7 +405,7 @@ export default function CanonicalReRecommendationModal({
             </div>
 
 
-            <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 md:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 lg:grid-cols-5">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Priority
@@ -527,13 +527,13 @@ export default function CanonicalReRecommendationModal({
             </div>
 
             <div className="border-t border-slate-200 pt-4">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <label className="block text-sm font-medium text-slate-700">
                   Evidence ({photos.length}/
                   {MAX_PHOTOS_PER_RECOMMENDATION})
                 </label>
                 {photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700">
+                  <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 sm:w-auto sm:py-1.5">
                     <Upload className="h-4 w-4" />
                     Add evidence
                     <input
@@ -556,7 +556,7 @@ export default function CanonicalReRecommendationModal({
               </div>
 
               {photos.length > 0 ? (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {photos.map((photo) => (
                     <div
                       key={photo.path}
@@ -608,14 +608,14 @@ export default function CanonicalReRecommendationModal({
           </div>
         </RecommendationWorkflowShell>
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <div className="sticky bottom-0 -mx-4 mt-6 flex flex-col gap-3 border-t border-slate-200 bg-slate-50/95 px-4 py-3 sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-end sm:border-t-0 sm:bg-transparent sm:p-0">
           <button
             type="button"
             onClick={() => {
               resetForm();
               onClose();
             }}
-            className="rounded-lg bg-slate-100 px-4 py-2 font-medium text-slate-700 transition-colors hover:bg-slate-200"
+            className="w-full rounded-lg bg-slate-100 px-4 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-200 sm:w-auto sm:py-2"
           >
             Cancel
           </button>
@@ -623,7 +623,7 @@ export default function CanonicalReRecommendationModal({
             type="button"
             disabled={!title.trim() || isSaving}
             onClick={handleSave}
-            className="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-2"
           >
             {isSaving ? "Saving…" : "Save Recommendation"}
           </button>
