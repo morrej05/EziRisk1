@@ -39,6 +39,11 @@ interface QuickActionTemplate {
   likelihood: number;
   impact: number;
   source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
+  sectionKey?: string;
+  sectionLabel?: string;
+  sourceKey?: string;
+  sourceLabel?: string;
+  defaultCategory?: string;
 }
 
 type IgnitionAssessment = {
@@ -170,7 +175,7 @@ const createEmptySourceAssessments = (): IgnitionAssessmentMap =>
   }, {} as IgnitionAssessmentMap);
 
 const normaliseSourceAssessments = (data: Record<string, unknown>): IgnitionAssessmentMap => {
-  const existing = data.ignition_source_assessments || data.ignitionSourceAssessments || {};
+  const existing = (data.ignition_source_assessments || data.ignitionSourceAssessments || {}) as Record<string, IgnitionAssessment>;
   const defaults = createEmptySourceAssessments();
 
   return IGNITION_SOURCE_AREAS.reduce((acc, source) => {
@@ -231,7 +236,7 @@ export default function FRA1FireHazardsForm({
       ? { ...fallback, ...(moduleData[key] as Partial<T>) }
       : fallback;
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     ignition_sources: getStringArray('ignition_sources'),
     ignition_other: getString('ignition_other'),
     fuel_sources: getStringArray('fuel_sources'),
@@ -324,7 +329,7 @@ export default function FRA1FireHazardsForm({
   const getQualityGateWarnings = (): string[] => {
     const warnings: string[] = [];
     const hasBroadIgnition = formData.ignition_sources.length > 0;
-    const hasDetailedAssessment = Object.values(formData.ignition_source_assessments).some(sourceHasNarrativeDetail);
+    const hasDetailedAssessment = (Object.values(formData.ignition_source_assessments) as IgnitionAssessment[]).some(sourceHasNarrativeDetail);
 
     if (hasBroadIgnition && !String(formData.notes ?? '').trim() && !hasDetailedAssessment) {
       warnings.push('Ignition sources have been selected broadly, but no assessor commentary or source-specific assessment detail has been recorded.');
@@ -356,7 +361,7 @@ export default function FRA1FireHazardsForm({
     return warnings;
   };
 
-  const hasDetailedIgnitionSource = Object.values(formData.ignition_source_assessments).some(sourceHasNarrativeDetail);
+  const hasDetailedIgnitionSource = (Object.values(formData.ignition_source_assessments) as IgnitionAssessment[]).some(sourceHasNarrativeDetail);
   const qualityGateWarnings = getQualityGateWarnings();
 
   const getSuggestedOutcome = (): { outcome: string; reason: string } | null => {
@@ -1260,6 +1265,11 @@ export default function FRA1FireHazardsForm({
                         : 'Obtain and review current EICR (Electrical Installation Condition Report) to verify electrical installation safety and compliance with BS 7671. Implement any required remedial works.',
                       likelihood: formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' ? 5 : 4,
                       impact: 4,
+                      sectionKey: 'electrical_safety',
+                      sectionLabel: 'Electrical safety',
+                      sourceKey: 'fixed_wiring_eicr',
+                      sourceLabel: 'Fixed wiring / EICR',
+                      defaultCategory: 'Electrical installation',
                     })
                   }
                   className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -1277,6 +1287,11 @@ export default function FRA1FireHazardsForm({
               sourceAssessmentType="fixed_wiring"
               areaKey="fixed_wiring_eicr"
               areaLabel="Fixed wiring / EICR"
+              sectionKey="electrical_safety"
+              sectionLabel="Electrical safety"
+              sourceKey="fixed_wiring_eicr"
+              sourceLabel="Fixed wiring / EICR"
+              defaultCategory="Electrical installation"
               defaultObservation={formData.electrical_safety.eicr_notes || 'Fixed wiring and EICR evidence review.'}
               defaultRiskImplication="Unverified or defective fixed wiring can increase ignition risk and may compromise fire safety management assurance."
               defaultRecommendation={formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes'
@@ -1295,6 +1310,20 @@ export default function FRA1FireHazardsForm({
                 recommended_action_trigger: formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' || formData.electrical_safety.eicr_evidence_seen === 'no' ? 'action_required' : 'none',
               }}
             />
+
+            <div className="pt-4">
+              <ModuleActions
+                documentId={document.id}
+                moduleInstanceId={moduleInstance.id}
+                buttonLabel="Add Recommendation"
+                sectionKey="electrical_safety"
+                sectionLabel="Electrical safety"
+                sourceKey="fixed_wiring_eicr"
+                sourceLabel="Fixed wiring / EICR"
+                defaultCategory="Electrical installation"
+                compact
+              />
+            </div>
           </div>
         </div>
 
@@ -1762,6 +1791,11 @@ export default function FRA1FireHazardsForm({
           defaultAction={quickActionTemplate?.action}
           source={quickActionTemplate?.source}
           sourceModuleKey={moduleInstance.module_key}
+          sectionKey={quickActionTemplate?.sectionKey}
+          sectionLabel={quickActionTemplate?.sectionLabel}
+          sourceKey={quickActionTemplate?.sourceKey}
+          sourceLabel={quickActionTemplate?.sourceLabel}
+          defaultCategory={quickActionTemplate?.defaultCategory}
         />
       )}
     </div>

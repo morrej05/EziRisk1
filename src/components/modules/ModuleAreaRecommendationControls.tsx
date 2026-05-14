@@ -8,6 +8,10 @@ interface ModuleAreaRecommendationControlsProps {
   areaKey: string;
   areaLabel: string;
   sourceAssessmentType?: string;
+  sectionKey?: string;
+  sectionLabel?: string;
+  sourceKey?: string;
+  sourceLabel?: string;
   defaultCategory?: string;
   defaultObservation?: string;
   defaultRiskImplication?: string;
@@ -26,6 +30,11 @@ export default function ModuleAreaRecommendationControls({
   areaKey,
   areaLabel,
   sourceAssessmentType = 'module_area',
+  sectionKey,
+  sectionLabel,
+  sourceKey,
+  sourceLabel,
+  defaultCategory,
   defaultObservation = '',
   defaultRiskImplication = '',
   defaultRecommendation = '',
@@ -59,6 +68,11 @@ export default function ModuleAreaRecommendationControls({
       sourceAssessmentType={sourceAssessmentType}
       sourceAssessmentKey={areaKey}
       sourceAssessmentLabel={areaLabel}
+      sectionKey={sectionKey || areaKey}
+      sectionLabel={sectionLabel || areaLabel}
+      sourceKey={sourceKey || areaKey}
+      sourceLabel={sourceLabel || areaLabel}
+      defaultCategory={defaultCategory}
       assessment={mergedAssessment}
       legacyLinkedActionReference={legacyLinkedActionReference}
       onLinked={onLinked}

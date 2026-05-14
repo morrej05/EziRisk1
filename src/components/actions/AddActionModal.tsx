@@ -15,15 +15,23 @@ import { areActionTextsNearDuplicate } from '../../lib/actions/actionSourceLinks
 import { getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
 import { deriveFsdProfessionalActionText } from '../../lib/fsd/fsdActionWording';
 import { getPriorityExplanation } from '../recommendations/RecommendationWorkflow';
+import { buildRecommendationContext } from '../../lib/re/recommendations/sectionRecommendationContext';
 
 interface AddActionModalProps {
   documentId: string;
   moduleInstanceId: string;
   onClose: () => void;
-  onActionCreated: (actionId?: string) => void;
+  onActionCreated?: (actionId?: string) => void;
   defaultAction?: string;
+  defaultLikelihood?: number;
+  defaultImpact?: number;
   source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
   sourceModuleKey?: string;
+  sectionKey?: string | null;
+  sectionLabel?: string | null;
+  sourceKey?: string | null;
+  sourceLabel?: string | null;
+  defaultCategory?: string | null;
 }
 
 const TIMESCALE_OPTIONS = [
@@ -158,6 +166,34 @@ function getDefaultFsdCategory(sourceModuleKey?: string): FsdFindingCategory {
 }
 
 
+const FRA_CATEGORY_VALUES: FraFindingCategory[] = [
+  'MeansOfEscape',
+  'DetectionAlarm',
+  'EmergencyLighting',
+  'Compartmentation',
+  'FireDoors',
+  'FireFighting',
+  'Management',
+  'Housekeeping',
+  'Other',
+];
+
+function toFraActionCategory(category?: string | null): FraFindingCategory | null {
+  if (!category) return null;
+  const compact = category.trim().replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const direct = FRA_CATEGORY_VALUES.find((value) => value.toLowerCase() === compact);
+  if (direct) return direct;
+  if (compact.includes('meansofescape') || compact.includes('evacuation')) return 'MeansOfEscape';
+  if (compact.includes('detection') || compact.includes('alarm')) return 'DetectionAlarm';
+  if (compact.includes('emergencylighting')) return 'EmergencyLighting';
+  if (compact.includes('compartment')) return 'Compartmentation';
+  if (compact.includes('firedoor')) return 'FireDoors';
+  if (compact.includes('firefighting') || compact.includes('extinguisher')) return 'FireFighting';
+  if (compact.includes('management') || compact.includes('procedure')) return 'Management';
+  if (compact.includes('housekeeping')) return 'Housekeeping';
+  return null;
+}
+
 function getDefaultFraCategory(sourceModuleKey?: string): FraFindingCategory {
   switch (sourceModuleKey) {
     case 'FRA_2_ESCAPE_ASIS':
@@ -172,7 +208,7 @@ function getDefaultFraCategory(sourceModuleKey?: string): FraFindingCategory {
     case 'FRA_7_EMERGENCY_ARRANGEMENTS':
       return 'Management';
     case 'FRA_1_HAZARDS':
-      return 'Housekeeping';
+      return 'Other';
     default:
       return 'Other';
   }
@@ -203,6 +239,11 @@ export default function AddActionModal({
   defaultAction = '',
   source,
   sourceModuleKey,
+  sectionKey,
+  sectionLabel,
+  sourceKey,
+  sourceLabel,
+  defaultCategory,
 }: AddActionModalProps) {
   const { organisation, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -220,6 +261,18 @@ export default function AddActionModal({
   const [userEditedTimescale, setUserEditedTimescale] = useState(false);
   const [userEditedTargetDate, setUserEditedTargetDate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const recommendationContext = buildRecommendationContext({
+    documentId,
+    moduleInstanceId,
+    moduleKey: sourceModuleKey || 'OTHER',
+    sectionKey,
+    sectionLabel,
+    sourceKey,
+    sourceLabel,
+    defaultCategory,
+    warnOnMissingContext: false,
+  });
 
   const [formData, setFormData] = useState({
     recommendedAction: defaultAction,
@@ -276,17 +329,28 @@ export default function AddActionModal({
         ...prev.recommendationDetail,
         recommendation: defaultAction,
         linked_module: sourceModuleKey || prev.recommendationDetail.linked_module || '',
+        sectionKey: recommendationContext.sectionKey,
+        sectionLabel: recommendationContext.sectionLabel,
+        sourceKey: recommendationContext.sourceKey,
+        sourceLabel: recommendationContext.sourceLabel,
+        category: recommendationContext.defaultCategory,
+        metadata: recommendationContext.metadata,
       },
     }));
-  }, [defaultAction, documentId, moduleInstanceId, sourceModuleKey]);
+  }, [defaultAction, documentId, moduleInstanceId, sourceModuleKey, recommendationContext.sectionKey, recommendationContext.sourceKey]);
 
   useEffect(() => {
     if (documentType === 'FSD') {
       setFormData((prev) => ({ ...prev, category: getDefaultFsdCategory(sourceModuleKey) }));
       return;
     }
-    setFormData((prev) => ({ ...prev, category: getDefaultFraCategory(sourceModuleKey) }));
-  }, [documentType, sourceModuleKey]);
+
+    const contextCategory = toFraActionCategory(recommendationContext.defaultCategory);
+    setFormData((prev) => ({
+      ...prev,
+      category: contextCategory || getDefaultFraCategory(sourceModuleKey),
+    }));
+  }, [documentType, sourceModuleKey, recommendationContext.defaultCategory]);
 
   useEffect(() => {
     const fetchContext = async () => {
@@ -616,6 +680,17 @@ export default function AddActionModal({
         recommendation: formData.recommendationDetail.recommendation || normalizedActionText,
         timeframe_guidance: formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale),
         linked_module: formData.recommendationDetail.linked_module || sourceModuleKey || '',
+        sectionKey: recommendationContext.sectionKey,
+        sectionLabel: recommendationContext.sectionLabel,
+        sourceKey: recommendationContext.sourceKey,
+        sourceLabel: recommendationContext.sourceLabel,
+        category: recommendationContext.defaultCategory,
+        metadata: {
+          ...(typeof formData.recommendationDetail.metadata === 'object' && formData.recommendationDetail.metadata !== null
+            ? formData.recommendationDetail.metadata
+            : {}),
+          ...recommendationContext.metadata,
+        },
       });
 
       const actionData = {
@@ -717,7 +792,7 @@ export default function AddActionModal({
   };
 
   const handleFinish = () => {
-    onActionCreated(createdActionId || undefined);
+    onActionCreated?.(createdActionId || undefined);
     onClose();
   };
 

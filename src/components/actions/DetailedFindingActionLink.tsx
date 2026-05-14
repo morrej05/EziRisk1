@@ -26,6 +26,11 @@ interface DetailedFindingActionLinkProps {
   sourceAssessmentType: string;
   sourceAssessmentKey: string;
   sourceAssessmentLabel: string;
+  sectionKey?: string | null;
+  sectionLabel?: string | null;
+  sourceKey?: string | null;
+  sourceLabel?: string | null;
+  defaultCategory?: string | null;
   assessment: DetailedFindingAssessment;
   legacyLinkedActionReference?: string;
   onLinked?: () => void;
@@ -88,6 +93,11 @@ export default function DetailedFindingActionLink({
   sourceAssessmentType,
   sourceAssessmentKey,
   sourceAssessmentLabel,
+  sectionKey,
+  sectionLabel,
+  sourceKey,
+  sourceLabel,
+  defaultCategory,
   assessment,
   legacyLinkedActionReference,
   onLinked,
@@ -367,6 +377,11 @@ export default function DetailedFindingActionLink({
           defaultAction={defaultRecommendationText}
           source="recommendation"
           sourceModuleKey={moduleKey}
+          sectionKey={sectionKey}
+          sectionLabel={sectionLabel}
+          sourceKey={sourceKey || sourceAssessmentKey}
+          sourceLabel={sourceLabel || sourceAssessmentLabel}
+          defaultCategory={defaultCategory}
           onClose={() => setShowAddModal(false)}
           onActionCreated={handleRecommendationCreated}
         />

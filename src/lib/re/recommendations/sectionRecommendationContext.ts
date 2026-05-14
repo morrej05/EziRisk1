@@ -6,6 +6,8 @@ export interface BuildRecommendationContextParams {
   sectionLabel?: string | null;
   sourceKey?: string | null;
   sourceLabel?: string | null;
+  defaultCategory?: string | null;
+  warnOnMissingContext?: boolean;
 }
 
 export interface RecommendationSectionContext {
@@ -18,6 +20,7 @@ export interface RecommendationSectionContext {
   sourceLabel: string;
   displayLabel: string;
   defaultCategory: string;
+  hasValidSectionContext: boolean;
   metadata: Record<string, unknown>;
   returnAnchor: string;
   defaultWording: string;
@@ -34,6 +37,61 @@ const slugify = (value: string): string =>
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "") || "section";
 
+const HOUSEKEEPING_PATTERN = /(^|[_\s:-])housekeeping([_\s:-]|$)/;
+
+const SOURCE_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
+  { pattern: /fixed[_\s:-]*wiring|eicr|electrical[_\s:-]*installation/, category: "Electrical installation" },
+  { pattern: /electrical[_\s:-]*safety|electrical[_\s:-]*and[_\s:-]*utilities|electrical/, category: "Electrical safety" },
+  { pattern: /portable|pat/, category: "Electrical safety" },
+  { pattern: /hot[_\s:-]*work/, category: "Hot works" },
+  { pattern: /smoking/, category: "Smoking controls" },
+  { pattern: /cooking|kitchen/, category: "Cooking equipment" },
+  { pattern: /lightning/, category: "Lightning protection" },
+  { pattern: /means[_\s:-]*of[_\s:-]*escape|evacuation/, category: "Means of escape" },
+  { pattern: /sprinkler/, category: "Sprinklers" },
+  { pattern: /suppression/, category: "Suppression" },
+  { pattern: /alarm|detection|active[_\s:-]*fire/, category: "Detection & alarm" },
+  { pattern: /fire[_\s:-]*stopping/, category: "Fire stopping" },
+  { pattern: /fire[_\s:-]*door/, category: "Fire doors" },
+  { pattern: /compartment/, category: "Compartmentation" },
+  { pattern: /passive[_\s:-]*fire/, category: "Passive fire protection" },
+  { pattern: /firefighting|fire[_\s:-]*fighting|extinguisher/, category: "Firefighting equipment" },
+  { pattern: /external[_\s:-]*fire/, category: "External fire spread" },
+  { pattern: /management[_\s:-]*system|procedure|management/, category: "Management & procedures" },
+  { pattern: /hazard|ignition/, category: "Hazards & ignition sources" },
+];
+
+const SECTION_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
+  { pattern: /electrical[_\s:-]*safety|utilities/, category: "Electrical safety" },
+  { pattern: /management/, category: "Management & procedures" },
+  { pattern: /hazards|ignition/, category: "Hazards & ignition sources" },
+  { pattern: /fire[_\s:-]*protection/, category: "Fire protection" },
+  { pattern: /natural[_\s:-]*hazards|exposures/, category: "Natural hazards" },
+  { pattern: /occupancy/, category: "Occupancy" },
+  { pattern: /construction/, category: "Construction" },
+];
+
+const MODULE_CATEGORY_MAP: Record<string, string> = {
+  RE_02_CONSTRUCTION: "Construction",
+  RE_03_OCCUPANCY: "Occupancy",
+  RE_06_FIRE_PROTECTION: "Fire protection",
+  RE_07_NATURAL_HAZARDS: "Natural hazards",
+  RE_08_UTILITIES: "Electrical safety",
+  RE_09_MANAGEMENT: "Management & procedures",
+  FRA_2_ESCAPE_ASIS: "Means of escape",
+  FRA_3_ACTIVE_SYSTEMS: "Detection & alarm",
+  FRA_4_PASSIVE_PROTECTION: "Passive fire protection",
+  FRA_5_EXTERNAL_FIRE_SPREAD: "External fire spread",
+  FRA_6_MANAGEMENT_SYSTEMS: "Management & procedures",
+  FRA_7_EMERGENCY_ARRANGEMENTS: "Emergency arrangements",
+  FRA_8_FIREFIGHTING_EQUIPMENT: "Firefighting equipment",
+};
+
+function matchPatternCategory(value: string, patterns: Array<{ pattern: RegExp; category: string }>): string | null {
+  const match = patterns.find(({ pattern }) => pattern.test(value));
+  return match?.category || null;
+}
+
 export function deriveRecommendationCategory({
   moduleKey,
   sectionKey,
@@ -45,66 +103,22 @@ export function deriveRecommendationCategory({
   sourceKey?: string | null;
   sourceLabel?: string | null;
 }): string {
-  const haystack = [moduleKey, sectionKey, sourceKey, sourceLabel]
-    .map(normalise)
-    .join(" ");
+  const normalisedSource = [sourceKey, sourceLabel].map(normalise).join(" ");
+  const sourceCategory = matchPatternCategory(normalisedSource, SOURCE_CATEGORY_PATTERNS);
+  if (sourceCategory) return sourceCategory;
+  if (HOUSEKEEPING_PATTERN.test(normalisedSource)) return "Housekeeping";
 
-  if (haystack.includes("fixed_wiring") || haystack.includes("fixed wiring"))
-    return "Electrical installation";
-  if (haystack.includes("portable") || haystack.includes("pat"))
-    return "Electrical safety";
-  if (haystack.includes("electrical")) return "Electrical ignition sources";
-  if (haystack.includes("hot_work") || haystack.includes("hot work"))
-    return "Hot works";
-  if (haystack.includes("smoking")) return "Smoking controls";
-  if (haystack.includes("cooking")) return "Cooking equipment";
-  if (haystack.includes("lightning")) return "Lightning protection";
-  if (haystack.includes("emergency")) return "Emergency arrangements";
-  if (
-    haystack.includes("means_of_escape") ||
-    haystack.includes("means of escape") ||
-    haystack.includes("evacuation")
-  )
-    return "Means of escape";
-  if (haystack.includes("sprinkler")) return "Sprinklers";
-  if (haystack.includes("suppression")) return "Suppression";
-  if (
-    haystack.includes("alarm") ||
-    haystack.includes("detection") ||
-    haystack.includes("active_fire") ||
-    haystack.includes("active fire")
-  )
-    return "Detection & alarm";
-  if (haystack.includes("fire_stopping") || haystack.includes("fire stopping"))
-    return "Fire stopping";
-  if (haystack.includes("fire_door") || haystack.includes("fire door"))
-    return "Fire doors";
-  if (haystack.includes("compartment")) return "Compartmentation";
-  if (haystack.includes("passive_fire") || haystack.includes("passive fire"))
-    return "Passive fire protection";
-  if (
-    haystack.includes("firefighting") ||
-    haystack.includes("fire fighting") ||
-    haystack.includes("extinguisher")
-  )
-    return "Firefighting equipment";
-  if (haystack.includes("external_fire") || haystack.includes("external fire"))
-    return "External fire spread";
-  if (
-    haystack.includes("management") ||
-    haystack.includes("procedure") ||
-    haystack.includes("management_system")
-  )
-    return "Management & procedures";
-  if (haystack.includes("housekeeping")) return "Housekeeping";
-  if (haystack.includes("hazard") || haystack.includes("ignition"))
-    return "Hazards & ignition sources";
+  const normalisedSection = normalise(sectionKey);
+  const sectionCategory = matchPatternCategory(normalisedSection, SECTION_CATEGORY_PATTERNS);
+  if (sectionCategory) return sectionCategory;
+  if (HOUSEKEEPING_PATTERN.test(normalisedSection)) return "Housekeeping";
 
-  return (
-    sourceLabel?.trim() ||
-    sectionLabelFromKey(sectionKey) ||
-    "General risk improvement"
-  );
+  const normalisedModule = normalise(moduleKey).toUpperCase();
+  const moduleCategory = moduleKey ? MODULE_CATEGORY_MAP[moduleKey] || MODULE_CATEGORY_MAP[normalisedModule] : null;
+  if (moduleCategory) return moduleCategory;
+  if (HOUSEKEEPING_PATTERN.test(normalise(moduleKey))) return "Housekeeping";
+
+  return "Other";
 }
 
 function sectionLabelFromKey(sectionKey?: string | null): string | null {
@@ -124,7 +138,22 @@ export function buildRecommendationContext({
   sectionLabel,
   sourceKey,
   sourceLabel,
+  defaultCategory: explicitDefaultCategory,
+  warnOnMissingContext = false,
 }: BuildRecommendationContextParams): RecommendationSectionContext {
+  const hasValidSectionContext = Boolean(
+    sectionKey?.trim() &&
+      sourceKey?.trim() &&
+      (sourceLabel?.trim() || sectionLabel?.trim()),
+  );
+
+  if (warnOnMissingContext && !hasValidSectionContext && import.meta.env.DEV) {
+    console.warn(
+      "Recommendation workflow opened without valid section/source context",
+      { documentId, moduleInstanceId, moduleKey, sectionKey, sectionLabel, sourceKey, sourceLabel },
+    );
+  }
+
   const resolvedSectionLabel =
     sectionLabel?.trim() ||
     sourceLabel?.trim() ||
@@ -134,12 +163,13 @@ export function buildRecommendationContext({
   const resolvedSectionKey =
     sectionKey?.trim() || slugify(resolvedSectionLabel);
   const resolvedSourceKey = sourceKey?.trim() || resolvedSectionKey;
-  const defaultCategory = deriveRecommendationCategory({
+  const derivedCategory = deriveRecommendationCategory({
     moduleKey,
     sectionKey: resolvedSectionKey,
     sourceKey: resolvedSourceKey,
     sourceLabel: resolvedSourceLabel,
   });
+  const defaultCategory = explicitDefaultCategory?.trim() || derivedCategory;
   const displayLabel =
     resolvedSourceLabel === resolvedSectionLabel
       ? resolvedSectionLabel
@@ -155,6 +185,7 @@ export function buildRecommendationContext({
     sourceLabel: resolvedSourceLabel,
     displayLabel,
     defaultCategory,
+    hasValidSectionContext,
     returnAnchor: `recommendation-${resolvedSectionKey}-${resolvedSourceKey}`,
     defaultWording: `Review and improve ${resolvedSourceLabel.toLowerCase()} controls to address the recorded finding.`,
     metadata: {
@@ -166,6 +197,7 @@ export function buildRecommendationContext({
       sourceKey: resolvedSourceKey,
       sourceLabel: resolvedSourceLabel,
       defaultCategory,
+      hasValidSectionContext,
     },
   };
 }
