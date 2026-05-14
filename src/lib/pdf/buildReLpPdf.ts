@@ -247,7 +247,7 @@ function getTopPriorityRows(recommendations: LpRecommendation[]): string[][] {
 }
 
 export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  console.log('[PDF RE LP] Starting RE Loss Prevention PDF build');
+  if (import.meta.env.DEV) console.log('[PDF RE LP] Starting RE Loss Prevention PDF build');
   const { moduleInstances, actions, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
@@ -449,6 +449,6 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   }
 
   const pdfBytes = await pdfDoc.save();
-  console.log('[PDF RE LP] PDF build complete');
+  if (import.meta.env.DEV) console.log('[PDF RE LP] PDF build complete');
   return pdfBytes;
 }

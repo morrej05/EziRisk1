@@ -163,11 +163,11 @@ export async function buildRiskEngineeringScoreBreakdown(
   if (riskEngData?.sectionGrades?.construction !== undefined) {
     // First priority: use persisted rating from RISK_ENGINEERING module
     constructionRating = clamp1to5(Number(riskEngData.sectionGrades.construction));
-    console.log('[ScoreBreakdown] Using riskEngData.sectionGrades.construction:', riskEngData.sectionGrades.construction, '→', constructionRating);
+    if (import.meta.env.DEV) console.log('[ScoreBreakdown] Using riskEngData.sectionGrades.construction:', riskEngData.sectionGrades.construction, '→', constructionRating);
   } else if (sectionGrades.construction !== undefined) {
     // Second priority: use documents.section_grades
     constructionRating = clamp1to5(Number(sectionGrades.construction));
-    console.log('[ScoreBreakdown] Using documents.section_grades.construction:', sectionGrades.construction, '→', constructionRating);
+    if (import.meta.env.DEV) console.log('[ScoreBreakdown] Using documents.section_grades.construction:', sectionGrades.construction, '→', constructionRating);
   } else {
     // Third priority: compute from RE-02
     const constructionResult = await getConstructionRating(documentId);
@@ -175,7 +175,7 @@ export async function buildRiskEngineeringScoreBreakdown(
     if (!constructionMetadata) {
       constructionMetadata = constructionResult.metadata;
     }
-    console.log('[ScoreBreakdown] Computed construction rating:', constructionRating);
+    if (import.meta.env.DEV) console.log('[ScoreBreakdown] Computed construction rating:', constructionRating);
   }
 
   // Build global pillar factors (ALWAYS INCLUDED)
@@ -242,11 +242,11 @@ export async function buildRiskEngineeringScoreBreakdown(
   const maxScore = allFactors.reduce((sum, factor) => sum + factor.maxScore, 0);
 
   // Definitive diagnostics
-  console.log('[breakdown] industryKey', industryKey);
-  console.log('[breakdown] globalPillars len', globalPillars.length);
-  console.log('[breakdown] occupancyDrivers keys', occupancyDrivers.map(d => d.key), 'len', occupancyDrivers.length);
-  console.log('[breakdown] occupancyDrivers weights', occupancyDrivers.map(d => ({ k: d.key, w: d.weight, r: d.rating })));
-  console.log('[breakdown] totals', { totalScore, maxScore });
+  if (import.meta.env.DEV) console.log('[breakdown] industryKey', industryKey);
+  if (import.meta.env.DEV) console.log('[breakdown] globalPillars len', globalPillars.length);
+  if (import.meta.env.DEV) console.log('[breakdown] occupancyDrivers keys', occupancyDrivers.map(d => d.key), 'len', occupancyDrivers.length);
+  if (import.meta.env.DEV) console.log('[breakdown] occupancyDrivers weights', occupancyDrivers.map(d => ({ k: d.key, w: d.weight, r: d.rating })));
+  if (import.meta.env.DEV) console.log('[breakdown] totals', { totalScore, maxScore });
 
   // Top 3 contributors by score
   const topContributors = [...allFactors]

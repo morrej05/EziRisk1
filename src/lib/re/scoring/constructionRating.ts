@@ -78,7 +78,7 @@ export async function getConstructionRating(documentId: string): Promise<Constru
       metadata,
     };
   } catch (error) {
-    console.error('[getConstructionRating] Error:', error);
+    if (import.meta.env.DEV) console.error('[getConstructionRating] Error:', error);
     return {
       rating: null,
       source: 'unavailable',
@@ -196,7 +196,7 @@ export async function syncConstructionGrade(documentId: string): Promise<void> {
     .maybeSingle();
 
   if (fetchError || !doc) {
-    console.error('[syncConstructionGrade] Error fetching document:', fetchError);
+    if (import.meta.env.DEV) console.error('[syncConstructionGrade] Error fetching document:', fetchError);
     return;
   }
 
@@ -211,6 +211,6 @@ export async function syncConstructionGrade(documentId: string): Promise<void> {
     .eq('id', documentId);
 
   if (updateError) {
-    console.error('[syncConstructionGrade] Error updating section_grades:', updateError);
+    if (import.meta.env.DEV) console.error('[syncConstructionGrade] Error updating section_grades:', updateError);
   }
 }

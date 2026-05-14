@@ -441,7 +441,7 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
     attachments = await listAttachments(document.id);
     
   } catch (error) {
-    console.warn('[FRA+DSEAR PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[FRA+DSEAR PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -499,7 +499,7 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
     ((executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!String(document.executive_summary_ai || '').trim()) ||
     ((executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!String(document.executive_summary_author || '').trim());
 
-  console.info('[FRA+DSEAR PDF] Executive summary diagnostics:', {
+  if (import.meta.env.DEV) console.info('[FRA+DSEAR PDF] Executive summary diagnostics:', {
     documentId: document.id,
     requestedMode: document.executive_summary_mode,
     resolvedMode: executiveSummaryMode,
@@ -1281,7 +1281,7 @@ function drawCombinedExecutiveSummary(
       }
 
       } catch (error) {
-      console.error('Error computing explosion summary:', error);
+      if (import.meta.env.DEV) console.error('Error computing explosion summary:', error);
     }
   }
 const deduplicatedActions = deduplicateActions(actions, moduleInstances);

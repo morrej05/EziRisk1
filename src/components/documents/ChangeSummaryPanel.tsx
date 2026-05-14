@@ -162,7 +162,7 @@ export default function ChangeSummaryPanel({
             {canEdit ? (
               <>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
-                  Summary text (shown instead of auto-generated markdown)
+                  Summary text (shown instead of the prepared markdown)
                 </label>
                 <textarea
                   value={draftText}

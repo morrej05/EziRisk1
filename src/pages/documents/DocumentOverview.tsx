@@ -326,7 +326,9 @@ export default function DocumentOverview() {
           setIssueValidation(result);
         }
       } catch (error) {
-        console.error("Error validating issue readiness:", error);
+        if (import.meta.env.DEV) {
+          console.error("Error validating issue readiness:", error);
+        }
         if (!cancelled) {
           setIssueValidation({
             valid: false,
@@ -412,7 +414,9 @@ export default function DocumentOverview() {
         const summary = computeExplosionSummary({ modules: modulesForEngine });
         setExplosionSummary(summary);
       } catch (error) {
-        console.error("Error computing explosion summary:", error);
+        if (import.meta.env.DEV) {
+          console.error("Error computing explosion summary:", error);
+        }
       }
     }
   }, [document, modules]);
@@ -441,7 +445,9 @@ export default function DocumentOverview() {
       setDocumentNotFound(false);
       setIsLoading(false);
     } catch (error) {
-      console.error("Error fetching document:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching document:", error);
+      }
       setDocument(null);
       setDocumentNotFound(true);
       setIsLoading(false);
@@ -473,7 +479,9 @@ export default function DocumentOverview() {
       if (error) throw error;
       setActiveDraftVersion(data ?? null);
     } catch (error) {
-      console.error("Error checking active draft version:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error checking active draft version:", error);
+      }
       setActiveDraftVersion(null);
     } finally {
       setIsCheckingDraftVersion(false);
@@ -512,7 +520,9 @@ export default function DocumentOverview() {
 
       setModules(modulesForUi.map(withResolvedSectionAssessment));
     } catch (error) {
-      console.error("Error fetching modules:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching modules:", error);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -542,7 +552,9 @@ export default function DocumentOverview() {
       setActionCounts(counts);
       setTotalActions((data || []).length);
     } catch (error) {
-      console.error("Error fetching action counts:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching action counts:", error);
+      }
     }
   };
 
@@ -581,7 +593,9 @@ export default function DocumentOverview() {
         ).length,
       );
     } catch (error) {
-      console.error("Error fetching recommendation counts:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching recommendation counts:", error);
+      }
     }
   };
 
@@ -599,7 +613,9 @@ export default function DocumentOverview() {
       if (error) throw error;
       setEvidenceCount(count || 0);
     } catch (error) {
-      console.error("Error fetching evidence count:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching evidence count:", error);
+      }
     }
   };
 
@@ -647,7 +663,9 @@ export default function DocumentOverview() {
         ).length,
       );
     } catch (error) {
-      console.error("Error fetching evidence quality:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching evidence quality:", error);
+      }
     }
   };
 
@@ -658,7 +676,9 @@ export default function DocumentOverview() {
       const pack = await getDefencePack(id);
       setDefencePack(pack);
     } catch (error) {
-      console.error("Error fetching defence pack:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching defence pack:", error);
+      }
     }
   };
 
@@ -670,7 +690,9 @@ export default function DocumentOverview() {
       const actionEntries = await getActionRegisterSiteLevel(id);
       setActions(actionEntries);
     } catch (error) {
-      console.error("Error fetching actions:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching actions:", error);
+      }
     } finally {
       setIsLoadingActions(false);
     }
@@ -714,7 +736,9 @@ export default function DocumentOverview() {
       );
       setRecommendations(normalizedRows);
     } catch (error) {
-      console.error("Error fetching recommendations:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error fetching recommendations:", error);
+      }
       setRecommendations([]);
     } finally {
       setIsLoadingActions(false);
@@ -783,7 +807,9 @@ export default function DocumentOverview() {
         alert(result.error || "Failed to create defence pack");
       }
     } catch (error: any) {
-      console.error("Error building defence pack:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error building defence pack:", error);
+      }
       alert(error.message || "Failed to create defence pack");
     } finally {
       setIsBuildingDefencePack(false);
@@ -803,7 +829,9 @@ export default function DocumentOverview() {
         alert(result.error || "Failed to download defence pack");
       }
     } catch (error: any) {
-      console.error("Error downloading defence pack:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error downloading defence pack:", error);
+      }
       alert(error.message || "Failed to download defence pack");
     }
   };
@@ -1007,14 +1035,18 @@ export default function DocumentOverview() {
         .is("deleted_at", null);
 
       if (error) {
-        console.error("Error archiving document:", error);
+        if (import.meta.env.DEV) {
+          console.error("Error archiving document:", error);
+        }
         throw new Error(error.message || "Failed to archive document");
       }
 
       // Navigate back to dashboard
       navigate(getDashboardRoute(), { replace: true });
     } catch (error: any) {
-      console.error("Error archiving document:", error);
+      if (import.meta.env.DEV) {
+        console.error("Error archiving document:", error);
+      }
       alert(error.message || "Failed to archive document");
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -1199,7 +1231,9 @@ export default function DocumentOverview() {
         saveAs(blob, filename);
       } catch (pdfError) {
         if (isTimeoutError(pdfError)) {
-          console.error("[PDF Download] PDF generation timed out");
+          if (import.meta.env.DEV) {
+            console.error("[PDF Download] PDF generation timed out");
+          }
           throw new Error(
             "PDF generation timed out. Please try again or contact support if this persists.",
           );
@@ -1207,7 +1241,9 @@ export default function DocumentOverview() {
         throw pdfError;
       }
     } catch (error) {
-      console.error("[PDF Download] Error generating PDF:", error);
+      if (import.meta.env.DEV) {
+        console.error("[PDF Download] Error generating PDF:", error);
+      }
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
       alert(`Failed to generate PDF: ${errorMessage}`);

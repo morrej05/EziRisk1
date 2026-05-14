@@ -88,6 +88,8 @@ function LegacyReportRedirect() {
         .maybeSingle();
 
       if (!cancelled) {
+        // Legacy /report links are never rendered directly in production; route them into
+        // the current document preview workflow so assessors see one report system.
         setTarget(data?.document_id ? `/documents/${data.document_id}/preview` : '/reports');
       }
     }

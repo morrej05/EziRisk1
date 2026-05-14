@@ -265,7 +265,7 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   try {
     attachments = await listAttachments(document.id);
   } catch (error) {
-    console.warn('[FSD PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[FSD PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -318,7 +318,7 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
     ((executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!String(document.executive_summary_ai || '').trim()) ||
     ((executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!String(document.executive_summary_author || '').trim());
 
-  console.info('[FSD PDF] Executive summary diagnostics:', {
+  if (import.meta.env.DEV) console.info('[FSD PDF] Executive summary diagnostics:', {
     documentId: document.id,
     requestedMode: document.executive_summary_mode,
     resolvedMode: executiveSummaryMode,

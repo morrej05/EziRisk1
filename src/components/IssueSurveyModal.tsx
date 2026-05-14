@@ -106,14 +106,14 @@ const resp2 = await fetch(`${supabaseUrl}/functions/v1/generate-issued-pdf`, {
       }
 
       if (resp2.ok && result2?.signed_url) {
-        console.log("[Issue] PDF generated, opening in new tab");
+        if (import.meta.env.DEV) console.log("[Issue] PDF generated, opening in new tab");
         window.open(result2.signed_url, "_blank", "noopener,noreferrer");
       } else {
-        console.warn("[Issue] PDF generation failed (non-fatal):", result2?.error);
+        if (import.meta.env.DEV) console.warn("[Issue] PDF generation failed (non-fatal):", result2?.error);
         // Don't fail the entire issue process if PDF generation fails
       }
     } catch (pdfError) {
-      console.warn("[Issue] Failed to generate PDF (non-fatal):", pdfError);
+      if (import.meta.env.DEV) console.warn("[Issue] Failed to generate PDF (non-fatal):", pdfError);
       // Don't fail the entire issue process if PDF generation fails
     }
 
@@ -127,7 +127,7 @@ const resp2 = await fetch(`${supabaseUrl}/functions/v1/generate-issued-pdf`, {
     // toast.success("Survey issued");
 
   } catch (err: any) {
-    console.error("[Issue] failed", err);
+    if (import.meta.env.DEV) console.error("[Issue] failed", err);
     setError(err?.message || "Failed to issue survey");
   } finally {
     setIsIssuing(false);

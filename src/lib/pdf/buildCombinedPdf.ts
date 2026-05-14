@@ -164,7 +164,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
     assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
-  console.log('[Combined PDF] Building combined FRA + FSD PDF with:', {
+  if (import.meta.env.DEV) console.log('[Combined PDF] Building combined FRA + FSD PDF with:', {
     modules: moduleInstances.length,
     actions: actions.length,
     ratings: actionRatings.length,
@@ -173,9 +173,9 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   let attachments: Attachment[] = [];
   try {
     attachments = await listAttachments(document.id);
-    console.log('[Combined PDF] Fetched', attachments.length, 'attachments');
+    if (import.meta.env.DEV) console.log('[Combined PDF] Fetched', attachments.length, 'attachments');
   } catch (error) {
-    console.warn('[Combined PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[Combined PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -189,7 +189,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   let page: PDFPage;
   let yPosition: number;
 
-  console.log('[Combined PDF] Adding report pages with logo (cover + doc control)');
+  if (import.meta.env.DEV) console.log('[Combined PDF] Adding report pages with logo (cover + doc control)');
 
   // Use addIssuedReportPages for both draft and issued modes to ensure logo embedding
   const { coverPage, docControlPage } = await addIssuedReportPages({

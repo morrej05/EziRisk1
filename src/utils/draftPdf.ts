@@ -79,7 +79,7 @@ export async function uploadDraftPdfAndSign(
       .eq('id', documentId);
   } catch (error) {
     // Ignore errors - columns might not exist yet
-    console.warn('Could not update document draft_pdf_path (columns may not exist):', error);
+    if (import.meta.env.DEV) console.warn('Could not update document draft_pdf_path (columns may not exist):', error);
   }
 
   return {
@@ -104,7 +104,7 @@ export async function saveReModuleSelection(
       .update({ draft_re_survey_included_modules: moduleKeys })
       .eq('id', documentId);
   } catch (error) {
-    console.warn('Could not save RE module selection (column may not exist):', error);
+    if (import.meta.env.DEV) console.warn('Could not save RE module selection (column may not exist):', error);
   }
 }
 
@@ -130,7 +130,7 @@ export async function loadReModuleSelection(
 
     return data.draft_re_survey_included_modules as string[] | null;
   } catch (error) {
-    console.warn('Could not load RE module selection (column may not exist):', error);
+    if (import.meta.env.DEV) console.warn('Could not load RE module selection (column may not exist):', error);
     return null;
   }
 }

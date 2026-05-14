@@ -12,7 +12,7 @@ const steps = [
     number: '02',
     icon: Wand2,
     title: 'Generate Report',
-    description: 'AI analyzes your data and generates a comprehensive draft report with all standard sections required for professional risk assessment.',
+    description: 'Structured assessment data is assembled into a comprehensive draft report with the standard sections required for professional risk assessment.',
   },
   {
     number: '03',

@@ -923,7 +923,7 @@ export function drawInfoGapQuickActions(input: {
   // DEFENSIVE GUARD: Skip if module doesn't belong to expected section
   // This prevents cross-section info gap bleed
   if (expectedModuleKeys && !expectedModuleKeys.includes(module.module_key)) {
-    console.warn(`[PDF] Skipping info gap for ${module.module_key} - not in expected section keys:`, expectedModuleKeys);
+    if (import.meta.env.DEV) console.warn(`[PDF] Skipping info gap for ${module.module_key} - not in expected section keys:`, expectedModuleKeys);
     return { page, yPosition };
   }
 
@@ -1341,7 +1341,7 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
     imageCache.set(attachment.id, image);
     return image;
   } catch (error) {
-    console.warn('[embedImage] Failed to embed:', attachment.file_name, error);
+    if (import.meta.env.DEV) console.warn('[embedImage] Failed to embed:', attachment.file_name, error);
     return null;
   }
 }
@@ -1875,7 +1875,7 @@ export async function drawActionRegister(
 
   for (const action of actions) {
     if (!action.recommended_action || typeof action.recommended_action !== 'string') {
-      console.warn('[PDF] Action missing recommended_action:', {
+      if (import.meta.env.DEV) console.warn('[PDF] Action missing recommended_action:', {
         id: action.id,
         recommended_action: action.recommended_action,
         priority_band: action.priority_band,

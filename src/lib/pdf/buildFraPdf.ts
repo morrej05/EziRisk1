@@ -331,7 +331,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
   try {
     attachments = await listAttachments(document.id);
     } catch (error) {
-    console.warn('[PDF FRA] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[PDF FRA] Failed to fetch attachments:', error);
   }
 
   // Build evidence reference map for consistent E-00X numbering
@@ -395,7 +395,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
     };
   });
 
-  console.log('[PDF FRA] Creating PDF document and embedding fonts');
+  if (import.meta.env.DEV) console.log('[PDF FRA] Creating PDF document and embedding fonts');
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -477,7 +477,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
       );
 
     } catch (error) {
-      console.warn('[PDF FRA] Failed to generate risk summary page:', error);
+      if (import.meta.env.DEV) console.warn('[PDF FRA] Failed to generate risk summary page:', error);
     }
   }
 
@@ -1027,7 +1027,7 @@ if (section.id === 5) {
     yPosition = PAGE_TOP_Y;
     yPosition = drawLikelihoodConsequenceExplanation(page, font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
 
-    console.log('[PDF] actions sample (before register)', (actionsWithRefs || []).slice(0,3).map(a => ({
+    if (import.meta.env.DEV) console.log('[PDF] actions sample (before register)', (actionsWithRefs || []).slice(0,3).map(a => ({
       id: a.id,
       source: a.source,
       ref: a.reference_number,
@@ -1384,14 +1384,14 @@ function drawCoverPage(
 
   const leftColumn = [
     ['Assessment Date:', formatDate(document.assessment_date)],
-    ['Assessor:', document.assessor_name || '—'],
+    ['Assessor:', document.assessor_name || 'Not yet recorded'],
     ['Version:', `v${document.version}`],
   ];
 
   const rightColumn = [
     ['Jurisdiction:', jurisdictionName],
-    ['Responsible Person:', document.responsible_person || '—'],
-    ['Review Date:', document.review_date ? formatDate(document.review_date) : '—'],
+    ['Responsible Person:', document.responsible_person || 'Not yet recorded'],
+    ['Review Date:', document.review_date ? formatDate(document.review_date) : 'No review date set'],
   ];
 
   // Draw left column

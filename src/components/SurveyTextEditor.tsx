@@ -134,7 +134,7 @@ export default function SurveyTextEditor({ surveyId, onBack }: SurveyTextEditorP
       setShowPreview(true);
     } catch (error: any) {
       console.error('Error polishing report:', error);
-      setErrorMessage(error.message || 'Failed to polish report with AI');
+      setErrorMessage(error.message || 'Failed to refresh report wording');
       setPolishStatus('error');
     } finally {
       setIsPolishing(false);
@@ -256,7 +256,7 @@ export default function SurveyTextEditor({ surveyId, onBack }: SurveyTextEditorP
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white font-medium rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Sparkles className="w-4 h-4" />
-                    {isPolishing ? 'Refreshing...' : 'Refresh AI Draft'}
+                    {isPolishing ? 'Refreshing...' : 'Refresh Draft'}
                   </button>
                 )}
               </div>
@@ -318,7 +318,7 @@ export default function SurveyTextEditor({ surveyId, onBack }: SurveyTextEditorP
                       : 'border-transparent text-slate-500 hover:text-slate-700'
                   }`}
                 >
-                  Recommendation Report (AI-Polished)
+                  Recommendation Report (Edited Draft)
                 </button>
               </div>
             </div>
@@ -343,9 +343,9 @@ export default function SurveyTextEditor({ surveyId, onBack }: SurveyTextEditorP
           <div className="flex items-start gap-3">
             <Sparkles className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
             <div>
-              <h3 className="text-sm font-bold text-blue-900 mb-1">AI Polished</h3>
+              <h3 className="text-sm font-bold text-blue-900 mb-1">Edited Draft</h3>
               <p className="text-sm text-blue-800">
-                This report has been polished with AI. Click "Preview" to view both versions.
+                This report wording has been refreshed. Click "Preview" to view both versions.
               </p>
             </div>
           </div>

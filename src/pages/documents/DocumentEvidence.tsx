@@ -79,7 +79,7 @@ export default function DocumentEvidence() {
       if (error) throw error;
       setDocument(data);
     } catch (error) {
-      console.error('Error fetching document:', error);
+      if (import.meta.env.DEV) console.error('Error fetching document:', error);
       alert('Failed to load document.');
       navigate('/common-dashboard');
     }
@@ -99,7 +99,7 @@ export default function DocumentEvidence() {
           const url = await getSignedUrl(att.file_path, 3600);
           return { id: att.id, url };
         } catch (error) {
-          console.error('Error generating thumbnail URL:', error);
+          if (import.meta.env.DEV) console.error('Error generating thumbnail URL:', error);
           return null;
         }
       });
@@ -113,7 +113,7 @@ export default function DocumentEvidence() {
       });
       setThumbnailUrls(urlMap);
     } catch (error) {
-      console.error('Error fetching attachments:', error);
+      if (import.meta.env.DEV) console.error('Error fetching attachments:', error);
     } finally {
       setIsLoading(false);
     }
@@ -132,7 +132,7 @@ export default function DocumentEvidence() {
       if (error) throw error;
       setModules(data || []);
     } catch (error) {
-      console.error('Error fetching modules:', error);
+      if (import.meta.env.DEV) console.error('Error fetching modules:', error);
     }
   };
 
@@ -151,7 +151,7 @@ export default function DocumentEvidence() {
       if (error) throw error;
       setActions(data || []);
     } catch (error) {
-      console.error('Error fetching actions:', error);
+      if (import.meta.env.DEV) console.error('Error fetching actions:', error);
     }
   };
 
@@ -179,7 +179,7 @@ export default function DocumentEvidence() {
         fileInputRef.current.value = '';
       }
     } catch (error) {
-      console.error('Error uploading files:', error);
+      if (import.meta.env.DEV) console.error('Error uploading files:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       alert(`Failed to upload: ${errorMessage}`);
     } finally {
@@ -194,7 +194,7 @@ export default function DocumentEvidence() {
       await deleteAttachment(attachment.id);
       await fetchAttachments();
     } catch (error) {
-      console.error('Error deleting attachment:', error);
+      if (import.meta.env.DEV) console.error('Error deleting attachment:', error);
       alert('Failed to delete attachment.');
     }
   };
@@ -208,7 +208,7 @@ export default function DocumentEvidence() {
       setEditingAttachment(null);
       setEditCaption('');
     } catch (error) {
-      console.error('Error updating caption:', error);
+      if (import.meta.env.DEV) console.error('Error updating caption:', error);
       alert('Failed to update caption.');
     }
   };
@@ -227,7 +227,7 @@ export default function DocumentEvidence() {
       setLinkModuleId('');
       setLinkActionId('');
     } catch (error) {
-      console.error('Error updating links:', error);
+      if (import.meta.env.DEV) console.error('Error updating links:', error);
       alert('Failed to update links.');
     }
   };
@@ -238,7 +238,7 @@ export default function DocumentEvidence() {
       setPreviewUrl(url);
       setPreviewAttachment(attachment);
     } catch (error) {
-      console.error('Error generating preview URL:', error);
+      if (import.meta.env.DEV) console.error('Error generating preview URL:', error);
       alert('Failed to load preview.');
     }
   };
@@ -251,7 +251,7 @@ export default function DocumentEvidence() {
       a.download = attachment.file_name;
       a.click();
     } catch (error) {
-      console.error('Error downloading attachment:', error);
+      if (import.meta.env.DEV) console.error('Error downloading attachment:', error);
       alert('Failed to download file.');
     }
   };

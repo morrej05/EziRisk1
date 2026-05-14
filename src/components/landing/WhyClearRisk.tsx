@@ -19,7 +19,7 @@ const benefits = [
   {
     icon: CheckCircle2,
     title: 'Professional Output',
-    description: 'AI trained on professional risk assessment language produces reports that meet industry standards and client expectations.',
+    description: 'Structured professional wording helps produce reports that meet industry standards and client expectations.',
     stat: 'Expert',
     statLabel: 'Level Quality',
   },

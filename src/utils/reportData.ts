@@ -72,12 +72,12 @@ async function loadFromSnapshot(surveyId: string, revisionNumber: number): Promi
       .maybeSingle();
 
     if (error) {
-      console.error('Error loading revision snapshot:', error);
+      if (import.meta.env.DEV) console.error('Error loading revision snapshot:', error);
       return null;
     }
 
     if (!revision || !revision.snapshot) {
-      console.warn(`Revision ${revisionNumber} not found for survey ${surveyId}`);
+      if (import.meta.env.DEV) console.warn(`Revision ${revisionNumber} not found for survey ${surveyId}`);
       return null;
     }
 
@@ -112,7 +112,7 @@ async function loadFromSnapshot(surveyId: string, revisionNumber: number): Promi
       issuedBy: revision.issued_by,
     };
   } catch (error) {
-    console.error('Error in loadFromSnapshot:', error);
+    if (import.meta.env.DEV) console.error('Error in loadFromSnapshot:', error);
     return null;
   }
 }
@@ -129,12 +129,12 @@ async function loadFromLive(surveyId: string): Promise<ReportData | null> {
       .maybeSingle();
 
     if (error) {
-      console.error('Error loading live survey:', error);
+      if (import.meta.env.DEV) console.error('Error loading live survey:', error);
       return null;
     }
 
     if (!survey) {
-      console.warn(`Survey ${surveyId} not found`);
+      if (import.meta.env.DEV) console.warn(`Survey ${surveyId} not found`);
       return null;
     }
 
@@ -177,7 +177,7 @@ async function loadFromLive(surveyId: string): Promise<ReportData | null> {
       issuedBy: null,
     };
   } catch (error) {
-    console.error('Error in loadFromLive:', error);
+    if (import.meta.env.DEV) console.error('Error in loadFromLive:', error);
     return null;
   }
 }
@@ -195,13 +195,13 @@ export async function listIssuedRevisions(surveyId: string) {
       .order('revision_number', { ascending: false });
 
     if (error) {
-      console.error('Error listing revisions:', error);
+      if (import.meta.env.DEV) console.error('Error listing revisions:', error);
       return [];
     }
 
     return data || [];
   } catch (error) {
-    console.error('Error in listIssuedRevisions:', error);
+    if (import.meta.env.DEV) console.error('Error in listIssuedRevisions:', error);
     return [];
   }
 }
@@ -218,13 +218,13 @@ export async function getSurveyStatus(surveyId: string) {
       .maybeSingle();
 
     if (error) {
-      console.error('Error getting survey status:', error);
+      if (import.meta.env.DEV) console.error('Error getting survey status:', error);
       return null;
     }
 
     return data;
   } catch (error) {
-    console.error('Error in getSurveyStatus:', error);
+    if (import.meta.env.DEV) console.error('Error in getSurveyStatus:', error);
     return null;
   }
 }

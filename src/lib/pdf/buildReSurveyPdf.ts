@@ -1937,17 +1937,17 @@ async function fetchEvidenceImageBytes(
         .from('evidence')
         .createSignedUrl(storagePath, 300);
       if (error || !data?.signedUrl) {
-        console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
+        if (import.meta.env.DEV) console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
         return null;
       }
       const response = await fetch(data.signedUrl);
       if (!response.ok) {
-        console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
+        if (import.meta.env.DEV) console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
         return null;
       }
       return new Uint8Array(await response.arrayBuffer());
     } catch (error) {
-      console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
+      if (import.meta.env.DEV) console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
       return null;
     }
   })();
@@ -2000,7 +2000,7 @@ function isCompletedRecommendationStatus(action: Pick<Action, 'status' | 'comple
 }
 
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  console.log('[PDF RE Survey] Starting RE Survey PDF build');
+  if (import.meta.env.DEV) console.log('[PDF RE Survey] Starting RE Survey PDF build');
   const { moduleInstances, actions, organisation, renderMode, selectedModules, applyTrialWatermark } = options;
   const document = {
     ...options.document,
@@ -2015,7 +2015,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   const isDraft = !isIssuedMode;
   const totalPages: PDFPage[] = [];
 
-  console.log('[PDF RE Survey] Render mode:', isIssuedMode ? 'ISSUED' : 'DRAFT');
+  if (import.meta.env.DEV) console.log('[PDF RE Survey] Render mode:', isIssuedMode ? 'ISSUED' : 'DRAFT');
 
   const modulesToInclude = selectedModules
     ? moduleInstances.filter(m => selectedModules.includes(m.module_key))
@@ -2926,6 +2926,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   }
 
   const pdfBytes = await pdfDoc.save();
-  console.log('[PDF RE Survey] PDF build complete');
+  if (import.meta.env.DEV) console.log('[PDF RE Survey] PDF build complete');
   return pdfBytes;
 }

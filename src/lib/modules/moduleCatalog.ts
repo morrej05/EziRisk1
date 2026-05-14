@@ -322,6 +322,37 @@ const MODULE_KEY_ALIASES: Record<string, string> = {
   FRA_4_SIGNIFICANT_FINDINGS: 'FRA_90_SIGNIFICANT_FINDINGS',
 };
 
+
+const PROFESSIONAL_MODULE_FALLBACKS: Record<string, string> = {
+  FRA_1_HAZARDS: 'Hazards & Ignition Sources',
+  FRA_2_ESCAPE: 'Means of Escape',
+  FRA_3_ACTIVE_FIRE_PROTECTION: 'Active Fire Protection',
+  FRA_4_PASSIVE_FIRE_PROTECTION: 'Passive Fire Protection',
+  FRA_5_FIRE_SERVICE: 'Fire Service Access & Facilities',
+  FRA_6_MANAGEMENT: 'Fire Safety Management',
+  FRA_7_EMERGENCY: 'Emergency Arrangements',
+  FRA_8_FIREFIGHTING: 'Firefighting Equipment',
+};
+
+function humaniseModuleKey(moduleKey: string): string {
+  const fallback = PROFESSIONAL_MODULE_FALLBACKS[moduleKey] || PROFESSIONAL_MODULE_FALLBACKS[moduleKey.toUpperCase()];
+  if (fallback) return fallback;
+
+  const cleaned = moduleKey
+    .replace(/^(FRA|FSD|DSEAR|RE|A)[_-]?\d+[A-Z]?[_-]*/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (!cleaned || (/^[A-Z0-9_-]+$/.test(cleaned) && !cleaned.includes(' '))) {
+    return 'Assessment section';
+  }
+
+  return cleaned
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Assessment section';
+}
+
 function resolveModuleKey(moduleKey: string): string {
   return MODULE_KEY_ALIASES[moduleKey] ?? moduleKey;
 }
@@ -340,7 +371,7 @@ if (modulesWithoutType.length > 0) {
 
 export function getModuleName(moduleKey: string): string {
   const resolvedKey = resolveModuleKey(moduleKey);
-  return MODULE_CATALOG[resolvedKey]?.name || 'Assessment section';
+  return MODULE_CATALOG[resolvedKey]?.name || humaniseModuleKey(moduleKey);
 }
 
 export function getModuleDisplayLabel(moduleKey: string | null | undefined): string {
@@ -348,7 +379,7 @@ export function getModuleDisplayLabel(moduleKey: string | null | undefined): str
 
   const resolvedKey = resolveModuleKey(moduleKey);
   const name = MODULE_CATALOG[resolvedKey]?.name;
-  if (!name) return 'Assessment section';
+  if (!name) return humaniseModuleKey(moduleKey);
 
   return name
     .replace(/^([A-Z]+-\d+|A\d+|RE-\d+)\s*[–-]\s*/u, '')

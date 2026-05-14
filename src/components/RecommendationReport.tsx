@@ -86,7 +86,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
         .order('sort_index', { ascending: true });
 
       if (recError) {
-        console.error('Error fetching recommendations:', recError);
+        if (import.meta.env.DEV) console.error('Error fetching recommendations:', recError);
       }
 
       const surveyYear = getSurveyYear(data.survey_date, data.issue_date);
@@ -158,7 +158,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
         setRecommendations(recsWithRefNumbers);
       }
     } catch (error) {
-      console.error('Error fetching survey:', error);
+      if (import.meta.env.DEV) console.error('Error fetching survey:', error);
       alert('Failed to load survey data.');
     } finally {
       setIsLoading(false);
