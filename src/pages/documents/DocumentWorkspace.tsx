@@ -136,14 +136,14 @@ function getExpectedKeysForDocument(document: Document, existingModuleKeys: stri
       'A3_PERSONS_AT_RISK',
       'FRA_6_MANAGEMENT_SYSTEMS',
       'FRA_7_EMERGENCY_ARRANGEMENTS',
-      'A7_REVIEW_ASSURANCE',
       'FRA_1_HAZARDS',
       'FRA_2_ESCAPE_ASIS',
       ...(existing.has('FRA_3_PROTECTION_ASIS')
         ? ['FRA_3_PROTECTION_ASIS']
         : ['FRA_3_ACTIVE_SYSTEMS', 'FRA_4_PASSIVE_PROTECTION', 'FRA_8_FIREFIGHTING_EQUIPMENT']),
       'FRA_90_SIGNIFICANT_FINDINGS',
-      'FRA_5_EXTERNAL_FIRE_SPREAD'
+      'FRA_5_EXTERNAL_FIRE_SPREAD',
+      'A7_REVIEW_ASSURANCE'
     );
   }
 
@@ -180,7 +180,13 @@ function getExpectedKeysForDocument(document: Document, existingModuleKeys: stri
     );
   }
 
-  return [...new Set(expected)];
+  const unique = [...new Set(expected)];
+  if (!unique.includes('A7_REVIEW_ASSURANCE')) return unique;
+
+  return [
+    ...unique.filter((moduleKey) => moduleKey !== 'A7_REVIEW_ASSURANCE'),
+    'A7_REVIEW_ASSURANCE',
+  ];
 }
 
 export default function DocumentWorkspace() {
@@ -621,11 +627,11 @@ export default function DocumentWorkspace() {
             <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
           </div>
           <h2 className="text-xl font-semibold text-neutral-900 mb-2">
-            {invalidUrl ? 'Invalid Document URL' : 'Document Not Found'}
+            {invalidUrl ? 'Section Unavailable' : 'Document Not Found'}
           </h2>
           <p className="text-neutral-600 mb-6">
             {invalidUrl
-              ? 'The document URL is invalid or incomplete. Please check the URL and try again.'
+              ? 'This section could not be loaded. Please return to the overview and try again.'
               : "This document doesn't exist or you don't have permission to access it."}
           </p>
           <button

@@ -145,6 +145,8 @@ function InteractiveRow({
   );
 }
 
+const SHOW_PORTFOLIO_AI = import.meta.env.DEV;
+
 export default function PortfolioPage() {
   const navigate = useNavigate();
   const { organisation, user, isPlatformAdmin } = useAuth();
@@ -596,7 +598,7 @@ export default function PortfolioPage() {
           openReRecommendations: row.openReRecommendations,
           moduleAlignmentNote: row.moduleKey === 'RE recommendations'
             ? 'Source-specific RE grouping; no strict module-key alignment to assessment actions.'
-            : 'Assessment action module key grouping.',
+            : 'Assessment section grouping.',
           hotspotScore: row.hotspotScore,
         })),
       topClientHotspots: metrics.showClientHotspots
@@ -805,14 +807,16 @@ export default function PortfolioPage() {
               Copy Markdown
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowInsightPanel((current) => !current)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors"
-          >
-            <Sparkles className="w-4 h-4" />
-            Analyse Portfolio
-          </button>
+          {SHOW_PORTFOLIO_AI && (
+            <button
+              type="button"
+              onClick={() => setShowInsightPanel((current) => !current)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors"
+            >
+              <Sparkles className="w-4 h-4" />
+              Analyse Portfolio
+            </button>
+          )}
         </div>
       </div>
 
@@ -928,7 +932,7 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {showInsightPanel && (
+      {SHOW_PORTFOLIO_AI && showInsightPanel && (
         <PortfolioInsightPanel
           isOpen={showInsightPanel}
           onClose={() => setShowInsightPanel(false)}
@@ -1178,8 +1182,8 @@ export default function PortfolioPage() {
           </section>
 
           <section className="bg-white rounded-lg border border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900">Common Action Modules</h2>
-            <p className="text-sm text-slate-600 mt-1">Top module keys from action register entries (frequency-based).</p>
+            <h2 className="text-xl font-semibold text-slate-900">Common Action Sections</h2>
+            <p className="text-sm text-slate-600 mt-1">Top assessment sections from action register entries (frequency-based).</p>
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
@@ -1309,9 +1313,9 @@ export default function PortfolioPage() {
             </div>
 
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Hotspot Modules</h3>
+              <h3 className="text-base font-semibold text-slate-900">Hotspot Sections</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Module hotspots use assessment action module keys plus a separate RE recommendations grouping where direct module alignment is not available.
+                Section hotspots use assessment section names plus a separate RE recommendations grouping where direct section alignment is not available.
               </p>
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-200">

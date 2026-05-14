@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 
 export interface ActionRegisterEntry {
   id: string;
@@ -159,9 +160,9 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     'Recommended Action',
     'Owner',
     'Target Date',
-    'Module Key',
+    'Assessment Section',
     'Document Title',
-    'Document Type',
+    'Assessment Type',
     'Version Number',
     'Issue Status',
     'Issue Date',
@@ -180,7 +181,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     action.recommended_action,
     action.owner_name || 'Unassigned',
     action.target_date || 'Not set',
-    action.module_key || 'N/A',
+    getModuleKeyLabel(action.module_key || ''),
     action.document_title,
     action.document_type,
     action.version_number.toString(),
@@ -276,34 +277,5 @@ export function getUniqueDocumentTypes(actions: ActionRegisterEntry[]): string[]
 }
 
 export function getModuleKeyLabel(key: string): string {
-  const labels: Record<string, string> = {
-    'A1': 'A1 - Document Control',
-    'A2': 'A2 - Building Profile',
-    'A3': 'A3 - Persons at Risk',
-    'A4': 'A4 - Management Controls',
-    'A5': 'A5 - Emergency Arrangements',
-    'FRA1': 'FRA1 - Fire Hazards',
-    'FRA2': 'FRA2 - Means of Escape',
-    'FRA3': 'FRA3 - Fire Protection',
-    'FRA4': 'FRA4 - Significant Findings',
-    'FRA5': 'FRA5 - External Fire Spread',
-    'FSD1': 'FSD1 - Regulatory Basis',
-    'FSD2': 'FSD2 - Evacuation Strategy',
-    'FSD3': 'FSD3 - Means of Escape Design',
-    'FSD4': 'FSD4 - Passive Fire Protection',
-    'FSD5': 'FSD5 - Active Fire Systems',
-    'FSD6': 'FSD6 - Fire Service Access',
-    'FSD7': 'FSD7 - Drawings Index',
-    'FSD8': 'FSD8 - Smoke Control',
-    'FSD9': 'FSD9 - Construction Phase',
-    'DSEAR1': 'DSEAR1 - Dangerous Substances',
-    'DSEAR2': 'DSEAR2 - Process Releases',
-    'DSEAR3': 'DSEAR3 - Hazardous Area Classification',
-    'DSEAR4': 'DSEAR4 - Ignition Sources',
-    'DSEAR5': 'DSEAR5 - Explosion Protection',
-    'DSEAR6': 'DSEAR6 - Risk Assessment Table',
-    'DSEAR10': 'DSEAR10 - Hierarchy Control',
-    'DSEAR11': 'DSEAR11 - Emergency Response',
-  };
-  return labels[key] || key;
+  return getModuleDisplayLabel(key);
 }

@@ -18,6 +18,8 @@ interface Survey {
   survey_type: 'fra' | 'risk_engineering' | 'combined';
 }
 
+const SHOW_AI_CONTROLS = import.meta.env.DEV;
+
 export default function SurveyDraftModal({ surveyId, onClose, cachedSummary, onSummaryGenerated }: SurveyDraftModalProps) {
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,9 +124,10 @@ export default function SurveyDraftModal({ surveyId, onClose, cachedSummary, onS
               </div>
             </div>
 
-            <div className="border-b border-slate-200 px-8 py-4 bg-slate-50 print:hidden">
-              <div className="flex items-center justify-between">
-                <button
+            {SHOW_AI_CONTROLS && (
+              <div className="border-b border-slate-200 px-8 py-4 bg-slate-50 print:hidden">
+                <div className="flex items-center justify-between">
+                  <button
                   onClick={handleGenerateAISummary}
                   disabled={isGeneratingAI}
                   className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -141,8 +144,9 @@ export default function SurveyDraftModal({ surveyId, onClose, cachedSummary, onS
                     </>
                   )}
                 </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="overflow-hidden">
               <SurveyReport

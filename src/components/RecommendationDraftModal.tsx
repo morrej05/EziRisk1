@@ -38,6 +38,8 @@ interface Survey {
   user_id: string;
 }
 
+const SHOW_AI_CONTROLS = import.meta.env.DEV;
+
 export default function RecommendationDraftModal({ surveyId, onClose, cachedSummary, onSummaryGenerated }: RecommendationDraftModalProps) {
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -295,9 +297,10 @@ export default function RecommendationDraftModal({ surveyId, onClose, cachedSumm
               </div>
             </div>
 
-            <div className="border-b border-slate-200 px-8 py-4 bg-slate-50 print:hidden">
-              <div className="flex items-center justify-between">
-                <button
+            {SHOW_AI_CONTROLS && (
+              <div className="border-b border-slate-200 px-8 py-4 bg-slate-50 print:hidden">
+                <div className="flex items-center justify-between">
+                  <button
                   onClick={handleGenerateAISummary}
                   disabled={isGeneratingAI}
                   className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -314,8 +317,9 @@ export default function RecommendationDraftModal({ surveyId, onClose, cachedSumm
                     </>
                   )}
                 </button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="px-8 py-6 border-b border-slate-200">
               <div className="flex items-start justify-between mb-4">
@@ -359,15 +363,15 @@ export default function RecommendationDraftModal({ surveyId, onClose, cachedSumm
                         </p>
                       </div>
                       <div className="text-xs text-slate-500 border-t border-violet-200 pt-3 mt-4">
-                        AI-generated summary based on structured survey data.
+                        Generated summary based on structured survey data.
                       </div>
                     </>
                   ) : (
                     <div className="bg-white rounded-lg border-2 border-dashed border-violet-300 p-6 text-center">
                       <Sparkles className="w-8 h-8 text-violet-400 mx-auto mb-3" />
-                      <p className="text-slate-600 mb-2">No AI summary generated yet</p>
+                      <p className="text-slate-600 mb-2">No executive summary has been prepared yet</p>
                       <p className="text-sm text-slate-500">
-                        Click "Generate AI Summary" in the toolbar above to create an executive summary.
+                        Prepare the executive summary before issuing the report.
                       </p>
                     </div>
                   )}

@@ -9,6 +9,7 @@ import AddFromLibraryModal from '../../AddFromLibraryModal';
 import { Plus, X, Upload, Image as ImageIcon, AlertTriangle, Filter, Table2, FileText, Library, BookmarkPlus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
+import { getModuleDisplayLabel } from '../../../lib/modules/moduleCatalog';
 
 interface Document {
   id: string;
@@ -1229,7 +1230,7 @@ export default function RE09RecommendationsForm({
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-600">
                               {MODULE_SECTIONS.find((m) => m.key === rec.source_module_key)
-                                ?.label || rec.source_module_key}
+                                ?.label || getModuleDisplayLabel(rec.source_module_key)}
                             </td>
                             <td className="px-4 py-3">{rec.owner || '—'}</td>
                           </tr>
@@ -1291,7 +1292,7 @@ export default function RE09RecommendationsForm({
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-600">
                               {MODULE_SECTIONS.find((m) => m.key === rec.source_module_key)
-                                ?.label || rec.source_module_key}
+                                ?.label || getModuleDisplayLabel(rec.source_module_key)}
                             </td>
                             <td className="px-4 py-3">{rec.owner || '—'}</td>
                           </tr>

@@ -9,6 +9,8 @@ import AiInsightPanel from '../../components/ai/AiInsightPanel';
 import { getPlanDisplayName, getSubscriptionStatusDisplayName } from '../../utils/entitlements';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
+const SHOW_AI_CONTROLS = import.meta.env.DEV;
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { organisation } = useAuth();
@@ -157,21 +159,23 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleAnalyseSelected}
-                  disabled={selectedRows.length === 0}
-                  className="px-3 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
-                >
-                  Analyse Selected
-                </button>
-                <button
-                  onClick={handleSummariseVisible}
-                  className="px-3 py-2 bg-white text-slate-900 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
-                >
-                  Summarise Visible
-                </button>
-              </div>
+              {SHOW_AI_CONTROLS && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAnalyseSelected}
+                    disabled={selectedRows.length === 0}
+                    className="px-3 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  >
+                    Analyse Selected
+                  </button>
+                  <button
+                    onClick={handleSummariseVisible}
+                    className="px-3 py-2 bg-white text-slate-900 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
+                  >
+                    Summarise Visible
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -310,12 +314,14 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <AiInsightPanel
-          isOpen={isAiPanelOpen}
-          mode={aiMode}
-          records={aiRecords}
-          onClose={() => setIsAiPanelOpen(false)}
-        />
+        {SHOW_AI_CONTROLS && (
+          <AiInsightPanel
+            isOpen={isAiPanelOpen}
+            mode={aiMode}
+            records={aiRecords}
+            onClose={() => setIsAiPanelOpen(false)}
+          />
+        )}
       </div>
 
       {/* TODO: pass selected/visible records to a backend AI workflow once service contracts are finalised. */}

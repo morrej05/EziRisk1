@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ArrowLeft, Upload, Image, FileText, Trash2, Edit2, Link2, X, Download, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getModuleName } from '../../lib/modules/moduleCatalog';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import {
   listAttachments,
   uploadEvidenceFile,
@@ -271,7 +271,7 @@ export default function DocumentEvidence() {
   const getModuleNameForAttachment = (attachment: Attachment): string => {
     if (!attachment.module_instance_id) return '';
     const module = modules.find((m) => m.id === attachment.module_instance_id);
-    return module ? getModuleName(module.module_key) : '';
+    return module ? getModuleDisplayLabel(module.module_key) : '';
   };
 
   const getActionSummaryForAttachment = (attachment: Attachment): string => {
@@ -348,7 +348,7 @@ export default function DocumentEvidence() {
                     <option value="">All Modules</option>
                     {[...new Set(modules.map((m) => m.module_key))].map((key) => (
                       <option key={key} value={key}>
-                        {getModuleName(key)}
+                        {getModuleDisplayLabel(key)}
                       </option>
                     ))}
                   </select>
@@ -560,7 +560,7 @@ export default function DocumentEvidence() {
                   <option value="">None</option>
                   {modules.map((module) => (
                     <option key={module.id} value={module.id}>
-                      {getModuleName(module.module_key)}
+                      {getModuleDisplayLabel(module.module_key)}
                     </option>
                   ))}
                 </select>

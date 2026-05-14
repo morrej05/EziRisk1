@@ -811,7 +811,7 @@ export default function Dashboard() {
                       </div>
                       <div className="mt-4 pt-4 border-t border-slate-200">
                         <p className="text-xs text-slate-500">
-                          AI-generated portfolio analysis based on {filteredSurveys.filter(s => s.issued && !s.superseded_by_id).length} issued surveys
+                          Portfolio analysis based on {filteredSurveys.filter(s => s.issued && !s.superseded_by_id).length} issued surveys
                           {summaryFilterState?.companyName && ` • Filtered by: ${summaryFilterState.companyName}`}
                           {summaryFilterState?.industrySector && summaryFilterState.industrySector !== 'all' && ` • Sector: ${summaryFilterState.industrySector}`}
                           {summaryFilterState?.framework && summaryFilterState.framework !== 'all' && ` • Framework: ${getFrameworkLabel(summaryFilterState.framework)}`}
@@ -825,7 +825,7 @@ export default function Dashboard() {
                       </div>
                       <h4 className="text-lg font-semibold text-slate-900 mb-2">No Summary Generated Yet</h4>
                       <p className="text-slate-600 mb-6 max-w-md mx-auto">
-                        Generate an AI-powered analysis of your portfolio to identify trends, risks, and insights across your surveys.
+                        Generate a portfolio summary to identify trends, risks, and insights across your surveys.
                       </p>
                       <button
                         onClick={handleGeneratePortfolioSummary}
@@ -835,10 +835,10 @@ export default function Dashboard() {
                             ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                             : 'bg-brand-accent text-white hover:bg-brand-accent-hover shadow-sm'
                         }`}
-                        title={filteredSurveys.length < 2 ? 'At least 2 issued survey reports required' : 'Generate AI-powered portfolio summary'}
+                        title={filteredSurveys.length < 2 ? 'At least 2 issued survey reports required' : 'Generate portfolio summary'}
                       >
                         <Sparkles className={`w-4 h-4 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
-                        {isGeneratingSummary ? 'Generating Summary...' : 'Generate AI Summary'}
+                        {isGeneratingSummary ? 'Generating Summary...' : 'Generate Summary'}
                       </button>
                       {filteredSurveys.length < 2 && (
                         <p className="text-xs text-slate-500 mt-3">

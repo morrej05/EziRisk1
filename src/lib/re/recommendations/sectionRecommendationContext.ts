@@ -1,3 +1,5 @@
+import { getModuleDisplayLabel } from '../../modules/moduleCatalog';
+
 export interface BuildRecommendationContextParams {
   documentId: string;
   moduleInstanceId: string;
@@ -180,8 +182,8 @@ export function buildRecommendationContext({
     sourceLabel?.trim() ||
     sectionLabelFromKey(sectionKey) ||
     moduleLabelFromKey(moduleKey) ||
-    moduleKey;
-  const assessorSectionLabel = resolvedSectionLabel === moduleKey ? "Assessment area" : resolvedSectionLabel;
+    getModuleDisplayLabel(moduleKey);
+  const assessorSectionLabel = resolvedSectionLabel === moduleKey ? "Assessment section" : resolvedSectionLabel;
   const resolvedSourceLabel = sourceLabel?.trim() || (resolvedSectionLabel === moduleKey ? assessorSectionLabel : resolvedSectionLabel);
   const resolvedSectionKey =
     sectionKey?.trim() || slugify(resolvedSectionLabel);
