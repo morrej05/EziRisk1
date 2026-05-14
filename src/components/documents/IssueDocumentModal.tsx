@@ -306,10 +306,10 @@ export default function IssueDocumentModal({
                 </p>
               </Callout>
               {validationWarnings.length > 0 && (
-                <Callout variant="warning" title="Optional Modules Incomplete" className="mb-6">
+                <Callout variant="warning" title="Recommended Before Issue" className="mb-6">
                   <div className="text-amber-900">
                     <p className="mb-2 text-sm">
-                      The following optional modules have no data. You can still issue the document, but consider completing them:
+                      These checks do not technically block issue, but should be reviewed and confirmed before issuing:
                     </p>
                     <ul className="space-y-1 ml-4 text-sm">
                       {validationWarnings.map((warning, idx) => (
