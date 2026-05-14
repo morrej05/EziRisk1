@@ -5,7 +5,7 @@ import {
   HAZARD_TO_SOURCE_MAPPINGS,
 } from './ignitionSourceActivation';
 
-const sourceKeys = ['electrical', 'smoking', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'hot_works', 'high_risk_other', 'hazardous_substances_dsear', 'arson'];
+const sourceKeys = ['electrical', 'fixed_wiring_eicr', 'smoking', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'hot_works', 'high_risk_other', 'hazardous_substances_dsear', 'arson', 'portable_heaters'];
 
 describe('FRA ignition source activation', () => {
   it('documents required broad hazard mappings', () => {
@@ -18,6 +18,7 @@ describe('FRA ignition source activation', () => {
       expect.objectContaining({ broadKey: 'maintenance_activities', sourceKey: 'maintenance_controls' }),
       expect.objectContaining({ broadKey: 'other', sourceKey: 'high_risk_other' }),
       expect.objectContaining({ broadKey: 'electrical_equipment', sourceKey: 'electrical' }),
+      expect.objectContaining({ broadKey: 'fixed_wiring_concerns', sourceKey: 'fixed_wiring_eicr' }),
       expect.objectContaining({ broadKey: 'portable_heaters', sourceKey: 'portable_heaters' }),
       expect.objectContaining({ broadKey: 'flammable_liquids', sourceKey: 'hazardous_substances_dsear', dsearPrompt: true }),
       expect.objectContaining({ broadKey: 'high', sourceKey: 'arson' }),
@@ -37,7 +38,7 @@ describe('FRA ignition source activation', () => {
     });
 
     expect(result.activeSourceKeys).toEqual(['smoking', 'hot_works']);
-    expect(result.optionalSourceKeys).toEqual(['electrical', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'high_risk_other', 'hazardous_substances_dsear', 'arson']);
+    expect(result.optionalSourceKeys).toEqual(['electrical', 'fixed_wiring_eicr', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'high_risk_other', 'hazardous_substances_dsear', 'arson', 'portable_heaters']);
     expect(getEffectiveIgnitionPresence({
       sourceKey: 'smoking',
       assessment: {},
@@ -73,4 +74,20 @@ describe('FRA ignition source activation', () => {
     expect(result.activeSourceKeys).toContain('hazardous_substances_dsear');
     expect(result.dsearPrompt).toBe(true);
   });
+
+  it('activates the fixed wiring / EICR card from broad fixed wiring concerns', () => {
+    const result = getActiveIgnitionSourceCards({
+      broadSelections: { ignition_sources: ['fixed_wiring_concerns'] },
+      sourceAssessments: {},
+      sourceKeys,
+    });
+
+    expect(result.activeSourceKeys).toEqual(['fixed_wiring_eicr']);
+    expect(getEffectiveIgnitionPresence({
+      sourceKey: 'fixed_wiring_eicr',
+      assessment: {},
+      broadSelections: { ignition_sources: ['fixed_wiring_concerns'] },
+    })).toBe('present');
+  });
+
 });
