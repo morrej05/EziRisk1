@@ -92,6 +92,7 @@ import {
 } from "../../components/ui/DesignSystem";
 import {
   getActionRegisterSiteLevel,
+  formatActionSourceContext,
   type ActionRegisterEntry,
 } from "../../utils/actionRegister";
 import ActionDetailModal from "../../components/actions/ActionDetailModal";
@@ -164,6 +165,20 @@ const isRecommendationActiveStatus = (
 ): boolean => {
   const normalized = (status || "").trim().toLowerCase().replace(/\s+/g, "_");
   return normalized === "open" || normalized === "in_progress";
+};
+
+const recommendationPriorityToBand = (priority: string | null | undefined): string => {
+  const normalized = (priority || "").trim().toLowerCase();
+  if (normalized === "high" || normalized === "p1") return "P1";
+  if (normalized === "medium" || normalized === "p2") return "P2";
+  if (normalized === "low" || normalized === "p3") return "P3";
+  if (normalized === "p4") return "P4";
+  return "P4";
+};
+
+const recommendationPriorityHelper = (priority: string | null | undefined): string | null => {
+  const normalized = (priority || "").trim();
+  return ["High", "Medium", "Low"].includes(normalized) ? normalized : null;
 };
 
 export default function DocumentOverview() {
@@ -493,9 +508,8 @@ export default function DocumentOverview() {
       const counts = { P1: 0, P2: 0, P3: 0, P4: 0 };
       (data || []).forEach((recommendation) => {
         if (!isRecommendationActiveStatus(recommendation.status)) return;
-        if (recommendation.priority === "High") counts.P1++;
-        if (recommendation.priority === "Medium") counts.P2++;
-        if (recommendation.priority === "Low") counts.P3++;
+        const band = recommendationPriorityToBand(recommendation.priority);
+        if (band in counts) counts[band as keyof typeof counts]++;
       });
 
       setActionCounts(counts);
@@ -674,7 +688,7 @@ export default function DocumentOverview() {
 
     if (actionPriorityFilter.length > 0) {
       filtered = filtered.filter((r) =>
-        actionPriorityFilter.includes(r.priority),
+        actionPriorityFilter.includes(recommendationPriorityToBand(r.priority)),
       );
     }
 
@@ -690,12 +704,7 @@ export default function DocumentOverview() {
   };
 
   const getRecommendationPriorityBadgeClass = (priority: string) => {
-    if (priority === "High") return "bg-red-100 text-red-800 border-red-300";
-    if (priority === "Medium")
-      return "bg-amber-100 text-amber-800 border-amber-300";
-    if (priority === "Low")
-      return "bg-emerald-100 text-emerald-800 border-emerald-300";
-    return "bg-neutral-100 text-neutral-700 border-neutral-300";
+    return getPriorityColor(recommendationPriorityToBand(priority));
   };
 
   const handleBuildDefencePack = async () => {
@@ -1859,7 +1868,7 @@ export default function DocumentOverview() {
                   {actionCounts.P1}
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {isReDocument ? "High" : "P1"}
+                  P1
                 </div>
               </div>
               <div className="text-center">
@@ -1867,7 +1876,7 @@ export default function DocumentOverview() {
                   {actionCounts.P2}
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {isReDocument ? "Medium" : "P2"}
+                  P2
                 </div>
               </div>
               <div className="text-center">
@@ -1875,7 +1884,7 @@ export default function DocumentOverview() {
                   {actionCounts.P3}
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {isReDocument ? "Low" : "P3"}
+                  P3
                 </div>
               </div>
               <div className="text-center">
@@ -1883,7 +1892,7 @@ export default function DocumentOverview() {
                   {actionCounts.P4}
                 </div>
                 <div className="text-xs text-neutral-500">
-                  {isReDocument ? "—" : "P4"}
+                  P4
                 </div>
               </div>
             </div>
@@ -1986,12 +1995,12 @@ export default function DocumentOverview() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-neutral-900">
-                  {isReDocument ? "Recommendations" : "Actions"}
+                  {isReDocument ? "Recommendations quick preview" : "Actions quick preview"}
                 </h2>
                 <p className="text-sm text-neutral-600 mt-1">
                   {isReDocument
-                    ? "Manage active recommendations from this RE document"
-                    : "Manage and track actions from this document"}
+                    ? "A short preview only — use the register for detailed recommendation management"
+                    : "A short preview only — use the register for detailed action management"}
                 </p>
               </div>
               <Button
@@ -2006,7 +2015,7 @@ export default function DocumentOverview() {
                 }
               >
                 <List className="w-4 h-4 mr-2" />
-                Full Register
+                Open register
               </Button>
             </div>
           </div>
@@ -2048,18 +2057,13 @@ export default function DocumentOverview() {
                   Priority:
                 </span>
                 <div className="flex gap-2">
-                  {(isReDocument
-                    ? ["High", "Medium", "Low"]
-                    : ["P1", "P2", "P3", "P4"]
-                  ).map((priority) => (
+                  {["P1", "P2", "P3", "P4"].map((priority) => (
                     <button
                       key={priority}
                       onClick={() => togglePriorityFilter(priority)}
                       className={`px-2 py-1 text-xs font-semibold rounded border transition-colors ${
                         actionPriorityFilter.includes(priority)
-                          ? isReDocument
-                            ? getRecommendationPriorityBadgeClass(priority)
-                            : getPriorityColor(priority)
+                          ? getPriorityColor(priority)
                           : "bg-white text-neutral-500 hover:bg-neutral-100 border-neutral-300"
                       }`}
                     >
@@ -2139,7 +2143,7 @@ export default function DocumentOverview() {
                 </thead>
                 <tbody className="divide-y divide-neutral-200">
                   {(isReDocument ? filteredRecommendations : filteredActions)
-                    .slice(0, 10)
+                    .slice(0, 5)
                     .map((action, index) => {
                       // Use canonical reference_number if assigned, otherwise show pending indicator
                       const refNumber = isReDocument
@@ -2179,9 +2183,14 @@ export default function DocumentOverview() {
                               }`}
                             >
                               {isReDocument
-                                ? (action as ReRecommendationEntry).priority
+                                ? recommendationPriorityToBand((action as ReRecommendationEntry).priority)
                                 : (action as ActionRegisterEntry).priority_band}
                             </span>
+                            {isReDocument && recommendationPriorityHelper((action as ReRecommendationEntry).priority) && (
+                              <span className="ml-2 text-xs text-neutral-500">
+                                source: {recommendationPriorityHelper((action as ReRecommendationEntry).priority)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3">
                             {isReDocument
@@ -2215,16 +2224,7 @@ export default function DocumentOverview() {
                                     .source_context) && (
                                   <span className="block text-xs text-neutral-500">
                                     Source:{" "}
-                                    {(action as ActionRegisterEntry)
-                                      .source_links?.length
-                                      ? (action as ActionRegisterEntry)
-                                          .source_links!.map(
-                                            (link) =>
-                                              `${link.module_key ? getModuleDisplayLabel(link.module_key) : "Assessment section"} — ${link.source_assessment_label || "Assessment section"}`,
-                                          )
-                                          .join("; ")
-                                      : (action as ActionRegisterEntry)
-                                          .source_context}
+                                    {formatActionSourceContext(action as ActionRegisterEntry)}
                                   </span>
                                 )}
                               </span>
@@ -2266,11 +2266,11 @@ export default function DocumentOverview() {
 
           {/* Show more indicator */}
           {(isReDocument
-            ? filteredRecommendations.length > 10
-            : filteredActions.length > 10) && (
+            ? filteredRecommendations.length > 5
+            : filteredActions.length > 5) && (
             <div className="px-6 py-3 border-t border-neutral-200 bg-neutral-50 text-center">
               <p className="text-sm text-neutral-600">
-                Showing 10 of{" "}
+                Showing 5 of{" "}
                 {isReDocument
                   ? filteredRecommendations.length
                   : filteredActions.length}{" "}

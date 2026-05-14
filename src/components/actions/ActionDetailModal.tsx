@@ -67,6 +67,48 @@ function formatTimescale(value?: string | null): string {
   }
 }
 
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function targetDateFromTimescale(timescale?: string | null, baseDate = new Date()): string {
+  const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+
+  switch (timescale) {
+    case 'immediate':
+      return toLocalIsoDate(dueDate);
+    case '7d':
+      dueDate.setDate(dueDate.getDate() + 7);
+      return toLocalIsoDate(dueDate);
+    case '30d':
+      dueDate.setDate(dueDate.getDate() + 30);
+      return toLocalIsoDate(dueDate);
+    case '90d':
+      dueDate.setDate(dueDate.getDate() + 90);
+      return toLocalIsoDate(dueDate);
+    default:
+      return '';
+  }
+}
+
+function suggestedTimescaleFromPriority(priority?: string | null): string | null {
+  switch (priority) {
+    case 'P1':
+      return 'immediate';
+    case 'P2':
+      return '30d';
+    case 'P3':
+      return '90d';
+    case 'P4':
+      return 'next_review';
+    default:
+      return null;
+  }
+}
+
 interface ActionSourceLinkDetail {
   id: string;
   source_assessment_type: string;
@@ -119,6 +161,8 @@ export default function ActionDetailModal({
   const [isClosing, setIsClosing] = useState(false);
   const [isSavingDetail, setIsSavingDetail] = useState(false);
   const [detail, setDetail] = useState<RecommendationDetail>(() => normalizeRecommendationDetail(action.recommendation_detail));
+  const [targetDate, setTargetDate] = useState(action.target_date || '');
+  const [targetDateJustification, setTargetDateJustification] = useState('');
   const [sourceLinks, setSourceLinks] = useState<ActionSourceLinkDetail[]>([]);
   const [showAdvancedDetail, setShowAdvancedDetail] = useState(false);
 
@@ -127,7 +171,9 @@ export default function ActionDetailModal({
     fetchDocumentStatus();
     fetchSourceLinks();
     setDetail(normalizeRecommendationDetail(action.recommendation_detail));
-  }, [action.id, action.recommendation_detail]);
+    setTargetDate(action.target_date || '');
+    setTargetDateJustification('');
+  }, [action.id, action.recommendation_detail, action.target_date]);
 
   const fetchAttachments = async () => {
     setIsLoadingAttachments(true);
@@ -320,12 +366,19 @@ export default function ActionDetailModal({
 
 
   const handleSaveRecommendationDetail = async () => {
+    if (requiresTargetDateJustification && !targetDateJustification.trim()) {
+      alert('Please provide a justification for setting a later target completion date.');
+      return;
+    }
+
     setIsSavingDetail(true);
     try {
       const { error } = await supabase
         .from('actions')
         .update({
           recommendation_detail: compactRecommendationDetail(detail),
+          target_date: targetDate || null,
+          override_justification: requiresTargetDateJustification ? targetDateJustification.trim() : null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', action.id);
@@ -534,10 +587,19 @@ export default function ActionDetailModal({
     }
   };
 
+  const suggestedTimescale = action.timescale || suggestedTimescaleFromPriority(action.priority_band);
+  const suggestedTargetDate = targetDateFromTimescale(suggestedTimescale);
+  const requiresTargetDateJustification = Boolean(
+    targetDate &&
+    suggestedTargetDate &&
+    targetDate > suggestedTargetDate
+  );
+  const legacyEvidenceNote = String(detail.evidence_notes || '').trim();
+
   const isOverdue =
-    action.target_date &&
+    targetDate &&
     action.status !== 'closed' &&
-    action.target_date < new Date().toISOString().split('T')[0];
+    targetDate < new Date().toISOString().split('T')[0];
 
   const isInfoGap = action.source === 'info_gap' || action.module_instance?.outcome === 'info_gap';
   const isDeletable = documentStatus === 'draft';
@@ -691,9 +753,37 @@ export default function ActionDetailModal({
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 mb-1">Target completion date</label>
-                    <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{action.target_date ? formatDate(action.target_date) : 'Not set'}</p>
+                    {documentStatus === 'draft' ? (
+                      <input
+                        type="date"
+                        value={targetDate}
+                        onChange={(e) => setTargetDate(e.target.value)}
+                        className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                      />
+                    ) : (
+                      <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{targetDate ? formatDate(targetDate) : 'Not set'}</p>
+                    )}
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'To be agreed'}
+                      {suggestedTargetDate ? ` (${formatDate(suggestedTargetDate)})` : ''}.
+                    </p>
                   </div>
                 </div>
+
+                {requiresTargetDateJustification && documentStatus === 'draft' && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <label className="block text-xs font-semibold text-amber-900 mb-1">
+                      Later target date justification <span className="text-red-600">*</span>
+                    </label>
+                    <textarea
+                      value={targetDateJustification}
+                      onChange={(e) => setTargetDateJustification(e.target.value)}
+                      rows={2}
+                      placeholder="Explain why the target completion date is later than the suggested completion."
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700 resize-none text-sm bg-white"
+                    />
+                  </div>
+                )}
 
                 <div className="border-t border-blue-100 pt-3">
                   <button
@@ -709,7 +799,6 @@ export default function ActionDetailModal({
                         ['rationale', 'Recommendation rationale'],
                         ['standards_reference', 'Standards / guidance reference'],
                         ['existing_controls', 'Existing controls noted'],
-                        ['evidence_notes', 'Legacy evidence notes'],
                         ['assessor_commentary', 'Assessor commentary'],
                         ['management_response', 'Management response / status notes'],
                       ].map(([key, label]) => (
@@ -727,6 +816,12 @@ export default function ActionDetailModal({
                           )}
                         </div>
                       ))}
+                      {legacyEvidenceNote && (
+                        <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                          <div className="text-xs font-semibold text-neutral-700">Legacy evidence note</div>
+                          <div className="mt-1 text-sm text-neutral-900 whitespace-pre-wrap">{legacyEvidenceNote}</div>
+                        </div>
+                      )}
                       {detail.timeframe_guidance && (
                         <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
                           <div className="text-xs font-semibold text-neutral-700">Legacy priority-derived timeframe</div>
@@ -736,7 +831,7 @@ export default function ActionDetailModal({
                       {detail.linked_module && (
                         <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
                           <div className="text-xs font-semibold text-neutral-700">Linked assessment area</div>
-                          <div className="mt-1 text-sm text-neutral-900">{String(detail.linked_module)}</div>
+                          <div className="mt-1 text-sm text-neutral-900">{getModuleDisplayLabel(String(detail.linked_module))}</div>
                         </div>
                       )}
                     </div>

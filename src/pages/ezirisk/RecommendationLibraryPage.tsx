@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import { Plus, Edit2, Archive, CheckCircle, Sparkles, AlertTriangle } from 'lucide-react';
 import { generateHazardText, validateHazardNeutrality } from '../../utils/hazardTextGenerator';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -299,7 +300,7 @@ function LibraryItemCard({
   onEdit: (item: LibraryItem) => void;
   onToggleActive: (item: LibraryItem) => void;
 }) {
-  const moduleLabel = MODULE_OPTIONS.find((m) => m.key === item.related_module_key)?.label || item.related_module_key || 'General';
+  const moduleLabel = MODULE_OPTIONS.find((m) => m.key === item.related_module_key)?.label || getModuleDisplayLabel(item.related_module_key) || 'General';
   const priorityText = priorityToText(item.default_priority);
 
   return (

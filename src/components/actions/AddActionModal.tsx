@@ -995,7 +995,6 @@ export default function AddActionModal({
                   ['standards_reference', 'Standards / guidance reference', 'e.g. Fire Safety Order, PAS 79, BS 9999, BS 5839, BS 5266, Approved Document B...'],
                   ['existing_controls', 'Existing controls noted', 'Record relevant existing controls or interim measures.'],
                   ['assessor_commentary', 'Assessor commentary', 'Professional judgement, limitations or client-specific context.'],
-                  ['evidence_notes', 'Legacy evidence notes', 'Legacy free-text evidence reference retained for audit only. Add real files after saving.'],
                   ['management_response', 'Management response / status notes', 'Optional client response, agreed action or deferral note.'],
                 ].map(([key, label, placeholder]) => (
                   <div key={key}>

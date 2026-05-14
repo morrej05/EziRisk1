@@ -181,7 +181,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     action.recommended_action,
     action.owner_name || 'Unassigned',
     action.target_date || 'Not set',
-    getModuleKeyLabel(action.module_key || ''),
+    getModuleKeyLabel(action.module_key),
     action.document_title,
     action.document_type,
     action.version_number.toString(),
@@ -190,7 +190,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     action.tracking_status,
     action.timescale || '',
     action.source,
-    action.source_context || '',
+    formatActionSourceContext(action),
     action.age_days.toString(),
     new Date(action.created_at).toLocaleDateString(),
     action.closed_at ? new Date(action.closed_at).toLocaleDateString() : '',
@@ -276,6 +276,31 @@ export function getUniqueDocumentTypes(actions: ActionRegisterEntry[]): string[]
   return Array.from(new Set(types)).sort();
 }
 
-export function getModuleKeyLabel(key: string): string {
+export function getModuleKeyLabel(key: string | null | undefined): string {
   return getModuleDisplayLabel(key);
+}
+
+function looksLikeTechnicalIdentifier(value: string): boolean {
+  return /^[A-Z]{2,}(_[A-Z0-9]+)+$/.test(value.trim()) || /^[0-9a-f-]{32,}$/i.test(value.trim());
+}
+
+function containsTechnicalIdentifier(value: string): boolean {
+  return looksLikeTechnicalIdentifier(value) || /\b[A-Z]{2,}_[A-Z0-9_]+\b/.test(value) || /\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i.test(value);
+}
+
+export function formatActionSourceContext(action: Pick<ActionRegisterEntry, 'source_context' | 'source_links'>): string {
+  if (action.source_links?.length) {
+    return action.source_links
+      .map((link) => {
+        const moduleLabel = getModuleKeyLabel(link.module_key);
+        const sourceLabel = link.source_assessment_label?.trim() || 'Assessment section';
+        return `${moduleLabel} — ${containsTechnicalIdentifier(sourceLabel) ? 'Assessment section' : sourceLabel}`;
+      })
+      .join('; ');
+  }
+
+  const sourceContext = action.source_context?.trim();
+  if (!sourceContext) return '';
+
+  return containsTechnicalIdentifier(sourceContext) ? 'Linked assessment area' : sourceContext;
 }
