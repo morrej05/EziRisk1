@@ -1,4 +1,4 @@
-import { getModuleName, MODULE_CATALOG } from './moduleCatalog';
+import { getModuleDisplayLabel, getModuleName, MODULE_CATALOG } from './moduleCatalog';
 
 export interface ModuleInstance {
   id: string;
@@ -51,13 +51,7 @@ export function getModuleCode(moduleKey: string): string {
 }
 
 export function getModuleDisplayName(moduleKey: string): string {
-  const fullName = getModuleName(moduleKey)
-    .replace(/^([A-Z]+-\d+|A\d+|RE-\d+)\s*[–-]\s*/u, '')
-    .replace(/\(As-Is\)/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
-  return fullName.charAt(0).toUpperCase() + fullName.slice(1);
+  return getModuleDisplayLabel(moduleKey);
 }
 
 export function isDerivedModule(moduleKey: string): boolean {
@@ -97,7 +91,10 @@ function filterFraModules(fraModules: ModuleInstance[]): ModuleInstance[] {
 }
 
 export function buildModuleSections(modules: ModuleInstance[]): ModuleSection[] {
-  const fraModulesRaw = modules.filter((m) => m.module_key.startsWith('FRA_') || FRA_ADDITIONAL_A_KEYS.has(m.module_key));
+  const fraModulesRaw = modules.filter((m) =>
+    (m.module_key.startsWith('FRA_') || FRA_ADDITIONAL_A_KEYS.has(m.module_key))
+    && m.module_key !== 'A7_REVIEW_ASSURANCE'
+  );
   const fraModulesFiltered = filterFraModules(fraModulesRaw);
   const fraModulesSorted = sortFraModules(fraModulesFiltered);
 

@@ -32,7 +32,7 @@ import { supabase } from "../../lib/supabase";
 import { withResolvedSectionAssessment } from "../../utils/moduleAssessment";
 import { isModuleCompleteForUi } from "../../utils/moduleCompletion";
 import {
-  getModuleName,
+  getModuleDisplayLabel,
   getModuleNavigationPath as getModulePath,
   getReModulesForDocument,
 } from "../../lib/modules/moduleCatalog";
@@ -66,7 +66,6 @@ import ApprovalStatusBadge from "../../components/documents/ApprovalStatusBadge"
 import ClientAccessModal from "../../components/documents/ClientAccessModal";
 import EditLockBanner from "../../components/EditLockBanner";
 import ChangeSummaryPanel from "../../components/documents/ChangeSummaryPanel";
-import DraftCompletenessBanner from "../../components/documents/DraftCompletenessBanner";
 import type { ApprovalStatus } from "../../utils/approvalWorkflow";
 import { getLockedPdfInfo, downloadLockedPdf } from "../../utils/pdfLocking";
 import {
@@ -1342,32 +1341,6 @@ export default function DocumentOverview() {
           />
         )}
 
-        {["FRA", "DSEAR", "FSD"].includes(document.document_type) &&
-          organisation && (
-            <DraftCompletenessBanner
-              documentId={id!}
-              issueStatus={document.issue_status}
-              executiveSummaryMode={
-                (document.executive_summary_mode as
-                  | "ai"
-                  | "author"
-                  | "both"
-                  | "none") || "ai"
-              }
-              executiveSummaryAi={document.executive_summary_ai}
-              executiveSummaryAuthor={document.executive_summary_author}
-              totalActions={totalActions}
-              evidenceCount={evidenceCount}
-              approvalStatus={document.approval_status}
-              organisation={organisation}
-              onGenerateAiSummary={() => navigate(`/documents/${id}`)}
-              onAddAuthorCommentary={() => navigate(`/documents/${id}`)}
-              onViewActions={() => navigate(`/documents/${id}`)}
-              onAddEvidence={() => navigate(`/documents/${id}/evidence`)}
-              onManageApproval={() => setShowApprovalModal(true)}
-            />
-          )}
-
         {/* Header Card */}
         <Card className="mb-6">
           <div className="flex items-start justify-between">
@@ -1516,7 +1489,7 @@ export default function DocumentOverview() {
                     <p className="text-sm font-medium">Resume Assessment</p>
                     <p className="text-xs text-neutral-600 mt-1">
                       Next incomplete module:{" "}
-                      {getModuleName(firstIncomplete.module_key)}
+                      {getModuleDisplayLabel(firstIncomplete.module_key)}
                     </p>
                   </div>
                   <Button onClick={handleContinueAssessment}>
@@ -1674,15 +1647,15 @@ export default function DocumentOverview() {
           </div>
         </Card>
 
-        {/* Issue-readiness quality gates */}
+        {/* Consolidated issue readiness */}
         <Card className="mb-6">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div>
               <h2 className="text-lg font-semibold text-neutral-900">
-                Issue-readiness quality gates
+                Issue readiness
               </h2>
               <p className="text-sm text-neutral-600 mt-1">
-                Resolve blockers before Review & issue.
+                One consolidated checklist for blockers before Review & issue.
               </p>
             </div>
             <Button
@@ -1741,10 +1714,11 @@ export default function DocumentOverview() {
           document.enabled_modules &&
           document.enabled_modules.length > 0 && (
             <Card className="mb-6">
-              <h2 className="text-lg font-semibold text-neutral-900 mb-4">
-                Available Outputs
-              </h2>
-              <div className="space-y-3">
+              <details>
+                <summary className="cursor-pointer text-lg font-semibold text-neutral-900">
+                  Available outputs
+                </summary>
+                <div className="mt-4 space-y-3">
                 {document.enabled_modules.includes("FRA") && (
                   <div className="flex items-start gap-3 px-3 py-2 bg-neutral-50 rounded-lg">
                     <FileText className="w-5 h-5 text-neutral-600 mt-0.5" />
@@ -1816,12 +1790,13 @@ export default function DocumentOverview() {
                     </div>
                   )}
               </div>
-              <div className="mt-4 pt-4 border-t border-neutral-200">
-                <p className="text-xs text-neutral-600 mb-2">
-                  Click <strong>Preview Report</strong> to view and download any
-                  of these outputs.
-                </p>
-              </div>
+                <div className="mt-4 pt-4 border-t border-neutral-200">
+                  <p className="text-xs text-neutral-600 mb-2">
+                    Click <strong>Preview Report</strong> to view and download any
+                    of these outputs.
+                  </p>
+                </div>
+              </details>
             </Card>
           )}
 
@@ -2219,7 +2194,7 @@ export default function DocumentOverview() {
                             {isReDocument ? (
                               (action as ReRecommendationEntry)
                                 .source_module_key ? (
-                                getModuleName(
+                                getModuleDisplayLabel(
                                   (action as ReRecommendationEntry)
                                     .source_module_key as string,
                                 )
@@ -2229,7 +2204,7 @@ export default function DocumentOverview() {
                             ) : (
                               <span>
                                 {(action as ActionRegisterEntry).module_key
-                                  ? getModuleName(
+                                  ? getModuleDisplayLabel(
                                       (action as ActionRegisterEntry)
                                         .module_key as string,
                                     )
@@ -2245,7 +2220,7 @@ export default function DocumentOverview() {
                                       ? (action as ActionRegisterEntry)
                                           .source_links!.map(
                                             (link) =>
-                                              `${link.module_key ? getModuleName(link.module_key) : "Module"} — ${link.source_assessment_label || link.source_assessment_key}`,
+                                              `${link.module_key ? getModuleDisplayLabel(link.module_key) : "Assessment section"} — ${link.source_assessment_label || "Assessment section"}`,
                                           )
                                           .join("; ")
                                       : (action as ActionRegisterEntry)

@@ -33,6 +33,7 @@ import {
 } from '../../utils/evidenceManagement';
 import { unlinkAttachmentFromAction, unlinkAttachmentFromModule } from '../../lib/supabase/attachments';
 import { supabase } from '../../lib/supabase';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 
 type FilterType = 'all' | 'unlinked' | 'section' | 'action';
 
@@ -723,7 +724,7 @@ export default function DocumentEvidenceV2() {
                                   <option value="">Select module...</option>
                                   {modules.map(mod => (
                                     <option key={mod.id} value={mod.id}>
-                                      {mod.module_key}
+                                      {getModuleDisplayLabel(mod.module_key)}
                                     </option>
                                   ))}
                                 </select>

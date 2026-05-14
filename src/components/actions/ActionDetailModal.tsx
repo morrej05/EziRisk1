@@ -4,8 +4,9 @@ import { X, ExternalLink, FileText, Layers, Paperclip, Camera, Upload, AlertCirc
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { uploadEvidenceFile, createAttachmentRow, getSignedUrl, isValidAttachment, deleteAttachment } from '../../lib/supabase/attachments';
-import ConfirmModal from '../ConfirmModal';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
+import ConfirmModal from '../ConfirmModal';
 import {
   compactRecommendationDetail,
   hasRecommendationDetail,
@@ -812,9 +813,9 @@ export default function ActionDetailModal({
                 {sourceLinks.map((link) => (
                   <div key={link.id} className="text-sm text-blue-950">
                     <span className="font-medium">{formatSourceType(link.source_assessment_type)}</span>
-                    <span> — {link.source_assessment_label || link.source_assessment_key}</span>
+                    <span> — {link.source_assessment_label || "Assessment section"}</span>
                     {link.module_instance?.module_key && (
-                      <span className="text-blue-700"> ({link.module_instance.module_key})</span>
+                      <span className="text-blue-700"> ({getModuleDisplayLabel(link.module_instance.module_key)})</span>
                     )}
                   </div>
                 ))}
@@ -871,7 +872,7 @@ export default function ActionDetailModal({
                 <div className="text-xs text-neutral-500 mt-1">
                   {action.document?.document_type}
                   {action.module_instance?.module_key &&
-                    ` • ${action.module_instance.module_key}`}
+                    ` • ${getModuleDisplayLabel(action.module_instance.module_key)}`}
                 </div>
               </div>
             )}

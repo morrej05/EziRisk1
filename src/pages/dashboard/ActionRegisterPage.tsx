@@ -562,10 +562,10 @@ export default function ActionRegisterPage() {
                 </div>
               </div>
 
-              {/* Document Type Filter */}
+              {/* Assessment Type Filter */}
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Document Type
+                  Assessment Type
                 </label>
                 <div className="space-y-2">
                   {availableDocumentTypes.map((type) => (
@@ -686,7 +686,7 @@ export default function ActionRegisterPage() {
                       {(action.source_links?.length || action.source_context) && (
                         <div className="text-xs text-neutral-500 mt-0.5">
                           Source: {action.source_links?.length
-                            ? action.source_links.map((link) => `${link.module_key ? getModuleKeyLabel(link.module_key) : 'Module'} — ${link.source_assessment_label || link.source_assessment_key}`).join('; ')
+                            ? action.source_links.map((link) => `${link.module_key ? getModuleKeyLabel(link.module_key) : 'Assessment section'} — ${link.source_assessment_label || 'Assessment section'}`).join('; ')
                             : action.source_context}
                         </div>
                       )}

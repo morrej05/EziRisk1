@@ -4,7 +4,7 @@ import { X, ArrowRight, Lock } from 'lucide-react';
 import { issueDocument, validateDocumentForIssue } from '../../utils/documentVersioning';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { supabase } from '../../lib/supabase';
-import { getModuleName } from '../../lib/modules/moduleCatalog';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import { Button, Callout } from '../ui/DesignSystem';
 import { buildIssuedPdfForDocument, storeIssuedPdfWithEdgeFunction } from '../../utils/issuedPdfGeneration';
 import { ensureDocumentIdentitySnapshot } from '../../lib/documents/documentIdentity';
@@ -336,7 +336,7 @@ export default function IssueDocumentModal({
                           className="w-full flex items-center justify-between px-4 py-3 bg-white border border-red-200 rounded-md hover:bg-red-50 hover:border-red-300 transition-colors text-left group"
                         >
                           <span className="font-medium text-neutral-900">
-                            {getModuleName(moduleKey)}
+                            {getModuleDisplayLabel(moduleKey)}
                           </span>
                           <ArrowRight className="w-4 h-4 text-red-600 group-hover:translate-x-1 transition-transform" />
                         </button>

@@ -83,6 +83,8 @@ interface Survey {
   survey_type: 'fra' | 'risk_engineering' | 'combined';
 }
 
+const SHOW_AI_CONTROLS = import.meta.env.DEV;
+
 export default function ReportPreviewPage() {
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
@@ -508,23 +510,25 @@ if (survey.survey_type !== 'fra') {
             </div>
 
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleGenerateAISummary}
-                disabled={isGeneratingAI}
-                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isGeneratingAI ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>Generate AI Summary</span>
-                  </>
-                )}
-              </button>
+              {SHOW_AI_CONTROLS && (
+                <button
+                  onClick={handleGenerateAISummary}
+                  disabled={isGeneratingAI}
+                  className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingAI ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>Generate Summary</span>
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* TEMPORARY: Test Issue Button (Admin Only) */}
               {user && !survey.issued && (

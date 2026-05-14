@@ -313,6 +313,12 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
 const MODULE_KEY_ALIASES: Record<string, string> = {
   A4_MANAGEMENT_CONTROLS: 'FRA_6_MANAGEMENT_SYSTEMS',
   A5_EMERGENCY_ARRANGEMENTS: 'FRA_7_EMERGENCY_ARRANGEMENTS',
+  FRA_2_ESCAPE: 'FRA_2_ESCAPE_ASIS',
+  FRA_3_ACTIVE_FIRE_PROTECTION: 'FRA_3_ACTIVE_SYSTEMS',
+  FRA_4_PASSIVE_FIRE_PROTECTION: 'FRA_4_PASSIVE_PROTECTION',
+  FRA_6_MANAGEMENT: 'FRA_6_MANAGEMENT_SYSTEMS',
+  FRA_7_EMERGENCY: 'FRA_7_EMERGENCY_ARRANGEMENTS',
+  FRA_8_FIREFIGHTING: 'FRA_8_FIREFIGHTING_EQUIPMENT',
   FRA_4_SIGNIFICANT_FINDINGS: 'FRA_90_SIGNIFICANT_FINDINGS',
 };
 
@@ -337,10 +343,34 @@ export function getModuleName(moduleKey: string): string {
   return MODULE_CATALOG[resolvedKey]?.name || moduleKey;
 }
 
+export function getModuleDisplayLabel(moduleKey: string | null | undefined): string {
+  if (!moduleKey) return 'Assessment section';
+
+  const resolvedKey = resolveModuleKey(moduleKey);
+  const name = MODULE_CATALOG[resolvedKey]?.name;
+  if (!name) return 'Assessment section';
+
+  return name
+    .replace(/^([A-Z]+-\d+|A\d+|RE-\d+)\s*[–-]\s*/u, '')
+    .replace(/\(As-Is\)/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim() || 'Assessment section';
+}
+
+function moveReviewAssuranceToEnd(moduleKeys: string[]): string[] {
+  const withoutReview = moduleKeys.filter((moduleKey) => moduleKey !== 'A7_REVIEW_ASSURANCE');
+  return moduleKeys.includes('A7_REVIEW_ASSURANCE')
+    ? [...withoutReview, 'A7_REVIEW_ASSURANCE']
+    : withoutReview;
+}
+
 export function sortModulesByOrder(
   modules: Array<{ module_key: string }>
 ): Array<{ module_key: string }> {
   return [...modules].sort((a, b) => {
+    if (a.module_key === 'A7_REVIEW_ASSURANCE' && b.module_key !== 'A7_REVIEW_ASSURANCE') return 1;
+    if (b.module_key === 'A7_REVIEW_ASSURANCE' && a.module_key !== 'A7_REVIEW_ASSURANCE') return -1;
+
     const orderA = MODULE_CATALOG[resolveModuleKey(a.module_key)]?.order ?? 999;
     const orderB = MODULE_CATALOG[resolveModuleKey(b.module_key)]?.order ?? 999;
     return orderA - orderB;
@@ -354,7 +384,7 @@ export function getModuleKeysForDocType(
   const includeDeprecated = options?.includeDeprecated ?? false;
   const includeDeprecatedIfPresent = new Set(options?.includeDeprecatedIfPresent ?? []);
 
-  return Object.entries(MODULE_CATALOG)
+  const keys = Object.entries(MODULE_CATALOG)
     .filter(([key, def]) => {
       if (!def.docTypes.includes(docType) || def.hidden) return false;
       if (!def.deprecated) return true;
@@ -363,6 +393,8 @@ export function getModuleKeysForDocType(
     })
     .sort((a, b) => (a[1].order ?? 999) - (b[1].order ?? 999))
     .map(([key]) => key);
+
+  return docType === 'FRA' ? moveReviewAssuranceToEnd(keys) : keys;
 }
 
 export function filterDeprecatedModuleKeysForNavigation(

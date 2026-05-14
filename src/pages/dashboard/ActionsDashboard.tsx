@@ -447,7 +447,7 @@ export default function ActionsDashboard() {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm font-medium text-neutral-700">Document Type:</label>
+                  <label className="text-sm font-medium text-neutral-700">Assessment Type:</label>
                   <select
                     value={documentTypeFilter}
                     onChange={(e) => setDocumentTypeFilter(e.target.value)}

@@ -319,8 +319,7 @@ export default function CanonicalReRecommendationModal({
               Add Recommendation
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Linked to {recommendationContext.displayLabel}; technical linkage
-              is saved automatically.
+              Capture the finding, evidence and action in one place.
             </p>
           </div>
           <button
@@ -365,7 +364,7 @@ export default function CanonicalReRecommendationModal({
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
-                Observation
+                Observation / finding
               </label>
               <textarea
                 value={observation}
@@ -378,7 +377,7 @@ export default function CanonicalReRecommendationModal({
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
-                Observation / finding detail
+                Recommendation detail
               </label>
               <textarea
                 value={actionRequired}
@@ -405,18 +404,6 @@ export default function CanonicalReRecommendationModal({
               />
             </div>
 
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
-                Assessor notes
-              </label>
-              <textarea
-                value={comments}
-                onChange={(e) => setComments(e.target.value)}
-                rows={2}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Internal notes (not included in report)"
-              />
-            </div>
 
             <div className="grid grid-cols-2 gap-4 border-t border-slate-200 pt-4 md:grid-cols-5">
               <div>
@@ -430,9 +417,9 @@ export default function CanonicalReRecommendationModal({
                   }
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                 >
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
+                  <option value="High">P1 / High</option>
+                  <option value="Medium">P2 / Medium</option>
+                  <option value="Low">P3 / Low</option>
                 </select>
               </div>
               <div className="hidden">
@@ -511,31 +498,30 @@ export default function CanonicalReRecommendationModal({
               </button>
               {showAdvanced && (
                 <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-                  <div className="rounded border border-slate-200 bg-white p-3">
-                    <p className="font-medium text-slate-700">
-                      Category override
-                    </p>
-                    <p className="mt-1 text-slate-600">{resolvedCategory}</p>
-                  </div>
-                  <div className="rounded border border-slate-200 bg-white p-3">
-                    <p className="font-medium text-slate-700">
-                      Source/module metadata
-                    </p>
-                    <p className="mt-1 text-slate-600">
-                      {recommendationContext.displayLabel}
-                    </p>
-                  </div>
                   <div className="rounded border border-slate-200 bg-white p-3 md:col-span-2">
-                    <p className="font-medium text-slate-700">
-                      Standards, controls, assurance, management response, rule
-                      inputs, escalation and raw scoring
-                    </p>
-                    <p className="mt-1 text-slate-500">
-                      Captured through specialist workflows where applicable;
-                      hidden here to keep section recommendations
-                      assessor-focused.
-                    </p>
+                    <label className="mb-1 block font-medium text-slate-700">
+                      Assessor notes
+                    </label>
+                    <textarea
+                      value={comments}
+                      onChange={(e) => setComments(e.target.value)}
+                      rows={2}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      placeholder="Internal notes (not included in report)"
+                    />
                   </div>
+                  {import.meta.env.DEV && (
+                    <>
+                      <div className="rounded border border-slate-200 bg-white p-3">
+                        <p className="font-medium text-slate-700">Category</p>
+                        <p className="mt-1 text-slate-600">{resolvedCategory}</p>
+                      </div>
+                      <div className="rounded border border-slate-200 bg-white p-3">
+                        <p className="font-medium text-slate-700">Assessment section</p>
+                        <p className="mt-1 text-slate-600">{recommendationContext.displayLabel}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -543,13 +529,13 @@ export default function CanonicalReRecommendationModal({
             <div className="border-t border-slate-200 pt-4">
               <div className="mb-3 flex items-center justify-between">
                 <label className="block text-sm font-medium text-slate-700">
-                  Supporting Photos ({photos.length}/
+                  Evidence ({photos.length}/
                   {MAX_PHOTOS_PER_RECOMMENDATION})
                 </label>
                 {photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700">
                     <Upload className="h-4 w-4" />
-                    Add Photo
+                    Add evidence
                     <input
                       type="file"
                       accept="image/*"
@@ -609,13 +595,13 @@ export default function CanonicalReRecommendationModal({
                 </div>
               ) : (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 py-6 text-center text-sm text-slate-500">
-                  No photos attached (max 15MB per photo)
+                  No evidence attached yet (max 15MB per image)
                 </div>
               )}
 
               {uploadingPhoto && (
                 <div className="mt-2 text-sm text-blue-600">
-                  Uploading photo...
+                  Uploading evidence...
                 </div>
               )}
             </div>

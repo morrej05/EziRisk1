@@ -191,7 +191,7 @@ export default function PublicDocumentViewer() {
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-1">Document Type</h3>
+              <h3 className="text-sm font-medium text-neutral-700 mb-1">Assessment Type</h3>
               <p className="text-neutral-900">{document.document_type.toUpperCase()}</p>
             </div>
 

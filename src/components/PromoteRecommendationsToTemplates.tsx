@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { ArrowUpCircle, CheckCircle2, AlertCircle, Loader2, Search } from 'lucide-react';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 
 interface ReRecommendation {
   id: string;
@@ -322,7 +323,7 @@ export default function PromoteRecommendationsToTemplates() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                        {rec.source_module_key}
+                        {getModuleDisplayLabel(rec.source_module_key)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
