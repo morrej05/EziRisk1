@@ -70,6 +70,58 @@ type IgnitionSourceDefinition = {
   actionText: string;
 };
 
+type ElectricalSafetyData = {
+  eicr_last_date: string | null;
+  eicr_interval_years: string;
+  eicr_satisfactory: string;
+  eicr_evidence_seen: string;
+  eicr_outstanding_c1_c2: string;
+  eicr_notes: string;
+  pat_in_place: string;
+};
+
+type LightningData = {
+  lightning_protection_present: string | null;
+  lightning_risk_assessment_completed: string | null;
+  assessment_date: string | null;
+  notes: string;
+};
+
+type DuctCleaningData = {
+  ducts_present: string | null;
+  dust_grease_risk: string | null;
+  cleaning_frequency: string | null;
+  last_cleaned: string | null;
+  notes: string;
+};
+
+type DsearScreenData = {
+  flammables_present: string | null;
+  explosive_atmospheres_possible: string | null;
+  dsear_assessment_status: string | null;
+  assessor: string | null;
+  notes: string;
+};
+
+type FireHazardsFormData = {
+  ignition_sources: string[];
+  ignition_other: string;
+  fuel_sources: string[];
+  fuel_other: string;
+  oxygen_enrichment: string;
+  oxygen_sources_notes: string;
+  high_risk_activities: string[];
+  high_risk_other: string;
+  arson_risk: string;
+  housekeeping_fire_load: string;
+  notes: string;
+  electrical_safety: ElectricalSafetyData;
+  lightning: LightningData;
+  duct_cleaning: DuctCleaningData;
+  dsear_screen: DsearScreenData;
+  ignition_source_assessments: IgnitionAssessmentMap;
+};
+
 const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
   {
     key: 'electrical',
@@ -77,6 +129,13 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     legacyIgnition: 'electrical_equipment',
     prompt: 'Fixed wiring, distribution boards, portable appliances, charging, extension leads and electrical maintenance evidence.',
     actionText: 'Review and strengthen electrical ignition source controls, including evidence of inspection/testing, remediation of defects, safe use of portable appliances and management of temporary wiring or charging arrangements.',
+  },
+  {
+    key: 'fixed_wiring_eicr',
+    label: 'Fixed wiring / EICR',
+    legacyIgnition: 'fixed_wiring_concerns',
+    prompt: 'Fixed wiring concerns, EICR evidence, unsatisfactory reports, outstanding C1/C2 observations and remedial work status.',
+    actionText: 'Review fixed wiring and EICR controls, obtain current evidence where missing and ensure any unsatisfactory or C1/C2 observations are remediated by a competent electrical contractor.',
   },
   {
     key: 'portable_heaters',
@@ -179,6 +238,7 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
 const IGNITION_OPTIONS = [
   'smoking',
   'electrical_equipment',
+  'fixed_wiring_concerns',
   'cooking',
   'portable_heaters',
   'plant_rooms',
@@ -266,7 +326,7 @@ export default function FRA1FireHazardsForm({
       ? { ...fallback, ...(moduleData[key] as Partial<T>) }
       : fallback;
 
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<FireHazardsFormData>({
     ignition_sources: getStringArray('ignition_sources'),
     ignition_other: getString('ignition_other'),
     fuel_sources: getStringArray('fuel_sources'),

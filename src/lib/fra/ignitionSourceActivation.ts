@@ -63,6 +63,7 @@ const DETAIL_FIELDS: Array<keyof IgnitionSourceAssessmentLike> = [
 export const HAZARD_TO_SOURCE_MAPPINGS: HazardToSourceMapping[] = [
   { broadField: 'ignition_sources', broadKey: 'smoking', sourceKey: 'smoking', label: 'Smoking → Smoking controls source card' },
   { broadField: 'ignition_sources', broadKey: 'electrical_equipment', sourceKey: 'electrical', label: 'Electrical equipment → Electrical ignition source card' },
+  { broadField: 'ignition_sources', broadKey: 'fixed_wiring_concerns', sourceKey: 'fixed_wiring_eicr', label: 'Fixed wiring concerns → Fixed wiring / EICR card' },
   { broadField: 'ignition_sources', broadKey: 'cooking', sourceKey: 'cooking', label: 'Cooking → Cooking equipment source card' },
   { broadField: 'ignition_sources', broadKey: 'portable_heaters', sourceKey: 'portable_heaters', label: 'Portable heaters → Heating/appliances source card' },
   { broadField: 'ignition_sources', broadKey: 'plant_rooms', sourceKey: 'plant_machinery', label: 'Plant rooms → Plant/machinery source card' },
