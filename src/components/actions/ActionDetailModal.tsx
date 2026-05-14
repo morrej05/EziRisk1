@@ -626,7 +626,6 @@ export default function ActionDetailModal({
                   ['timeframe_guidance', 'Priority-derived timeframe'],
                   ['existing_controls', 'Existing controls noted'],
                   ['evidence_notes', 'Evidence basis / linked evidence'],
-                  ['linked_module', 'Linked assessment area / module'],
                   ['assessor_commentary', 'Assessor commentary'],
                   ['management_response', 'Management response / status notes'],
                 ].map(([key, label]) => (
@@ -644,6 +643,12 @@ export default function ActionDetailModal({
                     )}
                   </div>
                 ))}
+                {detail.linked_module && (
+                  <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                    <div className="text-xs font-semibold text-neutral-700">Linked assessment area</div>
+                    <div className="mt-1 text-sm text-neutral-900">{String(detail.linked_module)}</div>
+                  </div>
+                )}
               </div>
             )}
           </div>

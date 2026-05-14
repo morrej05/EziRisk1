@@ -189,7 +189,10 @@ function toFraActionCategory(category?: string | null): FraFindingCategory | nul
   if (compact.includes('compartment')) return 'Compartmentation';
   if (compact.includes('firedoor')) return 'FireDoors';
   if (compact.includes('firefighting') || compact.includes('extinguisher')) return 'FireFighting';
-  if (compact.includes('management') || compact.includes('procedure')) return 'Management';
+  if (compact.includes('management') || compact.includes('procedure') || compact.includes('permit') || compact.includes('contractor')) return 'Management';
+  if (compact.includes('hotwork') || compact.includes('kitchen') || compact.includes('cooking') || compact.includes('laundry') || compact.includes('charging') || compact.includes('ignition')) return 'Management';
+  if (compact.includes('electricalinstallation') || compact.includes('electricalsafety') || compact.includes('fixedwiring') || compact.includes('eicr')) return 'Management';
+  if (compact.includes('generalfireriskrecommendation')) return 'Management';
   if (compact.includes('housekeeping')) return 'Housekeeping';
   return null;
 }
@@ -208,7 +211,7 @@ function getDefaultFraCategory(sourceModuleKey?: string): FraFindingCategory {
     case 'FRA_7_EMERGENCY_ARRANGEMENTS':
       return 'Management';
     case 'FRA_1_HAZARDS':
-      return 'Other';
+      return 'Management';
     default:
       return 'Other';
   }
@@ -226,7 +229,7 @@ function categoryLabel(category: ActionCategory): string {
     FireFighting: 'Fire Fighting Equipment',
     Management: 'Management & Procedures',
     Housekeeping: 'Housekeeping',
-    Other: 'Other',
+    Other: 'General fire risk recommendation',
   };
   return labels[String(category)] || String(category);
 }
@@ -328,7 +331,7 @@ export default function AddActionModal({
       recommendationDetail: {
         ...prev.recommendationDetail,
         recommendation: defaultAction,
-        linked_module: sourceModuleKey || prev.recommendationDetail.linked_module || '',
+        linked_module: recommendationContext.displayLabel || prev.recommendationDetail.linked_module || '',
         sectionKey: recommendationContext.sectionKey,
         sectionLabel: recommendationContext.sectionLabel,
         sourceKey: recommendationContext.sourceKey,
@@ -569,6 +572,7 @@ export default function AddActionModal({
 
   const suggestedTimescale = getSuggestedTimescale(priorityBand);
   const effectiveTimescale = formData.timescale || suggestedTimescale;
+  const displayRecommendationCategory = recommendationContext.defaultCategory || categoryLabel(formData.category);
   const isTimescaleOverride = effectiveTimescale !== suggestedTimescale;
   const timescaleRank: Record<string, number> = { immediate: 0, '7d': 1, '30d': 2, '90d': 3, next_review: 4, custom: 5 };
   const isTimescaleRelaxation = isTimescaleOverride && (timescaleRank[effectiveTimescale] ?? 99) > (timescaleRank[suggestedTimescale] ?? 99);
@@ -679,7 +683,7 @@ export default function AddActionModal({
         ...formData.recommendationDetail,
         recommendation: formData.recommendationDetail.recommendation || normalizedActionText,
         timeframe_guidance: formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale),
-        linked_module: formData.recommendationDetail.linked_module || sourceModuleKey || '',
+        linked_module: formData.recommendationDetail.linked_module || recommendationContext.displayLabel || '',
         sectionKey: recommendationContext.sectionKey,
         sectionLabel: recommendationContext.sectionLabel,
         sourceKey: recommendationContext.sourceKey,
@@ -975,7 +979,7 @@ export default function AddActionModal({
             >
               <div>
                 <div className="text-sm font-semibold text-neutral-900">Advanced</div>
-                <div className="text-xs text-neutral-600">Standards, existing controls, assurance commentary, management response and source/module metadata.</div>
+                <div className="text-xs text-neutral-600">Standards, existing controls, assurance commentary, management response and advanced details.</div>
               </div>
               <span className="text-sm font-medium text-blue-700">{showConsultancyDetail ? 'Hide' : 'Expand'}</span>
             </button>
@@ -1012,64 +1016,60 @@ export default function AddActionModal({
                     <p className="mt-1 text-xs text-neutral-500">Adjust the editable target completion date below if assessor judgement requires a different date.</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Linked assessment area / module</label>
-                    <input
-                      value={String(formData.recommendationDetail.linked_module || '')}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        recommendationDetail: { ...formData.recommendationDetail, linked_module: e.target.value },
-                      })}
-                      placeholder="Module or report section"
-                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 text-sm bg-white"
-                    />
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Linked assessment area</label>
+                    <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800">
+                      {recommendationContext.displayLabel || 'Assessment area'}
+                    </div>
+                    <p className="mt-1 text-xs text-neutral-500">This is set by the section where the recommendation was opened.</p>
                   </div>
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryOverride(!showCategoryOverride)}
+                    className="flex w-full items-center justify-between text-left text-sm font-medium text-neutral-800"
+                  >
+                    <span>Change recommendation category</span>
+                    <span className="text-blue-700">{showCategoryOverride ? 'Hide' : 'Show'}</span>
+                  </button>
+                  {showCategoryOverride && (
+                    <select
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData({ ...formData, category: e.target.value as ActionCategory })
+                      }
+                      className="mt-3 w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+                      required
+                    >
+                      {documentType === 'FSD' ? (
+                        FSD_CATEGORY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.value === 'Other' ? 'General fire risk recommendation' : option.label}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="MeansOfEscape">Means of escape</option>
+                          <option value="DetectionAlarm">Detection & alarm</option>
+                          <option value="EmergencyLighting">Emergency lighting</option>
+                          <option value="Compartmentation">Compartmentation</option>
+                          <option value="FireDoors">Fire doors</option>
+                          <option value="FireFighting">Firefighting equipment</option>
+                          <option value="Management">Fire safety management</option>
+                          <option value="Housekeeping">Housekeeping / fire load</option>
+                          <option value="Other">General fire risk recommendation</option>
+                        </>
+                      )}
+                    </select>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
-          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-neutral-800">Category derived from module context</p>
-                <p className="text-sm text-blue-800 mt-1">{categoryLabel(formData.category)}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCategoryOverride(!showCategoryOverride)}
-                className="text-sm font-medium text-blue-700 hover:text-blue-900"
-              >
-                {showCategoryOverride ? 'Hide category' : 'Change category'}
-              </button>
-            </div>
-            {showCategoryOverride && (
-              <select
-                value={formData.category}
-                onChange={(e) =>
-                  setFormData({ ...formData, category: e.target.value as ActionCategory })
-                }
-                className="mt-3 w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
-                required
-              >
-                {documentType === 'FSD' ? (
-                  FSD_CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))
-                ) : (
-                  <>
-                    <option value="MeansOfEscape">Means of Escape</option>
-                    <option value="DetectionAlarm">Detection & Alarm</option>
-                    <option value="EmergencyLighting">Emergency Lighting</option>
-                    <option value="Compartmentation">Compartmentation</option>
-                    <option value="FireDoors">Fire Doors</option>
-                    <option value="FireFighting">Fire Fighting Equipment</option>
-                    <option value="Management">Management & Procedures</option>
-                    <option value="Housekeeping">Housekeeping</option>
-                    <option value="Other">Other</option>
-                  </>
-                )}
-              </select>
-            )}
+          <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-4 py-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Recommendation category</span>
+            <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-medium text-blue-800">
+              {displayRecommendationCategory || 'General fire risk recommendation'}
+            </span>
           </div>
 
           {documentType !== 'FSD' && <div className="border border-neutral-200 rounded-lg p-4">
@@ -1079,14 +1079,14 @@ export default function AddActionModal({
               className="w-full flex items-center justify-between text-left"
             >
               <div>
-                <span className="block text-sm font-medium text-neutral-700">Advanced rule inputs</span>
-                <span className="block text-xs text-neutral-500 mt-1">Hidden by default. Use only when observed triggers must change the derived priority.</span>
+                <span className="block text-sm font-medium text-neutral-700">Advanced priority details</span>
+                <span className="block text-xs text-neutral-500 mt-1">Hidden by default. Use only when observed conditions should change the suggested priority.</span>
               </div>
               <span className="text-sm font-medium text-blue-700">{showRuleInputs ? 'Hide' : 'Show'}</span>
             </button>
             <div className={showRuleInputs ? 'mt-4' : 'hidden'}>
                 <label className="block text-sm font-medium text-neutral-700 mb-3">
-                  Critical Triggers (check if applicable)
+                  Priority conditions (check if applicable)
                 </label>
             <div className="space-y-2">
               {/* Show FRA triggers if FRA is enabled */}
