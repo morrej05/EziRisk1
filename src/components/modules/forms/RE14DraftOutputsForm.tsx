@@ -279,8 +279,8 @@ export default function RE14DraftOutputsForm({
       setExecutiveSummaryAi(aiSummary);
       onSaved();
     } catch (error) {
-      console.error('Error generating AI summary:', error);
-      alert('Failed to generate AI summary');
+      console.error('Error generating draft summary:', error);
+      alert('Failed to generate draft summary');
     } finally {
       setGenerating(false);
     }
@@ -288,7 +288,7 @@ export default function RE14DraftOutputsForm({
 
   const handleUseAiDraft = () => {
     if (!executiveSummaryAi) {
-      alert('Please generate an AI draft first.');
+      alert('Please prepare a draft summary first.');
       return;
     }
     setExecutiveSummary(executiveSummaryAi);
@@ -356,7 +356,7 @@ export default function RE14DraftOutputsForm({
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-violet-600" />
-              AI Summary (Draft)
+              Draft Summary
             </h3>
             <div className="flex gap-2">
               <button
@@ -386,7 +386,7 @@ export default function RE14DraftOutputsForm({
           </div>
           <div className="text-sm text-slate-700">
             <p className="mb-2">
-              Generate an AI-assisted draft summary based on assessment data. This summary is deterministic
+              Generate a draft summary based on assessment data. This summary is deterministic
               and uses only the data entered in other modules (150-250 words, UK English, professional tone).
             </p>
             {!siteMetadata?.site_name || !siteMetadata?.assessment_date || !industryKey ? (

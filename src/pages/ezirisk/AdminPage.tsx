@@ -158,11 +158,11 @@ export default function AdminPage() {
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Organisation Name</dt>
-                <dd className="text-sm font-medium text-slate-900 mt-1">{organisation?.name || '—'}</dd>
+                <dd className="text-sm font-medium text-slate-900 mt-1">{organisation?.name || 'Organisation not recorded'}</dd>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Organisation ID</dt>
-                <dd className="text-sm font-mono text-slate-900 mt-1 break-all">{organisation?.id || '—'}</dd>
+                <dd className="text-sm font-mono text-slate-900 mt-1 break-all">{organisation?.id || 'Organisation ID not available'}</dd>
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Plan</dt>
@@ -170,7 +170,7 @@ export default function AdminPage() {
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Signed-in Admin</dt>
-                <dd className="text-sm font-medium text-slate-900 mt-1">{user?.email || '—'}</dd>
+                <dd className="text-sm font-medium text-slate-900 mt-1">{user?.email || 'User email not available'}</dd>
               </div>
             </dl>
           </div>

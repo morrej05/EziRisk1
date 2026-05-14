@@ -21,7 +21,7 @@ export default function Hero() {
 
         <p className="mb-8 max-w-xl text-lg text-blue-100">
           Create FRA, FSD, DSEAR / ATEX and risk engineering reports with structured workflows,
-          consistent insurer-grade outputs, and AI-assisted portfolio analysis.
+          consistent insurer-grade outputs, and portfolio-level analysis.
         </p>
 
         <div className="flex flex-col items-start gap-3">

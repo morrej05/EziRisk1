@@ -846,7 +846,7 @@ export default function DocumentOverview() {
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return "—";
+    if (!dateString) return "Not yet recorded";
     return new Date(dateString).toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
@@ -2289,9 +2289,9 @@ export default function DocumentOverview() {
                     .map((action, index) => {
                       // Use canonical reference_number if assigned, otherwise show pending indicator
                       const refNumber = isReDocument
-                        ? ((action as ReRecommendationEntry).rec_number ?? "—")
+                        ? ((action as ReRecommendationEntry).rec_number ?? "Not assigned")
                         : ((action as ActionRegisterEntry).reference_number ??
-                          "—");
+                          "Not assigned");
 
                       return (
                         <tr
@@ -2345,7 +2345,7 @@ export default function DocumentOverview() {
                                     .source_module_key as string,
                                 )
                               ) : (
-                                "—"
+                                "Assessment section"
                               )
                             ) : (
                               <span>
@@ -2354,7 +2354,7 @@ export default function DocumentOverview() {
                                       (action as ActionRegisterEntry)
                                         .module_key as string,
                                     )
-                                  : "—"}
+                                  : "Assessment section"}
                                 {((action as ActionRegisterEntry).source_links
                                   ?.length ||
                                   (action as ActionRegisterEntry)
@@ -2370,7 +2370,7 @@ export default function DocumentOverview() {
                           <td className="px-4 py-3 text-sm text-neutral-900 max-w-md">
                             {isReDocument ? (
                               <span className="block truncate">
-                                {(action as ReRecommendationEntry).title || "—"}
+                                {(action as ReRecommendationEntry).title || "No recommendation recorded"}
                               </span>
                             ) : (
                               <Link
@@ -2378,19 +2378,19 @@ export default function DocumentOverview() {
                                 className="block truncate hover:underline"
                               >
                                 {(action as ActionRegisterEntry)
-                                  .recommended_action || "—"}
+                                  .recommended_action || "No recommendation recorded"}
                               </Link>
                             )}
                           </td>
                           <td className="px-4 py-3 text-sm text-neutral-600">
                             {action.target_date
                               ? formatDate(action.target_date)
-                              : "—"}
+                              : "No target completion date set"}
                           </td>
                           {!isReDocument && (
                             <td className="px-4 py-3 text-sm text-neutral-600">
                               {(action as ActionRegisterEntry).owner_name ||
-                                "—"}
+                                "Not assigned"}
                             </td>
                           )}
                         </tr>

@@ -16,7 +16,7 @@ export default function AiInsightPanel({ isOpen, mode, records, onClose }: AiIns
     <aside className="w-full xl:w-96 bg-white rounded-lg shadow-sm border border-slate-200 h-fit sticky top-6">
       <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">AI Insight</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Portfolio Insight</h2>
           <p className="text-sm text-slate-600">{subtitle}</p>
         </div>
         <button
@@ -31,14 +31,14 @@ export default function AiInsightPanel({ isOpen, mode, records, onClose }: AiIns
         <section>
           <h3 className="text-sm font-semibold text-slate-900 mb-2">Summary</h3>
           <p className="text-sm text-slate-600">
-            AI analysis of {records.length} records will appear here.
+            Analysis of {records.length} records will appear here.
           </p>
         </section>
 
         <section>
           <h3 className="text-sm font-semibold text-slate-900 mb-2">Themes</h3>
           <p className="text-sm text-slate-600">
-            Themes and patterns across {records.length} records will be shown once AI integration is connected.
+            Themes and patterns across {records.length} records will be shown once the insight service is enabled.
           </p>
         </section>
 
@@ -52,7 +52,7 @@ export default function AiInsightPanel({ isOpen, mode, records, onClose }: AiIns
         <section>
           <h3 className="text-sm font-semibold text-slate-900 mb-2">Draft Commentary</h3>
           <p className="text-sm text-slate-600">
-            Draft commentary text for reports will appear here when the AI service is enabled.
+            Draft commentary text for reports will appear here when the insight service is enabled.
           </p>
         </section>
 

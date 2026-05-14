@@ -1436,7 +1436,7 @@ export default function NewSurveyReport({ surveyId, onCancel }: NewSurveyReportP
       section.id === sectionId ? regeneratedSection : section
     );
 
-    let fullText = `DRAFT SURVEY REPORT (AI GENERATED)
+    let fullText = `DRAFT SURVEY REPORT
 
 PROPERTY & FIRE RISK SURVEY REPORT
 

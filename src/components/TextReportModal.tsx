@@ -51,7 +51,7 @@ export default function TextReportModal({ surveyId, onClose }: TextReportModalPr
   };
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return '—';
+    if (!dateString) return 'Not yet recorded';
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'long',
@@ -117,7 +117,7 @@ export default function TextReportModal({ surveyId, onClose }: TextReportModalPr
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500 mb-1">Company</h3>
-                  <p className="text-lg font-semibold text-slate-900">{survey.company_name || '—'}</p>
+                  <p className="text-lg font-semibold text-slate-900">{survey.company_name || 'Client not recorded'}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500 mb-1">Survey Date</h3>
@@ -125,7 +125,7 @@ export default function TextReportModal({ surveyId, onClose }: TextReportModalPr
                 </div>
                 {survey.ai_polished && (
                   <div>
-                    <h3 className="text-sm font-medium text-slate-500 mb-1">AI Status</h3>
+                    <h3 className="text-sm font-medium text-slate-500 mb-1">Review Status</h3>
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-lg">
                       <Sparkles className="w-4 h-4" />
                       Polished
@@ -190,10 +190,9 @@ export default function TextReportModal({ surveyId, onClose }: TextReportModalPr
                           <div className="flex items-start gap-3">
                             <Sparkles className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div>
-                              <h3 className="text-sm font-bold text-blue-900 mb-1">AI-Enhanced Report</h3>
+                              <h3 className="text-sm font-bold text-blue-900 mb-1">Polished Recommendation Report</h3>
                               <p className="text-sm text-blue-800">
-                                This recommendation report was generated with AI using temperature=0 for deterministic output.
-                                The same survey text will always produce the same recommendation.
+                                This recommendation report has been polished for consistency and should be reviewed before external issue.
                               </p>
                             </div>
                           </div>
@@ -209,7 +208,7 @@ export default function TextReportModal({ surveyId, onClose }: TextReportModalPr
                     <div className="text-center py-16">
                       <Sparkles className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                       <p className="text-slate-500 text-lg mb-2">No recommendation text available</p>
-                      <p className="text-slate-400 text-sm">Use the text editor and click "Polish Report" to generate AI-enhanced recommendations</p>
+                      <p className="text-slate-400 text-sm">Use the text editor to prepare professional recommendation wording</p>
                     </div>
                   )}
                 </div>

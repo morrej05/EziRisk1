@@ -92,7 +92,7 @@ export default function PortfolioInsightPanel({
       <div className="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Portfolio Insight</h2>
-          <p className="text-sm text-slate-600">AI interpretation of current portfolio aggregates.</p>
+          <p className="text-sm text-slate-600">Portfolio interpretation of current aggregates.</p>
         </div>
         <button
           onClick={onClose}
@@ -104,13 +104,13 @@ export default function PortfolioInsightPanel({
 
       <div className="p-5 space-y-5">
         <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
-          AI-generated insight should be reviewed before external use.
+          Portfolio insight should be reviewed before external use.
         </p>
 
         {!canGenerate && (
           <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
             <p className="text-sm text-slate-700">
-              Insufficient portfolio data for AI insight. Add assessments and actions, then try again.
+              Insufficient portfolio data for insight. Add assessments and actions, then try again.
             </p>
           </div>
         )}
@@ -190,7 +190,7 @@ export default function PortfolioInsightPanel({
         )}
 
         {/* TODO: Surface aggregate-to-output traceability per section for reviewer confidence. */}
-        {/* TODO: Add approval gates before enabling export of AI commentary into formal reports. */}
+        {/* TODO: Add approval gates before enabling export of assisted commentary into formal reports. */}
       </div>
     </aside>
   );
