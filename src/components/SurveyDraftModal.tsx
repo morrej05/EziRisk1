@@ -66,8 +66,8 @@ export default function SurveyDraftModal({ surveyId, onClose, cachedSummary, onS
         onSummaryGenerated(summary);
       }
     } catch (error) {
-      console.error('Error generating AI summary:', error);
-      alert('Failed to generate AI summary. Please try again.');
+      console.error('Error generating draft summary:', error);
+      alert('Failed to generate draft summary. Please try again.');
     } finally {
       setIsGeneratingAI(false);
     }
@@ -140,7 +140,7 @@ export default function SurveyDraftModal({ surveyId, onClose, cachedSummary, onS
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      <span>Generate AI Summary</span>
+                      <span>Generate Draft Summary</span>
                     </>
                   )}
                 </button>

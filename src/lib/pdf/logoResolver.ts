@@ -17,14 +17,14 @@ export async function resolveOrganisationLogo(
 ): Promise<LogoResult> {
   const nullResult: LogoResult = { bytes: null, mime: null, signedUrl: null };
 
-  console.log('[Logo Resolver] Starting logo resolution:', {
+  if (import.meta.env.DEV) console.log('[Logo Resolver] Starting logo resolution:', {
     organisationId,
     brandingLogoPath,
     hasBrandingPath: !!brandingLogoPath
   });
 
   if (!brandingLogoPath) {
-    console.log('[Logo Resolver] No branding path provided, returning null');
+    if (import.meta.env.DEV) console.log('[Logo Resolver] No branding path provided, returning null');
     return nullResult;
   }
 
@@ -34,13 +34,13 @@ export async function resolveOrganisationLogo(
 
   try {
     // Create signed URL
-    console.log('[Logo Resolver] Creating signed URL for path:', normalizedPath);
+    if (import.meta.env.DEV) console.log('[Logo Resolver] Creating signed URL for path:', normalizedPath);
     const { data, error } = await supabase.storage
       .from('org-assets')
       .createSignedUrl(normalizedPath, 3600);
 
     if (error || !data?.signedUrl) {
-      console.warn('[Logo Resolver] Failed to create signed URL:', {
+      if (import.meta.env.DEV) console.warn('[Logo Resolver] Failed to create signed URL:', {
         error: error?.message || 'No error message',
         errorDetails: error,
         hasData: !!data,
@@ -50,10 +50,10 @@ export async function resolveOrganisationLogo(
     }
 
     const signedUrl = data.signedUrl;
-    console.log('[Logo Resolver] Signed URL created successfully');
+    if (import.meta.env.DEV) console.log('[Logo Resolver] Signed URL created successfully');
 
     // Fetch logo bytes with timeout
-    console.log('[Logo Resolver] Fetching logo bytes from signed URL');
+    if (import.meta.env.DEV) console.log('[Logo Resolver] Fetching logo bytes from signed URL');
     const response = await Promise.race([
       fetch(signedUrl),
       new Promise<Response>((_, reject) =>
@@ -62,7 +62,7 @@ export async function resolveOrganisationLogo(
     ]);
 
     if (!response.ok) {
-      console.warn('[Logo Resolver] Failed to fetch logo:', {
+      if (import.meta.env.DEV) console.warn('[Logo Resolver] Failed to fetch logo:', {
         status: response.status,
         statusText: response.statusText
       });
@@ -72,7 +72,7 @@ export async function resolveOrganisationLogo(
     const arrayBuffer = await response.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
 
-    console.log('[Logo Resolver] Logo bytes fetched successfully:', {
+    if (import.meta.env.DEV) console.log('[Logo Resolver] Logo bytes fetched successfully:', {
       byteLength: bytes.length,
       hasBytes: bytes.length > 0
     });
@@ -86,7 +86,7 @@ export async function resolveOrganisationLogo(
       mime = 'image/jpeg';
     }
 
-    console.log('[Logo Resolver] Logo resolved successfully:', {
+    if (import.meta.env.DEV) console.log('[Logo Resolver] Logo resolved successfully:', {
       mime,
       byteLength: bytes.length
     });
@@ -94,7 +94,7 @@ export async function resolveOrganisationLogo(
     return { bytes, mime, signedUrl };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.warn('[Logo Resolver] Exception resolving logo:', {
+    if (import.meta.env.DEV) console.warn('[Logo Resolver] Exception resolving logo:', {
       error: errorMsg,
       errorStack: error instanceof Error ? error.stack : undefined
     });

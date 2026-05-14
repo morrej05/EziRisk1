@@ -553,7 +553,7 @@ export default function FRA4SignificantFindingsForm({
           </h3>
           <p className="text-sm text-neutral-600 mb-3">
             Provide additional context, professional observations, and executive-level commentary
-            beyond the auto-generated summary
+            beyond the prepared summary
           </p>
           <textarea
             value={executiveCommentary}

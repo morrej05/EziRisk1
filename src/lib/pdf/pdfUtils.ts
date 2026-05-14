@@ -688,7 +688,7 @@ export function drawDebugLabel(page: PDFPage, x: number, y: number, text: string
 export function addNewPage(pdfDoc: PDFDocument, isDraft: boolean, totalPages: PDFPage[]): { page: PDFPage; yPosition: number } {
   // Defensive initialization - prevent crashes if totalPages is undefined
   if (!totalPages) {
-    console.warn('[PDF] addNewPage: totalPages was undefined, using fallback empty array');
+    if (import.meta.env.DEV) console.warn('[PDF] addNewPage: totalPages was undefined, using fallback empty array');
     totalPages = [];
   }
 
@@ -841,7 +841,7 @@ export function addExecutiveSummaryPages(
 ): number {
   // Defensive check - ensure totalPages is defined
   if (!totalPages) {
-    console.warn('[PDF] addExecutiveSummaryPages: totalPages was undefined, cannot render');
+    if (import.meta.env.DEV) console.warn('[PDF] addExecutiveSummaryPages: totalPages was undefined, cannot render');
     return 0;
   }
 
@@ -858,7 +858,7 @@ export function addExecutiveSummaryPages(
   };
 
   if (resolvedMode === 'none') {
-    console.info('[PDF Executive Summary] Section skipped by mode:', summaryDiagnostics);
+    if (import.meta.env.DEV) console.info('[PDF Executive Summary] Section skipped by mode:', summaryDiagnostics);
     return 0;
   }
 
@@ -956,7 +956,7 @@ export function addExecutiveSummaryPages(
     pagesAdded++;
   }
 
-  console.info('[PDF Executive Summary] Section render result:', {
+  if (import.meta.env.DEV) console.info('[PDF Executive Summary] Section render result:', {
     ...summaryDiagnostics,
     addedToRenderTree: pagesAdded > 0,
     pagesAdded,
@@ -982,7 +982,7 @@ export async function fetchAndEmbedLogo(
     ]);
 
     if (!response.ok) {
-      console.warn('[PDF Logo] Failed to fetch logo:', response.statusText);
+      if (import.meta.env.DEV) console.warn('[PDF Logo] Failed to fetch logo:', response.statusText);
       return null;
     }
 
@@ -1043,7 +1043,7 @@ export async function fetchAndEmbedLogo(
         )
       ]);
     } else {
-      console.warn('[PDF Logo] Unsupported logo format:', logoPath);
+      if (import.meta.env.DEV) console.warn('[PDF Logo] Unsupported logo format:', logoPath);
       return null;
     }
 
@@ -1051,7 +1051,7 @@ export async function fetchAndEmbedLogo(
     return { image, width: dims.width, height: dims.height };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[PDF Logo] Error embedding logo:', errorMsg);
+    if (import.meta.env.DEV) console.error('[PDF Logo] Error embedding logo:', errorMsg);
     return null;
   }
 }
@@ -1081,7 +1081,7 @@ export async function loadPdfLogoWithFallback(
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.warn('[PDF Logo] Failed to load default EziRisk logo:', errorMsg);
+    if (import.meta.env.DEV) console.warn('[PDF Logo] Failed to load default EziRisk logo:', errorMsg);
   }
 
   return null;
@@ -1494,7 +1494,7 @@ export function drawActionPlanSnapshot(
 ): number {
   // Defensive check - ensure totalPages is defined
   if (!totalPages) {
-    console.warn('[PDF] drawActionPlanSnapshot: totalPages was undefined, cannot render');
+    if (import.meta.env.DEV) console.warn('[PDF] drawActionPlanSnapshot: totalPages was undefined, cannot render');
     return 0;
   }
 
@@ -1656,7 +1656,7 @@ export function drawRecommendationsSection(
 ): number {
   // Defensive check - ensure totalPages is defined
   if (!totalPages) {
-    console.warn('[PDF] drawRecommendationsSection: totalPages was undefined, cannot render');
+    if (import.meta.env.DEV) console.warn('[PDF] drawRecommendationsSection: totalPages was undefined, cannot render');
     return 0;
   }
 

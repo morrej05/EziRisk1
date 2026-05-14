@@ -3712,7 +3712,7 @@ Report Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 
                   Smart Recommendations requires Pro
                 </h3>
                 <p className="text-slate-600 mb-4">
-                  Upgrade to Pro or Pro FRA to access AI-powered Smart Recommendations with automated risk assessments.
+                  Upgrade to Pro or Pro FRA to access Smart Recommendations with automated risk assessments.
                 </p>
                 <button
                   onClick={() => window.location.href = '/upgrade'}

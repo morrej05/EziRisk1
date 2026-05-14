@@ -95,7 +95,9 @@ export default function IssueDocumentModal({
         setValidated(true);
       }
     } catch (error) {
-      console.error('Error validating document:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error validating document:', error);
+      }
       setValidationError('Failed to validate document. Please try again.');
       setValidationErrorCode('VALIDATION_FAILED');
       setValidationWarnings([]);
@@ -124,7 +126,9 @@ export default function IssueDocumentModal({
         });
       }
     } catch (error) {
-      console.error('Error navigating to module:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error navigating to module:', error);
+      }
     }
   };
 
@@ -136,12 +140,18 @@ export default function IssueDocumentModal({
       .maybeSingle();
 
     if (error) {
-      console.warn('[Issue] Failed to reload document state after issue attempt:', error);
+      if (import.meta.env.DEV) {
+        console.warn('[Issue] Failed to reload document state after issue attempt:', error);
+      }
       return null;
     }
 
     if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
-      try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
+      try { onSuccess(); } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('onSuccess failed', e);
+        }
+      }
       return currentDocument;
     }
 
@@ -154,7 +164,11 @@ export default function IssueDocumentModal({
     setIsIssuing(false);
 
     setTimeout(() => {
-      try { onClose(); } catch (e) { console.warn('onClose failed', e); }
+      try { onClose(); } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('onClose failed', e);
+        }
+      }
       navigate(`/documents/${documentId}/workspace`, { replace: true });
     }, 1200);
   };
@@ -168,7 +182,12 @@ export default function IssueDocumentModal({
 
       const { document, identity } = await ensureDocumentIdentitySnapshot(documentId, organisationId);
       if (!identity.clientName || !identity.siteName) {
-        console.warn('[Issue] Issuing with incomplete client/site identity snapshot:', identity);
+        if (import.meta.env.DEV) {
+          console.warn('[Issue] Issuing with incomplete client/site identity snapshot:', {
+            hasClientName: Boolean(identity.clientName),
+            hasSiteName: Boolean(identity.siteName),
+          });
+        }
       }
 
       setIssueProgress('Validating document...');
@@ -183,7 +202,9 @@ export default function IssueDocumentModal({
       try {
         await assignActionReferenceNumbers(documentId, actualBaseDocumentId);
       } catch (refError) {
-        console.warn('[Issue] Failed to assign reference numbers (non-fatal):', refError);
+        if (import.meta.env.DEV) {
+          console.warn('[Issue] Failed to assign reference numbers (non-fatal):', refError);
+        }
       }
 
       setIssueProgress('Generating and storing locked PDF...');
@@ -204,7 +225,9 @@ export default function IssueDocumentModal({
         }
 
         if (!issuedDocument) {
-          console.warn('[Issue] issueDocument returned success, but the issued status was not visible when reloading document state.');
+          if (import.meta.env.DEV) {
+            console.warn('[Issue] issueDocument returned success, but the issued status was not visible when reloading document state.');
+          }
         }
 
         if (storedPdf.signedUrl) {
@@ -218,14 +241,31 @@ export default function IssueDocumentModal({
 
         setIssueProgress('Complete!');
         setTimeout(() => {
-          try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
-          try { onClose(); } catch (e) { console.warn('onClose failed', e); }
+          try {
+            onSuccess();
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              console.warn('onSuccess failed', e);
+            }
+          }
+          try {
+            onClose();
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              console.warn('onClose failed', e);
+            }
+          }
           navigate(`/documents/${documentId}/workspace`, { replace: true });
         }, 500);
       } else {
         const issuedDocument = await reloadIssuedDocumentState();
         if (issuedDocument) {
-          console.warn('[Issue] issueDocument returned failure, but document status is issued; treating as partial success.', issueResult);
+          if (import.meta.env.DEV) {
+            console.warn('[Issue] issueDocument returned failure, but document status is issued; treating as partial success.', {
+              hasWarning: Boolean(issueResult.warning || issueResult.postIssueWarning),
+              partialSuccess: Boolean(issueResult.partialSuccess),
+            });
+          }
           finishIssuedWithWarning(LOCKED_PDF_REQUIRED_ERROR);
           return;
         }
@@ -233,7 +273,9 @@ export default function IssueDocumentModal({
         throw new Error(issueResult.error || 'Failed to issue document');
       }
     } catch (error: unknown) {
-      console.error('[Issue] Error issuing document:', error);
+      if (import.meta.env.DEV) {
+        console.error('[Issue] Error issuing document:', error);
+      }
 
       const issuedDocument = await reloadIssuedDocumentState();
 

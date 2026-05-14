@@ -1042,7 +1042,7 @@ export function renderSection8EmergencyLighting(
 ): Cursor {
   // DEPRECATED: Section 8 removed, emergency lighting now in Section 7
   // Return cursor unchanged to avoid breaking existing code
-  console.warn('[PDF] renderSection8EmergencyLighting is deprecated - Section 8 removed');
+  if (import.meta.env.DEV) console.warn('[PDF] renderSection8EmergencyLighting is deprecated - Section 8 removed');
   return cursor;
 }
 

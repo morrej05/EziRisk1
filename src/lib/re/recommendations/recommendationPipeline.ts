@@ -360,7 +360,7 @@ export async function ensureRecommendationFromRating(
     .order('created_at', { ascending: false });
 
   if (readError) {
-    console.error('Error loading auto recommendation rows:', readError);
+    if (import.meta.env.DEV) console.error('Error loading auto recommendation rows:', readError);
     return 'none';
   }
 
@@ -388,7 +388,7 @@ export async function ensureRecommendationFromRating(
       .eq('id', primaryRow.id);
 
     if (suppressError) {
-      console.error('Error suppressing auto recommendation:', suppressError);
+      if (import.meta.env.DEV) console.error('Error suppressing auto recommendation:', suppressError);
       return 'none';
     }
 
@@ -413,7 +413,7 @@ export async function ensureRecommendationFromRating(
       .eq('id', primaryRow.id);
 
     if (updateError) {
-      console.error('Error updating auto recommendation:', updateError);
+      if (import.meta.env.DEV) console.error('Error updating auto recommendation:', updateError);
       return 'none';
     }
 
@@ -502,7 +502,7 @@ async function findMatchingLibraryRecommendation(params: {
       .order('default_priority', { ascending: false });
 
     if (error) {
-      console.error('Error querying recommendation library:', error);
+      if (import.meta.env.DEV) console.error('Error querying recommendation library:', error);
       return null;
     }
 
@@ -549,7 +549,7 @@ async function findMatchingLibraryRecommendation(params: {
 
     return matchingTemplate || null;
   } catch (err) {
-    console.error('Error finding library recommendation:', err);
+    if (import.meta.env.DEV) console.error('Error finding library recommendation:', err);
     return null;
   }
 }
@@ -580,7 +580,7 @@ async function createAutoRecommendation(params: {
     .single();
 
   if (error) {
-    console.error('Error creating recommendation from library:', error);
+    if (import.meta.env.DEV) console.error('Error creating recommendation from library:', error);
     return false;
   }
 
@@ -605,7 +605,7 @@ export async function hasAutoRecommendation(
     .maybeSingle();
 
   if (error && error.code !== 'PGRST116') {
-    console.error('Error checking auto recommendation:', error);
+    if (import.meta.env.DEV) console.error('Error checking auto recommendation:', error);
     return false;
   }
 

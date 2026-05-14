@@ -63,7 +63,7 @@ function formatTimescale(value?: string | null): string {
     case 'custom':
       return 'Custom / manual';
     default:
-      return value || 'Not set';
+      return value || 'No timescale recorded';
   }
 }
 
@@ -529,7 +529,7 @@ export default function ActionDetailModal({
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—';
+    if (!dateString) return 'Not yet recorded';
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
@@ -548,7 +548,7 @@ export default function ActionDetailModal({
   };
 
   const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return '—';
+    if (!bytes) return 'File size not recorded';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -620,7 +620,7 @@ export default function ActionDetailModal({
                     action.priority_band
                   )}`}
                 >
-                  {action.priority_band || 'No Priority'}
+                  {action.priority_band || 'Priority not assigned'}
                 </span>
                 {isInfoGap && (
                   <div className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded border border-amber-300">
@@ -702,7 +702,7 @@ export default function ActionDetailModal({
                           className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
                         />
                       ) : (
-                        <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || '—')}</p>
+                        <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || 'Not yet recorded')}</p>
                       )}
                     </div>
                   ))}
@@ -715,7 +715,7 @@ export default function ActionDetailModal({
                       <p className="mt-1 text-sm text-neutral-500">
                         {attachments.length > 0
                           ? `${attachments.length} evidence item${attachments.length === 1 ? '' : 's'} attached`
-                          : 'No evidence added yet'}
+                          : 'No evidence has been added yet.'}
                       </p>
                     </div>
                     <button
@@ -748,7 +748,7 @@ export default function ActionDetailModal({
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 mb-1">Priority</label>
                     <span className={`inline-flex px-3 py-1 text-sm font-bold rounded border ${getPriorityColor(action.priority_band)}`}>
-                      {action.priority_band || 'No Priority'}
+                      {action.priority_band || 'Priority not assigned'}
                     </span>
                   </div>
                   <div>
@@ -761,7 +761,7 @@ export default function ActionDetailModal({
                         className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
                       />
                     ) : (
-                      <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{targetDate ? formatDate(targetDate) : 'Not set'}</p>
+                      <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{targetDate ? formatDate(targetDate) : 'No target completion date set'}</p>
                     )}
                     <p className="mt-1 text-xs text-neutral-500">
                       Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'To be agreed'}
@@ -812,7 +812,7 @@ export default function ActionDetailModal({
                               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
                             />
                           ) : (
-                            <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || '—')}</p>
+                            <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || 'Not yet recorded')}</p>
                           )}
                         </div>
                       ))}
@@ -888,7 +888,7 @@ export default function ActionDetailModal({
 
             <div>
               <h3 className="text-sm font-medium text-neutral-700 mb-2">Owner</h3>
-              <p className="text-neutral-900">{action.owner?.name || 'Unassigned'}</p>
+              <p className="text-neutral-900">{action.owner?.name || 'Not assigned'}</p>
             </div>
 
             <div>
@@ -1006,7 +1006,7 @@ export default function ActionDetailModal({
             ) : attachments.length === 0 ? (
               <div className="text-center py-8 bg-neutral-50 rounded-lg border border-neutral-200">
                 <Camera className="w-12 h-12 text-neutral-400 mx-auto mb-2" />
-                <p className="text-neutral-500 text-sm">No evidence attached yet</p>
+                <p className="text-neutral-500 text-sm">No evidence has been attached yet.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

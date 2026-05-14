@@ -258,7 +258,7 @@ export async function buildDsearPdf(options: BuildPdfOptions): Promise<Uint8Arra
   try {
     attachments = await listAttachments(document.id);
     } catch (error) {
-    console.warn('[DSEAR PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[DSEAR PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -1028,7 +1028,7 @@ function drawGenericModuleData(
   const keys = Object.keys(data).filter(k => k !== 'notes');
 
   if (keys.length === 0) {
-    page.drawText(sanitizePdfText('No data recorded'), {
+    page.drawText(sanitizePdfText('No assessment information recorded'), {
       x: MARGIN,
       y: yPosition,
       size: 10,

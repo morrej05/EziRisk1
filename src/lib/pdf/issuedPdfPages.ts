@@ -60,7 +60,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
   coverPage: PDFPage;
   docControlPage: PDFPage;
 }> {
-  console.log('[PDF Issued Pages] Starting issued pages generation');
+  if (import.meta.env.DEV) console.log('[PDF Issued Pages] Starting issued pages generation');
   const { pdfDoc, document, organisation, client, fonts } = options;
   const preferredOrganisationLogoPath = organisation.branding_logo_path?.trim() || null;
 
@@ -69,7 +69,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
   // Try to load organization logo with timeout
   if (ENABLE_PDF_IMAGE_LOGOS) {
     try {
-      console.log('[PDF Logo] Attempting logo fallback chain (org -> default -> text)');
+      if (import.meta.env.DEV) console.log('[PDF Logo] Attempting logo fallback chain (org -> default -> text)');
 
       let orgSignedUrl: string | null = null;
       if (preferredOrganisationLogoPath) {
@@ -87,19 +87,19 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
       );
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.warn('[PDF Logo] Exception loading logos:', errorMsg);
+      if (import.meta.env.DEV) console.warn('[PDF Logo] Exception loading logos:', errorMsg);
       logoData = null;
     }
   }
 
   // Final fallback message
   if (!logoData) {
-    console.log('[PDF Logo] All logo loading failed, using text fallback "EziRisk"');
+    if (import.meta.env.DEV) console.log('[PDF Logo] All logo loading failed, using text fallback "EziRisk"');
   } else {
-    console.log('[PDF Logo] Logo ready for use');
+    if (import.meta.env.DEV) console.log('[PDF Logo] Logo ready for use');
   }
 
-  console.log('[PDF Issued Pages] Creating cover page');
+  if (import.meta.env.DEV) console.log('[PDF Issued Pages] Creating cover page');
   const coverPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
 
   await drawCoverPage(
@@ -120,7 +120,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
 
   if (document.base_document_id) {
     try {
-      console.info('[Issued PDF] Loading revision history source rows.', {
+      if (import.meta.env.DEV) console.info('[Issued PDF] Loading revision history source rows.', {
         currentDocumentId: document.id,
         baseDocumentId: document.base_document_id,
         currentVersion: document.version_number,
@@ -138,7 +138,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
         .order('issue_date', { ascending: false, nullsFirst: false });
 
       if (versionsError) {
-        console.error('[Revision history] issued version load error', versionsError);
+        if (import.meta.env.DEV) console.error('[Revision history] issued version load error', versionsError);
       }
 
       const typedVersions = (issuedVersions || []) as Array<{
@@ -161,7 +161,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
           .in('document_id', typedVersions.map((v) => v.id));
 
         if (summariesError) {
-          console.error('[Change summaries] load error', summariesError);
+          if (import.meta.env.DEV) console.error('[Change summaries] load error', summariesError);
         }
 
         const typedSummaries = (summaries || []) as Array<{
@@ -211,7 +211,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
           const fallbackSummary = v.version_number === firstIssuedVersion ? 'Initial issue' : 'Changes since previous issue';
 
           if (!summaryText) {
-            console.info('[Issued PDF] Revision history summary fallback selected.', {
+            if (import.meta.env.DEV) console.info('[Issued PDF] Revision history summary fallback selected.', {
               documentId: v.id,
               versionNumber: v.version_number,
               mode: fallbackSummary,
@@ -235,7 +235,7 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
         });
       }
     } catch (error) {
-      console.warn('[Issued PDF] Failed to load revision history:', error);
+      if (import.meta.env.DEV) console.warn('[Issued PDF] Failed to load revision history:', error);
     }
   }
 
@@ -268,6 +268,6 @@ export async function addIssuedReportPages(options: IssuedPdfOptions): Promise<{
     revisionHistory
   );
 
-  console.log('[PDF Issued Pages] Issued pages generation complete');
+  if (import.meta.env.DEV) console.log('[PDF Issued Pages] Issued pages generation complete');
   return { coverPage, docControlPage };
 }

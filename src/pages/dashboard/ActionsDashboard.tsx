@@ -232,7 +232,7 @@ export default function ActionsDashboard() {
   // Now using semantic class helpers from theme layer
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—';
+    if (!dateString) return 'No target completion date set';
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
@@ -553,7 +553,7 @@ export default function ActionsDashboard() {
                               action.priority_band
                             )}`}
                           >
-                            {action.priority_band || '—'}
+                            {action.priority_band || 'Priority not assigned'}
                           </span>
                         </td>
                         <td className="px-6 py-4">
@@ -578,11 +578,11 @@ export default function ActionsDashboard() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm text-neutral-400">—</span>
+                            <span className="text-sm text-neutral-400">No document linked</span>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-neutral-600">
-                          {action.owner?.name || '—'}
+                          {action.owner?.name || 'Not assigned'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
@@ -617,7 +617,7 @@ export default function ActionsDashboard() {
                               </span>
                             </button>
                           ) : (
-                            <span className="text-xs text-ui-muted">—</span>
+                            <span className="text-xs text-ui-muted">No evidence recorded</span>
                           )}
                         </td>
                       </tr>
