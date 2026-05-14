@@ -956,18 +956,22 @@ export default function AddActionModal({
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">Evidence</label>
-              <textarea
-                value={formData.recommendationDetail.evidence_notes || ''}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  recommendationDetail: { ...formData.recommendationDetail, evidence_notes: e.target.value },
-                })}
-                placeholder="No evidence added yet. Add photos, documents or notes to support this recommendation."
-                rows={2}
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
-              />
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-neutral-700">Evidence</p>
+                  <p className="mt-1 text-sm text-neutral-500">No evidence added yet.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-500 disabled:cursor-not-allowed"
+                  title="Create the recommendation first, then add files in the evidence step."
+                >
+                  <Upload className="h-4 w-4" />
+                  + Add evidence after save
+                </button>
+              </div>
             </div>
           </div>
 
@@ -991,6 +995,7 @@ export default function AddActionModal({
                   ['standards_reference', 'Standards / guidance reference', 'e.g. Fire Safety Order, PAS 79, BS 9999, BS 5839, BS 5266, Approved Document B...'],
                   ['existing_controls', 'Existing controls noted', 'Record relevant existing controls or interim measures.'],
                   ['assessor_commentary', 'Assessor commentary', 'Professional judgement, limitations or client-specific context.'],
+                  ['evidence_notes', 'Legacy evidence notes', 'Legacy free-text evidence reference retained for audit only. Add real files after saving.'],
                   ['management_response', 'Management response / status notes', 'Optional client response, agreed action or deferral note.'],
                 ].map(([key, label, placeholder]) => (
                   <div key={key}>
@@ -1339,7 +1344,7 @@ export default function AddActionModal({
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
             />
             <p className="text-xs text-neutral-500 mt-1">
-              Auto-populated from the priority-derived timeframe. You can change it manually; a later target requires justification.
+              Auto-populated from the selected priority. You can change it manually; a later target requires justification.
             </p>
           </div>
 

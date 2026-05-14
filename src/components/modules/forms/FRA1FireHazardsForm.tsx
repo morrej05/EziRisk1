@@ -600,8 +600,8 @@ export default function FRA1FireHazardsForm({
     const needsAction = ['high'].includes(String(assessment.risk_significance || '')) ||
       ['action_required', 'urgent'].includes(String(assessment.recommended_action_trigger || '')) ||
       Boolean(String(assessment.deficiencies || '').trim());
-    const highPriorityNoEvidence = ['high'].includes(String(assessment.risk_significance || '')) &&
-      !String(assessment.evidence_references || '').trim();
+    const legacyEvidenceNotes = String(assessment.evidence_references || '').trim();
+    const highPriorityNoEvidence = ['high'].includes(String(assessment.risk_significance || '')) && !legacyEvidenceNotes;
     const defaultOpen = isActive;
 
     return (
@@ -726,18 +726,37 @@ export default function FRA1FireHazardsForm({
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">Evidence</label>
-            <input
-              type="text"
-              value={assessment.evidence_references || ''}
-              onChange={(e) => updateSourceAssessment(source.key, { evidence_references: e.target.value })}
-              placeholder="No evidence added yet. Add photos, documents or notes to support this recommendation."
-              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-            />
-            <p className="mt-1 text-xs text-neutral-500">
-              Evidence added through the recommendation is kept with this area.
-            </p>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-neutral-700">Evidence</p>
+                <p className="mt-1 text-sm text-neutral-500">No evidence added yet.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleQuickAction({
+                  action: source.actionText,
+                  likelihood: assessment.risk_significance === 'high' ? 4 : 3,
+                  impact: assessment.risk_significance === 'high' ? 4 : 3,
+                  source: 'recommendation',
+                  sectionKey: source.key,
+                  sectionLabel: source.label,
+                  sourceKey: source.key,
+                  sourceLabel: source.label,
+                  defaultCategory: 'Fire hazards',
+                })}
+                className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
+              >
+                <Plus className="h-4 w-4" />
+                Add evidence
+              </button>
+            </div>
+            {legacyEvidenceNotes && (
+              <details className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <summary className="cursor-pointer text-xs font-semibold text-amber-800">Advanced / legacy evidence notes</summary>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-amber-900">{legacyEvidenceNotes}</p>
+              </details>
+            )}
           </div>
 
           {(needsAction || highPriorityNoEvidence) && (
@@ -914,7 +933,7 @@ export default function FRA1FireHazardsForm({
 
           {sourceCardState.activeSourceKeys.length === 0 ? (
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
-              No contextual source cards are active yet. Select broad ignition, fuel or high-risk activity items above, or expand “Other ignition sources” to complete a detailed card.
+              No contextual source cards are active yet. Select a broad ignition, fuel or high-risk activity item above to open the relevant detailed card.
             </div>
           ) : (
             <div className="space-y-3">
@@ -926,23 +945,6 @@ export default function FRA1FireHazardsForm({
             </div>
           )}
 
-          {sourceCardState.optionalSourceKeys.length > 0 && (
-            <details className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
-                <div>
-                  <h4 className="font-semibold text-neutral-900">Other ignition sources</h4>
-                  <p className="text-xs text-neutral-500">Collapsed by default to avoid showing the full source catalogue.</p>
-                </div>
-                <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="border-t border-neutral-200 bg-white p-4 space-y-3">
-                {sourceCardState.optionalSourceKeys.map((sourceKey) => {
-                  const source = IGNITION_SOURCE_AREAS.find((item) => item.key === sourceKey);
-                  return source ? renderSourceCard(source, false) : null;
-                })}
-              </div>
-            </details>
-          )}
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
