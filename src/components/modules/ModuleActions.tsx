@@ -59,6 +59,7 @@ interface ModuleActionsProps {
   sectionLabel?: string;
   sourceKey?: string;
   sourceLabel?: string;
+  defaultCategory?: string;
   compact?: boolean;
 }
 
@@ -77,6 +78,7 @@ export default function ModuleActions({
   sectionLabel,
   sourceKey,
   sourceLabel,
+  defaultCategory,
   compact = false,
 }: ModuleActionsProps) {
   const { user } = useAuth();
@@ -103,6 +105,8 @@ export default function ModuleActions({
         sectionLabel,
         sourceKey,
         sourceLabel,
+        defaultCategory,
+        warnOnMissingContext: showReRecommendationModal,
       })
     : null;
 
@@ -124,7 +128,9 @@ export default function ModuleActions({
     const unsubscribe = subscribeActionsVersion(() =>
       setActionsVersion(getActionsVersion()),
     );
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -169,6 +175,7 @@ export default function ModuleActions({
     isModuleTypeLoaded,
     sectionKey,
     sourceKey,
+    defaultCategory,
   ]);
 
   const handleInlineEvidenceUpload = async (
@@ -298,8 +305,7 @@ export default function ModuleActions({
           Completed: "closed",
         };
 
-        setActions(
-          sectionScopedRecs.map((rec: ReRecommendationRow) => ({
+        const mappedReActions: Action[] = sectionScopedRecs.map((rec: ReRecommendationRow) => ({
             id: rec.id,
             recommended_action: rec.action_required_text || rec.title,
             status: statusMap[rec.status] || "open",
@@ -309,7 +315,7 @@ export default function ModuleActions({
             updated_at: rec.updated_at,
             source: "re_recommendations",
             owner_user_id: null,
-            reference_number: rec.rec_number,
+            reference_number: rec.rec_number || undefined,
             recommendation_detail: {
               observation: rec.observation_text || rec.title,
               category: rec.category,
@@ -319,8 +325,9 @@ export default function ModuleActions({
             module_instance: null,
             owner: null,
             attachment_count: Array.isArray(rec.photos) ? rec.photos.length : 0,
-          })),
-        );
+          }));
+
+        setActions(mappedReActions);
         return;
       }
 
@@ -375,7 +382,24 @@ export default function ModuleActions({
         attachment_count: attachmentCounts[action.id] || 0,
       }));
 
-      setActions(actionsWithAttachments);
+      const scopedActions = recommendationContext
+        ? actionsWithAttachments.filter((action) => {
+            const detail = action.recommendation_detail || {};
+            const metadata =
+              typeof detail.metadata === "object" && detail.metadata !== null
+                ? (detail.metadata as Record<string, unknown>)
+                : {};
+
+            return (
+              metadata.sourceKey === recommendationContext.sourceKey ||
+              metadata.sectionKey === recommendationContext.sectionKey ||
+              detail.sourceKey === recommendationContext.sourceKey ||
+              detail.sectionKey === recommendationContext.sectionKey
+            );
+          })
+        : actionsWithAttachments;
+
+      setActions(scopedActions as unknown as Action[]);
     } catch (error) {
       console.error("Error fetching actions:", error);
     } finally {
@@ -633,6 +657,11 @@ export default function ModuleActions({
             setShowAddModal(false);
             fetchActions();
           }}
+          sectionKey={recommendationContext?.sectionKey}
+          sectionLabel={recommendationContext?.sectionLabel}
+          sourceKey={recommendationContext?.sourceKey}
+          sourceLabel={recommendationContext?.sourceLabel}
+          defaultCategory={recommendationContext?.defaultCategory}
         />
       )}
 
@@ -651,7 +680,7 @@ export default function ModuleActions({
           sectionLabel={recommendationContext?.sectionLabel}
           sourceKey={recommendationContext?.sourceKey}
           sourceLabel={recommendationContext?.sourceLabel}
-          defaultCategory={recommendationContext?.defaultCategory}
+          defaultCategory={recommendationContext?.defaultCategory || defaultCategory}
           metadata={recommendationContext?.metadata}
           createdBy={user?.id || null}
         />

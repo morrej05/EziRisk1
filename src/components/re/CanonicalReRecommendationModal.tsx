@@ -120,6 +120,8 @@ export default function CanonicalReRecommendationModal({
         sectionLabel,
         sourceKey,
         sourceLabel,
+        defaultCategory,
+        warnOnMissingContext: isOpen,
       }),
     [
       documentId,
@@ -130,10 +132,11 @@ export default function CanonicalReRecommendationModal({
       sectionLabel,
       sourceKey,
       sourceLabel,
+      defaultCategory,
+      isOpen,
     ],
   );
-  const resolvedCategory =
-    defaultCategory || recommendationContext.defaultCategory;
+  const resolvedCategory = recommendationContext.defaultCategory;
 
   useEffect(() => {
     if (isOpen) {

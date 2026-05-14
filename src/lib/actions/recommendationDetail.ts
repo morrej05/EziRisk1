@@ -12,6 +12,12 @@ export interface RecommendationDetail {
   assessor_commentary?: string | null;
   management_response?: string | null;
   status_notes?: string | null;
+  sectionKey?: string | null;
+  sectionLabel?: string | null;
+  sourceKey?: string | null;
+  sourceLabel?: string | null;
+  category?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export const EMPTY_RECOMMENDATION_DETAIL: RecommendationDetail = {
@@ -28,6 +34,12 @@ export const EMPTY_RECOMMENDATION_DETAIL: RecommendationDetail = {
   assessor_commentary: '',
   management_response: '',
   status_notes: '',
+  sectionKey: '',
+  sectionLabel: '',
+  sourceKey: '',
+  sourceLabel: '',
+  category: '',
+  metadata: null,
 };
 
 export function normalizeRecommendationDetail(value: unknown): RecommendationDetail {
@@ -55,6 +67,14 @@ export function normalizeRecommendationDetail(value: unknown): RecommendationDet
     assessor_commentary: read('assessor_commentary'),
     management_response: read('management_response'),
     status_notes: read('status_notes'),
+    sectionKey: read('sectionKey'),
+    sectionLabel: read('sectionLabel'),
+    sourceKey: read('sourceKey'),
+    sourceLabel: read('sourceLabel'),
+    category: read('category'),
+    metadata: typeof source.metadata === 'object' && source.metadata !== null && !Array.isArray(source.metadata)
+      ? (source.metadata as Record<string, unknown>)
+      : null,
   };
 }
 
@@ -64,6 +84,13 @@ export function compactRecommendationDetail(value: RecommendationDetail): Recomm
 
   for (const key of Object.keys(EMPTY_RECOMMENDATION_DETAIL) as Array<keyof RecommendationDetail>) {
     if (key === 'schema_version') continue;
+    if (key === 'metadata') {
+      if (normalized.metadata && Object.keys(normalized.metadata).length > 0) {
+        compacted.metadata = normalized.metadata;
+      }
+      continue;
+    }
+
     const text = String(normalized[key] || '').trim();
     if (text) {
       compacted[key] = text;
