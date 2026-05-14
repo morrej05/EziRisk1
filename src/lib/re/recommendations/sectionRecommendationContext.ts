@@ -42,16 +42,14 @@ const slugify = (value: string): string =>
 const HOUSEKEEPING_PATTERN = /(^|[_\s:-])housekeeping([_\s:-]|$)/;
 
 const SOURCE_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
-  { pattern: /fixed[_\s:-]*wiring|eicr|electrical[_\s:-]*installation/, category: "Electrical installation" },
-  { pattern: /lithium|battery|charging|electrical[_\s:-]*ignition/, category: "Electrical ignition sources" },
-  { pattern: /electrical[_\s:-]*safety|electrical[_\s:-]*and[_\s:-]*utilities|electrical/, category: "Electrical ignition sources" },
-  { pattern: /portable|pat/, category: "Electrical installation" },
-  { pattern: /hot[_\s:-]*work.*(permit|control|procedure)|(?:permit|control|procedure).*hot[_\s:-]*work/, category: "Fire safety management" },
+  { pattern: /fixed[_\s:-]*wiring|eicr|electrical[_\s:-]*installation|portable[_\s:-]*(appliance|electrical)|\bpat\b/, category: "Electrical installation" },
+  { pattern: /lithium|battery|charging|electrical[_\s:-]*(ignition|source|equipment|safety)|\belectrical\b/, category: "Electrical ignition sources" },
   { pattern: /hot[_\s:-]*work/, category: "Hot works" },
+  { pattern: /cooking|kitchen|duct/, category: "Cooking equipment" },
+  { pattern: /smoking/, category: "Smoking controls" },
+  { pattern: /hazardous[_\s:-]*substances|dangerous[_\s:-]*substances|dsear|explosive[_\s:-]*atmosphere/, category: "Dangerous substances / DSEAR relevance" },
   { pattern: /contractor|permit[_\s:-]*to[_\s:-]*work|maintenance/, category: "Fire safety management" },
   { pattern: /laundry|lint|dryer/, category: "Laundry fire risk" },
-  { pattern: /smoking/, category: "Fire safety management" },
-  { pattern: /cooking|kitchen|duct/, category: "Commercial kitchen fire risk" },
   { pattern: /lightning/, category: "Lightning protection" },
   { pattern: /means[_\s:-]*of[_\s:-]*escape|evacuation/, category: "Means of escape" },
   { pattern: /sprinkler/, category: "Sprinklers" },
@@ -64,13 +62,17 @@ const SOURCE_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
   { pattern: /firefighting|fire[_\s:-]*fighting|extinguisher/, category: "Firefighting equipment" },
   { pattern: /external[_\s:-]*fire/, category: "External fire spread" },
   { pattern: /management[_\s:-]*system|procedure|management/, category: "Fire safety management" },
-  { pattern: /hazard|ignition/, category: "Electrical ignition sources" },
+  { pattern: /hazard|ignition/, category: "General fire risk recommendation" },
 ];
 
 const SECTION_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
-  { pattern: /electrical[_\s:-]*safety|utilities/, category: "Electrical installation" },
+  { pattern: /electrical[_\s:-]*safety|utilities|fixed[_\s:-]*wiring|\bpat\b|battery/, category: "Electrical installation" },
+  { pattern: /hot[_\s:-]*work/, category: "Hot works" },
+  { pattern: /cooking|kitchen/, category: "Cooking equipment" },
+  { pattern: /smoking/, category: "Smoking controls" },
+  { pattern: /hazardous[_\s:-]*substances|dangerous[_\s:-]*substances|dsear/, category: "Dangerous substances / DSEAR relevance" },
   { pattern: /management/, category: "Fire safety management" },
-  { pattern: /hazards|ignition/, category: "Electrical ignition sources" },
+  { pattern: /hazards|ignition/, category: "General fire risk recommendation" },
   { pattern: /fire[_\s:-]*protection/, category: "Fire protection" },
   { pattern: /natural[_\s:-]*hazards|exposures/, category: "Natural hazards" },
   { pattern: /occupancy/, category: "Occupancy" },
@@ -102,7 +104,7 @@ const MODULE_CATEGORY_MAP: Record<string, string> = {
   FRA_6_MANAGEMENT_SYSTEMS: "Fire safety management",
   FRA_7_EMERGENCY_ARRANGEMENTS: "Emergency arrangements",
   FRA_8_FIREFIGHTING_EQUIPMENT: "Firefighting equipment",
-  FRA_1_HAZARDS: "Electrical ignition sources",
+  FRA_1_HAZARDS: "General fire risk recommendation",
 };
 
 function matchPatternCategory(value: string, patterns: Array<{ pattern: RegExp; category: string }>): string | null {

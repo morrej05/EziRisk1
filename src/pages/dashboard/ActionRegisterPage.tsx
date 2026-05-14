@@ -20,6 +20,7 @@ import {
   getUniqueModuleKeys,
   getUniqueDocumentTypes,
   getModuleKeyLabel,
+  formatActionSourceContext,
 } from '../../utils/actionRegister';
 import { Button, Card } from '../../components/ui/DesignSystem';
 import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
@@ -685,9 +686,7 @@ export default function ActionRegisterPage() {
                       )}
                       {(action.source_links?.length || action.source_context) && (
                         <div className="text-xs text-neutral-500 mt-0.5">
-                          Source: {action.source_links?.length
-                            ? action.source_links.map((link) => `${link.module_key ? getModuleKeyLabel(link.module_key) : 'Assessment section'} — ${link.source_assessment_label || 'Assessment section'}`).join('; ')
-                            : action.source_context}
+                          Source: {formatActionSourceContext(action)}
                         </div>
                       )}
                     </td>

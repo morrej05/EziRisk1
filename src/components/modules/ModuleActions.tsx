@@ -19,6 +19,7 @@ import {
 import CanonicalReRecommendationModal from "../re/CanonicalReRecommendationModal";
 import { RecommendationCard } from "../recommendations/RecommendationWorkflow";
 import { buildRecommendationContext } from "../../lib/re/recommendations/sectionRecommendationContext";
+import { getModuleDisplayLabel } from "../../lib/modules/moduleCatalog";
 
 interface Action {
   id: string;
@@ -524,10 +525,12 @@ export default function ModuleActions({
               Cannot load actions: Missing or invalid document ID or module
               instance ID.
             </p>
-            <div className="mt-2 text-xs font-mono text-red-600 space-y-1">
-              <div>documentId: {documentId || "(missing)"}</div>
-              <div>moduleInstanceId: {moduleInstanceId || "(missing)"}</div>
-            </div>
+            {import.meta.env.DEV && (
+              <div className="mt-2 text-xs font-mono text-red-600 space-y-1">
+                <div>documentId: {documentId || "(missing)"}</div>
+                <div>moduleInstanceId: {moduleInstanceId || "(missing)"}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -623,9 +626,8 @@ export default function ModuleActions({
                 evidenceCount: action.attachment_count,
                 sourceLabel:
                   recommendationContext?.sourceLabel ||
-                  sourceModuleKey ||
-                  action.module_instance?.module_key ||
-                  null,
+                  getModuleDisplayLabel(sourceModuleKey || action.module_instance?.module_key) ||
+                  "Linked assessment area",
                 referenceNumber: action.reference_number,
               }}
               onOpen={() => {

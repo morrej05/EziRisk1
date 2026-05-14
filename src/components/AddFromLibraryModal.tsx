@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 import { X, Search, Library } from 'lucide-react';
 
 interface LibraryItem {
@@ -195,7 +196,7 @@ function LibraryItemCard({
   const [expanded, setExpanded] = useState(false);
   const moduleLabel =
     MODULE_OPTIONS.find((m) => m.key === item.related_module_key)?.label ||
-    item.related_module_key ||
+    getModuleDisplayLabel(item.related_module_key) ||
     'General';
 
   const priorityToText = (priority: number): 'High' | 'Medium' | 'Low' => {
