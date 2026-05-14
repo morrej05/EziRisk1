@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Shield, CheckCircle, Plus } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
@@ -92,7 +92,7 @@ const managementAssessmentAreas: ManagementAssessmentAreaConfig[] = [
   { key: 'emergency_procedures', title: 'Emergency procedures', guidance: 'Emergency plan content, staff roles, alarm response, assembly, liaison and out-of-hours arrangements.' },
   { key: 'maintenance_inspection_regimes', title: 'Maintenance and inspection regimes', guidance: 'Planned inspection/testing of fire precautions, defect reporting, escalation and competent servicing.' },
   { key: 'contractor_control_ptw', title: 'Contractor control / permit-to-work systems', guidance: 'Contractor induction, supervision, risk assessment, permits and interface with site fire controls.' },
-  { key: 'hot_work_management', title: 'Hot work management', guidance: 'Permit authorisation, isolation, combustible clearance, fire watch, post-work checks and contractor controls.' },
+  { key: 'hot_work_management', title: 'Hot work permit/control procedure', guidance: 'Permit authorisation, competence, approval workflow, fire watch requirements, post-work checks and contractor interfaces. The hot work exposure itself is identified in Hazards & Ignition Sources.' },
   { key: 'housekeeping_waste_management', title: 'Housekeeping and waste management', guidance: 'Combustible storage, waste removal, bins/skips, escape route checks and local housekeeping accountability.' },
   { key: 'testing_record_keeping', title: 'Testing and record keeping', guidance: 'Availability, currency and review of alarm, emergency lighting, firefighting equipment and drill records.' },
   { key: 'peeps_vulnerable_persons', title: 'PEEPs / vulnerable persons management', guidance: 'Identification, review and implementation of PEEPs or other assisted evacuation arrangements.' },
@@ -232,6 +232,45 @@ export default function A4ManagementControlsForm({
 
   const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
+  const [hotWorkHazardModuleId, setHotWorkHazardModuleId] = useState<string | null>(null);
+  const [hotWorkHazardPresent, setHotWorkHazardPresent] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHotWorkHazardContext() {
+      const { data, error } = await supabase
+        .from('module_instances')
+        .select('id, data')
+        .eq('document_id', document.id)
+        .eq('module_key', 'FRA_1_HAZARDS')
+        .maybeSingle();
+
+      if (cancelled || error) return;
+
+      const hazardData = (data?.data || {}) as Record<string, any>;
+      const hotWorkAssessment = hazardData.ignition_source_assessments?.hot_works || {};
+      const selectedActivities = Array.isArray(hazardData.high_risk_activities)
+        ? hazardData.high_risk_activities
+        : [];
+      const hasHotWorkDetail = Boolean(
+        hotWorkAssessment.presence === 'present' ||
+        String(hotWorkAssessment.condition_adequacy || '').trim() ||
+        String(hotWorkAssessment.existing_controls || '').trim() ||
+        String(hotWorkAssessment.deficiencies || '').trim() ||
+        String(hotWorkAssessment.assessor_commentary || '').trim()
+      );
+
+      setHotWorkHazardModuleId(data?.id || null);
+      setHotWorkHazardPresent(selectedActivities.includes('hot_work') || hasHotWorkDetail);
+    }
+
+    void loadHotWorkHazardContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [document.id]);
 
   const updateManagementAssessment = (areaKey: string, patch: Partial<ManagementAssessmentDetail>) => {
     setFormData((current) => ({
@@ -248,6 +287,17 @@ export default function A4ManagementControlsForm({
 
   const detailedManagementAssessments = Object.values(formData.fire_safety_management_assessments).filter(hasManagementAssessmentContent);
   const hasDetailedManagementSource = detailedManagementAssessments.length > 0;
+  const hotWorkManagementAssessment = formData.fire_safety_management_assessments.hot_work_management;
+  const hasHotWorkManagementDetail =
+    formData.ptw_hot_work !== 'unknown' ||
+    formData.ptw_hot_work_fire_watch_required !== null ||
+    formData.ptw_hot_work_post_watch_mins !== null ||
+    String(formData.ptw_hot_work_comments || '').trim() !== '' ||
+    hasManagementAssessmentContent(hotWorkManagementAssessment);
+  const showHotWorkManagementControls = hotWorkHazardPresent || hasHotWorkManagementDetail;
+  const visibleManagementAssessmentAreas = managementAssessmentAreas.filter((area) =>
+    area.key !== 'hot_work_management' || showHotWorkManagementControls
+  );
 
   const qualityWarnings = useMemo(() => {
     const assessments = formData.fire_safety_management_assessments;
@@ -267,8 +317,8 @@ export default function A4ManagementControlsForm({
     if ((formData.contractor_supervision === 'no' || assessments.contractor_control_ptw?.status === 'inadequate') && controlsMissing('contractor_control_ptw')) {
       warnings.push('Contractor control risks are recorded without existing controls described.');
     }
-    if ((formData.ptw_hot_work === 'no' || assessments.hot_work_management?.status === 'inadequate') && controlsMissing('hot_work_management')) {
-      warnings.push('Hot work management risks are recorded without controls described.');
+    if (showHotWorkManagementControls && (formData.ptw_hot_work === 'no' || assessments.hot_work_management?.status === 'inadequate') && controlsMissing('hot_work_management')) {
+      warnings.push('Hot work permit/control procedure risks are recorded without controls described.');
     }
     if ((formData.housekeeping_combustible_accumulation_risk === 'yes' || assessments.housekeeping_waste_management?.status === 'inadequate') && evidenceMissing('housekeeping_waste_management') && actionMissing('housekeeping_waste_management')) {
       warnings.push('Poor housekeeping is recorded without evidence/photo references or an action link.');
@@ -287,7 +337,7 @@ export default function A4ManagementControlsForm({
     }
 
     return warnings;
-  }, [formData, detailedManagementAssessments]);
+  }, [formData, detailedManagementAssessments, showHotWorkManagementControls]);
 
   const getSuggestedOutcome = (): { outcome: string; reason: string } | null => {
     const unknowns = Object.entries(formData).filter(
@@ -309,8 +359,8 @@ export default function A4ManagementControlsForm({
     if (formData.training_induction_provided === 'no') {
       criticalIssues.push('No staff induction');
     }
-    if (formData.ptw_hot_work === 'no' && formData.contractor_supervision === 'no') {
-      criticalIssues.push('No hot work permit system with contractor works');
+    if (showHotWorkManagementControls && formData.ptw_hot_work === 'no' && formData.contractor_supervision === 'no') {
+      criticalIssues.push('No hot work permit/control procedure with contractor works');
     }
     if (detailedManagementAssessments.some((assessment) => assessment.risk_significance === 'high' || assessment.risk_significance === 'critical')) {
       criticalIssues.push('High-significance detailed management finding');
@@ -606,10 +656,18 @@ export default function A4ManagementControlsForm({
             Permit to Work Systems
           </h3>
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Hot work permit system in place?
-              </label>
+            {showHotWorkManagementControls ? (
+              <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4 space-y-4">
+                <div className="text-sm text-amber-900">
+                  <strong>Hot work permit/control procedure</strong> is shown because hot work is selected or already recorded. Use this area for permit/process controls only; record ignition exposure in Hazards & Ignition Sources.
+                  {hotWorkHazardModuleId && (
+                    <a href={`/documents/${document.id}/workspace?m=${hotWorkHazardModuleId}`} className="ml-1 font-medium underline">Review Hot Work hazard/source card</a>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                    Hot work permit/control procedure in place?
+                  </label>
               <select
                 value={formData.ptw_hot_work}
                 onChange={(e) =>
@@ -627,7 +685,7 @@ export default function A4ManagementControlsForm({
               <button
                 onClick={() =>
                   handleQuickAction({
-                    action: 'Implement hot work permit to work system including risk assessment, fire watch requirements, and post-work inspection procedures',
+                    action: 'Implement a documented hot work permit/control procedure covering authorisation, competence, fire watch requirements, post-work inspection records and contractor interfaces. Record hot work ignition exposure separately in Hazards & Ignition Sources.',
                     likelihood: 5,
                     impact: 4,
                   })
@@ -635,13 +693,13 @@ export default function A4ManagementControlsForm({
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
-                Quick Add: Implement hot work permit system
+                Quick Add: Implement hot work permit/control procedure
               </button>
             )}
 
             {formData.ptw_hot_work === 'yes' && (
               <div className="mt-4 pt-4 border-t border-neutral-200 space-y-4">
-                <p className="text-sm font-medium text-neutral-700">Hot work permit detail</p>
+                <p className="text-sm font-medium text-neutral-700">Hot work permit/control procedure detail</p>
 
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -698,6 +756,12 @@ export default function A4ManagementControlsForm({
                     className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
                   />
                 </div>
+              </div>
+            )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+                Hot work permit/control procedure is hidden until Hot Work is selected in Hazards & Ignition Sources or existing hot work permit detail is present.
               </div>
             )}
 
@@ -978,7 +1042,7 @@ export default function A4ManagementControlsForm({
             Optional professional-judgement prompts. Keep sections collapsed unless extra narrative, evidence, or action linkage is useful.
           </p>
           <div className="space-y-3">
-            {managementAssessmentAreas.map((area) => {
+            {visibleManagementAssessmentAreas.map((area) => {
               const assessment = formData.fire_safety_management_assessments[area.key];
               const hasContent = hasManagementAssessmentContent(assessment);
               return (
@@ -1019,11 +1083,11 @@ export default function A4ManagementControlsForm({
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <input value={assessment.evidence_references} onChange={(e) => updateManagementAssessment(area.key, { evidence_references: e.target.value })} placeholder="Evidence/photo references (e.g. E-004, photo 21)" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
-                      <input value={assessment.linked_action_reference} onChange={(e) => updateManagementAssessment(area.key, { linked_action_reference: e.target.value })} placeholder="Legacy linked action reference (fallback only)" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
+                      <input value={assessment.linked_action_reference} onChange={(e) => updateManagementAssessment(area.key, { linked_action_reference: e.target.value })} placeholder="Linked recommendation reference, if already known" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
                     </div>
                     <label className="flex items-center gap-2 text-sm text-neutral-700">
                       <input type="checkbox" checked={assessment.action_trigger} onChange={(e) => updateManagementAssessment(area.key, { action_trigger: e.target.checked })} className="rounded border-neutral-300" />
-                      Action trigger / consider adding this to the action register
+                      Consider adding this to the recommendation register
                     </label>
                     <DetailedFindingActionLink
                       documentId={document.id}
@@ -1032,6 +1096,11 @@ export default function A4ManagementControlsForm({
                       sourceAssessmentType="fire_safety_management_assessments"
                       sourceAssessmentKey={area.key}
                       sourceAssessmentLabel={area.title}
+                      sectionKey="management_systems"
+                      sectionLabel="Management systems"
+                      sourceKey={area.key}
+                      sourceLabel={area.title}
+                      defaultCategory={area.key === 'hot_work_management' ? 'Fire safety management' : undefined}
                       assessment={assessment}
                       legacyLinkedActionReference={assessment.linked_action_reference}
                     />

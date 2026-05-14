@@ -41,11 +41,15 @@ const HOUSEKEEPING_PATTERN = /(^|[_\s:-])housekeeping([_\s:-]|$)/;
 
 const SOURCE_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
   { pattern: /fixed[_\s:-]*wiring|eicr|electrical[_\s:-]*installation/, category: "Electrical installation" },
-  { pattern: /electrical[_\s:-]*safety|electrical[_\s:-]*and[_\s:-]*utilities|electrical/, category: "Electrical safety" },
-  { pattern: /portable|pat/, category: "Electrical safety" },
+  { pattern: /lithium|battery|charging|electrical[_\s:-]*ignition/, category: "Electrical ignition sources" },
+  { pattern: /electrical[_\s:-]*safety|electrical[_\s:-]*and[_\s:-]*utilities|electrical/, category: "Electrical ignition sources" },
+  { pattern: /portable|pat/, category: "Electrical installation" },
+  { pattern: /hot[_\s:-]*work.*(permit|control|procedure)|(?:permit|control|procedure).*hot[_\s:-]*work/, category: "Fire safety management" },
   { pattern: /hot[_\s:-]*work/, category: "Hot works" },
-  { pattern: /smoking/, category: "Smoking controls" },
-  { pattern: /cooking|kitchen/, category: "Cooking equipment" },
+  { pattern: /contractor|permit[_\s:-]*to[_\s:-]*work|maintenance/, category: "Fire safety management" },
+  { pattern: /laundry|lint|dryer/, category: "Laundry fire risk" },
+  { pattern: /smoking/, category: "Fire safety management" },
+  { pattern: /cooking|kitchen|duct/, category: "Commercial kitchen fire risk" },
   { pattern: /lightning/, category: "Lightning protection" },
   { pattern: /means[_\s:-]*of[_\s:-]*escape|evacuation/, category: "Means of escape" },
   { pattern: /sprinkler/, category: "Sprinklers" },
@@ -57,34 +61,46 @@ const SOURCE_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
   { pattern: /passive[_\s:-]*fire/, category: "Passive fire protection" },
   { pattern: /firefighting|fire[_\s:-]*fighting|extinguisher/, category: "Firefighting equipment" },
   { pattern: /external[_\s:-]*fire/, category: "External fire spread" },
-  { pattern: /management[_\s:-]*system|procedure|management/, category: "Management & procedures" },
-  { pattern: /hazard|ignition/, category: "Hazards & ignition sources" },
+  { pattern: /management[_\s:-]*system|procedure|management/, category: "Fire safety management" },
+  { pattern: /hazard|ignition/, category: "Electrical ignition sources" },
 ];
 
 const SECTION_CATEGORY_PATTERNS: Array<{ pattern: RegExp; category: string }> = [
-  { pattern: /electrical[_\s:-]*safety|utilities/, category: "Electrical safety" },
-  { pattern: /management/, category: "Management & procedures" },
-  { pattern: /hazards|ignition/, category: "Hazards & ignition sources" },
+  { pattern: /electrical[_\s:-]*safety|utilities/, category: "Electrical installation" },
+  { pattern: /management/, category: "Fire safety management" },
+  { pattern: /hazards|ignition/, category: "Electrical ignition sources" },
   { pattern: /fire[_\s:-]*protection/, category: "Fire protection" },
   { pattern: /natural[_\s:-]*hazards|exposures/, category: "Natural hazards" },
   { pattern: /occupancy/, category: "Occupancy" },
   { pattern: /construction/, category: "Construction" },
 ];
 
+const MODULE_LABEL_MAP: Record<string, string> = {
+  FRA_1_HAZARDS: "Hazards & Ignition Sources",
+  FRA_2_ESCAPE_ASIS: "Means of Escape",
+  FRA_3_ACTIVE_SYSTEMS: "Fire Detection & Alarm",
+  FRA_4_PASSIVE_PROTECTION: "Passive Fire Protection",
+  FRA_5_EXTERNAL_FIRE_SPREAD: "External Fire Spread",
+  FRA_6_MANAGEMENT_SYSTEMS: "Fire Safety Management",
+  FRA_7_EMERGENCY_ARRANGEMENTS: "Emergency Arrangements",
+  FRA_8_FIREFIGHTING_EQUIPMENT: "Firefighting Equipment",
+};
+
 const MODULE_CATEGORY_MAP: Record<string, string> = {
   RE_02_CONSTRUCTION: "Construction",
   RE_03_OCCUPANCY: "Occupancy",
   RE_06_FIRE_PROTECTION: "Fire protection",
   RE_07_NATURAL_HAZARDS: "Natural hazards",
-  RE_08_UTILITIES: "Electrical safety",
-  RE_09_MANAGEMENT: "Management & procedures",
+  RE_08_UTILITIES: "Electrical installation",
+  RE_09_MANAGEMENT: "Fire safety management",
   FRA_2_ESCAPE_ASIS: "Means of escape",
   FRA_3_ACTIVE_SYSTEMS: "Detection & alarm",
   FRA_4_PASSIVE_PROTECTION: "Passive fire protection",
   FRA_5_EXTERNAL_FIRE_SPREAD: "External fire spread",
-  FRA_6_MANAGEMENT_SYSTEMS: "Management & procedures",
+  FRA_6_MANAGEMENT_SYSTEMS: "Fire safety management",
   FRA_7_EMERGENCY_ARRANGEMENTS: "Emergency arrangements",
   FRA_8_FIREFIGHTING_EQUIPMENT: "Firefighting equipment",
+  FRA_1_HAZARDS: "Electrical ignition sources",
 };
 
 function matchPatternCategory(value: string, patterns: Array<{ pattern: RegExp; category: string }>): string | null {
@@ -118,7 +134,12 @@ export function deriveRecommendationCategory({
   if (moduleCategory) return moduleCategory;
   if (HOUSEKEEPING_PATTERN.test(normalise(moduleKey))) return "Housekeeping";
 
-  return "Other";
+  return "General fire risk recommendation";
+}
+
+function moduleLabelFromKey(moduleKey?: string | null): string | null {
+  if (!moduleKey) return null;
+  return MODULE_LABEL_MAP[moduleKey] || MODULE_LABEL_MAP[moduleKey.toUpperCase()] || null;
 }
 
 function sectionLabelFromKey(sectionKey?: string | null): string | null {
@@ -158,8 +179,10 @@ export function buildRecommendationContext({
     sectionLabel?.trim() ||
     sourceLabel?.trim() ||
     sectionLabelFromKey(sectionKey) ||
+    moduleLabelFromKey(moduleKey) ||
     moduleKey;
-  const resolvedSourceLabel = sourceLabel?.trim() || resolvedSectionLabel;
+  const assessorSectionLabel = resolvedSectionLabel === moduleKey ? "Assessment area" : resolvedSectionLabel;
+  const resolvedSourceLabel = sourceLabel?.trim() || (resolvedSectionLabel === moduleKey ? assessorSectionLabel : resolvedSectionLabel);
   const resolvedSectionKey =
     sectionKey?.trim() || slugify(resolvedSectionLabel);
   const resolvedSourceKey = sourceKey?.trim() || resolvedSectionKey;
@@ -171,9 +194,9 @@ export function buildRecommendationContext({
   });
   const defaultCategory = explicitDefaultCategory?.trim() || derivedCategory;
   const displayLabel =
-    resolvedSourceLabel === resolvedSectionLabel
-      ? resolvedSectionLabel
-      : `${resolvedSectionLabel} — ${resolvedSourceLabel}`;
+    resolvedSourceLabel === assessorSectionLabel
+      ? assessorSectionLabel
+      : `${assessorSectionLabel} — ${resolvedSourceLabel}`;
 
   return {
     documentId,

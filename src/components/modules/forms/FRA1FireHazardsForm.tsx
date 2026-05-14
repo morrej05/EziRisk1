@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Flame, CheckCircle, Plus, Zap, ChevronDown, AlertTriangle, Link as LinkIcon } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
@@ -10,6 +10,7 @@ import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import {
+  HAZARD_TO_SOURCE_MAPPINGS,
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
   getHazardMappingsForSource,
@@ -96,15 +97,36 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     label: 'Cooking / kitchen processes',
     legacyIgnition: 'cooking',
     legacyHighRisk: 'commercial_kitchens',
-    prompt: 'Commercial or domestic cooking, deep fat frying, extract systems, cleaning regime and supervision.',
-    actionText: 'Review cooking and kitchen fire controls, including supervision, safe isolation, extract cleaning frequency, combustible separation and suitable firefighting provisions for the cooking process.',
+    prompt: 'Commercial or domestic cooking, deep fat frying, extract/duct cleaning regime, suppression arrangements and supervision.',
+    actionText: 'Review cooking and kitchen fire controls, including supervision, safe isolation, extract/duct cleaning frequency, suppression arrangements, combustible separation and suitable firefighting provisions for the cooking process.',
   },
   {
     key: 'hot_works',
     label: 'Hot works',
     legacyHighRisk: 'hot_work',
-    prompt: 'Planned or contractor hot works, permits, fire watch, isolation, post-work checks and combustible clearance.',
-    actionText: 'Implement or strengthen hot work controls with permit-to-work arrangements, pre-work inspections, combustible clearance, fire watch and post-work monitoring by competent persons.',
+    prompt: 'Planned or contractor hot works, ignition exposure, combustible clearance, supervision, fire watch and post-work checks. Permit procedure is reviewed in Management Systems where relevant.',
+    actionText: 'Review hot work fire exposure controls at the point of work, including confirmation of hot work presence, segregation from combustibles, ignition control, supervision/fire watch and post-work monitoring. Raise permit procedure deficiencies under Management Systems to avoid duplicate recommendations.',
+  },
+  {
+    key: 'laundry',
+    label: 'Laundry fire risk',
+    legacyHighRisk: 'laundry_operations',
+    prompt: 'Laundry operations, lint accumulation, dryer maintenance, isolation, ventilation and combustible storage near appliances.',
+    actionText: 'Review laundry fire risk controls, including lint removal, dryer and duct maintenance, supervision, appliance isolation, ventilation and separation of laundry combustibles from heat sources.',
+  },
+  {
+    key: 'contractor_controls',
+    label: 'Contractor control / permit-to-work',
+    legacyHighRisk: 'contractor_works',
+    prompt: 'Contractor induction, supervision, permit-to-work arrangements, method statements, hot work interface and close-out checks.',
+    actionText: 'Strengthen contractor control arrangements with documented induction, permit-to-work requirements, review of method statements and risk assessments, supervision, close-out checks and clear controls for ignition-producing work.',
+  },
+  {
+    key: 'maintenance_controls',
+    label: 'Maintenance activity ignition controls',
+    legacyHighRisk: 'maintenance_activities',
+    prompt: 'Planned and reactive maintenance, isolation, ignition controls, hot work interface, temporary equipment and post-work inspection.',
+    actionText: 'Strengthen maintenance fire risk controls by documenting isolation and ignition-control requirements, managing temporary equipment, applying hot work controls where needed and completing post-maintenance fire safety checks.',
   },
   {
     key: 'plant_machinery',
@@ -137,6 +159,13 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     label: 'Hazardous substances / DSEAR relevance',
     prompt: 'Flammable liquids/gases/dusts, explosive atmosphere potential, ignition control interfaces and DSEAR assessment relevance.',
     actionText: 'Review hazardous substances and DSEAR relevance, confirming dangerous substances present, whether explosive atmospheres could occur, and whether a suitable specialist assessment or controls are required.',
+  },
+  {
+    key: 'high_risk_other',
+    label: 'Other high-risk activity',
+    legacyHighRisk: 'other',
+    prompt: 'Free-text high-risk activity identified by the assessor. Record the activity, controls, evidence and whether a recommendation is required.',
+    actionText: 'Assess and control the identified high-risk activity with proportionate fire safety controls, responsible ownership, evidence of implementation and a documented recommendation where deficiencies are present.',
   },
   {
     key: 'other',
@@ -225,6 +254,7 @@ export default function FRA1FireHazardsForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
+  const [managementModuleId, setManagementModuleId] = useState<string | null>(null);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
   const moduleData = moduleInstance.data || {};
   const getString = (key: string, fallback = ''): string =>
@@ -284,6 +314,29 @@ export default function FRA1FireHazardsForm({
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
   const [scoringData, setScoringData] = useState(moduleData.scoring || {});
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadManagementModuleLink() {
+      const { data, error } = await supabase
+        .from('module_instances')
+        .select('id')
+        .eq('document_id', document.id)
+        .in('module_key', ['A4_MANAGEMENT_CONTROLS', 'FRA_6_MANAGEMENT_SYSTEMS'])
+        .limit(1);
+
+      if (!cancelled && !error) {
+        setManagementModuleId(data?.[0]?.id || null);
+      }
+    }
+
+    void loadManagementModuleLink();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [document.id]);
+
   const toggleMultiSelect = (field: 'ignition_sources' | 'fuel_sources' | 'high_risk_activities', value: string) => {
     const current = formData[field] as string[];
     const updated = current.includes(value)
@@ -325,6 +378,12 @@ export default function FRA1FireHazardsForm({
 
   const getActivationLabels = (sourceKey: string): string[] =>
     getHazardMappingsForSource(sourceKey, broadSelections).map((mapping) => mapping.label);
+
+  const selectedHighRiskActivityMappings = HAZARD_TO_SOURCE_MAPPINGS.filter((mapping) =>
+    mapping.broadField === 'high_risk_activities' &&
+    formData.high_risk_activities.includes(mapping.broadKey) &&
+    sourceCardState.activeSourceKeys.includes(mapping.sourceKey)
+  );
 
   const getQualityGateWarnings = (): string[] => {
     const warnings: string[] = [];
@@ -659,7 +718,7 @@ export default function FRA1FireHazardsForm({
         <div className="flex items-center gap-3 mb-2">
           <Flame className="w-6 h-6 text-neutral-700" />
           <h2 className="text-2xl font-bold text-neutral-900">
-            FRA-1 - Fire Hazards & Ignition Sources
+            Fire Hazards & Ignition Sources
           </h2>
         </div>
         <p className="text-neutral-600">
@@ -994,6 +1053,32 @@ export default function FRA1FireHazardsForm({
                 placeholder="Describe other activities..."
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               />
+            </div>
+          )}
+
+          {selectedHighRiskActivityMappings.length > 0 && (
+            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+              <h4 className="text-sm font-semibold text-blue-900">Follow-up activated</h4>
+              <p className="mt-1 text-sm text-blue-800">
+                The selected high-risk activities have opened the relevant source card(s) above. Each active card includes evidence, priority and add recommendation controls.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedHighRiskActivityMappings.map((mapping) => (
+                  <span key={`${mapping.broadKey}-${mapping.sourceKey}`} className="rounded-full border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-800">
+                    {mapping.label}
+                  </span>
+                ))}
+              </div>
+              {formData.high_risk_activities.includes('hot_work') && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  <strong>Hot work duplication check:</strong> record ignition/exposure findings in this Hot works card. If the permit or control procedure needs review, use the Management Systems area labelled “Hot work permit/control procedure”.{' '}
+                  {managementModuleId ? (
+                    <a href={`/documents/${document.id}/workspace?m=${managementModuleId}`} className="font-medium text-amber-950 underline">Open Management Systems</a>
+                  ) : (
+                    <span className="font-medium">Open Management Systems from the module list.</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

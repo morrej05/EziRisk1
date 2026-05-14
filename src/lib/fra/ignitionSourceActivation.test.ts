@@ -5,7 +5,7 @@ import {
   HAZARD_TO_SOURCE_MAPPINGS,
 } from './ignitionSourceActivation';
 
-const sourceKeys = ['electrical', 'smoking', 'cooking', 'hot_works', 'hazardous_substances_dsear', 'arson'];
+const sourceKeys = ['electrical', 'smoking', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'hot_works', 'high_risk_other', 'hazardous_substances_dsear', 'arson'];
 
 describe('FRA ignition source activation', () => {
   it('documents required broad hazard mappings', () => {
@@ -13,6 +13,10 @@ describe('FRA ignition source activation', () => {
       expect.objectContaining({ broadKey: 'smoking', sourceKey: 'smoking' }),
       expect.objectContaining({ broadKey: 'hot_work', sourceKey: 'hot_works' }),
       expect.objectContaining({ broadKey: 'commercial_kitchens', sourceKey: 'cooking' }),
+      expect.objectContaining({ broadKey: 'laundry_operations', sourceKey: 'laundry' }),
+      expect.objectContaining({ broadKey: 'contractor_works', sourceKey: 'contractor_controls' }),
+      expect.objectContaining({ broadKey: 'maintenance_activities', sourceKey: 'maintenance_controls' }),
+      expect.objectContaining({ broadKey: 'other', sourceKey: 'high_risk_other' }),
       expect.objectContaining({ broadKey: 'electrical_equipment', sourceKey: 'electrical' }),
       expect.objectContaining({ broadKey: 'portable_heaters', sourceKey: 'portable_heaters' }),
       expect.objectContaining({ broadKey: 'flammable_liquids', sourceKey: 'hazardous_substances_dsear', dsearPrompt: true }),
@@ -33,7 +37,7 @@ describe('FRA ignition source activation', () => {
     });
 
     expect(result.activeSourceKeys).toEqual(['smoking', 'hot_works']);
-    expect(result.optionalSourceKeys).toEqual(['electrical', 'cooking', 'hazardous_substances_dsear', 'arson']);
+    expect(result.optionalSourceKeys).toEqual(['electrical', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'high_risk_other', 'hazardous_substances_dsear', 'arson']);
     expect(getEffectiveIgnitionPresence({
       sourceKey: 'smoking',
       assessment: {},

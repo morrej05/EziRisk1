@@ -789,8 +789,8 @@ export function renderSection5FireHazards(
       if (risk || action || linkedAction) {
         const actionBits = [
           risk ? `risk significance ${titleCase(risk)}` : '',
-          action ? `action trigger ${titleCase(action)}` : '',
-          linkedAction || (legacyLinkedAction ? `legacy reference ${legacyLinkedAction}` : ''),
+          action ? `recommendation status ${titleCase(action)}` : '',
+          linkedAction || (legacyLinkedAction ? `previous linked recommendation ${legacyLinkedAction}` : ''),
         ].filter(Boolean).join('; ');
         parts.push(`Risk/action: ${actionBits}`);
       }
@@ -1185,19 +1185,33 @@ export async function renderSection11Management(
       actionIdToSectionId // Pass action->section map for null module_instance_id fallback
     ));
 
-    // Hot work permit controls (detail) - if available
+    // Hot work permit/control detail is secondary to the Hazards & Ignition Sources
+    // hot work card. Render it only where hot work is present/relevant to avoid
+    // repeating generic hot work wording in both sections.
     const mgmtData: any = managementSystemsModule.data || {};
+    const hazardsModule = (moduleInstances || []).find((m: any) => m.module_key === 'FRA_1_HAZARDS');
+    const hazardsData: any = hazardsModule?.data || {};
+    const hotWorkAssessment = hazardsData.ignition_source_assessments?.hot_works || {};
+    const hotWorkPresent =
+      (Array.isArray(hazardsData.high_risk_activities) && hazardsData.high_risk_activities.includes('hot_work')) ||
+      hotWorkAssessment.presence === 'present' ||
+      Boolean(
+        String(hotWorkAssessment.condition_adequacy || '').trim() ||
+        String(hotWorkAssessment.existing_controls || '').trim() ||
+        String(hotWorkAssessment.deficiencies || '').trim() ||
+        String(hotWorkAssessment.assessor_commentary || '').trim()
+      );
     const hwFireWatchReq = mgmtData.ptw_hot_work_fire_watch_required;
     const hwPostMins = mgmtData.ptw_hot_work_post_watch_mins;
     const hwComments = sanitizePdfText(String(mgmtData.ptw_hot_work_comments ?? '')).trim();
 
-    const hasHotWorkDetail = hwFireWatchReq !== null || hwPostMins || hwComments;
+    const hasHotWorkDetail = hotWorkPresent && (hwFireWatchReq !== null || hwPostMins || hwComments);
 
     if (hasHotWorkDetail) {
       ({ page, yPosition } = ensureSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition -= 8;
 
-      page.drawText('Hot work permit controls (detail)', {
+      page.drawText('Hot work permit/control procedure (see Hazards & Ignition Sources for exposure)', {
         x: MARGIN,
         y: yPosition,
         size: 9,
