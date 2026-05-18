@@ -161,9 +161,21 @@ interface RecommendationCardProps {
   deleteLabel?: string;
 }
 
+const normalizeRecommendationLine = (value: string | null | undefined): string =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
 export function RecommendationCard({ item, onOpen, onDelete, deleteLabel = 'Delete recommendation' }: RecommendationCardProps) {
   const priorityBand = priorityToBand(item.priority) || '—';
   const hasEvidence = (item.evidenceCount || 0) > 0;
+  const primaryText = item.recommendationText || item.findingSummary;
+  const secondaryText = item.findingSummary;
+  const showSecondaryText = Boolean(
+    secondaryText &&
+      normalizeRecommendationLine(secondaryText) !== normalizeRecommendationLine(primaryText),
+  );
 
   return (
     <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md">
@@ -183,8 +195,10 @@ export function RecommendationCard({ item, onOpen, onDelete, deleteLabel = 'Dele
               <FileCheck className="h-3.5 w-3.5" /> {item.evidenceCount || 0} evidence
             </span>
           </div>
-          <h4 className="text-sm font-semibold text-slate-900">{item.findingSummary}</h4>
-          <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.recommendationText}</p>
+          <h4 className="text-sm font-semibold text-slate-900">{primaryText}</h4>
+          {showSecondaryText ? (
+            <p className="mt-2 line-clamp-2 text-sm text-slate-700">{secondaryText}</p>
+          ) : null}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
             <span>Due: {item.dueDate || 'Not set'}</span>
             {item.sourceLabel ? <span>Linked: {item.sourceLabel}</span> : null}
