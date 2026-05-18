@@ -61,7 +61,7 @@ const DETAIL_FIELDS: Array<keyof IgnitionSourceAssessmentLike> = [
  * Central FRA hazard/source activation map. Broad checklist selections remain the
  * triage layer; these entries decide which contextual source card is surfaced.
  */
-export const DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEYS = ['fixed_wiring_eicr'] as const;
+export const DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEYS = ['fixed_wiring_eicr', 'hot_works'] as const;
 
 const DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEY_SET = new Set<string>(DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEYS);
 
@@ -77,9 +77,9 @@ export const HAZARD_TO_SOURCE_MAPPINGS: HazardToSourceMapping[] = [
   { broadField: 'ignition_sources', broadKey: 'plant_rooms', sourceKey: 'plant_machinery', label: 'Plant rooms → Plant/machinery source card' },
   { broadField: 'ignition_sources', broadKey: 'arson_ignition_points', sourceKey: 'arson', label: 'Arson/security concern → Arson/external ignition card' },
   { broadField: 'ignition_sources', broadKey: 'other', sourceKey: 'other', label: 'Other ignition source → Other ignition sources card' },
-  { broadField: 'high_risk_activities', broadKey: 'commercial_kitchens', sourceKey: 'cooking', label: 'Commercial Kitchens → Cooking / Kitchen Processes card', commercialKitchenContext: true },
-  { broadField: 'high_risk_activities', broadKey: 'laundry_operations', sourceKey: 'laundry', label: 'Laundry operations → laundry fire load, lint and dryer maintenance follow-up' },
-  { broadField: 'high_risk_activities', broadKey: 'hot_work', sourceKey: 'hot_works', label: 'Hot work → hot work ignition exposure card' },
+  { broadField: 'high_risk_activities', broadKey: 'commercial_kitchens', sourceKey: 'cooking', label: 'Commercial kitchen context', commercialKitchenContext: true },
+  { broadField: 'high_risk_activities', broadKey: 'laundry_operations', sourceKey: 'laundry', label: 'Laundry operations' },
+  { broadField: 'high_risk_activities', broadKey: 'hot_work', sourceKey: 'hot_works', label: 'Hot work relevance flag' },
   { broadField: 'high_risk_activities', broadKey: 'lithium_ion_charging', sourceKey: 'battery_charging_lithium_ion', label: 'Lithium-ion charging → Battery charging / lithium-ion card' },
   { broadField: 'high_risk_activities', broadKey: 'other', sourceKey: 'high_risk_other', label: 'Other high-risk activity → free-text high-risk activity card' },
   { broadField: 'fuel_sources', broadKey: 'flammable_liquids', sourceKey: 'hazardous_substances_dsear', label: 'Flammable liquids → Flammable substances / DSEAR prompt card', dsearPrompt: true },

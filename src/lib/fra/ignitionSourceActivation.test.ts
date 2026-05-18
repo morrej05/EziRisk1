@@ -15,8 +15,6 @@ describe('FRA ignition source activation', () => {
       expect.objectContaining({ broadKey: 'hot_work', sourceKey: 'hot_works' }),
       expect.objectContaining({ broadKey: 'commercial_kitchens', sourceKey: 'cooking', commercialKitchenContext: true }),
       expect.objectContaining({ broadKey: 'laundry_operations', sourceKey: 'laundry' }),
-      expect.objectContaining({ broadKey: 'contractor_works', sourceKey: 'contractor_controls' }),
-      expect.objectContaining({ broadKey: 'maintenance_activities', sourceKey: 'maintenance_controls' }),
       expect.objectContaining({ broadKey: 'other', sourceKey: 'high_risk_other' }),
       expect.objectContaining({ broadKey: 'electrical_equipment', sourceKey: 'electrical' }),
       expect.objectContaining({ broadKey: 'portable_heaters', sourceKey: 'portable_heaters' }),
@@ -37,8 +35,8 @@ describe('FRA ignition source activation', () => {
       sourceKeys,
     });
 
-    expect(result.activeSourceKeys).toEqual(['smoking', 'hot_works']);
-    expect(result.optionalSourceKeys).toEqual(['electrical', 'fixed_wiring_eicr', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'high_risk_other', 'hazardous_substances_dsear', 'arson', 'portable_heaters']);
+    expect(result.activeSourceKeys).toEqual(['smoking']);
+    expect(result.optionalSourceKeys).toEqual(['electrical', 'fixed_wiring_eicr', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'hot_works', 'high_risk_other', 'hazardous_substances_dsear', 'arson', 'portable_heaters']);
     expect(getEffectiveIgnitionPresence({
       sourceKey: 'smoking',
       assessment: {},
@@ -89,6 +87,23 @@ describe('FRA ignition source activation', () => {
       assessment: {},
       broadSelections: { ignition_sources: ['fixed_wiring_concerns'] },
     })).toBe('');
+  });
+
+
+  it('keeps hot work as a relevance flag without activating a duplicate contextual card', () => {
+    const result = getActiveIgnitionSourceCards({
+      broadSelections: { high_risk_activities: ['hot_work'] },
+      sourceAssessments: {},
+      sourceKeys,
+    });
+
+    expect(result.activeSourceKeys).not.toContain('hot_works');
+    expect(result.optionalSourceKeys).toContain('hot_works');
+    expect(getEffectiveIgnitionPresence({
+      sourceKey: 'hot_works',
+      assessment: {},
+      broadSelections: { high_risk_activities: ['hot_work'] },
+    })).toBe('present');
   });
 
 

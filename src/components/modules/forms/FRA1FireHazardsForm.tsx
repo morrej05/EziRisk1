@@ -296,7 +296,6 @@ const FUEL_OPTIONS = [
 
 const HIGH_RISK_ACTIVITIES = [
   'lithium_ion_charging',
-  'commercial_kitchens',
   'laundry_operations',
   'contractor_works',
   'maintenance_activities',
@@ -435,11 +434,6 @@ export default function FRA1FireHazardsForm({
 
     if (dsearSelected && !String(formData.dsear_screen.notes ?? '').trim() && !String(dsearAssessment?.assessor_commentary ?? '').trim()) {
       warnings.push('Hazardous substances / DSEAR relevance is indicated, but no DSEAR commentary has been provided.');
-    }
-
-    const hotWorks = formData.ignition_source_assessments.hot_works;
-    if ((formData.high_risk_activities.includes('hot_work') || hotWorks?.presence === 'present') && !String(hotWorks?.existing_controls ?? '').trim()) {
-      warnings.push('Hot works are marked present, but controls such as permit, fire watch or post-work checks are not described.');
     }
 
     const smoking = formData.ignition_source_assessments.smoking;
@@ -586,12 +580,7 @@ export default function FRA1FireHazardsForm({
               <h4 className="font-semibold text-neutral-900">{source.label}</h4>
               {effectivePresence && (
                 <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-neutral-600 border border-neutral-200">
-                  {presenceIsDerived ? 'Present (derived)' : formatLabel(effectivePresence)}
-                </span>
-              )}
-              {sourceCardState.completedLegacySourceKeys.includes(source.key) && !activationLabels.length && (
-                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
-                  Existing detail preserved
+                  {presenceIsDerived ? 'Present' : formatLabel(effectivePresence)}
                 </span>
               )}
               {commercialKitchenContext && (
@@ -800,12 +789,6 @@ export default function FRA1FireHazardsForm({
       </div>
 
       <div className="space-y-6">
-        {hasDetailedIgnitionSource && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-            Detailed ignition source findings are present, so use the per-finding recommendation controls in the detailed assessment area. Legacy Quick Add shortcuts are hidden as a simple-mode fallback.
-          </div>
-        )}
-
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Ignition Sources
@@ -841,23 +824,6 @@ export default function FRA1FireHazardsForm({
             </div>
           )}
 
-          {formData.ignition_sources.includes('smoking') && !hasDetailedIgnitionSource && (
-            <div className="mt-4 pt-4 border-t border-neutral-200">
-              <button
-                onClick={() =>
-                  handleQuickAction({
-                    action: 'Strengthen smoking controls: designate smoking areas away from combustibles, provide cigarette bins, enforce no-smoking policy in high-risk areas, and ensure staff are briefed.',
-                    likelihood: 4,
-                    impact: 4,
-                  })
-                }
-                className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Add recommendation: Strengthen smoking controls
-              </button>
-            </div>
-          )}
         </div>
 
 
@@ -875,46 +841,6 @@ export default function FRA1FireHazardsForm({
             </p>
           </div>
         )}
-
-        {sourceCardState.dsearPrompt && (
-          <div className="rounded-lg border border-purple-200 bg-purple-50 p-4">
-            <h3 className="text-sm font-bold text-purple-900 mb-1">DSEAR relevance prompt</h3>
-            <p className="text-sm text-purple-800">
-              This hazard may indicate a DSEAR exposure. Review dangerous substances / explosive atmosphere sections?
-            </p>
-            <button
-              type="button"
-              onClick={() => updateSourceAssessment('hazardous_substances_dsear', { assessor_commentary: formData.ignition_source_assessments.hazardous_substances_dsear?.assessor_commentary || 'DSEAR relevance flagged for review from FRA hazard selection.' })}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg border border-purple-200 bg-white px-3 py-2 text-sm font-medium text-purple-800 hover:bg-purple-100"
-            >
-              Review DSEAR relevance
-            </button>
-          </div>
-        )}
-
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
-          <h3 className="text-lg font-bold text-neutral-900 mb-2">
-            Contextual Ignition Source Cards
-          </h3>
-          <p className="text-sm text-neutral-600 mb-4">
-            Complete the cards that match the ignition sources or high-risk activities present.
-          </p>
-
-          {sourceCardState.activeSourceKeys.length === 0 ? (
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
-              No contextual source cards are active yet. Select a broad ignition, fuel or high-risk activity item above.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Selected / present sources</h4>
-              {sourceCardState.activeSourceKeys.map((sourceKey) => {
-                const source = IGNITION_SOURCE_AREAS.find((item) => item.key === sourceKey);
-                return source ? renderSourceCard(source, true) : null;
-              })}
-            </div>
-          )}
-
-        </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
@@ -951,24 +877,6 @@ export default function FRA1FireHazardsForm({
             </div>
           )}
 
-          {(formData.fuel_sources.includes('flammable_liquids') ||
-            formData.fuel_sources.includes('lpg_cylinders')) && !hasDetailedIgnitionSource && (
-            <div className="mt-4 pt-4 border-t border-neutral-200">
-              <button
-                onClick={() =>
-                  handleQuickAction({
-                    action: 'Control storage and segregation of flammable liquids and LPG: provide dedicated storage areas away from ignition sources, ensure adequate ventilation, implement quantity limits, provide appropriate signage, and maintain segregation from oxidisers.',
-                    likelihood: 4,
-                    impact: 5,
-                  })
-                }
-                className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Quick Add: Control flammable storage
-              </button>
-            </div>
-          )}
 
           <div className="mt-4">
             <label className="block text-sm font-medium text-neutral-700 mb-2">
@@ -988,23 +896,6 @@ export default function FRA1FireHazardsForm({
             </select>
           </div>
 
-          {formData.housekeeping_fire_load === 'high' && !hasDetailedIgnitionSource && (
-            <div className="mt-4">
-              <button
-                onClick={() =>
-                  handleQuickAction({
-                    action: 'Improve waste management and fire load controls: implement regular waste removal regime, reduce storage of combustibles in escape routes and common areas, enforce clear desk policy where appropriate, and conduct regular housekeeping inspections.',
-                    likelihood: 4,
-                    impact: 4,
-                  })
-                }
-                className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Quick Add: Improve fire load controls
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
@@ -1116,24 +1007,107 @@ export default function FRA1FireHazardsForm({
               </p>
             </div>
 
-            {(formData.arson_risk === 'medium' || formData.arson_risk === 'high') && !hasDetailedIgnitionSource && (
-              <button
-                onClick={() =>
-                  handleQuickAction({
-                    action: 'Improve security and arson prevention measures: enhance perimeter security, implement access control, remove external combustibles from building perimeter, secure bins away from building, install CCTV in vulnerable areas, improve lighting, and consider security patrols.',
-                    likelihood: 4,
-                    impact: 4,
-                  })
-                }
-                className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Quick Add: Improve arson prevention
-              </button>
-            )}
 
           </div>
         </div>
+
+        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <h3 className="text-lg font-bold text-neutral-900 mb-4">
+            DSEAR / Hazardous Substances Screening
+          </h3>
+          <p className="text-sm text-neutral-600 mb-4">
+            Triage flammable liquids, gases, vapours and combustible dusts before completing the detailed DSEAR section below.
+          </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                Flammable substances or combustible dusts present?
+              </label>
+              <select
+                value={formData.dsear_screen.flammables_present || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    dsear_screen: {
+                      ...formData.dsear_screen,
+                      flammables_present: e.target.value || null,
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              >
+                <option value="">Not stated</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">
+                Explosive atmospheres possible?
+              </label>
+              <select
+                value={formData.dsear_screen.explosive_atmospheres_possible || ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    dsear_screen: {
+                      ...formData.dsear_screen,
+                      explosive_atmospheres_possible: e.target.value || null,
+                    },
+                  })
+                }
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              >
+                <option value="">Not stated</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <h3 className="text-lg font-bold text-neutral-900 mb-4">
+            Additional Hazard Notes
+          </h3>
+          <textarea
+            value={formData.notes}
+            onChange={(e) =>
+              setFormData({ ...formData, notes: e.target.value })
+            }
+            placeholder="Add any additional observations about fire hazards, ignition sources, or risk factors..."
+            rows={4}
+            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
+          />
+        </div>
+
+        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <h3 className="text-lg font-bold text-neutral-900 mb-2">
+            Contextual Ignition Source Cards
+          </h3>
+          <p className="text-sm text-neutral-600 mb-4">
+            Complete the cards that match the ignition sources or high-risk activities present.
+          </p>
+
+          {sourceCardState.activeSourceKeys.length === 0 ? (
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+              No contextual source cards are active yet. Select a broad ignition, fuel or high-risk activity item above.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Selected / present sources</h4>
+              {sourceCardState.activeSourceKeys.map((sourceKey) => {
+                const source = IGNITION_SOURCE_AREAS.find((item) => item.key === sourceKey);
+                return source ? renderSourceCard(source, true) : null;
+              })}
+            </div>
+          )}
+
+        </div>
+
+
 
         <div id="fixed-wiring-eicr-section" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-6">
           <div className="flex items-center gap-2 mb-4">
@@ -1822,20 +1796,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
-          <h3 className="text-lg font-bold text-neutral-900 mb-4">
-            Additional Hazard Notes
-          </h3>
-          <textarea
-            value={formData.notes}
-            onChange={(e) =>
-              setFormData({ ...formData, notes: e.target.value })
-            }
-            placeholder="Add any additional observations about fire hazards, ignition sources, or risk factors..."
-            rows={4}
-            className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
-          />
-        </div>
+
       </div>
 
       <OutcomePanel

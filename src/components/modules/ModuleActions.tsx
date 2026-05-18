@@ -67,6 +67,27 @@ interface ModuleActionsProps {
 }
 
 
+
+const FRA_1_RECOMMENDATION_SCOPE_KEYS = [
+  "FRA_1_HAZARDS",
+  "fixed_wiring_eicr",
+  "dsear_screening",
+  "lightning",
+  "cooking",
+  "battery_charging_lithium_ion",
+  "duct_cleaning",
+  "hazardous_substances_dsear",
+  "electrical",
+  "portable_heaters",
+  "smoking",
+  "laundry",
+  "plant_machinery",
+  "lighting_high_temp",
+  "arson",
+  "high_risk_other",
+  "other",
+];
+
 type ActionLike = {
   module_instance_id?: string | null;
   module_instance?: { id?: string | null; module_key?: string | null } | null;
@@ -91,8 +112,9 @@ const getRecord = (value: unknown): Record<string, unknown> =>
 const getRecommendationDetailRecords = (action: ActionLike): Record<string, unknown>[] => {
   const detail = getRecord(action.recommendation_detail);
   const metadata = getRecord(detail.metadata);
-  const recommendationDetail = getRecord(metadata.recommendation_detail);
-  return [detail, metadata, recommendationDetail];
+  const recommendationDetail = getRecord(detail.recommendation_detail);
+  const nestedRecommendationDetail = getRecord(metadata.recommendation_detail);
+  return [detail, metadata, recommendationDetail, nestedRecommendationDetail];
 };
 
 const detailMatchesAny = (
@@ -112,13 +134,26 @@ const matchesRecommendationModule = (
   action: ActionLike,
   moduleInstanceId: string,
   moduleKey?: string | null,
-): boolean => (
-  action.module_instance_id === moduleInstanceId ||
-  action.module_instance?.id === moduleInstanceId ||
-  action.module_instance?.module_key === moduleKey ||
-  detailMatchesAny(action, ["moduleInstanceId", "module_instance_id"], [moduleInstanceId]) ||
-  detailMatchesAny(action, ["moduleKey", "sourceModuleKey", "module_key", "source_module_key"], [moduleKey])
-);
+): boolean => {
+  const moduleMatches =
+    action.module_instance_id === moduleInstanceId ||
+    action.module_instance?.id === moduleInstanceId ||
+    action.module_instance?.module_key === moduleKey ||
+    detailMatchesAny(action, ["moduleInstanceId", "module_instance_id"], [moduleInstanceId]) ||
+    detailMatchesAny(action, ["moduleKey", "sourceModuleKey", "module_key", "source_module_key"], [moduleKey]);
+
+  if (moduleMatches) return true;
+
+  if (moduleKey === "FRA_1_HAZARDS") {
+    return detailMatchesAny(
+      action,
+      ["sectionKey", "sourceKey", "source_factor_key"],
+      FRA_1_RECOMMENDATION_SCOPE_KEYS,
+    );
+  }
+
+  return false;
+};
 
 const matchesRecommendationSection = (
   action: ActionLike,
