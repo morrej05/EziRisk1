@@ -18,8 +18,8 @@ const reportTypes = [
   },
   {
     icon: Building2,
-    title: 'Risk engineering reviews',
-    description: 'Support insurer-style property and operational risk reviews with consistent, issue-ready outputs.',
+    title: 'Insurer-style risk engineering reviews',
+    description: 'Support property and operational risk reviews using the same governed evidence and reporting workflow.',
   },
 ];
 

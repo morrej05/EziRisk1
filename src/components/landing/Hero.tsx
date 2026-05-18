@@ -22,7 +22,7 @@ export default function Hero() {
         </h1>
 
         <p className="mb-8 max-w-xl text-lg leading-8 text-blue-100">
-          Capture findings, link evidence, create recommendations and issue governed FRA, FSD and DSEAR reports — without disconnected Word documents, photo folders and spreadsheets.
+          Capture findings, link evidence, create recommendations and issue governed FRA, FSD and DSEAR reports — with the same structured workflow supporting broader risk engineering reviews when required.
         </p>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
