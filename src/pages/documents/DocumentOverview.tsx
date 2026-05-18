@@ -33,8 +33,8 @@ import { withResolvedSectionAssessment } from "../../utils/moduleAssessment";
 import { isModuleCompleteForUi } from "../../utils/moduleCompletion";
 import {
   getModuleDisplayLabel,
-  getModuleNavigationPath as getModulePath,
   getReModulesForDocument,
+  type ModuleInstanceLike,
 } from "../../lib/modules/moduleCatalog";
 import {
   buildModuleSections,
@@ -79,7 +79,6 @@ import {
 } from "../../utils/entitlements";
 import {
   getDefencePack,
-  buildDefencePack,
   downloadDefencePack,
   formatFileSize,
   type DefencePack,
@@ -89,7 +88,6 @@ import {
   Badge,
   Card,
   Callout,
-  PageHeader,
 } from "../../components/ui/DesignSystem";
 import {
   getActionRegisterSiteLevel,
@@ -101,11 +99,25 @@ import { buildPdfIdentityOptions } from "../../utils/pdfIdentity";
 import {
   getValidatorBlockerItems,
   getValidatorReviewItems,
-  readinessStateLabel,
   type IssueReadinessItem,
   type IssueValidatorResult,
   type ReadinessState,
 } from "../../utils/issueReadiness";
+
+interface DocumentMeta {
+  report_previewed_at?: string | null;
+  site?: {
+    address?: {
+      line1?: string | null;
+      postcode?: string | null;
+    };
+  };
+  [key: string]: unknown;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 interface Document {
   id: string;
@@ -143,7 +155,7 @@ interface Document {
   executive_summary_author?: string | null;
   executive_summary_mode?: "ai" | "author" | "both" | "none" | null;
   jurisdiction: string;
-  meta?: any;
+  meta?: DocumentMeta;
 }
 
 interface ModuleInstance {
@@ -152,6 +164,8 @@ interface ModuleInstance {
   outcome: string | null;
   completed_at: string | null;
   updated_at: string;
+  assessor_notes?: string | null;
+  data?: Record<string, unknown>;
 }
 
 interface ReRecommendationEntry {
@@ -228,7 +242,6 @@ export default function DocumentOverview() {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [showClientAccessModal, setShowClientAccessModal] = useState(false);
   const [defencePack, setDefencePack] = useState<DefencePack | null>(null);
-  const [isBuildingDefencePack, setIsBuildingDefencePack] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [actions, setActions] = useState<ActionRegisterEntry[]>([]);
@@ -258,7 +271,7 @@ export default function DocumentOverview() {
   } | null>(null);
   const [isCheckingDraftVersion, setIsCheckingDraftVersion] = useState(false);
 
-  const returnToPath = (location.state as any)?.returnTo || null;
+  const returnToPath = (location.state as { returnTo?: string } | null)?.returnTo || null;
 
   const getDashboardRoute = () => {
     if (returnToPath === "/dashboard/actions") {
@@ -513,7 +526,7 @@ export default function DocumentOverview() {
       const moduleInstancesSafe = Array.isArray(data) ? data : [];
       const modulesForUi =
         doc?.document_type === "RE"
-          ? getReModulesForDocument(moduleInstancesSafe as any[], {
+          ? getReModulesForDocument(moduleInstancesSafe as ModuleInstanceLike[], {
               documentId: id,
             })
           : moduleInstancesSafe;
@@ -793,29 +806,6 @@ export default function DocumentOverview() {
     return getPriorityColor(recommendationPriorityToBand(priority));
   };
 
-  const handleBuildDefencePack = async () => {
-    if (!id) return;
-
-    setIsBuildingDefencePack(true);
-    try {
-      const result = await buildDefencePack(id);
-
-      if (result.success) {
-        setDefencePack(result.pack || null);
-        alert("Defence pack created successfully!");
-      } else {
-        alert(result.error || "Failed to create defence pack");
-      }
-    } catch (error: any) {
-      if (import.meta.env.DEV) {
-        console.error("Error building defence pack:", error);
-      }
-      alert(error.message || "Failed to create defence pack");
-    } finally {
-      setIsBuildingDefencePack(false);
-    }
-  };
-
   const handleDownloadDefencePack = async () => {
     if (!defencePack) return;
 
@@ -828,11 +818,11 @@ export default function DocumentOverview() {
       if (!result.success) {
         alert(result.error || "Failed to download defence pack");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (import.meta.env.DEV) {
         console.error("Error downloading defence pack:", error);
       }
-      alert(error.message || "Failed to download defence pack");
+      alert(getErrorMessage(error, "Failed to download defence pack"));
     }
   };
 
@@ -944,13 +934,6 @@ export default function DocumentOverview() {
     navigate(`/documents/${documentId}`);
   };
 
-  // Save last visited module to localStorage
-  const saveLastVisitedModule = (moduleId: string) => {
-    if (id) {
-      localStorage.setItem(`ezirisk:lastModule:${id}`, moduleId);
-    }
-  };
-
   // Get last visited module from localStorage
   const getLastVisitedModule = (): string | null => {
     if (id) {
@@ -1043,11 +1026,11 @@ export default function DocumentOverview() {
 
       // Navigate back to dashboard
       navigate(getDashboardRoute(), { replace: true });
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (import.meta.env.DEV) {
         console.error("Error archiving document:", error);
       }
-      alert(error.message || "Failed to archive document");
+      alert(getErrorMessage(error, "Failed to archive document"));
       setIsDeleting(false);
       setShowDeleteConfirm(false);
     }
@@ -1115,12 +1098,16 @@ export default function DocumentOverview() {
         document.document_type === "FSD"
       ) {
         const buildingProfile = (moduleInstances || []).find(
-          (m: any) => m.module_key === "A2_BUILDING_PROFILE",
+          (m: ModuleInstance) => m.module_key === "A2_BUILDING_PROFILE",
         );
+        const buildingProfileData = buildingProfile?.data || {};
+        const occupancyRisk =
+          typeof buildingProfileData.occupancy_risk === "string"
+            ? buildingProfileData.occupancy_risk
+            : "NonSleeping";
         const fraContext: FraContext = {
-          occupancyRisk: (buildingProfile?.data?.occupancy_risk ||
-            "NonSleeping") as "NonSleeping" | "Sleeping" | "Vulnerable",
-          storeys: buildingProfile?.data?.number_of_storeys || null,
+          occupancyRisk: occupancyRisk as "NonSleeping" | "Sleeping" | "Vulnerable",
+          storeys: buildingProfileData.number_of_storeys || null,
         };
         migratedActions = migrateLegacyFraActions(migratedActions, fraContext);
       }
@@ -1410,20 +1397,44 @@ export default function DocumentOverview() {
     ...reviewGateItems.filter((item) => item.state === "needs_review"),
     ...reviewGateItems.filter((item) => item.state === "ready"),
   ];
-  const primaryQualityGateItems = qualityGateItems.filter(
-    (item) => item.state !== "ready",
+  const blockingIssueItems = qualityGateItems.filter(
+    (item) => item.state === "blocked",
+  );
+  const recommendedIssueItems = qualityGateItems.filter(
+    (item) => item.state === "needs_review",
   );
   const readyQualityGateItems = qualityGateItems.filter(
     (item) => item.state === "ready",
   );
 
-  const getGateStateClass = (state: ReadinessState) => {
-    if (state === "ready")
-      return "bg-emerald-50 text-emerald-700 border-emerald-200";
-    if (state === "blocked")
-      return "bg-red-50 text-red-700 border-red-200";
-    return "bg-amber-50 text-amber-700 border-amber-200";
+  const getReadinessRowClass = (state: ReadinessState) => {
+    if (state === "blocked") return "border-red-100 bg-red-50/60";
+    if (state === "needs_review") return "border-amber-100 bg-amber-50/50";
+    return "border-neutral-200 bg-white";
   };
+
+  const getReadinessIcon = (state: ReadinessState) => {
+    if (state === "blocked") {
+      return <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />;
+    }
+    if (state === "needs_review") {
+      return <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />;
+    }
+    return <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />;
+  };
+
+  const renderReadinessItem = (item: IssueReadinessItem) => (
+    <div
+      key={item.key}
+      className={`flex items-start gap-3 rounded-lg border px-3 py-2 ${getReadinessRowClass(item.state)}`}
+    >
+      {getReadinessIcon(item.state)}
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-neutral-900">{item.label}</p>
+        <p className="text-xs text-neutral-600">{item.detail}</p>
+      </div>
+    </div>
+  );
 
   const workflowStages = [
     "Overview",
@@ -1806,7 +1817,7 @@ export default function DocumentOverview() {
                 Issue readiness
               </h2>
               <p className="text-sm text-neutral-600 mt-1">
-                Uses the same issue validator as the issue flow. Review items are advisory unless shown as blocked.
+                Uses the same issue validator as the issue flow. Blocking issues prevent issue; recommendations are advisory.
               </p>
             </div>
             <Button
@@ -1823,57 +1834,77 @@ export default function DocumentOverview() {
               Checking issue validator…
             </p>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(primaryQualityGateItems.length > 0
-              ? primaryQualityGateItems
-              : readyQualityGateItems.slice(0, 2)
-            ).map((item) => (
-              <div
-                key={item.key}
-                className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 bg-white"
-              >
-                <div>
-                  <p className="text-sm font-medium text-neutral-900">
-                    {item.label}
-                  </p>
-                  <p className="text-xs text-neutral-500">{item.detail}</p>
-                </div>
-                <span
-                  className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${getGateStateClass(item.state)}`}
-                >
-                  {readinessStateLabel(item.state)}
-                </span>
-              </div>
-            ))}
-          </div>
-          {readyQualityGateItems.length > 0 &&
-            primaryQualityGateItems.length > 0 && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-sm font-medium text-neutral-600">
-                {readyQualityGateItems.length} ready checks
-              </summary>
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                {readyQualityGateItems.map((item) => (
-                  <div
-                    key={item.key}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2 bg-white"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-neutral-900">
-                        {item.label}
-                      </p>
-                      <p className="text-xs text-neutral-500">{item.detail}</p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${getGateStateClass(item.state)}`}
-                    >
-                      {readinessStateLabel(item.state)}
-                    </span>
+
+          <div className="space-y-4">
+            {blockingIssueItems.length > 0 && (
+              <section className="rounded-xl border border-red-200 bg-red-50/40 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-red-950">
+                      Blocking issues
+                    </h3>
+                    <p className="text-xs text-red-800">
+                      These validator items must be resolved before issue.
+                    </p>
                   </div>
-                ))}
+                  <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
+                    {blockingIssueItems.length} to resolve
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {blockingIssueItems.map(renderReadinessItem)}
+                </div>
+              </section>
+            )}
+
+            {recommendedIssueItems.length > 0 && (
+              <section className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-950">
+                      Recommended before issue
+                    </h3>
+                    <p className="text-xs text-amber-800">
+                      These items do not technically block issue, but should be reviewed by the assessor.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                    {recommendedIssueItems.length} to review
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {recommendedIssueItems.map(renderReadinessItem)}
+                </div>
+              </section>
+            )}
+
+            {blockingIssueItems.length === 0 && recommendedIssueItems.length === 0 && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-emerald-950">
+                      Ready to issue
+                    </h3>
+                    <p className="text-sm text-emerald-800">
+                      No blocking or advisory readiness items are currently outstanding.
+                    </p>
+                  </div>
+                </div>
               </div>
-            </details>
-          )}
+            )}
+
+            {readyQualityGateItems.length > 0 && (
+              <details className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-neutral-700">
+                  {readyQualityGateItems.length} readiness checks passed
+                </summary>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {readyQualityGateItems.map(renderReadinessItem)}
+                </div>
+              </details>
+            )}
+          </div>
         </Card>
 
         {/* Identity Completeness Nudge */}
