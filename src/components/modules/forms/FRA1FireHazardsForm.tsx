@@ -14,6 +14,7 @@ import {
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
   getHazardMappingsForSource,
+  sourceAssessmentHasDetail,
 } from '../../../lib/fra/ignitionSourceActivation';
 
 interface Document {
@@ -284,6 +285,10 @@ const sourceHasNarrativeDetail = (assessment?: IgnitionAssessment): boolean => {
   );
 };
 
+const EICR_SECTION_KEY = 'fixed_wiring_eicr';
+const EICR_SECTION_LABEL = 'Electrical Installation Safety (Fixed Wiring / EICR)';
+const EICR_SOURCE_LABEL = 'Fixed Wiring / EICR';
+
 const FUEL_OPTIONS = [
   'waste_storage',
   'packaging_materials',
@@ -432,6 +437,16 @@ export default function FRA1FireHazardsForm({
     sourceAssessments: formData.ignition_source_assessments,
     sourceKeys: IGNITION_SOURCE_AREAS.map((source) => source.key),
   });
+
+  const fixedWiringConcernsSelected = formData.ignition_sources.includes('fixed_wiring_concerns');
+  const legacyFixedWiringAssessment = formData.ignition_source_assessments.fixed_wiring_eicr;
+  const hasLegacyFixedWiringContext = sourceAssessmentHasDetail(legacyFixedWiringAssessment);
+  const eicrStatusSummary = [
+    `EICR evidence: ${formData.electrical_safety.eicr_evidence_seen === 'yes' ? 'seen' : 'missing / not confirmed'}`,
+    `Last EICR date: ${formData.electrical_safety.eicr_last_date || 'not recorded'}`,
+    `C1/C2 status: ${(formData.electrical_safety.eicr_outstanding_c1_c2 || 'unknown').replace(/_/g, ' ')}`,
+    'Recommendations / evidence: managed in the EICR section workflow',
+  ];
 
   const getSourcePresence = (source: IgnitionSourceDefinition, assessment: IgnitionAssessment): string =>
     getEffectiveIgnitionPresence({ sourceKey: source.key, assessment, broadSelections });
@@ -923,6 +938,48 @@ export default function FRA1FireHazardsForm({
           </div>
         )}
 
+        {(fixedWiringConcernsSelected || hasLegacyFixedWiringContext) && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-amber-950">Fixed wiring concerns selected</h3>
+                <p className="mt-1 text-sm text-amber-900">
+                  Use the structured EICR / fixed wiring section below to record inspection evidence, C1/C2 observations and recommendations.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {eicrStatusSummary.map((item) => (
+                    <span key={item} className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-900">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <a
+                href="#fixed-wiring-eicr-section"
+                className="inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+              >
+                Review EICR section
+              </a>
+            </div>
+
+            {hasLegacyFixedWiringContext && (
+              <details className="mt-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
+                <summary className="cursor-pointer text-xs font-semibold text-amber-900">Advanced / legacy fixed-wiring contextual data</summary>
+                <dl className="mt-2 grid gap-2 text-sm text-amber-950 md:grid-cols-2">
+                  {Object.entries(legacyFixedWiringAssessment || {})
+                    .filter(([, value]) => String(value ?? '').trim())
+                    .map(([key, value]) => (
+                      <div key={key}>
+                        <dt className="font-medium">{formatLabel(key)}</dt>
+                        <dd className="whitespace-pre-wrap">{String(value)}</dd>
+                      </div>
+                    ))}
+                </dl>
+              </details>
+            )}
+          </div>
+        )}
+
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-2">
             Contextual Ignition Source Cards
@@ -1208,7 +1265,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fixed-wiring-eicr-section" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-6">
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-5 h-5 text-amber-600" />
             <h3 className="text-lg font-bold text-neutral-900">
@@ -1412,10 +1469,10 @@ export default function FRA1FireHazardsForm({
                         : 'Obtain and review current EICR (Electrical Installation Condition Report) to verify electrical installation safety and compliance with BS 7671. Implement any required remedial works.',
                       likelihood: formData.electrical_safety.eicr_outstanding_c1_c2 === 'yes' ? 5 : 4,
                       impact: 4,
-                      sectionKey: 'electrical_safety',
-                      sectionLabel: 'Electrical safety',
-                      sourceKey: 'fixed_wiring_eicr',
-                      sourceLabel: 'Fixed wiring / EICR',
+                      sectionKey: EICR_SECTION_KEY,
+                      sectionLabel: EICR_SECTION_LABEL,
+                      sourceKey: EICR_SECTION_KEY,
+                      sourceLabel: EICR_SOURCE_LABEL,
                       defaultCategory: 'Electrical installation',
                     })
                   }
@@ -1434,10 +1491,10 @@ export default function FRA1FireHazardsForm({
               sourceAssessmentType="fixed_wiring"
               areaKey="fixed_wiring_eicr"
               areaLabel="Fixed wiring / EICR"
-              sectionKey="electrical_safety"
-              sectionLabel="Electrical safety"
-              sourceKey="fixed_wiring_eicr"
-              sourceLabel="Fixed wiring / EICR"
+              sectionKey={EICR_SECTION_KEY}
+              sectionLabel={EICR_SECTION_LABEL}
+              sourceKey={EICR_SECTION_KEY}
+              sourceLabel={EICR_SOURCE_LABEL}
               defaultCategory="Electrical installation"
               defaultObservation={formData.electrical_safety.eicr_notes || 'Fixed wiring and EICR evidence review.'}
               defaultRiskImplication="Unverified or defective fixed wiring can increase ignition risk and may compromise fire safety management assurance."
@@ -1463,10 +1520,10 @@ export default function FRA1FireHazardsForm({
                 documentId={document.id}
                 moduleInstanceId={moduleInstance.id}
                 buttonLabel="Add Recommendation"
-                sectionKey="electrical_safety"
-                sectionLabel="Electrical safety"
-                sourceKey="fixed_wiring_eicr"
-                sourceLabel="Fixed wiring / EICR"
+                sectionKey={EICR_SECTION_KEY}
+                sectionLabel={EICR_SECTION_LABEL}
+                sourceKey={EICR_SECTION_KEY}
+                sourceLabel={EICR_SOURCE_LABEL}
                 defaultCategory="Electrical installation"
                 compact
               />
