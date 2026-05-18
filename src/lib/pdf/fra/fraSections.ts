@@ -662,7 +662,7 @@ export function renderSection5FireHazards(
     electrical: 'Electrical ignition sources',
     portable_heaters: 'Portable heaters / temporary heating',
     smoking: 'Smoking and smoking controls',
-    cooking: 'Cooking / kitchen processes',
+    cooking: 'Cooking / Kitchen Processes',
     hot_works: 'Hot works',
     plant_machinery: 'Plant, machinery and mechanical heat sources',
     lighting_high_temp: 'Lighting and high-temperature equipment',

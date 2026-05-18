@@ -20,6 +20,7 @@ export interface HazardToSourceMapping {
   sourceKey: string;
   label: string;
   dsearPrompt?: boolean;
+  commercialKitchenContext?: boolean;
 }
 
 export interface ActiveIgnitionSourceCardsInput {
@@ -71,12 +72,12 @@ export function hasDedicatedStructuredWorkflow(sourceKey: string): boolean {
 export const HAZARD_TO_SOURCE_MAPPINGS: HazardToSourceMapping[] = [
   { broadField: 'ignition_sources', broadKey: 'smoking', sourceKey: 'smoking', label: 'Smoking → Smoking controls source card' },
   { broadField: 'ignition_sources', broadKey: 'electrical_equipment', sourceKey: 'electrical', label: 'Electrical equipment → Electrical ignition source card' },
-  { broadField: 'ignition_sources', broadKey: 'cooking', sourceKey: 'cooking', label: 'Cooking → Cooking equipment source card' },
+  { broadField: 'ignition_sources', broadKey: 'cooking', sourceKey: 'cooking', label: 'Cooking → Cooking / Kitchen Processes card' },
   { broadField: 'ignition_sources', broadKey: 'portable_heaters', sourceKey: 'portable_heaters', label: 'Portable heaters → Heating/appliances source card' },
   { broadField: 'ignition_sources', broadKey: 'plant_rooms', sourceKey: 'plant_machinery', label: 'Plant rooms → Plant/machinery source card' },
   { broadField: 'ignition_sources', broadKey: 'arson_ignition_points', sourceKey: 'arson', label: 'Arson/security concern → Arson/external ignition card' },
   { broadField: 'ignition_sources', broadKey: 'other', sourceKey: 'other', label: 'Other ignition source → Other ignition sources card' },
-  { broadField: 'high_risk_activities', broadKey: 'commercial_kitchens', sourceKey: 'cooking', label: 'Commercial kitchens → cooking, duct cleaning and suppression follow-up' },
+  { broadField: 'high_risk_activities', broadKey: 'commercial_kitchens', sourceKey: 'cooking', label: 'Commercial Kitchens → Cooking / Kitchen Processes card', commercialKitchenContext: true },
   { broadField: 'high_risk_activities', broadKey: 'laundry_operations', sourceKey: 'laundry', label: 'Laundry operations → laundry fire load, lint and dryer maintenance follow-up' },
   { broadField: 'high_risk_activities', broadKey: 'contractor_works', sourceKey: 'contractor_controls', label: 'Contractor works → contractor control and permit-to-work follow-up' },
   { broadField: 'high_risk_activities', broadKey: 'maintenance_activities', sourceKey: 'maintenance_controls', label: 'Maintenance activities → maintenance controls and ignition control follow-up' },
@@ -112,6 +113,14 @@ export function getHazardMappingsForSource(
   return HAZARD_TO_SOURCE_MAPPINGS.filter((mapping) =>
     mapping.sourceKey === sourceKey && mappingIsSelected(mapping, broadSelections)
   );
+}
+
+
+export function hasCommercialKitchenContext(
+  sourceKey: string,
+  broadSelections: ActiveIgnitionSourceCardsInput['broadSelections']
+): boolean {
+  return getHazardMappingsForSource(sourceKey, broadSelections).some((mapping) => mapping.commercialKitchenContext);
 }
 
 export function getEffectiveIgnitionPresence(options: {
