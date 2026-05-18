@@ -208,7 +208,11 @@ export default function ModuleActions({
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
   const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
 
-  const recommendationContext = sourceModuleKey
+  const hasSectionRecommendationContext = Boolean(
+    sectionKey || sectionLabel || sourceKey || sourceLabel || defaultCategory,
+  );
+
+  const recommendationContext = sourceModuleKey && hasSectionRecommendationContext
     ? buildRecommendationContext({
         documentId,
         moduleInstanceId,
@@ -221,6 +225,8 @@ export default function ModuleActions({
         warnOnMissingContext: showReRecommendationModal,
       })
     : null;
+
+  const isModuleFooterRollup = summaryOnly || !hasSectionRecommendationContext;
 
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -262,7 +268,7 @@ export default function ModuleActions({
   }, [moduleInstanceId]);
 
   useEffect(() => {
-    if (!isModuleTypeLoaded) return;
+    if (!isModuleTypeLoaded || isModuleFooterRollup) return;
     if (!isValidUUID(documentId)) {
       console.warn("ModuleActions: Invalid documentId provided:", documentId);
       setIsLoading(false);
@@ -289,6 +295,7 @@ export default function ModuleActions({
     sourceKey,
     defaultCategory,
     summaryOnly,
+    isModuleFooterRollup,
   ]);
 
   const handleInlineEvidenceUpload = async (
@@ -609,10 +616,15 @@ export default function ModuleActions({
   const isDeletable = documentStatus === "draft";
   const hasValidIds = isValidUUID(documentId) && isValidUUID(moduleInstanceId);
   const hideModuleActionsUi = Boolean(
+    isModuleFooterRollup ||
     sourceModuleKey === "RISK_ENGINEERING" ||
     (sourceModuleKey?.startsWith("RE_") &&
       !hasReRecommendationWorkflow(sourceModuleKey)),
   );
+
+  if (isModuleFooterRollup) {
+    return null;
+  }
 
   if (!hasValidIds) {
     return (
@@ -643,7 +655,7 @@ export default function ModuleActions({
     return null;
   }
 
-  // All document types (including RE modules) show actions UI for the active module instance
+  // Section-owned recommendation cards remain available where a section context is provided
   return (
     <div
       id={recommendationContext?.returnAnchor}
@@ -652,18 +664,10 @@ export default function ModuleActions({
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-lg font-bold text-neutral-900">
-            {recommendationContext
-              ? `Recommendations — ${recommendationContext.displayLabel}`
-              : summaryOnly
-                ? `Recommendations — ${getModuleDisplayLabel(sourceModuleKey) || "Module summary"}`
-                : "Recommendations from this Module"}
+            {`Recommendations — ${recommendationContext?.displayLabel || "Assessment section"}`}
           </h3>
           <p className="text-sm text-neutral-500">
-            {recommendationContext
-              ? "Section-owned finding, evidence, priority and due-date workflow."
-              : summaryOnly
-                ? "Roll-up of section-owned recommendations recorded in this module."
-                : "Unified finding, evidence, priority and due-date workflow for this module."}
+            Section-owned finding, evidence, priority and due-date workflow.
           </p>
         </div>
         {documentStatus === "draft" && !summaryOnly && (
@@ -705,21 +709,15 @@ export default function ModuleActions({
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-neutral-300 border-t-neutral-900"></div>
         </div>
       ) : actions.length === 0 ? (
-        summaryOnly ? (
-          <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-500">
-            No section recommendations have been added to this module yet.
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
-            <p className="text-neutral-500 text-sm">
-              No recommendations added yet
-            </p>
-            <p className="text-neutral-400 text-xs">
-              Click "{buttonLabel}" to create a recommendation for this section
-            </p>
-          </div>
-        )
+        <div className="flex flex-col items-center justify-center py-8 text-center">
+          <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
+          <p className="text-neutral-500 text-sm">
+            No recommendations added yet
+          </p>
+          <p className="text-neutral-400 text-xs">
+            Click "{buttonLabel}" to create a recommendation for this section
+          </p>
+        </div>
       ) : (
         <div className="space-y-3">
           {actions.map((action) => (
