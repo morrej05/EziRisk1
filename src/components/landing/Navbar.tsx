@@ -28,8 +28,8 @@ export default function Navbar() {
         </div>
 
         <nav className={`hidden md:flex items-center gap-8 transition-colors ${isScrolled ? 'text-slate-700' : 'text-white/90'}`}>
-          <a href="#how" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>How it works</a>
-          <a href="#who" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Who it’s for</a>
+          <a href="#how-it-works" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>How it works</a>
+          <a href="#who-its-for" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Who it’s for</a>
           <a href="/pricing" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Pricing</a>
           <a href="/security" className={`transition ${isScrolled ? 'hover:text-slate-900' : 'hover:text-white'}`}>Security</a>
         </nav>
@@ -40,7 +40,7 @@ export default function Navbar() {
             isScrolled ? 'bg-slate-900 text-white hover:bg-slate-800' : 'bg-white text-blue-900 hover:bg-gray-100'
           }`}
         >
-          Sign in
+          Start assessment
         </a>
       </div>
     </header>

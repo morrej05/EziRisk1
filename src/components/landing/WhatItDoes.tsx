@@ -1,5 +1,26 @@
 import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 
+const workflowFriction = [
+  {
+    image: '/what-create.webp',
+    alt: 'Structured assessment form',
+    title: 'Replace blank-document reporting',
+    description: 'Use structured assessment sections instead of rebuilding FRA notes and report wording from a blank Word file each time.',
+  },
+  {
+    image: '/what-recommendations.webp',
+    alt: 'Recommendations linked to assessment findings',
+    title: 'Keep recommendations connected',
+    description: 'Link findings, actions and recommendations back to the assessment context so the report tells a traceable story.',
+  },
+  {
+    image: '/what-export.webp',
+    alt: 'Professional report output',
+    title: 'Issue with more control',
+    description: 'Use readiness checks and governed report output so draft gaps are dealt with before the assessment is issued.',
+  },
+];
+
 export default function WhatItDoes() {
   const { ref, isVisible } = useFadeInOnScroll();
 
@@ -11,57 +32,34 @@ export default function WhatItDoes() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="mx-auto mb-16 max-w-3xl text-center">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
+            Built for fire risk assessors
+          </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            What EziRisk Does
+            Replace disconnected assessment workflows
           </h2>
-          <p className="text-xl text-neutral-600 max-w-3xl mx-auto">
-            Complete risk assessment and reporting platform for FRA, FSD, DSEAR / ATEX and risk engineering
+          <p className="text-xl text-neutral-600">
+            Word documents, loose photo folders and spreadsheet action trackers make reporting harder to review, defend and issue consistently.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-          <div className="text-center">
-            <img
-              src="/what-create.webp"
-              alt="Create Assessments"
-              className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
-            />
-            <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Create Assessments
-            </h3>
-            <p className="text-neutral-600">
-              Structured forms capture all required data for risk assessments and reports
-            </p>
-          </div>
-
-          <div className="text-center">
-            <img
-              src="/what-recommendations.webp"
-              alt="Add Recommendations"
-              className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
-            />
-            <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Add Recommendations
-            </h3>
-            <p className="text-neutral-600">
-              Use the recommendation library with smart triggers or create custom findings
-            </p>
-          </div>
-
-          <div className="text-center">
-            <img
-              src="/what-export.webp"
-              alt="Export Reports"
-              className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
-            />
-            <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Export Reports
-            </h3>
-            <p className="text-neutral-600">
-              Professional reports combining assessment findings and recommendations, ready for clients
-            </p>
-          </div>
+        <div className="grid gap-8 md:grid-cols-3">
+          {workflowFriction.map((item) => (
+            <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <img
+                src={item.image}
+                alt={item.alt}
+                className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
+              />
+              <h3 className="mb-3 text-xl font-semibold text-neutral-900">
+                {item.title}
+              </h3>
+              <p className="leading-7 text-neutral-600">
+                {item.description}
+              </p>
+            </div>
+          ))}
         </div>
       </div>
     </section>

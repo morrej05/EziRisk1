@@ -1,18 +1,18 @@
-import { BarChart3, TrendingUp, FileCheck } from 'lucide-react';
+import { BarChart3, FileCheck, TrendingUp } from 'lucide-react';
 import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 
 const portfolioFeatures = [
   {
     icon: BarChart3,
-    title: 'View risk across multiple sites and assessments',
+    title: 'See recurring findings across sites and assessments',
   },
   {
     icon: TrendingUp,
-    title: 'Identify recurring issues and trends',
+    title: 'Identify repeated recommendation themes for client review',
   },
   {
     icon: FileCheck,
-    title: 'Support client reporting and internal review',
+    title: 'Support consultancy reporting without losing assessment detail',
   },
 ];
 
@@ -27,18 +27,24 @@ export default function Portfolio() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="mx-auto mb-16 max-w-3xl text-center">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
+            When one client becomes many sites
+          </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            Portfolio insight across your projects
+            Portfolio context after the assessment work is done
           </h2>
+          <p className="text-xl text-neutral-600">
+            Keep the homepage focus on report delivery, with portfolio review available for consultancies and multi-site clients.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          {portfolioFeatures.map((feature, index) => {
+          {portfolioFeatures.map((feature) => {
             const Icon = feature.icon;
             return (
               <div
-                key={index}
+                key={feature.title}
                 className="bg-white p-8 rounded-xl border border-neutral-200 hover:border-primary-300 hover:shadow-md transition-all"
               >
                 <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center mb-4">
