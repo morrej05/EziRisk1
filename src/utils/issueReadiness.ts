@@ -118,19 +118,19 @@ function getModuleMessageCopy(
 
   if (normalized.includes('missing')) {
     return {
-      label: `${moduleName} missing`,
+      label: `${moduleName} not available`,
       detail: state === 'blocked'
-        ? 'This required section is not available in the draft. Add or restore this section before issue.'
-        : 'Recommended before issue.',
+        ? 'This required assessment section is not available in the draft. Add or restore this section before issue.'
+        : 'Assessment section not yet completed. Recommended before issue.',
     };
   }
 
   if (normalized.includes('has no data') || normalized.includes('incomplete')) {
     return {
-      label: `${moduleName} ${state === 'blocked' ? 'incomplete' : 'not completed'}`,
+      label: `${moduleName} ${state === 'blocked' ? 'incomplete' : 'not yet completed'}`,
       detail: state === 'blocked'
-        ? 'This required section has not yet been completed.'
-        : 'Recommended before issue.',
+        ? 'This required assessment section has not yet been completed.'
+        : 'Assessment section not yet completed. Recommended before issue.',
     };
   }
 
@@ -158,6 +158,8 @@ function removeRawModuleReference(message: string, moduleKey: string): string {
 function professionalizeGenericValidatorMessage(message: string): string {
   return message
     .replace(/\bhas no data\b/gi, 'has not yet been completed')
+    .replace(/\bno data\b/gi, 'not yet completed')
+    .replace(/\bmissing\b/gi, 'not yet recorded')
     .replace(/\bmust have\b/gi, 'Record')
     .replace(/\bmust be\b/gi, 'Needs to be')
     .trim();

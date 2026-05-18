@@ -645,10 +645,10 @@ export function renderSection5FireHazards(
       .filter(Boolean);
 
     if (references.length > 0) {
-      return `Linked recommendation/action${references.length > 1 ? 's' : ''}: ${references.join(', ')}`;
+      return `Linked recommendation${references.length > 1 ? 's' : ''}: ${references.join(', ')}`;
     }
 
-    return matchingLinks.length > 1 ? 'Linked recommendations/actions recorded' : 'Linked recommendation/action recorded';
+    return matchingLinks.length > 1 ? 'Linked recommendations recorded' : 'Linked recommendation recorded';
   };
 
   const list = (arr: any, other?: any) => {

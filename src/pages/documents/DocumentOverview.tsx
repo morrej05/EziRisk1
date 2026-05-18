@@ -18,6 +18,7 @@ import {
   FileDown,
   Edit3,
   AlertTriangle,
+  Info,
   Image,
   List,
   FileCheck,
@@ -864,7 +865,7 @@ export default function DocumentOverview() {
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Not yet recorded";
+    if (!dateString) return "No date recorded yet";
     return new Date(dateString).toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
@@ -1359,15 +1360,15 @@ export default function DocumentOverview() {
       label: "Executive summary",
       detail: executiveSummaryPresent
         ? "Present"
-        : "Missing. Recommended before issue.",
+        : "Executive summary not yet completed. Recommended before issue.",
       state: executiveSummaryPresent ? "ready" : "needs_review",
     },
     {
       key: "review-assurance",
-      label: "Review / assurance",
+      label: "Review & Assurance",
       detail: reviewAssuranceComplete
         ? "Complete"
-        : "Not yet recorded. Recommended before issue unless this workflow does not require it.",
+        : "No review recorded yet. Recommended before issue unless this workflow does not require it.",
       state: reviewAssuranceComplete ? "ready" : "needs_review",
     },
     {
@@ -1410,7 +1411,7 @@ export default function DocumentOverview() {
   const getReadinessRowClass = (state: ReadinessState) => {
     if (state === "blocked") return "border-red-100 bg-red-50/60";
     if (state === "needs_review") return "border-amber-100 bg-amber-50/50";
-    return "border-neutral-200 bg-white";
+    return "border-emerald-100 bg-emerald-50/40";
   };
 
   const getReadinessIcon = (state: ReadinessState) => {
@@ -1895,11 +1896,15 @@ export default function DocumentOverview() {
             )}
 
             {readyQualityGateItems.length > 0 && (
-              <details className="rounded-xl border border-neutral-200 bg-neutral-50 p-3">
-                <summary className="cursor-pointer text-sm font-medium text-neutral-700">
-                  {readyQualityGateItems.length} readiness checks passed
+              <details className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                <summary className="cursor-pointer list-none text-sm font-medium text-emerald-950 marker:hidden">
+                  <span className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
+                    <span className="font-semibold">{readyQualityGateItems.length} readiness checks passed</span>
+                    <span className="text-xs font-normal text-emerald-700">View completed checks</span>
+                  </span>
                 </summary>
-                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
                   {readyQualityGateItems.map(renderReadinessItem)}
                 </div>
               </details>
@@ -1911,20 +1916,23 @@ export default function DocumentOverview() {
         {document &&
           !document.meta?.site?.address?.line1 &&
           !document.meta?.site?.address?.postcode && (
-            <Callout variant="info" className="mb-6">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
+              <div className="flex items-start gap-3">
+                <Info className="w-4 h-4 text-neutral-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-blue-900 mb-1">
-                    Add Site Address
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">
+                    Assessment guidance
                   </p>
-                  <p className="text-sm text-blue-800">
+                  <p className="text-sm font-medium text-neutral-900 mb-1">
+                    Add site address
+                  </p>
+                  <p className="text-sm text-neutral-600">
                     Add the site address in module A1 to support mapping and
-                    ensure consistent report identity across all outputs.
+                    keep the report identity consistent across all outputs.
                   </p>
                 </div>
               </div>
-            </Callout>
+            </section>
           )}
 
         {/* Available Outputs */}
