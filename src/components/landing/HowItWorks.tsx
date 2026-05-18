@@ -6,31 +6,31 @@ const steps = [
     number: '01',
     icon: ClipboardList,
     title: 'Assess site',
-    description: 'Work through structured FRA or DSEAR sections so observations are captured consistently while you are on the job.',
+    description: 'Work through structured sections while observations are fresh.',
   },
   {
     number: '02',
     icon: Camera,
     title: 'Capture evidence',
-    description: 'Attach photos and supporting documents directly to the finding, control or assessment context they belong to.',
+    description: 'Attach photos and documents to the right finding or control.',
   },
   {
     number: '03',
     icon: ListChecks,
     title: 'Create recommendations',
-    description: 'Turn findings into clear recommendations and keep the action trail connected to the assessment record.',
+    description: 'Convert findings into clear, traceable actions.',
   },
   {
     number: '04',
     icon: CheckCircle2,
     title: 'Validate readiness',
-    description: 'Review completeness and issue checks before the report leaves draft status, reducing last-minute gaps.',
+    description: 'Check completeness before the report leaves draft.',
   },
   {
     number: '05',
     icon: FileCheck2,
     title: 'Issue report',
-    description: 'Deliver a governed professional report with evidence, findings and recommendations kept in one workflow.',
+    description: 'Deliver a governed report with context intact.',
   },
 ];
 
@@ -41,12 +41,12 @@ export default function HowItWorks() {
     <section
       id="how-it-works"
       ref={ref}
-      className={`py-20 bg-white transition-all duration-300 ease-out ${
+      className={`py-24 bg-white transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-12 max-w-3xl">
+        <div className="mb-12 max-w-2xl">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
             One governed assessment workflow
           </p>
@@ -54,7 +54,7 @@ export default function HowItWorks() {
             From site walk to issued report
           </h2>
           <p className="text-xl text-neutral-600">
-            Replace disconnected notes, photos and action trackers with a practical assessment journey that keeps context intact.
+            Keep notes, photos and actions connected through each stage of delivery.
           </p>
         </div>
 

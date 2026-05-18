@@ -5,19 +5,19 @@ const workflowFriction = [
     image: '/what-create.webp',
     alt: 'Structured assessment form',
     title: 'Replace blank-document reporting',
-    description: 'Use structured assessment sections instead of rebuilding FRA notes and report wording from a blank Word file each time.',
+    description: 'Start from structured assessment sections instead of a blank report file.',
   },
   {
     image: '/what-recommendations.webp',
     alt: 'Recommendations linked to assessment findings',
     title: 'Keep recommendations connected',
-    description: 'Link findings, actions and recommendations back to the assessment context so the report tells a traceable story.',
+    description: 'Link findings, actions and evidence back to the assessment context.',
   },
   {
     image: '/what-export.webp',
     alt: 'Professional report output',
     title: 'Issue with more control',
-    description: 'Use readiness checks and governed report output so draft gaps are dealt with before the assessment is issued.',
+    description: 'Resolve draft gaps before the assessment is issued.',
   },
 ];
 
@@ -27,7 +27,7 @@ export default function WhatItDoes() {
   return (
     <section
       ref={ref}
-      className={`py-24 bg-white transition-all duration-300 ease-out ${
+      className={`py-28 bg-white transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
@@ -37,10 +37,10 @@ export default function WhatItDoes() {
             Built for fire risk assessors
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            Replace disconnected assessment workflows
+            Replace disconnected report assembly
           </h2>
           <p className="text-xl text-neutral-600">
-            Word documents, loose photo folders and spreadsheet action trackers make reporting harder to review, defend and issue consistently.
+            Bring notes, photos and actions into the same reporting path.
           </p>
         </div>
 

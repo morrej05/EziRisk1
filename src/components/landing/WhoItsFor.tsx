@@ -5,19 +5,19 @@ const personas = [
   {
     icon: Flame,
     title: 'Independent fire risk assessors',
-    description: 'Complete FRA work in a repeatable workflow that connects site observations, evidence, recommendations and report issue controls.',
+    description: 'Complete FRA work with observations, evidence and issue controls in one place.',
     benefits: ['FRA-first assessment flow', 'Evidence linked to findings', 'Professional report delivery'],
   },
   {
     icon: Shield,
     title: 'Fire consultancies',
-    description: 'Give assessors a consistent way to complete reports while retaining review discipline across clients, sites and repeat assessments.',
+    description: 'Give assessors a consistent route from site notes to reviewed report.',
     benefits: ['Consistent report structure', 'Review-ready recommendations', 'Reusable assessment approach'],
   },
   {
     icon: Building2,
     title: 'Multi-site and insurer workflows',
-    description: 'Use the same governed assessment record for broader risk engineering reviews when clients need defensible outputs across locations.',
+    description: 'Use a governed record for broader property and operational risk reviews.',
     benefits: ['Portfolio context', 'Operational risk reviews', 'Issue-ready reporting'],
   },
 ];
@@ -29,7 +29,7 @@ export default function WhoItsFor() {
     <section
       id="who-its-for"
       ref={ref}
-      className={`py-24 bg-neutral-50 transition-all duration-300 ease-out ${
+      className={`py-28 bg-neutral-50 transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
@@ -39,10 +39,10 @@ export default function WhoItsFor() {
             Consultant-first
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            Designed for structured, defensible reporting
+            For consultants who need controlled reporting
           </h2>
           <p className="text-xl text-neutral-600">
-            EziRisk is for professionals who need to complete assessments, evidence their judgement and issue reports clients can rely on.
+            Complete assessments, evidence judgement and issue reports clients can rely on.
           </p>
         </div>
 
