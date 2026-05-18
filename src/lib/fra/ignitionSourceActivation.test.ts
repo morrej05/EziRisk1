@@ -18,7 +18,6 @@ describe('FRA ignition source activation', () => {
       expect.objectContaining({ broadKey: 'maintenance_activities', sourceKey: 'maintenance_controls' }),
       expect.objectContaining({ broadKey: 'other', sourceKey: 'high_risk_other' }),
       expect.objectContaining({ broadKey: 'electrical_equipment', sourceKey: 'electrical' }),
-      expect.objectContaining({ broadKey: 'fixed_wiring_concerns', sourceKey: 'fixed_wiring_eicr' }),
       expect.objectContaining({ broadKey: 'portable_heaters', sourceKey: 'portable_heaters' }),
       expect.objectContaining({ broadKey: 'flammable_liquids', sourceKey: 'hazardous_substances_dsear', dsearPrompt: true }),
       expect.objectContaining({ broadKey: 'high', sourceKey: 'arson' }),
@@ -75,19 +74,33 @@ describe('FRA ignition source activation', () => {
     expect(result.dsearPrompt).toBe(true);
   });
 
-  it('activates the fixed wiring / EICR card from broad fixed wiring concerns', () => {
+  it('keeps fixed wiring concerns as triage only without activating a generic contextual card', () => {
     const result = getActiveIgnitionSourceCards({
       broadSelections: { ignition_sources: ['fixed_wiring_concerns'] },
       sourceAssessments: {},
       sourceKeys,
     });
 
-    expect(result.activeSourceKeys).toEqual(['fixed_wiring_eicr']);
+    expect(result.activeSourceKeys).toEqual([]);
+    expect(result.optionalSourceKeys).toContain('fixed_wiring_eicr');
     expect(getEffectiveIgnitionPresence({
       sourceKey: 'fixed_wiring_eicr',
       assessment: {},
       broadSelections: { ignition_sources: ['fixed_wiring_concerns'] },
-    })).toBe('present');
+    })).toBe('');
   });
 
+
+  it('preserves fixed wiring legacy detail without rendering the generic contextual card', () => {
+    const result = getActiveIgnitionSourceCards({
+      broadSelections: { ignition_sources: [], high_risk_activities: [], fuel_sources: [] },
+      sourceAssessments: {
+        fixed_wiring_eicr: { existing_controls: 'Legacy fixed wiring notes.' },
+      },
+      sourceKeys,
+    });
+
+    expect(result.activeSourceKeys).not.toContain('fixed_wiring_eicr');
+    expect(result.completedLegacySourceKeys).toContain('fixed_wiring_eicr');
+  });
 });

@@ -60,10 +60,17 @@ const DETAIL_FIELDS: Array<keyof IgnitionSourceAssessmentLike> = [
  * Central FRA hazard/source activation map. Broad checklist selections remain the
  * triage layer; these entries decide which contextual source card is surfaced.
  */
+export const DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEYS = ['fixed_wiring_eicr'] as const;
+
+const DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEY_SET = new Set<string>(DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEYS);
+
+export function hasDedicatedStructuredWorkflow(sourceKey: string): boolean {
+  return DEDICATED_STRUCTURED_WORKFLOW_SOURCE_KEY_SET.has(sourceKey);
+}
+
 export const HAZARD_TO_SOURCE_MAPPINGS: HazardToSourceMapping[] = [
   { broadField: 'ignition_sources', broadKey: 'smoking', sourceKey: 'smoking', label: 'Smoking → Smoking controls source card' },
   { broadField: 'ignition_sources', broadKey: 'electrical_equipment', sourceKey: 'electrical', label: 'Electrical equipment → Electrical ignition source card' },
-  { broadField: 'ignition_sources', broadKey: 'fixed_wiring_concerns', sourceKey: 'fixed_wiring_eicr', label: 'Fixed wiring concerns → Fixed wiring / EICR card' },
   { broadField: 'ignition_sources', broadKey: 'cooking', sourceKey: 'cooking', label: 'Cooking → Cooking equipment source card' },
   { broadField: 'ignition_sources', broadKey: 'portable_heaters', sourceKey: 'portable_heaters', label: 'Portable heaters → Heating/appliances source card' },
   { broadField: 'ignition_sources', broadKey: 'plant_rooms', sourceKey: 'plant_machinery', label: 'Plant rooms → Plant/machinery source card' },
@@ -135,14 +142,18 @@ export function getActiveIgnitionSourceCards(input: ActiveIgnitionSourceCardsInp
     const mappings = getHazardMappingsForSource(sourceKey, broadSelections);
     if (mappings.length > 0) {
       activationBySource[sourceKey] = mappings;
-      active.add(sourceKey);
+      if (!hasDedicatedStructuredWorkflow(sourceKey)) {
+        active.add(sourceKey);
+      }
       if (mappings.some((mapping) => mapping.dsearPrompt)) dsearPrompt = true;
     }
 
     const assessment = sourceAssessments[sourceKey];
     if (sourceAssessmentHasDetail(assessment)) {
       completedLegacy.add(sourceKey);
-      active.add(sourceKey);
+      if (!hasDedicatedStructuredWorkflow(sourceKey)) {
+        active.add(sourceKey);
+      }
       if (sourceKey === 'hazardous_substances_dsear') dsearPrompt = true;
     }
   });
