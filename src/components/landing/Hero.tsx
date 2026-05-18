@@ -17,13 +17,12 @@ export default function Hero() {
           For fire risk assessors and consultants
         </p>
 
-        <h1 className="mb-6 max-w-4xl text-4xl font-bold leading-tight text-white sm:text-5xl md:text-6xl">
-          Finish fire risk assessment reports without juggling Word documents, photo folders and spreadsheets.
+        <h1 className="mb-6 max-w-3xl text-4xl font-bold leading-tight text-white sm:text-5xl md:text-6xl">
+          Finish professional fire assessment reports in one structured workflow.
         </h1>
 
-        <p className="mb-8 max-w-2xl text-lg leading-8 text-blue-100">
-          EziRisk gives consultants a structured workflow for FRA and DSEAR assessments: capture findings,
-          link evidence, create recommendations, check issue readiness and produce governed professional reports.
+        <p className="mb-8 max-w-xl text-lg leading-8 text-blue-100">
+          Capture findings, link evidence, create recommendations and issue governed FRA, FSD and DSEAR reports — without disconnected Word documents, photo folders and spreadsheets.
         </p>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -41,8 +40,8 @@ export default function Hero() {
           </Link>
         </div>
 
-        <p className="mt-4 max-w-xl text-sm text-blue-200">
-          Built to keep assessment notes, evidence, recommendations and report issue controls connected from site walk to issued report.
+        <p className="mt-4 max-w-lg text-sm text-blue-200">
+          Keep findings, evidence, recommendations and report issue controls connected from assessment to issued report.
         </p>
       </div>
     </section>

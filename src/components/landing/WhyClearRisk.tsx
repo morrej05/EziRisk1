@@ -5,22 +5,22 @@ const benefits = [
   {
     icon: Link2,
     title: 'Evidence stays in context',
-    description: 'Photos and documents are linked to the relevant assessment findings, reducing the need to reconcile folders after the visit.',
+    description: 'Photos and documents stay linked to the relevant finding or control.',
   },
   {
     icon: CheckCircle2,
     title: 'Recommendations stay traceable',
-    description: 'Actions are created from assessment findings and remain connected through review, reporting and issue.',
+    description: 'Actions remain connected through review, reporting and issue.',
   },
   {
     icon: FileText,
     title: 'Reports follow a consistent structure',
-    description: 'A governed workflow helps reduce inconsistent formatting, missing context and ad hoc report assembly.',
+    description: 'Governed templates reduce missing context and ad hoc assembly.',
   },
   {
     icon: ShieldCheck,
     title: 'Issue controls support professionalism',
-    description: 'Readiness checks help assessors resolve gaps before delivering a report to the client.',
+    description: 'Readiness checks help resolve gaps before client delivery.',
   },
 ];
 
@@ -30,7 +30,7 @@ export default function WhyClearRisk() {
   return (
     <section
       ref={ref}
-      className={`py-24 bg-neutral-900 text-white transition-all duration-300 ease-out ${
+      className={`py-28 bg-neutral-900 text-white transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
@@ -40,10 +40,10 @@ export default function WhyClearRisk() {
             Calm, controlled report issue
           </p>
           <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            Professional assessment delivery without the admin sprawl
+            Professional delivery without the admin sprawl
           </h2>
           <p className="text-xl text-neutral-300">
-            EziRisk supports the practical controls assessors need between site work and client-ready reporting.
+            Practical controls for the space between site work and client-ready report.
           </p>
         </div>
 
@@ -75,7 +75,7 @@ export default function WhyClearRisk() {
 
         <div className="mt-16 rounded-xl border border-neutral-700 bg-neutral-800/50 p-8 text-center">
           <p className="mx-auto max-w-3xl text-lg text-neutral-300">
-            Word + photos + spreadsheets can work for one job, but they make repeatable reporting hard. EziRisk brings those moving parts into one governed assessment workflow.
+            Replace scattered files with a governed assessment record that is easier to review, issue and repeat.
           </p>
         </div>
       </div>

@@ -3,16 +3,16 @@ import { ArrowRight } from 'lucide-react';
 
 export default function CallToAction() {
   return (
-    <section className="py-24 bg-white">
+    <section className="py-28 bg-white">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
-          Ready for a cleaner report workflow?
+          Ready to issue cleaner reports?
         </p>
         <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-6">
-          Start an assessment workflow that keeps evidence, recommendations and issue checks together.
+          Start with a structured path from assessment to issued report.
         </h2>
         <p className="text-xl text-neutral-600 mb-10 max-w-2xl mx-auto">
-          Use EziRisk to move from site observations to a professional report without rebuilding the file trail at the end.
+          Keep findings, evidence and recommendations connected until the report is ready to issue.
         </p>
         <div className="flex flex-col justify-center gap-3 sm:flex-row">
           <a

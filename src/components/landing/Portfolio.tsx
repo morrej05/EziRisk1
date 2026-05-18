@@ -4,15 +4,15 @@ import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 const portfolioFeatures = [
   {
     icon: BarChart3,
-    title: 'See recurring findings across sites and assessments',
+    title: 'See recurring findings across sites',
   },
   {
     icon: TrendingUp,
-    title: 'Identify repeated recommendation themes for client review',
+    title: 'Spot repeated recommendation themes',
   },
   {
     icon: FileCheck,
-    title: 'Support consultancy reporting without losing assessment detail',
+    title: 'Report across clients without losing detail',
   },
 ];
 
@@ -22,7 +22,7 @@ export default function Portfolio() {
   return (
     <section
       ref={ref}
-      className={`py-24 bg-neutral-50 transition-all duration-300 ease-out ${
+      className={`py-28 bg-neutral-50 transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
@@ -32,10 +32,10 @@ export default function Portfolio() {
             When one client becomes many sites
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            Portfolio context after the assessment work is done
+            Portfolio context when clients scale
           </h2>
           <p className="text-xl text-neutral-600">
-            Keep the homepage focus on report delivery, with portfolio review available for consultancies and multi-site clients.
+            Review patterns across locations after the assessment work is complete.
           </p>
         </div>
 
