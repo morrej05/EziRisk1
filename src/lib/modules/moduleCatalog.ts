@@ -183,7 +183,7 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     outcomeCategory: 'critical', // Life safety - external spread
   },
   FRA_90_SIGNIFICANT_FINDINGS: {
-    name: 'FRA-90 - Significant Findings (Summary)',
+    name: 'FRA-90 - Significant Findings Summary',
     docTypes: ['FRA'],
     order: 16,
     type: 'derived',

@@ -37,8 +37,8 @@ interface DetailedFindingActionLinkProps {
 }
 
 function formatActionRef(action?: ActionSourceLink['actions'] | ExistingActionOption | null): string {
-  if (!action) return 'Linked action created';
-  return action.reference_number || action.title || 'Linked action created';
+  if (!action) return 'Linked recommendation created';
+  return action.reference_number || action.title || 'Linked recommendation created';
 }
 
 function isActiveLinkedAction(link: ActionSourceLink): boolean {
@@ -214,7 +214,7 @@ export default function DetailedFindingActionLink({
     const organisationId = organisation?.id;
     if (!organisationId) throw new Error('No organisation is selected.');
     if (links.some((link) => !link.deleted_at && link.action_id === actionId)) {
-      throw new Error('This action is already linked to this finding.');
+      throw new Error('This recommendation is already linked to this finding.');
     }
 
     const linkPayload = {
@@ -284,7 +284,7 @@ export default function DetailedFindingActionLink({
       const latestLinks = await fetchFindingLinks({ documentId, moduleInstanceId, sourceAssessmentType, sourceAssessmentKey });
       if (latestLinks.some((link) => !link.deleted_at && link.action_id === selectedActionId)) {
         setLinks(latestLinks);
-        setError('This action is already linked to this finding.');
+        setError('This recommendation is already linked to this finding.');
         return;
       }
       const selectedAction = existingActions.find((action) => action.id === selectedActionId);
@@ -297,8 +297,8 @@ export default function DetailedFindingActionLink({
       setSelectedActionId('');
       await loadLinks();
     } catch (linkError) {
-      console.error('Failed to link existing action to detailed finding:', linkError);
-      setError(import.meta.env.DEV ? `Could not link the selected action. ${describeSupabaseError(linkError)}` : 'Could not link the selected action.');
+      console.error('Failed to link existing recommendation to detailed finding:', linkError);
+      setError(import.meta.env.DEV ? `Could not link the selected recommendation. ${describeSupabaseError(linkError)}` : 'Could not link the selected recommendation.');
     } finally {
       setIsCreating(false);
     }
@@ -326,7 +326,7 @@ export default function DetailedFindingActionLink({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-blue-900">Add a recommendation for this area when action is needed, or add one manually for assessor judgement.</p>
+            <p className="text-sm text-blue-900">Add a recommendation for this area when improvement is needed, or add one manually for assessor judgement.</p>
           )}
           {legacyLinkedActionReference && (
             <p className="text-xs text-blue-800 mt-1">Linked recommendation: {legacyLinkedActionReference}</p>
@@ -339,13 +339,13 @@ export default function DetailedFindingActionLink({
 
       {unavailableLink && activeLinks.length === 0 && (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-800">
-          The linked action could not be opened because it is missing, deleted, or no longer active. Refresh the linkage or create a new recommendation.
+          The linked recommendation could not be opened because it is no longer available. Refresh the linkage or create a new recommendation.
         </p>
       )}
 
       {needsRecommendation && activeLinks.length === 0 && (
         <p className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-medium text-orange-800">
-          This finding is marked for action but has no linked recommendation.
+          This finding needs a recommendation, but none is linked yet.
         </p>
       )}
 
@@ -355,15 +355,15 @@ export default function DetailedFindingActionLink({
         </button>
         <div className="flex min-w-0 flex-1 gap-2">
           <select value={selectedActionId} onChange={(event) => setSelectedActionId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-neutral-800">
-            <option value="">Link existing open action...</option>
+            <option value="">Link existing recommendation...</option>
             {existingActions.map((action) => (
               <option key={action.id} value={action.id} disabled={activeLinkedActionIds.has(action.id)}>
-                {(action.reference_number || 'No ref')} / {action.status} — {action.recommended_action.slice(0, 90)}
+                {(action.reference_number || 'Reference not assigned')} / {action.status} — {action.recommended_action.slice(0, 90)}
               </option>
             ))}
           </select>
           <button type="button" onClick={handleLinkExisting} disabled={!selectedActionId || isCreating} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-60">
-            <Link2 className="w-4 h-4" /> Link existing
+            <Link2 className="w-4 h-4" /> Link recommendation
           </button>
         </div>
       </div>
