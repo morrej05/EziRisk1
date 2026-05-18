@@ -14,7 +14,7 @@ import {
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
   getHazardMappingsForSource,
-  sourceAssessmentHasDetail,
+  hasCommercialKitchenContext,
 } from '../../../lib/fra/ignitionSourceActivation';
 
 interface Document {
@@ -154,10 +154,10 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
   },
   {
     key: 'cooking',
-    label: 'Cooking / kitchen processes',
+    label: 'Cooking / Kitchen Processes',
     legacyIgnition: 'cooking',
     legacyHighRisk: 'commercial_kitchens',
-    prompt: 'Commercial or domestic cooking, deep fat frying, extract/duct cleaning regime, suppression arrangements and supervision.',
+    prompt: 'Domestic or commercial cooking processes, equipment controls, supervision and safe shutdown arrangements.',
     actionText: 'Review cooking and kitchen fire controls, including supervision, safe isolation, extract/duct cleaning frequency, suppression arrangements, combustible separation and suitable firefighting provisions for the cooking process.',
   },
   {
@@ -438,16 +438,6 @@ export default function FRA1FireHazardsForm({
     sourceKeys: IGNITION_SOURCE_AREAS.map((source) => source.key),
   });
 
-  const fixedWiringConcernsSelected = formData.ignition_sources.includes('fixed_wiring_concerns');
-  const legacyFixedWiringAssessment = formData.ignition_source_assessments.fixed_wiring_eicr;
-  const hasLegacyFixedWiringContext = sourceAssessmentHasDetail(legacyFixedWiringAssessment);
-  const eicrStatusSummary = [
-    `EICR evidence: ${formData.electrical_safety.eicr_evidence_seen === 'yes' ? 'seen' : 'missing / not confirmed'}`,
-    `Last EICR date: ${formData.electrical_safety.eicr_last_date || 'not recorded'}`,
-    `C1/C2 status: ${(formData.electrical_safety.eicr_outstanding_c1_c2 || 'unknown').replace(/_/g, ' ')}`,
-    'Recommendations / evidence: managed in the EICR section workflow',
-  ];
-
   const getSourcePresence = (source: IgnitionSourceDefinition, assessment: IgnitionAssessment): string =>
     getEffectiveIgnitionPresence({ sourceKey: source.key, assessment, broadSelections });
 
@@ -456,6 +446,7 @@ export default function FRA1FireHazardsForm({
 
   const selectedHighRiskActivityMappings = HAZARD_TO_SOURCE_MAPPINGS.filter((mapping) =>
     mapping.broadField === 'high_risk_activities' &&
+    mapping.broadKey !== 'commercial_kitchens' &&
     formData.high_risk_activities.includes(mapping.broadKey) &&
     sourceCardState.activeSourceKeys.includes(mapping.sourceKey)
   );
@@ -611,6 +602,9 @@ export default function FRA1FireHazardsForm({
     const assessment = formData.ignition_source_assessments[source.key] || {};
     const effectivePresence = getSourcePresence(source, assessment);
     const activationLabels = getActivationLabels(source.key);
+    const commercialKitchenContext = source.key === 'cooking' && hasCommercialKitchenContext(source.key, broadSelections);
+    const cookingCategory = commercialKitchenContext ? 'Commercial kitchen fire risk' : 'Cooking equipment';
+    const defaultCategory = source.key === 'cooking' ? cookingCategory : 'Fire hazards';
     const presenceIsDerived = effectivePresence === 'present' && !assessment.presence && activationLabels.length > 0;
     const needsAction = ['high'].includes(String(assessment.risk_significance || '')) ||
       ['action_required', 'urgent'].includes(String(assessment.recommended_action_trigger || '')) ||
@@ -635,6 +629,11 @@ export default function FRA1FireHazardsForm({
                   Existing detail preserved
                 </span>
               )}
+              {commercialKitchenContext && (
+                <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 border border-orange-200">
+                  Commercial kitchen context
+                </span>
+              )}
             </div>
             <p className="text-xs text-neutral-500 mt-1">{source.prompt}</p>
             {activationLabels.length > 0 && (
@@ -646,6 +645,11 @@ export default function FRA1FireHazardsForm({
                   </span>
                 ))}
               </div>
+            )}
+            {commercialKitchenContext && (
+              <p className="mt-2 text-xs text-orange-800">
+                Include extraction / duct cleaning, grease build-up, deep fat frying, suppression, cleaning regime, kitchen shutdown procedures, supervision, staff controls and housekeeping around cooking equipment.
+              </p>
             )}
           </div>
           <ChevronDown className="h-4 w-4 text-neutral-500 transition-transform group-open:rotate-180" />
@@ -758,7 +762,7 @@ export default function FRA1FireHazardsForm({
                   sectionLabel: source.label,
                   sourceKey: source.key,
                   sourceLabel: source.label,
-                  defaultCategory: 'Fire hazards',
+                  defaultCategory,
                 })}
                 className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
               >
@@ -794,6 +798,7 @@ export default function FRA1FireHazardsForm({
             evidenceContext={assessment.evidence_references}
             assessment={assessment}
             legacyLinkedActionReference={assessment.linked_action_reference}
+            defaultCategory={defaultCategory}
           />
 
           {assessment.linked_action_reference && !needsAction && (
@@ -935,48 +940,6 @@ export default function FRA1FireHazardsForm({
             >
               Review DSEAR relevance
             </button>
-          </div>
-        )}
-
-        {(fixedWiringConcernsSelected || hasLegacyFixedWiringContext) && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-amber-950">Fixed wiring concerns selected</h3>
-                <p className="mt-1 text-sm text-amber-900">
-                  Use the structured EICR / fixed wiring section below to record inspection evidence, C1/C2 observations and recommendations.
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {eicrStatusSummary.map((item) => (
-                    <span key={item} className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-900">
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <a
-                href="#fixed-wiring-eicr-section"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
-              >
-                Review EICR section
-              </a>
-            </div>
-
-            {hasLegacyFixedWiringContext && (
-              <details className="mt-3 rounded-lg border border-amber-200 bg-white px-3 py-2">
-                <summary className="cursor-pointer text-xs font-semibold text-amber-900">Advanced / legacy fixed-wiring contextual data</summary>
-                <dl className="mt-2 grid gap-2 text-sm text-amber-950 md:grid-cols-2">
-                  {Object.entries(legacyFixedWiringAssessment || {})
-                    .filter(([, value]) => String(value ?? '').trim())
-                    .map(([key, value]) => (
-                      <div key={key}>
-                        <dt className="font-medium">{formatLabel(key)}</dt>
-                        <dd className="whitespace-pre-wrap">{String(value)}</dd>
-                      </div>
-                    ))}
-                </dl>
-              </details>
-            )}
           </div>
         )}
 

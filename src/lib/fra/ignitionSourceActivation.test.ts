@@ -3,6 +3,7 @@ import {
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
   HAZARD_TO_SOURCE_MAPPINGS,
+  hasCommercialKitchenContext,
 } from './ignitionSourceActivation';
 
 const sourceKeys = ['electrical', 'fixed_wiring_eicr', 'smoking', 'cooking', 'laundry', 'contractor_controls', 'maintenance_controls', 'hot_works', 'high_risk_other', 'hazardous_substances_dsear', 'arson', 'portable_heaters'];
@@ -12,7 +13,7 @@ describe('FRA ignition source activation', () => {
     expect(HAZARD_TO_SOURCE_MAPPINGS).toEqual(expect.arrayContaining([
       expect.objectContaining({ broadKey: 'smoking', sourceKey: 'smoking' }),
       expect.objectContaining({ broadKey: 'hot_work', sourceKey: 'hot_works' }),
-      expect.objectContaining({ broadKey: 'commercial_kitchens', sourceKey: 'cooking' }),
+      expect.objectContaining({ broadKey: 'commercial_kitchens', sourceKey: 'cooking', commercialKitchenContext: true }),
       expect.objectContaining({ broadKey: 'laundry_operations', sourceKey: 'laundry' }),
       expect.objectContaining({ broadKey: 'contractor_works', sourceKey: 'contractor_controls' }),
       expect.objectContaining({ broadKey: 'maintenance_activities', sourceKey: 'maintenance_controls' }),
@@ -88,6 +89,43 @@ describe('FRA ignition source activation', () => {
       assessment: {},
       broadSelections: { ignition_sources: ['fixed_wiring_concerns'] },
     })).toBe('');
+  });
+
+
+  it('merges cooking and commercial kitchens into one cooking source card', () => {
+    const result = getActiveIgnitionSourceCards({
+      broadSelections: {
+        ignition_sources: ['cooking'],
+        high_risk_activities: ['commercial_kitchens'],
+        fuel_sources: [],
+      },
+      sourceAssessments: {},
+      sourceKeys,
+    });
+
+    expect(result.activeSourceKeys.filter((sourceKey) => sourceKey === 'cooking')).toEqual(['cooking']);
+    expect(result.activeSourceKeys).toEqual(['cooking']);
+    expect(getEffectiveIgnitionPresence({
+      sourceKey: 'cooking',
+      assessment: {},
+      broadSelections: { ignition_sources: ['cooking'], high_risk_activities: ['commercial_kitchens'] },
+    })).toBe('present');
+    expect(hasCommercialKitchenContext('cooking', { high_risk_activities: ['commercial_kitchens'] })).toBe(true);
+  });
+
+  it('activates the same cooking source card from commercial kitchens alone', () => {
+    const result = getActiveIgnitionSourceCards({
+      broadSelections: {
+        ignition_sources: [],
+        high_risk_activities: ['commercial_kitchens'],
+        fuel_sources: [],
+      },
+      sourceAssessments: {},
+      sourceKeys,
+    });
+
+    expect(result.activeSourceKeys).toEqual(['cooking']);
+    expect(hasCommercialKitchenContext('cooking', { high_risk_activities: ['commercial_kitchens'] })).toBe(true);
   });
 
 
