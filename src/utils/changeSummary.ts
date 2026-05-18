@@ -452,7 +452,7 @@ export function formatChangeSummaryText(summary: ChangeSummaryTextInput): string
   }
 
   if (summary.outstanding_actions_count > 0) {
-    lines.push(`## Outstanding Actions: ${summary.outstanding_actions_count}\n`);
+    lines.push(`## Outstanding Recommendations: ${summary.outstanding_actions_count}\n`);
   }
 
   if (!summary.has_material_changes) {

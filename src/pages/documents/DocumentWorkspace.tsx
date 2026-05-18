@@ -797,13 +797,13 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               </div>
             )}
 
-            {/* Actions Panel */}
+            {/* Recommendation Panel */}
             {selectedStable && !hideOutstandingActionsPanel && (
               <div className="bg-white rounded-lg shadow-sm border border-neutral-200 mb-6">
                 <div className="px-4 py-3 border-b border-neutral-200 bg-neutral-50">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-neutral-900">
-                      {isReRecommendationPanel ? 'Outstanding Recommendations' : 'Outstanding Actions'}
+                      Module Recommendations
                     </h3>
                     <button
                       onClick={() => setIsActionsPanelCollapsed(!isActionsPanelCollapsed)}
@@ -842,8 +842,8 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                         }`}
                       >
                         {forceDocumentActionScope
-                          ? `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actions.length})`
-                          : `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actionScope === 'document' ? actions.length : '...'})`}
+                          ? `All recommendations (${actions.length})`
+                          : `All recommendations (${actionScope === 'document' ? actions.length : '...'})`}
                       </button>
                     </div>
 
@@ -857,8 +857,8 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                           <AlertCircle className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
                           <p className="text-sm text-neutral-600">
                             {forceDocumentActionScope || actionScope === 'document'
-                              ? `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this document`
-                              : `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this module`}
+                              ? 'No recommendations in this document'
+                              : 'No recommendations in this module'}
                           </p>
                         </div>
                       ) : (
@@ -895,7 +895,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                           ))}
 
                           {actions.length > 5 && (
-                            <p className="text-xs text-neutral-500 text-center pt-2">Showing 5 of {actions.length} actions</p>
+                            <p className="text-xs text-neutral-500 text-center pt-2">Showing 5 of {actions.length} recommendations</p>
                           )}
                         </div>
                       )}
