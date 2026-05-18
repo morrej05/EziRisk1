@@ -280,6 +280,8 @@ const sourceHasNarrativeDetail = (assessment?: IgnitionAssessment): boolean => {
 const EICR_SECTION_KEY = 'fixed_wiring_eicr';
 const EICR_SECTION_LABEL = 'Electrical Installation Safety (Fixed Wiring / EICR)';
 const EICR_SOURCE_LABEL = 'Fixed Wiring / EICR';
+const DSEAR_SCREENING_SECTION_KEY = 'dsear_screening';
+const DSEAR_SCREENING_SECTION_LABEL = 'DSEAR Screening';
 
 const FUEL_OPTIONS = [
   'waste_storage',
@@ -1684,13 +1686,13 @@ export default function FRA1FireHazardsForm({
             DSEAR Screening
           </h3>
           <p className="text-sm text-neutral-600 mb-4">
-            Dangerous Substances and Explosive Atmospheres Regulations 2002
+            Dangerous Substances and Explosive Atmospheres Regulations 2002 screening for flammable liquids, flammable gases, combustible dusts and relevant vapours or mists.
           </p>
 
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Flammable substances present?
+                Flammable substances or combustible dusts present?
               </label>
               <select
                 value={formData.dsear_screen.flammables_present || ''}
@@ -1800,11 +1802,23 @@ export default function FRA1FireHazardsForm({
                     },
                   })
                 }
-                placeholder="Details about dangerous substances, assessment findings, control measures..."
+                placeholder="Details about flammable liquids, flammable gases, combustible dusts, relevant vapours/mists, assessment findings and control measures..."
                 rows={2}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
               />
             </div>
+
+            <ModuleActions
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+              buttonLabel="Add Recommendation"
+              sectionKey={DSEAR_SCREENING_SECTION_KEY}
+              sectionLabel={DSEAR_SCREENING_SECTION_LABEL}
+              sourceKey={DSEAR_SCREENING_SECTION_KEY}
+              sourceLabel={DSEAR_SCREENING_SECTION_LABEL}
+              defaultCategory="Dangerous substances / DSEAR relevance"
+              compact
+            />
           </div>
         </div>
 
@@ -1843,6 +1857,7 @@ export default function FRA1FireHazardsForm({
         key={actionsRefreshKey}
         documentId={document.id}
         moduleInstanceId={moduleInstance.id}
+        summaryOnly
       />
 
 

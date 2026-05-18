@@ -940,7 +940,7 @@ if (d.electrical_safety && typeof d.electrical_safety === 'object') {
     }
 
     if (hasDsearData) {
-      if (dsFlam) drawFact('Flammable substances present', titleCase(dsFlam));
+      if (dsFlam) drawFact('Flammable substances or combustible dusts present', titleCase(dsFlam));
       if (dsAtmos) drawFact('Explosive atmospheres possible', titleCase(dsAtmos));
       if (dsStatus) drawFact('DSEAR assessment status', titleCase(dsStatus));
       if (dsAssessor) drawFact('DSEAR assessor', dsAssessor);

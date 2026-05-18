@@ -39,6 +39,7 @@ interface Action {
     title: string;
     document_type: string;
   } | null;
+  module_instance_id?: string | null;
   module_instance: {
     id: string;
     module_key: string;
@@ -62,7 +63,81 @@ interface ModuleActionsProps {
   sourceLabel?: string;
   defaultCategory?: string;
   compact?: boolean;
+  summaryOnly?: boolean;
 }
+
+
+type ActionLike = {
+  module_instance_id?: string | null;
+  module_instance?: { id?: string | null; module_key?: string | null } | null;
+  recommendation_detail?: Record<string, unknown> | null;
+};
+
+type RecommendationMatchContext = {
+  moduleInstanceId: string;
+  moduleKey: string;
+  sectionKey: string;
+  sourceKey: string;
+};
+
+const stringValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const getRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const getRecommendationDetailRecords = (action: ActionLike): Record<string, unknown>[] => {
+  const detail = getRecord(action.recommendation_detail);
+  const metadata = getRecord(detail.metadata);
+  const recommendationDetail = getRecord(metadata.recommendation_detail);
+  return [detail, metadata, recommendationDetail];
+};
+
+const detailMatchesAny = (
+  action: ActionLike,
+  keys: string[],
+  expectedValues: Array<string | null | undefined>,
+): boolean => {
+  const expected = new Set(expectedValues.map((value) => stringValue(value)).filter(Boolean));
+  if (expected.size === 0) return false;
+
+  return getRecommendationDetailRecords(action).some((record) =>
+    keys.some((key) => expected.has(stringValue(record[key]))),
+  );
+};
+
+const matchesRecommendationModule = (
+  action: ActionLike,
+  moduleInstanceId: string,
+  moduleKey?: string | null,
+): boolean => (
+  action.module_instance_id === moduleInstanceId ||
+  action.module_instance?.id === moduleInstanceId ||
+  action.module_instance?.module_key === moduleKey ||
+  detailMatchesAny(action, ["moduleInstanceId", "module_instance_id"], [moduleInstanceId]) ||
+  detailMatchesAny(action, ["moduleKey", "sourceModuleKey", "module_key", "source_module_key"], [moduleKey])
+);
+
+const matchesRecommendationSection = (
+  action: ActionLike,
+  context: RecommendationMatchContext,
+): boolean => (
+  matchesRecommendationModule(action, context.moduleInstanceId, context.moduleKey) &&
+  detailMatchesAny(action, ["sectionKey", "sourceKey", "source_factor_key"], [context.sectionKey, context.sourceKey])
+);
+
+const getActionSourceLabel = (action: ActionLike, fallback?: string | null): string | null => {
+  const records = getRecommendationDetailRecords(action);
+  for (const key of ["sourceLabel", "sectionLabel"]) {
+    for (const record of records) {
+      const value = stringValue(record[key]);
+      if (value) return value;
+    }
+  }
+  return fallback || null;
+};
 
 const isValidUUID = (id: string | undefined | null): boolean => {
   if (!id) return false;
@@ -81,6 +156,7 @@ export default function ModuleActions({
   sourceLabel,
   defaultCategory,
   compact = false,
+  summaryOnly = false,
 }: ModuleActionsProps) {
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
@@ -177,6 +253,7 @@ export default function ModuleActions({
     sectionKey,
     sourceKey,
     defaultCategory,
+    summaryOnly,
   ]);
 
   const handleInlineEvidenceUpload = async (
@@ -337,6 +414,7 @@ export default function ModuleActions({
         .select(
           `
           id,
+          module_instance_id,
           recommended_action,
           status,
           priority_band,
@@ -354,7 +432,7 @@ export default function ModuleActions({
           owner:user_profiles(id,name)
         `,
         )
-        .eq("module_instance_id", moduleInstanceId)
+        .eq("document_id", documentId)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
@@ -383,22 +461,11 @@ export default function ModuleActions({
         attachment_count: attachmentCounts[action.id] || 0,
       }));
 
-      const scopedActions = recommendationContext
-        ? actionsWithAttachments.filter((action) => {
-            const detail = action.recommendation_detail || {};
-            const metadata =
-              typeof detail.metadata === "object" && detail.metadata !== null
-                ? (detail.metadata as Record<string, unknown>)
-                : {};
-
-            return (
-              metadata.sourceKey === recommendationContext.sourceKey ||
-              metadata.sectionKey === recommendationContext.sectionKey ||
-              detail.sourceKey === recommendationContext.sourceKey ||
-              detail.sectionKey === recommendationContext.sectionKey
-            );
-          })
-        : actionsWithAttachments;
+      const scopedActions = actionsWithAttachments.filter((action) =>
+        recommendationContext
+          ? matchesRecommendationSection(action, recommendationContext)
+          : matchesRecommendationModule(action, moduleInstanceId, sourceModuleKey),
+      );
 
       setActions(scopedActions as unknown as Action[]);
     } catch (error) {
@@ -552,15 +619,19 @@ export default function ModuleActions({
           <h3 className="text-lg font-bold text-neutral-900">
             {recommendationContext
               ? `Recommendations — ${recommendationContext.displayLabel}`
-              : "Recommendations from this Module"}
+              : summaryOnly
+                ? `Recommendations — ${getModuleDisplayLabel(sourceModuleKey) || "Module summary"}`
+                : "Recommendations from this Module"}
           </h3>
           <p className="text-sm text-neutral-500">
             {recommendationContext
               ? "Section-owned finding, evidence, priority and due-date workflow."
-              : "Unified finding, evidence, priority and due-date workflow for this module."}
+              : summaryOnly
+                ? "Roll-up of section-owned recommendations recorded in this module."
+                : "Unified finding, evidence, priority and due-date workflow for this module."}
           </p>
         </div>
-        {documentStatus === "draft" && (
+        {documentStatus === "draft" && !summaryOnly && (
           <div className="flex items-center gap-2">
             <label
               className={`flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium ${isUploadingEvidence ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
@@ -599,15 +670,21 @@ export default function ModuleActions({
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-neutral-300 border-t-neutral-900"></div>
         </div>
       ) : actions.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
-          <p className="text-neutral-500 text-sm">
-            No recommendations added yet
-          </p>
-          <p className="text-neutral-400 text-xs">
-            Click "{buttonLabel}" to create a recommendation for this section
-          </p>
-        </div>
+        summaryOnly ? (
+          <div className="rounded-lg border border-dashed border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-500">
+            No section recommendations have been added to this module yet.
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
+            <p className="text-neutral-500 text-sm">
+              No recommendations added yet
+            </p>
+            <p className="text-neutral-400 text-xs">
+              Click "{buttonLabel}" to create a recommendation for this section
+            </p>
+          </div>
+        )
       ) : (
         <div className="space-y-3">
           {actions.map((action) => (
@@ -625,7 +702,7 @@ export default function ModuleActions({
                 dueDate: formatDate(action.target_date),
                 evidenceCount: action.attachment_count,
                 sourceLabel:
-                  recommendationContext?.sourceLabel ||
+                  getActionSourceLabel(action, recommendationContext?.sourceLabel) ||
                   getModuleDisplayLabel(sourceModuleKey || action.module_instance?.module_key) ||
                   "Linked assessment area",
                 referenceNumber: action.reference_number,
@@ -663,6 +740,7 @@ export default function ModuleActions({
           sectionLabel={recommendationContext?.sectionLabel}
           sourceKey={recommendationContext?.sourceKey}
           sourceLabel={recommendationContext?.sourceLabel}
+          sourceModuleKey={sourceModuleKey || undefined}
           defaultCategory={recommendationContext?.defaultCategory}
         />
       )}
