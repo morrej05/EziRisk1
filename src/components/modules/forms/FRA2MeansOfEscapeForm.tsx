@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle, DoorOpen, Plus } from 'lucide-react';
+import { AlertTriangle, CheckCircle, DoorOpen } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
-import AddActionModal from '../../actions/AddActionModal';
 import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
@@ -29,12 +28,6 @@ interface FRA2MeansOfEscapeFormProps {
   moduleInstance: ModuleInstance;
   document: Document;
   onSaved: () => void;
-}
-
-interface QuickActionTemplate {
-  action: string;
-  likelihood: number;
-  impact: number;
 }
 
 interface EscapeAssessmentDetail {
@@ -165,8 +158,6 @@ export default function FRA2MeansOfEscapeForm({
 }: FRA2MeansOfEscapeFormProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const [showActionModal, setShowActionModal] = useState(false);
-  const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const [formData, setFormData] = useState({
@@ -201,7 +192,6 @@ export default function FRA2MeansOfEscapeForm({
   };
 
   const detailedAssessments = Object.values(formData.means_of_escape_assessments).filter(hasAssessmentContent);
-  const hasDetailedAssessmentSource = detailedAssessments.length > 0;
 
   const qualityWarnings = useMemo(() => {
     const assessments = formData.means_of_escape_assessments;
@@ -319,10 +309,6 @@ export default function FRA2MeansOfEscapeForm({
     }
   };
 
-  const handleQuickAction = (template: QuickActionTemplate) => {
-    setQuickActionTemplate(template);
-    setShowActionModal(true);
-  };
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -452,29 +438,12 @@ export default function FRA2MeansOfEscapeForm({
             </div>
           </div>
 
-          {hasDetailedAssessmentSource ? (
-            <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-              Detailed assessment entries are present, so use the per-finding recommendation controls below instead of legacy Quick Add buttons.
-            </div>
-          ) : (
-          <div className="flex flex-wrap gap-3 mt-5">
-            {(formData.travel_distances_compliant === 'unknown' || formData.travel_distances_compliant === 'no') && (
-              <button onClick={() => handleQuickAction({ action: 'Verify and record escape travel distances against the applicable guidance and occupancy profile; reduce travel distances or improve alternative escape where excessive.', likelihood: 3, impact: 4 })} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"><Plus className="w-4 h-4" />Quick Add: Verify travel distances</button>
-            )}
-            {formData.final_exits_adequate === 'no' && (
-              <button onClick={() => handleQuickAction({ action: 'Improve final exit capacity and availability so exits are readily openable, unobstructed, adequately signed and discharge to a place of relative or ultimate safety.', likelihood: 4, impact: 5 })} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"><Plus className="w-4 h-4" />Quick Add: Improve final exits</button>
-            )}
-            {formData.escape_route_obstructions === 'yes' && (
-              <button onClick={() => handleQuickAction({ action: 'Remove obstructions from escape routes and implement routine documented inspections to ensure routes remain clear and available.', likelihood: 4, impact: 4 })} className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"><Plus className="w-4 h-4" />Quick Add: Clear escape routes</button>
-            )}
-          </div>
-          )}
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
-          <h3 className="text-lg font-bold text-neutral-900 mb-2">Optional Detailed Assessment Areas</h3>
+          <h3 className="text-lg font-bold text-neutral-900 mb-2">Means of escape recommendation ownership areas</h3>
           <p className="text-sm text-neutral-600 mb-4">
-            Open only the areas needed for the assessment. Saving retains the broad legacy fields and stores detailed area findings under <code>means_of_escape_assessments</code>.
+            Use these areas for evidence and recommendations relating to travel distances, final exits, stair protection, emergency lighting interfaces and other escape route findings.
           </p>
           <div className="space-y-3">
             {assessmentAreas.map((area) => {
@@ -551,22 +520,6 @@ export default function FRA2MeansOfEscapeForm({
         <ModuleActions key={actionsRefreshKey} documentId={document.id} moduleInstanceId={moduleInstance.id} />
       )}
 
-      {showActionModal && (
-        <AddActionModal
-          documentId={document.id}
-          moduleInstanceId={moduleInstance.id}
-          sourceModuleKey={moduleInstance.module_key}
-          onClose={() => {
-            setShowActionModal(false);
-            setQuickActionTemplate(null);
-          }}
-          onActionCreated={() => {
-            setShowActionModal(false);
-            setQuickActionTemplate(null);
-          }}
-          defaultAction={quickActionTemplate?.action}
-        />
-      )}
     </div>
   );
 }

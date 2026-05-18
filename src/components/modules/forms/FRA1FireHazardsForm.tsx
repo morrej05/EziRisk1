@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Flame, CheckCircle, Plus, Zap, ChevronDown, AlertTriangle, Link as LinkIcon } from 'lucide-react';
+import { useState } from 'react';
+import { Flame, CheckCircle, Plus, Zap, ChevronDown, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
@@ -10,7 +10,6 @@ import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import {
-  HAZARD_TO_SOURCE_MAPPINGS,
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
   getHazardMappingsForSource,
@@ -128,14 +127,14 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     key: 'electrical',
     label: 'Electrical ignition sources',
     legacyIgnition: 'electrical_equipment',
-    prompt: 'Fixed wiring, distribution boards, portable appliances, charging, extension leads and electrical maintenance evidence.',
-    actionText: 'Review and strengthen electrical ignition source controls, including evidence of inspection/testing, remediation of defects, safe use of portable appliances and management of temporary wiring or charging arrangements.',
+    prompt: 'Portable appliances, extension leads, temporary equipment and user-operated electrical equipment condition/controls. Fixed installation issues are assessed in the Fixed Wiring / EICR section.',
+    actionText: 'Review and strengthen portable electrical equipment controls, including user checks, competent inspection where appropriate, safe use of extension leads and management of temporary equipment.',
   },
   {
     key: 'fixed_wiring_eicr',
     label: 'Fixed wiring / EICR',
     legacyIgnition: 'fixed_wiring_concerns',
-    prompt: 'Fixed wiring concerns, EICR evidence, unsatisfactory reports, outstanding C1/C2 observations and remedial work status.',
+    prompt: 'Fixed wiring concerns, EICR evidence, unsatisfactory reports, outstanding C1/C2 observations and remedial work status. Portable equipment is assessed under Electrical ignition sources.',
     actionText: 'Review fixed wiring and EICR controls, obtain current evidence where missing and ensure any unsatisfactory or C1/C2 observations are remediated by a competent electrical contractor.',
   },
   {
@@ -164,8 +163,8 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     key: 'hot_works',
     label: 'Hot works',
     legacyHighRisk: 'hot_work',
-    prompt: 'Planned or contractor hot works, ignition exposure, combustible clearance, supervision, fire watch and post-work checks. Permit procedure is reviewed in Management Systems where relevant.',
-    actionText: 'Review hot work fire exposure controls at the point of work, including confirmation of hot work presence, segregation from combustibles, ignition control, supervision/fire watch and post-work monitoring. Raise permit procedure deficiencies under Management Systems to avoid duplicate recommendations.',
+    prompt: 'Hot work ignition exposure at the point of work: combustible clearance, local supervision, fire watch and post-work checks. Permit procedure is reviewed in Management Systems.',
+    actionText: 'Review hot work fire exposure controls at the point of work, including confirmation of hot work presence, segregation from combustibles, ignition control, supervision/fire watch and post-work monitoring.',
   },
   {
     key: 'laundry',
@@ -173,20 +172,6 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     legacyHighRisk: 'laundry_operations',
     prompt: 'Laundry operations, lint accumulation, dryer maintenance, isolation, ventilation and combustible storage near appliances.',
     actionText: 'Review laundry fire risk controls, including lint removal, dryer and duct maintenance, supervision, appliance isolation, ventilation and separation of laundry combustibles from heat sources.',
-  },
-  {
-    key: 'contractor_controls',
-    label: 'Contractor control / permit-to-work',
-    legacyHighRisk: 'contractor_works',
-    prompt: 'Contractor induction, supervision, permit-to-work arrangements, method statements, hot work interface and close-out checks.',
-    actionText: 'Strengthen contractor control arrangements with documented induction, permit-to-work requirements, review of method statements and risk assessments, supervision, close-out checks and clear controls for ignition-producing work.',
-  },
-  {
-    key: 'maintenance_controls',
-    label: 'Maintenance activity ignition controls',
-    legacyHighRisk: 'maintenance_activities',
-    prompt: 'Planned and reactive maintenance, isolation, ignition controls, hot work interface, temporary equipment and post-work inspection.',
-    actionText: 'Strengthen maintenance fire risk controls by documenting isolation and ignition-control requirements, managing temporary equipment, applying hot work controls where needed and completing post-maintenance fire safety checks.',
   },
   {
     key: 'plant_machinery',
@@ -207,6 +192,13 @@ const IGNITION_SOURCE_AREAS: IgnitionSourceDefinition[] = [
     legacyIgnition: 'arson_ignition_points',
     prompt: 'External combustibles, waste security, unauthorised access, history of incidents, perimeter lighting and CCTV.',
     actionText: 'Improve arson prevention measures by securing waste and external combustibles, strengthening access control, lighting, CCTV or patrols and managing vulnerable perimeter areas.',
+  },
+  {
+    key: 'battery_charging_lithium_ion',
+    label: 'Battery charging / lithium-ion',
+    legacyHighRisk: 'lithium_ion_charging',
+    prompt: 'Battery charging locations, lithium-ion devices, charger suitability, supervision, separation from combustibles and escape routes, ventilation and detection.',
+    actionText: 'Implement battery charging and lithium-ion controls with dedicated charging locations away from escape routes, separation from combustibles, suitable chargers, supervision/charging rules, ventilation and detection where appropriate.',
   },
   {
     key: 'lightning',
@@ -319,7 +311,6 @@ export default function FRA1FireHazardsForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
-  const [managementModuleId, setManagementModuleId] = useState<string | null>(null);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
   const moduleData = moduleInstance.data || {};
   const getString = (key: string, fallback = ''): string =>
@@ -379,28 +370,6 @@ export default function FRA1FireHazardsForm({
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
   const [scoringData, setScoringData] = useState(moduleData.scoring || {});
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadManagementModuleLink() {
-      const { data, error } = await supabase
-        .from('module_instances')
-        .select('id')
-        .eq('document_id', document.id)
-        .in('module_key', ['A4_MANAGEMENT_CONTROLS', 'FRA_6_MANAGEMENT_SYSTEMS'])
-        .limit(1);
-
-      if (!cancelled && !error) {
-        setManagementModuleId(data?.[0]?.id || null);
-      }
-    }
-
-    void loadManagementModuleLink();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [document.id]);
 
   const toggleMultiSelect = (field: 'ignition_sources' | 'fuel_sources' | 'high_risk_activities', value: string) => {
     const current = formData[field] as string[];
@@ -444,12 +413,6 @@ export default function FRA1FireHazardsForm({
   const getActivationLabels = (sourceKey: string): string[] =>
     getHazardMappingsForSource(sourceKey, broadSelections).map((mapping) => mapping.label);
 
-  const selectedHighRiskActivityMappings = HAZARD_TO_SOURCE_MAPPINGS.filter((mapping) =>
-    mapping.broadField === 'high_risk_activities' &&
-    mapping.broadKey !== 'commercial_kitchens' &&
-    formData.high_risk_activities.includes(mapping.broadKey) &&
-    sourceCardState.activeSourceKeys.includes(mapping.sourceKey)
-  );
 
   const getQualityGateWarnings = (): string[] => {
     const warnings: string[] = [];
@@ -636,16 +599,6 @@ export default function FRA1FireHazardsForm({
               )}
             </div>
             <p className="text-xs text-neutral-500 mt-1">{source.prompt}</p>
-            {activationLabels.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {activationLabels.map((label) => (
-                  <span key={label} className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                    <LinkIcon className="h-3 w-3" />
-                    {label}
-                  </span>
-                ))}
-              </div>
-            )}
             {commercialKitchenContext && (
               <p className="mt-2 text-xs text-orange-800">
                 Include extraction / duct cleaning, grease build-up, deep fat frying, suppression, cleaning regime, kitchen shutdown procedures, supervision, staff controls and housekeeping around cooking equipment.
@@ -656,12 +609,6 @@ export default function FRA1FireHazardsForm({
         </summary>
 
         <div className="border-t border-neutral-200 bg-white p-4 space-y-4">
-          {presenceIsDerived && (
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-              Presence is derived from the broad hazard selection. No duplicate present/not-present answer is required unless you need to override it below.
-            </div>
-          )}
-
           <details className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
             <summary className="cursor-pointer text-sm font-medium text-neutral-700">Change presence status</summary>
             <div className="mt-3 max-w-sm">
@@ -948,12 +895,12 @@ export default function FRA1FireHazardsForm({
             Contextual Ignition Source Cards
           </h3>
           <p className="text-sm text-neutral-600 mb-4">
-            Broad selections activate the source cards below. Present status is derived from the triage checklist unless you choose an override.
+            Complete the cards that match the ignition sources or high-risk activities present.
           </p>
 
           {sourceCardState.activeSourceKeys.length === 0 ? (
             <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
-              No contextual source cards are active yet. Select a broad ignition, fuel or high-risk activity item above to open the relevant detailed card.
+              No contextual source cards are active yet. Select a broad ignition, fuel or high-risk activity item above.
             </div>
           ) : (
             <div className="space-y-3">
@@ -1138,49 +1085,7 @@ export default function FRA1FireHazardsForm({
             </div>
           )}
 
-          {selectedHighRiskActivityMappings.length > 0 && (
-            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
-              <h4 className="text-sm font-semibold text-blue-900">Follow-up activated</h4>
-              <p className="mt-1 text-sm text-blue-800">
-                The selected high-risk activities have opened the relevant source card(s) above. Each active card includes evidence, priority and add recommendation controls.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedHighRiskActivityMappings.map((mapping) => (
-                  <span key={`${mapping.broadKey}-${mapping.sourceKey}`} className="rounded-full border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-800">
-                    {mapping.label}
-                  </span>
-                ))}
-              </div>
-              {formData.high_risk_activities.includes('hot_work') && (
-                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                  <strong>Hot work duplication check:</strong> record ignition/exposure findings in this Hot works card. If the permit or control procedure needs review, use the Management Systems area labelled “Hot work permit/control procedure”.{' '}
-                  {managementModuleId ? (
-                    <a href={`/documents/${document.id}/workspace?m=${managementModuleId}`} className="font-medium text-amber-950 underline">Open Management Systems</a>
-                  ) : (
-                    <span className="font-medium">Open Management Systems from the module list.</span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
-          {formData.high_risk_activities.includes('lithium_ion_charging') && !hasDetailedIgnitionSource && (
-            <div className="mt-4 pt-4 border-t border-neutral-200">
-              <button
-                onClick={() =>
-                  handleQuickAction({
-                    action: 'Implement safe lithium-ion charging controls: provide dedicated charging areas away from escape routes and sleeping areas, ensure adequate separation and ventilation, use manufacturer-approved chargers only, implement supervision during charging, and provide fire detection in charging areas.',
-                    likelihood: 4,
-                    impact: 4,
-                  })
-                }
-                className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
-              >
-                <Plus className="w-4 h-4" />
-                Add recommendation: Implement Li-ion charging controls
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
@@ -1646,7 +1551,7 @@ export default function FRA1FireHazardsForm({
             Duct & Extract Cleaning
           </h3>
           <p className="text-sm text-neutral-600 mb-4">
-            Primary extract ventilation and cleaning record. Use cooking / kitchen source-card recommendations for action linkage to avoid duplicate duct-cleaning actions.
+            Primary extract ventilation and cleaning record. Action ownership sits with the Cooking / Kitchen Processes source card when kitchen fire risk controls need improvement.
           </p>
 
           <div className="space-y-4">

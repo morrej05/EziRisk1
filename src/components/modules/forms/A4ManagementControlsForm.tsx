@@ -92,7 +92,7 @@ const managementAssessmentAreas: ManagementAssessmentAreaConfig[] = [
   { key: 'emergency_procedures', title: 'Emergency procedures', guidance: 'Emergency plan content, staff roles, alarm response, assembly, liaison and out-of-hours arrangements.' },
   { key: 'maintenance_inspection_regimes', title: 'Maintenance and inspection regimes', guidance: 'Planned inspection/testing of fire precautions, defect reporting, escalation and competent servicing.' },
   { key: 'contractor_control_ptw', title: 'Contractor control / permit-to-work systems', guidance: 'Contractor induction, supervision, risk assessment, permits and interface with site fire controls.' },
-  { key: 'hot_work_management', title: 'Hot work permit/control procedure', guidance: 'Permit authorisation, competence, approval workflow, fire watch requirements, post-work checks and contractor interfaces. The hot work exposure itself is identified in Hazards & Ignition Sources.' },
+  { key: 'hot_work_management', title: 'Hot work permit/control procedure', guidance: 'Permit authorisation, competence, fire watch requirements, post-work checks and contractor interfaces. The hot work exposure itself is identified in Hazards & Ignition Sources.' },
   { key: 'housekeeping_waste_management', title: 'Housekeeping and waste management', guidance: 'Combustible storage, waste removal, bins/skips, escape route checks and local housekeeping accountability.' },
   { key: 'testing_record_keeping', title: 'Testing and record keeping', guidance: 'Availability, currency and review of alarm, emergency lighting, firefighting equipment and drill records.' },
   { key: 'peeps_vulnerable_persons', title: 'PEEPs / vulnerable persons management', guidance: 'Identification, review and implementation of PEEPs or other assisted evacuation arrangements.' },
@@ -248,7 +248,7 @@ export default function A4ManagementControlsForm({
 
       if (cancelled || error) return;
 
-      const hazardData = (data?.data || {}) as Record<string, any>;
+      const hazardData = (data?.data || {}) as Record<string, unknown>;
       const hotWorkAssessment = hazardData.ignition_source_assessments?.hot_works || {};
       const selectedActivities = Array.isArray(hazardData.high_risk_activities)
         ? hazardData.high_risk_activities
@@ -659,9 +659,9 @@ export default function A4ManagementControlsForm({
             {showHotWorkManagementControls ? (
               <div className="rounded-lg border border-amber-100 bg-amber-50/50 p-4 space-y-4">
                 <div className="text-sm text-amber-900">
-                  <strong>Hot work permit/control procedure</strong> is shown because hot work is selected or already recorded. Use this area for permit/process controls only; record ignition exposure in Hazards & Ignition Sources.
+                  <strong>Hot work permit/control procedure:</strong> use this area for authorisation, competence, records, fire watch and post-work check controls. Record the physical ignition exposure in Hazards & Ignition Sources.
                   {hotWorkHazardModuleId && (
-                    <a href={`/documents/${document.id}/workspace?m=${hotWorkHazardModuleId}`} className="ml-1 font-medium underline">Review Hot Work hazard/source card</a>
+                    <a href={`/documents/${document.id}/workspace?m=${hotWorkHazardModuleId}`} className="ml-1 font-medium underline">Review hot work ignition exposure</a>
                   )}
                 </div>
                 <div>
@@ -761,7 +761,7 @@ export default function A4ManagementControlsForm({
               </div>
             ) : (
               <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
-                Hot work permit/control procedure is hidden until Hot Work is selected in Hazards & Ignition Sources or existing hot work permit detail is present.
+                No hot work permit/control procedure questions are needed unless hot work is selected in Hazards & Ignition Sources or existing permit detail is present.
               </div>
             )}
 
@@ -841,7 +841,7 @@ export default function A4ManagementControlsForm({
 
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Fire door inspection frequency
+                Fire door inspection record frequency
               </label>
               <select
                 value={formData.inspection_fire_doors_frequency}
