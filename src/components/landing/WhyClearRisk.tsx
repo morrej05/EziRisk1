@@ -1,34 +1,26 @@
-import { Clock, Target, CheckCircle2, Repeat } from 'lucide-react';
+import { CheckCircle2, FileText, Link2, ShieldCheck } from 'lucide-react';
 import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 
 const benefits = [
   {
-    icon: Clock,
-    title: 'Save Hours Per Report',
-    description: 'What used to take hours of writing now takes minutes. Generate comprehensive drafts instantly and focus your time on analysis and insights.',
-    stat: '80%',
-    statLabel: 'Time Saved',
-  },
-  {
-    icon: Target,
-    title: 'Consistent Quality',
-    description: 'Every report follows the same professional structure and terminology. Maintain high standards across all your documentation.',
-    stat: '100%',
-    statLabel: 'Consistency',
+    icon: Link2,
+    title: 'Evidence stays in context',
+    description: 'Photos and documents are linked to the relevant assessment findings, reducing the need to reconcile folders after the visit.',
   },
   {
     icon: CheckCircle2,
-    title: 'Professional Output',
-    description: 'Structured professional wording helps produce reports that meet industry standards and client expectations.',
-    stat: 'Expert',
-    statLabel: 'Level Quality',
+    title: 'Recommendations stay traceable',
+    description: 'Actions are created from assessment findings and remain connected through review, reporting and issue.',
   },
   {
-    icon: Repeat,
-    title: 'Flexible Regeneration',
-    description: 'Not satisfied with a section? Regenerate it independently without losing the rest of your work. Iterate until perfect.',
-    stat: 'Unlimited',
-    statLabel: 'Revisions',
+    icon: FileText,
+    title: 'Reports follow a consistent structure',
+    description: 'A governed workflow helps reduce inconsistent formatting, missing context and ad hoc report assembly.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Issue controls support professionalism',
+    description: 'Readiness checks help assessors resolve gaps before delivering a report to the client.',
   },
 ];
 
@@ -43,21 +35,24 @@ export default function WhyClearRisk() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="mx-auto mb-16 max-w-3xl text-center">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-200">
+            Calm, controlled report issue
+          </p>
           <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            Why EziRisk
+            Professional assessment delivery without the admin sprawl
           </h2>
-          <p className="text-xl text-neutral-300 max-w-3xl mx-auto">
-            The professional way to create risk assessments and reports
+          <p className="text-xl text-neutral-300">
+            EziRisk supports the practical controls assessors need between site work and client-ready reporting.
           </p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-8">
-          {benefits.map((benefit, index) => {
+          {benefits.map((benefit) => {
             const Icon = benefit.icon;
             return (
               <div
-                key={index}
+                key={benefit.title}
                 className="bg-neutral-800/50 p-8 rounded-xl border border-neutral-700 hover:border-neutral-600 transition-all"
               >
                 <div className="flex items-start gap-6">
@@ -68,17 +63,9 @@ export default function WhyClearRisk() {
                     <h3 className="text-xl font-semibold mb-2">
                       {benefit.title}
                     </h3>
-                    <p className="text-neutral-300 leading-relaxed mb-4">
+                    <p className="text-neutral-300 leading-relaxed">
                       {benefit.description}
                     </p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-success-400">
-                        {benefit.stat}
-                      </span>
-                      <span className="text-sm text-neutral-400">
-                        {benefit.statLabel}
-                      </span>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -86,10 +73,9 @@ export default function WhyClearRisk() {
           })}
         </div>
 
-        <div className="mt-16 p-8 bg-neutral-800/50 rounded-xl border border-neutral-700 text-center">
-          <p className="text-neutral-300 text-lg max-w-3xl mx-auto">
-            EziRisk doesn't replace your expertise—it amplifies it. You provide the data and insights,
-            we handle the structured reporting and professional formatting.
+        <div className="mt-16 rounded-xl border border-neutral-700 bg-neutral-800/50 p-8 text-center">
+          <p className="mx-auto max-w-3xl text-lg text-neutral-300">
+            Word + photos + spreadsheets can work for one job, but they make repeatable reporting hard. EziRisk brings those moving parts into one governed assessment workflow.
           </p>
         </div>
       </div>

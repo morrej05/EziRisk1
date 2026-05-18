@@ -38,7 +38,7 @@ export default function Footer() {
               )}
             </div>
             <p className="text-neutral-300 mb-4 max-w-md leading-relaxed">
-              Professional risk assessment and reporting platform for engineering and assessment consultants. Structured workflows, consistent outputs, and insurer-grade reporting.
+              Assessment workflows for fire risk assessors and consultants. Keep evidence, recommendations, readiness checks and professional report issue connected.
             </p>
             <p className="text-sm text-neutral-400 max-w-md leading-relaxed">
               {PUBLIC_LEGAL_DETAILS.footerStatement}

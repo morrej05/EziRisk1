@@ -15,9 +15,9 @@ export default function LandingPage() {
     <div className="min-h-screen">
       <Navbar />
       <Hero />
+      <HowItWorks />
       <SupportedReports />
       <WhatItDoes />
-      <HowItWorks />
       <WhoItsFor />
       <Portfolio />
       <WhyClearRisk />

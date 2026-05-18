@@ -34,7 +34,7 @@ export default function Pricing() {
         <div className="text-center mb-12">
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">Simple, transparent pricing</h2>
           <p className="text-xl text-neutral-600 max-w-3xl mx-auto">
-            Start with a free trial. Upgrade when you need more.
+            Start with structured assessment reporting. Upgrade when your reporting volume grows.
           </p>
         </div>
 
@@ -61,7 +61,7 @@ export default function Pricing() {
 
         <p className="mt-8 text-center text-sm text-neutral-500">No long-term contracts. Upgrade or cancel anytime.</p>
         <p className="mt-1 text-center text-sm text-neutral-500">
-          All plans include access to FRA, FSD, DSEAR / ATEX and risk engineering reports.
+          All plans include access to FRA workflows, DSEAR / ATEX assessments and broader risk engineering reports.
         </p>
         <p className="mt-3 text-center text-sm text-neutral-500">
           {PUBLIC_LEGAL_DETAILS.footerStatement}

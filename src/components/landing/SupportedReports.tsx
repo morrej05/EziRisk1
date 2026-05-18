@@ -1,61 +1,66 @@
-import { Flame, Building2, AlertTriangle, Shield } from 'lucide-react';
+import { AlertTriangle, Flame, ShieldCheck } from 'lucide-react';
 
 const reportTypes = [
   {
     icon: Flame,
-    title: 'FRA (Fire Risk Assessment)',
-    description: 'Assessment of fire risk within a building, covering occupancy, protection systems, and compliance.',
-  },
-  {
-    icon: Building2,
-    title: 'FSD (Fire Strategy Document)',
-    description: 'Preparation and review of fire strategy documents for new and existing buildings.',
+    title: 'Fire Risk Assessments',
+    description: 'Structured FRA workflows for findings, evidence, recommendations and professional report issue.',
   },
   {
     icon: AlertTriangle,
-    title: 'DSEAR / ATEX',
-    description: 'Assessment of risks from explosive atmospheres and hazardous substances.',
+    title: 'DSEAR / explosive atmosphere assessments',
+    description: 'Capture hazardous substance and explosive atmosphere observations with the same governed evidence trail.',
   },
   {
-    icon: Shield,
-    title: 'Risk Engineering (Insurer-grade)',
-    description: 'Structured, insurer-grade risk assessments covering property, operations, and protection systems.',
+    icon: ShieldCheck,
+    title: 'Risk engineering reviews',
+    description: 'Support insurer-style property and operational risk reviews when clients need broader assessment outputs.',
   },
 ];
 
 export default function SupportedReports() {
   return (
     <section className="max-w-7xl mx-auto px-6 py-16">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:items-center">
         <div>
           <img
             src="/images/portfolio-dashboard.png"
-            alt="EziRisk platform preview"
+            alt="EziRisk assessment workflow preview"
             className="w-full rounded-xl shadow-lg"
           />
         </div>
 
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900 mb-6">
-            Supported report types
+          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
+            FRA first, extensible when needed
+          </p>
+          <h2 className="mb-4 text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
+            Built around professional assessment delivery
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {reportTypes.map((report, index) => {
+          <p className="mb-6 text-lg leading-8 text-slate-600">
+            EziRisk is strongest where assessors need to finish and issue clear, defensible reports—not just store data.
+          </p>
+          <div className="grid grid-cols-1 gap-4">
+            {reportTypes.map((report) => {
               const Icon = report.icon;
               return (
                 <div
-                  key={index}
+                  key={report.title}
                   className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
                 >
-                  <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center mb-3">
-                    <Icon className="w-6 h-6 text-white" />
+                  <div className="flex gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-600">
+                      <Icon className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="mb-2 text-lg font-semibold text-slate-900">
+                        {report.title}
+                      </h3>
+                      <p className="text-sm leading-6 text-slate-600">
+                        {report.description}
+                      </p>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                    {report.title}
-                  </h3>
-                  <p className="text-sm leading-6 text-slate-600">
-                    {report.description}
-                  </p>
                 </div>
               );
             })}
