@@ -229,6 +229,7 @@ export function buildRecommendationContext({
       documentId,
       moduleInstanceId,
       moduleKey,
+      sourceModuleKey: moduleKey,
       sectionKey: resolvedSectionKey,
       sectionLabel: resolvedSectionLabel,
       sourceKey: resolvedSourceKey,
