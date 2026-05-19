@@ -116,6 +116,21 @@ const normaliseRiskSignificance = (value: unknown): RiskSignificance => {
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const asString = (value: unknown): string => typeof value === 'string' ? value : '';
 
+const YES_PARTIAL_NO_UNKNOWN_NA_OPTIONS = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'yes', label: 'Yes - fully documented' },
+  { value: 'partial', label: 'Partial - some gaps' },
+  { value: 'no', label: 'No - not defined' },
+  { value: 'not_applicable', label: 'Not applicable — not required for this premises' },
+] as const;
+
+const YES_NO_UNKNOWN_NA_OPTIONS = [
+  { value: 'unknown', label: 'Unknown' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'not_applicable', label: 'Not applicable to this premises' },
+] as const;
+
 
 const getManagementStateClasses = (assessment: ManagementAssessmentDetail): string => {
   if (assessment.risk_significance === 'critical') return 'border-red-300 bg-red-50';
@@ -487,10 +502,9 @@ export default function A4ManagementControlsForm({
                 }
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               >
-                <option value="unknown">Unknown</option>
-                <option value="yes">Yes - fully documented</option>
-                <option value="partial">Partial - some gaps</option>
-                <option value="no">No - not defined</option>
+                {YES_PARTIAL_NO_UNKNOWN_NA_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
               <p className="text-xs text-neutral-500 mt-1">
                 If unknown → set outcome to info_gap and raise an action
@@ -511,6 +525,7 @@ export default function A4ManagementControlsForm({
                 <option value="unknown">Unknown</option>
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
+                <option value="not_applicable">Not applicable — not required for this premises</option>
               </select>
             </div>
 
@@ -629,6 +644,7 @@ export default function A4ManagementControlsForm({
                 <option value="unknown">Unknown</option>
                 <option value="yes">Yes - formal process</option>
                 <option value="no">No</option>
+                <option value="not_applicable">Not applicable — activity not undertaken</option>
               </select>
             </div>
 
@@ -643,9 +659,9 @@ export default function A4ManagementControlsForm({
                 }
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               >
-                <option value="unknown">Unknown</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
+                {YES_NO_UNKNOWN_NA_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -678,6 +694,7 @@ export default function A4ManagementControlsForm({
                 <option value="unknown">Unknown</option>
                 <option value="yes">Yes - formal system</option>
                 <option value="no">No</option>
+                <option value="not_applicable">Not applicable — activity not undertaken</option>
               </select>
             </div>
 
