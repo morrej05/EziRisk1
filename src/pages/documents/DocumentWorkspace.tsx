@@ -799,7 +799,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
         />
 
         <div ref={moduleScrollRef} className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
-          <div className="w-full p-4 sm:p-6">
+          <div className="w-full p-4 pb-24 sm:p-6 sm:pb-28">
             {['FRA', 'DSEAR', 'FSD'].includes(document.document_type) && organisation?.id && (
               <ExecutiveSummaryPanel
                 documentId={document.id}
@@ -931,12 +931,14 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               </div>
             )}
 
-            <div className="sticky bottom-0 z-20 mb-4 rounded-xl border border-neutral-200 bg-white/95 backdrop-blur px-4 py-2 shadow-sm">
-              <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
-                <span className="font-medium text-neutral-700">Module save status</span>
-                <span className={saveState === 'saved' ? 'text-emerald-700' : saveState === 'saving' ? 'text-blue-700' : saveState === 'error' ? 'text-red-700' : 'text-amber-700'}>
-                  {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save error' : 'Unsaved changes'}
-                </span>
+            <div className="fixed bottom-3 left-3 right-3 z-40 sm:bottom-4 sm:left-6 sm:right-6 md:left-[92px] md:right-6 lg:left-[332px]">
+              <div className="rounded-xl border border-neutral-200 bg-white/95 backdrop-blur px-4 py-2 shadow-sm">
+                <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
+                  <span className="font-medium text-neutral-700">Module save status</span>
+                  <span className={saveState === 'saved' ? 'text-emerald-700' : saveState === 'saving' ? 'text-blue-700' : saveState === 'error' ? 'text-red-700' : 'text-amber-700'}>
+                    {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : 'Unsaved changes'}
+                  </span>
+                </div>
               </div>
             </div>
 

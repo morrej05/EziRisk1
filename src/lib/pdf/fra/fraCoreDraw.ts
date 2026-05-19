@@ -38,7 +38,7 @@ import { CRITICAL_FIELDS } from './fraConstants';
 import { safeArray, mapModuleKeyToSectionName } from './fraUtils';
 import type { Cursor, Document, ModuleInstance, Action, ActionRating, Organisation } from './fraTypes';
 import type { Attachment } from '../../supabase/attachments';
-import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment } from '../../supabase/attachments';
+import { fetchAttachmentBytes, isRenderableImageAttachment } from '../../supabase/attachments';
 import { getJurisdictionConfig, getJurisdictionLabel } from '../../jurisdictions';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
 import { getFraReportOutcomeLabel, resolveFraOutcomeValue } from './fraOutcome';
@@ -120,9 +120,9 @@ function hasFireSafetyManagementDetailContent(assessment: Record<string, unknown
 function formatFireSafetyManagementDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
-    const text = String(value ?? '').trim();
-    if (!text || text === 'unknown') return;
-    parts.push(`${label}: ${text.replace(/_/g, ' ')}`);
+    const text = normalizeDisplayValueForControlJudgement(value);
+    if (!text || text === 'Unknown') return;
+    parts.push(`${label}: ${text}`);
   };
 
   add('Adequacy', assessment.status);
@@ -192,9 +192,9 @@ function hasPassiveProtectionDetailContent(assessment: Record<string, unknown>):
 function formatPassiveProtectionDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
-    const text = String(value ?? '').trim();
-    if (!text || text === 'unknown') return;
-    parts.push(`${label}: ${text.replace(/_/g, ' ')}`);
+    const text = normalizeDisplayValueForControlJudgement(value);
+    if (!text || text === 'Unknown') return;
+    parts.push(`${label}: ${text}`);
   };
 
   add('Adequacy', assessment.status);
@@ -233,9 +233,9 @@ function hasMeansOfEscapeDetailContent(assessment: Record<string, unknown>): boo
 function formatMeansOfEscapeDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
   const parts: string[] = [];
   const add = (label: string, value: unknown) => {
-    const text = String(value ?? '').trim();
-    if (!text || text === 'unknown') return;
-    parts.push(`${label}: ${text.replace(/_/g, ' ')}`);
+    const text = normalizeDisplayValueForControlJudgement(value);
+    if (!text || text === 'Unknown') return;
+    parts.push(`${label}: ${text}`);
   };
 
   add('Status', assessment.status);
@@ -250,6 +250,21 @@ function formatMeansOfEscapeDetail(assessment: Record<string, unknown>, linkedAc
   else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
 
   return parts.join('; ');
+}
+
+function formatControlJudgement(value: unknown): string {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return 'Not Assessed';
+  if (raw === 'adequate') return 'Acceptable';
+  if (raw === 'inadequate') return 'Unsatisfactory';
+  if (raw === 'partial' || raw === 'some_gaps') return 'Improvement Required';
+  if (raw === 'n/a' || raw === 'na' || raw === 'not_applicable' || raw === 'not applicable') return 'Not Applicable';
+  if (raw === 'unknown') return 'Unknown';
+  return normalizeDisplayValue(value);
+}
+
+function normalizeDisplayValueForControlJudgement(value: unknown): string {
+  return formatControlJudgement(value);
 }
 
 
@@ -383,7 +398,7 @@ function drawTwoColumnRows(args: {
       normalizeDisplayValue(label)
     ).trim();
     const safeValue = sanitizePdfText(
-      normalizeDisplayValue(value)
+      normalizeDisplayValueForControlJudgement(value)
     ).trim();
     const valueLinesForEstimate = wrapText(safeValue, valueWidth, 10, font);
 
@@ -2498,52 +2513,6 @@ export async function drawAttachmentsIndex(
     });
 
     yPosition -= 15;
-  }
-
-  const documentLevelImages = filteredAttachments.filter((attachment) =>
-    isDocumentLevelAttachment(attachment) && isImageAttachment(attachment)
-  );
-
-  if (documentLevelImages.length > 0) {
-    if (yPosition < MARGIN + 120) {
-      const result = addNewPage(pdfDoc, isDraft, totalPages);
-      page = result.page;
-      yPosition = PAGE_TOP_Y;
-    }
-
-    yPosition -= 5;
-    page.drawText('Document-level Photos', {
-      x: MARGIN,
-      y: yPosition,
-      size: 12,
-      font: fontBold,
-      color: rgb(0.1, 0.1, 0.1),
-    });
-    yPosition -= 20;
-
-    const embeddedImages: Array<{ image: PDFImage; refNum: string; label?: string }> = [];
-    for (const attachment of documentLevelImages) {
-      const refNum = `E-${String(filteredAttachments.indexOf(attachment) + 1).padStart(3, '0')}`;
-      const image = await embedImage(pdfDoc, attachment);
-      if (image) {
-        embeddedImages.push({
-          image,
-          refNum,
-          label: attachment.caption || attachment.file_name,
-        });
-      }
-    }
-
-    ({ page, yPosition } = await drawImageGrid(
-      page,
-      yPosition,
-      embeddedImages,
-      font,
-      pdfDoc,
-      isDraft,
-      totalPages,
-      documentLevelImages.length
-    ));
   }
 
   return { page, yPosition };
