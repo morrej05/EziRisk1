@@ -483,8 +483,8 @@ export function getUnifiedOutcomeLabel(outcome: string | null | undefined, optio
   if (normalized in {'material_def':1,'material deficiency':1,'significant_def':1,'significant deficiency':1}) return 'Significant Deficiency';
   if (normalized in {'moderate_def':1,'moderate deficiency':1}) return 'Moderate Deficiency';
   if (normalized in {'minor_def':1,'minor deficiency':1}) return 'Minor Deficiency';
-  if (normalized in {'adequate':1,'improvement recommended':1,'requires_improvement':1}) return 'Broadly Compliant / Adequate with Improvements';
-  if (normalized in {'compliant':1,'satisfactory':1}) return options?.hasRecommendations ? 'Compliant with recommendations' : 'Compliant';
+  if (normalized in {'not_assessed':1,'not assessed':1}) return 'Not Assessed';
+  if (normalized in {'adequate':1,'improvement recommended':1,'requires_improvement':1,'compliant':1,'satisfactory':1}) return options?.hasRecommendations ? 'Compliant with Recommendations' : 'Compliant';
 
   return outcome || '';
 }
