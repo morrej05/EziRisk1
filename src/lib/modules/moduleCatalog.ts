@@ -538,22 +538,25 @@ export type NormalizedOutcome =
  * Outcome options for critical modules
  */
 export const CRITICAL_OUTCOME_OPTIONS = [
-  { value: 'Compliant', label: 'Compliant' },
-  { value: 'Minor Deficiency', label: 'Minor Deficiency' },
-  { value: 'Material Deficiency', label: 'Material Deficiency' },
-  { value: 'Information Gap', label: 'Information Gap' },
-  { value: 'Not Applicable', label: 'Not Applicable' },
+  { value: 'compliant', label: 'Compliant' },
+  { value: 'minor_def', label: 'Minor Deficiency' },
+  { value: 'moderate_def', label: 'Moderate Deficiency' },
+  { value: 'material_def', label: 'Significant Deficiency' },
+  { value: 'info_gap', label: 'Information Gap' },
+  { value: 'not_assessed', label: 'Not Assessed' },
+  { value: 'na', label: 'Not Applicable' },
 ] as const;
 
 /**
  * Outcome options for governance modules
  */
 export const GOVERNANCE_OUTCOME_OPTIONS = [
-  { value: 'Adequate', label: 'Adequate' },
-  { value: 'Improvement Recommended', label: 'Improvement Recommended' },
-  { value: 'Significant Improvement Required', label: 'Significant Improvement Required' },
-  { value: 'Information Incomplete', label: 'Information Incomplete' },
-  { value: 'Not Applicable', label: 'Not Applicable' },
+  { value: 'compliant', label: 'Compliant' },
+  { value: 'minor_def', label: 'Minor Deficiency' },
+  { value: 'material_def', label: 'Significant Deficiency' },
+  { value: 'info_gap', label: 'Information Gap' },
+  { value: 'not_assessed', label: 'Not Assessed' },
+  { value: 'na', label: 'Not Applicable' },
 ] as const;
 
 /**
@@ -570,8 +573,10 @@ export function normalizeOutcome(
   // Preserve canonical values
   if (normalized === 'compliant') return 'compliant';
   if (normalized === 'minor_def') return 'minor_def';
-  if (normalized === 'material_def') return 'material_def';
+  if (normalized === 'moderate_def') return 'moderate_def';
+  if (normalized === 'material_def' || normalized === 'significant_def') return 'material_def';
   if (normalized === 'info_gap' || normalized === 'information_incomplete') return 'info_gap';
+  if (normalized === 'not_assessed' || normalized === 'not assessed') return 'not_assessed';
   if (
     normalized === 'na' ||
     normalized === 'n/a' ||
@@ -584,7 +589,8 @@ export function normalizeOutcome(
   // Critical mapping
   if (category === 'critical') {
     if (normalized === 'minor deficiency') return 'minor_def';
-    if (normalized === 'material deficiency') return 'material_def';
+    if (normalized === 'moderate deficiency') return 'moderate_def';
+    if (normalized === 'significant deficiency' || normalized === 'material deficiency') return 'material_def';
     if (normalized === 'information gap') return 'info_gap';
   }
 

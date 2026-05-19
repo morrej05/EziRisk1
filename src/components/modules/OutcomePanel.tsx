@@ -36,11 +36,12 @@ const CRITICAL_OPTIONS = [
 ] as const;
 
 const GOVERNANCE_OPTIONS = [
-  { value: 'compliant', label: 'Adequate' },
+  { value: 'compliant', label: 'Compliant' },
   { value: 'minor_def', label: 'Improvement Recommended' },
   { value: 'material_def', label: 'Significant Improvement Required' },
   { value: 'info_gap', label: 'Information Incomplete' },
   { value: 'na', label: 'Not Applicable' },
+  { value: 'not_assessed', label: 'Not Assessed' },
 ] as const;
 
 function normalizeOutcomeValue(value: string | null | undefined): string {
@@ -158,7 +159,7 @@ export default function OutcomePanel({
           </select>
           <p className="text-xs text-neutral-500 mt-1">
             {isCritical
-              ? 'Select "Material Deficiency" only where life safety may be significantly compromised.'
+              ? 'Select "Significant Deficiency" only where life safety may be significantly compromised.'
               : 'Select "Significant Improvement Required" where management arrangements materially affect fire safety performance.'}
           </p>
         </div>

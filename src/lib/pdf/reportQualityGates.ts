@@ -333,34 +333,27 @@ export function validateReportQuality(
 export function standardizeOutcomeLabel(outcome: string | null | undefined): string {
   if (!outcome) return 'Not Assessed';
 
-  const normalized = outcome.toLowerCase().trim();
+  const n = outcome.toLowerCase().trim();
 
-  // Critical deficiency outcomes
-  if (normalized.includes('critical') || normalized.includes('immediate')) {
-    return 'Critical Deficiency';
-  }
+  if (n === 'na' || n === 'n/a' || n === 'not_applicable' || n === 'not applicable') return 'Not Applicable';
+  if (n === 'info_gap' || n === 'information_gap' || n === 'information gap' || n === 'information_incomplete' || n === 'information incomplete') return 'Information Gap';
+  if (n === 'not_assessed' || n === 'not assessed') return 'Not Assessed';
+  if (n === 'moderate_def' || n === 'moderate deficiency' || n === 'moderate_deficiency') return 'Moderate Deficiency';
+  if (
+    n === 'material_def' || n === 'significant_def' ||
+    n === 'material deficiency' || n === 'significant deficiency' ||
+    n === 'material_deficiency' || n === 'significant_deficiency' ||
+    n.includes('critical') || n.includes('immediate')
+  ) return 'Significant Deficiency';
+  if (
+    n === 'minor_def' || n === 'minor deficiency' || n === 'minor_deficiency' ||
+    n.includes('minor') || n.includes('governance') || n.includes('observation')
+  ) return 'Minor Deficiency';
+  if (
+    n === 'compliant' || n === 'satisfactory' || n === 'adequate' ||
+    n.includes('compliant') || n.includes('satisfactory') || n.includes('adequate') || n.includes('partial')
+  ) return 'Compliant';
 
-  // Material deficiency outcomes
-  if (normalized.includes('material') || normalized.includes('significant')) {
-    return 'Material Deficiency';
-  }
-
-  // Governance/minor outcomes
-  if (normalized.includes('governance') || normalized.includes('observation') || normalized.includes('minor')) {
-    return 'Governance Issue';
-  }
-
-  // Compliant outcomes
-  if (normalized.includes('compliant') || normalized.includes('satisfactory') || normalized.includes('adequate')) {
-    return 'Compliant';
-  }
-
-  // Partial compliance
-  if (normalized.includes('partial')) {
-    return 'Partially Compliant';
-  }
-
-  // Default: capitalize first letter of each word
   return outcome
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())

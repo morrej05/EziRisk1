@@ -124,7 +124,7 @@ export function RecommendationWorkflowShell({
     <div className="space-y-4 rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/30 p-4 sm:p-5">
       <div className="flex flex-col gap-3 border-b border-blue-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Unified finding workflow</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Recommendation</p>
           <h3 className="text-lg font-bold text-slate-900">{title}</h3>
           <p className="mt-1 text-sm text-slate-600">
             Finding → Evidence → Recommended Action → Priority → Due Date
@@ -189,7 +189,7 @@ export function RecommendationCard({ item, onOpen, onDelete, deleteLabel = 'Dele
               {priorityBand}
             </span>
             <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${getStatusBadgeClasses(item.status)}`}>
-              {item.status.replace('_', ' ')}
+              {item.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
             </span>
             <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${hasEvidence ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
               <FileCheck className="h-3.5 w-3.5" /> {item.evidenceCount || 0} evidence

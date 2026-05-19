@@ -126,7 +126,7 @@ interface BuildPdfOptions {
   preparedByName?: string | null;
 }
 
-const NOT_ASSESSED_LABEL = 'Not assessed';
+const NOT_ASSESSED_LABEL = 'Not Assessed';
 
 function hasMeaningfulText(value: unknown, minLength = 3): boolean {
   return typeof value === 'string' && value.trim().length >= minLength;
@@ -205,18 +205,34 @@ function drawModuleSection(
   // Outcome badge if present
   if (module.outcome) {
     const outcomeLabels: Record<string, string> = {
-      satisfactory: 'Satisfactory',
-      adequate: 'Adequate',
-      requires_improvement: 'Requires Improvement',
-      unsatisfactory: 'Unsatisfactory',
+      compliant: 'Compliant',
+      satisfactory: 'Compliant',
+      adequate: 'Compliant',
+      minor_def: 'Minor Deficiency',
+      moderate_def: 'Moderate Deficiency',
+      material_def: 'Significant Deficiency',
+      significant_def: 'Significant Deficiency',
+      requires_improvement: 'Minor Deficiency',
+      unsatisfactory: 'Significant Deficiency',
+      info_gap: 'Information Gap',
+      information_incomplete: 'Information Gap',
       not_assessed: 'Not Assessed',
+      na: 'Not Applicable',
     };
     const outcomeColors: Record<string, any> = {
-      satisfactory: rgb(0.2, 0.7, 0.3),
-      adequate: rgb(0.4, 0.6, 0.9),
-      requires_improvement: rgb(0.95, 0.7, 0.2),
-      unsatisfactory: rgb(0.9, 0.3, 0.3),
+      compliant: rgb(0.13, 0.55, 0.13),
+      satisfactory: rgb(0.13, 0.55, 0.13),
+      adequate: rgb(0.13, 0.55, 0.13),
+      minor_def: rgb(0.85, 0.65, 0.13),
+      moderate_def: rgb(0.9, 0.5, 0.13),
+      material_def: rgb(0.8, 0.13, 0.13),
+      significant_def: rgb(0.8, 0.13, 0.13),
+      requires_improvement: rgb(0.85, 0.65, 0.13),
+      unsatisfactory: rgb(0.8, 0.13, 0.13),
+      info_gap: rgb(0.3, 0.5, 0.8),
+      information_incomplete: rgb(0.3, 0.5, 0.8),
       not_assessed: rgb(0.6, 0.6, 0.6),
+      na: rgb(0.7, 0.7, 0.7),
     };
 
     const outcomeLabel = outcomeLabels[module.outcome] || module.outcome;

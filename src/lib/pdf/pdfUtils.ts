@@ -487,16 +487,21 @@ export function getOutcomeLabel(outcome: string): string {
       return 'Compliant';
     case 'minor_def':
       return 'Minor Deficiency';
+    case 'moderate_def':
+      return 'Moderate Deficiency';
     case 'material_def':
-      return 'Material Deficiency';
+    case 'significant_def':
+      return 'Significant Deficiency';
     case 'info_gap':
     case 'information_incomplete':
       return 'Information Gap';
     case 'na':
     case 'not_applicable':
       return 'Not Applicable';
+    case 'not_assessed':
+      return 'Not Assessed';
     default:
-      return 'Pending';
+      return 'Not Assessed';
   }
 }
 
@@ -1329,7 +1334,7 @@ export async function drawDocumentControlPage(
 ): Promise<void> {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('DOCUMENT CONTROL & REVISION HISTORY', {
+  page.drawText('Document Control & Revision History', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1526,7 +1531,7 @@ export function drawActionPlanSnapshot(
   };
 
   // Section title
-  context.page.drawText('ACTION PLAN SNAPSHOT', {
+  context.page.drawText('Action Plan Snapshot', {
     x: MARGIN,
     y: context.yPosition,
     size: 16,
@@ -1726,7 +1731,7 @@ export function drawRecommendationsSection(
   let yPosition = PAGE_TOP_Y;
   pagesAdded++;
 
-  page.drawText('RECOMMENDATIONS', {
+  page.drawText('Recommendations', {
     x: MARGIN,
     y: yPosition,
     size: 16,
