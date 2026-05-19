@@ -5,6 +5,7 @@ import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
+import { getUnifiedOutcomeLabel } from '../../../lib/modules/moduleCatalog';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import { isEnglandWales } from '../../../lib/jurisdictions';
 
@@ -203,7 +204,7 @@ export default function FSD1RegulatoryBasisForm({
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <h3 className="text-sm font-bold text-amber-900 mb-1">Suggested Outcome</h3>
           <p className="text-sm text-amber-800">
-            Based on your responses: <strong>{suggestedOutcome.outcome.replace('_', ' ')}</strong>
+            Based on your responses: <strong>{getUnifiedOutcomeLabel(suggestedOutcome.outcome)}</strong>
           </p>
           <p className="text-xs text-amber-700 mt-1">{suggestedOutcome.reason}</p>
         </div>

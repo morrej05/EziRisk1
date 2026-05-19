@@ -1334,7 +1334,7 @@ export async function drawDocumentControlPage(
 ): Promise<void> {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('DOCUMENT CONTROL & REVISION HISTORY', {
+  page.drawText('Document Control & Revision History', {
     x: MARGIN,
     y: yPosition,
     size: 16,

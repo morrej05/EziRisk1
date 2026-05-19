@@ -2810,7 +2810,7 @@ export function drawCleanAuditPage1(
       color: PDF_THEME.colours.risk.medium.bg,
     });
 
-    page.drawText('PROVISIONAL ASSESSMENT', {
+    page.drawText('Provisional Assessment', {
       x: MARGIN + 35,
       y: yPosition - 25,
       size: 11,

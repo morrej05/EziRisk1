@@ -1191,7 +1191,7 @@ function drawRiskSummaryPage(
       color: PDF_THEME.colours.risk.medium.bg,
     });
 
-    page.drawText('PROVISIONAL ASSESSMENT', {
+    page.drawText('Provisional Assessment', {
       x: MARGIN + 10,
       y: yPosition - 15,
       size: 12,
@@ -1461,7 +1461,7 @@ function drawExecutiveSummary(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('EXECUTIVE SUMMARY', {
+  page.drawText('Executive Summary', {
     x: MARGIN,
     y: yPosition,
     size: 18,
@@ -1543,7 +1543,7 @@ page.drawText(outcomeLabel, {
       yPosition = PAGE_TOP_Y;
     }
 
-    page.drawText('ASSESSOR OVERRIDE APPLIED', {
+    page.drawText('Assessor Override Applied', {
       x: MARGIN,
       y: yPosition,
       size: 10,
@@ -1580,7 +1580,7 @@ page.drawText(outcomeLabel, {
       yPosition = PAGE_TOP_Y;
     }
 
-    const warningText = 'Material fire safety deficiencies have been identified which require urgent attention.';
+    const warningText = 'Significant fire safety deficiencies have been identified which require urgent attention.';
     page.drawText(warningText, {
       x: MARGIN,
       y: yPosition,
