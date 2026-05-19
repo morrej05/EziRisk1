@@ -35,6 +35,7 @@ import { isModuleCompleteForUi } from "../../utils/moduleCompletion";
 import {
   getModuleDisplayLabel,
   getReModulesForDocument,
+  getUnifiedOutcomeLabel,
   type ModuleInstanceLike,
 } from "../../lib/modules/moduleCatalog";
 import {
