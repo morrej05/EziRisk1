@@ -2045,7 +2045,7 @@ export function drawAssumptionsAndLimitations(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('ASSUMPTIONS & LIMITATIONS', {
+  page.drawText('Assumptions & Limitations', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2185,7 +2185,7 @@ export function drawRegulatoryFramework(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('REGULATORY FRAMEWORK', {
+  page.drawText('Regulatory Framework', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2532,7 +2532,7 @@ export function drawScope(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'SCOPE', { regular: font, bold: fontBold });
+  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'Scope', { regular: font, bold: fontBold });
 
   const sanitized = sanitizePdfText(scopeText);
   const lines = wrapText(sanitized, CONTENT_WIDTH, 11, font);
@@ -2570,7 +2570,7 @@ export function drawLimitations(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-   yPosition = drawSectionTitle(page, MARGIN, yPosition, 'LIMITATIONS AND ASSUMPTIONS', { regular: font, bold: fontBold });
+   yPosition = drawSectionTitle(page, MARGIN, yPosition, 'Limitations and Assumptions', { regular: font, bold: fontBold });
 
   const sanitized = sanitizePdfText(limitationsText);
   const lines = wrapText(sanitized, CONTENT_WIDTH, 11, font);
@@ -2731,7 +2731,7 @@ export function drawCleanAuditPage1(
   const fonts = { regular: font, bold: fontBold };
 
   // Use Arup-style section title
-  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'OVERALL RISK TO LIFE', fonts);
+  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'Overall Risk to Life', fonts);
 
   // Add rule line for consistency
   const ruleY = yPosition;
