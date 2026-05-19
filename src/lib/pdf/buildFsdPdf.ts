@@ -1184,7 +1184,7 @@ function drawAttachmentsIndex(
 ): { page: PDFPage; yPosition: number } {
   let yPosition = startY;
 
-  page.drawText('ATTACHMENTS & EVIDENCE INDEX', {
+  page.drawText('Attachments & Evidence Index', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1312,7 +1312,7 @@ async function drawAttachmentPages(
 
     const refNum = `E-${String(attachments.indexOf(attachment) + 1).padStart(3, '0')}`;
 
-    currentPage.drawText('ATTACHMENT EVIDENCE', {
+    currentPage.drawText('Attachment Evidence', {
       x: MARGIN,
       y: yPosition,
       size: 14,
@@ -1428,7 +1428,7 @@ function drawPurposeAndScope(
   let yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = ensurePageSpace(70, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('PURPOSE AND SCOPE', {
+  page.drawText('Purpose and Scope', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1474,7 +1474,7 @@ function drawFsdLimitations(
   let yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = ensurePageSpace(70, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('LIMITATIONS AND ASSUMPTIONS', {
+  page.drawText('Limitations and Assumptions', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1558,7 +1558,7 @@ function drawDocumentScope(
   let yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = ensurePageSpace(70, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('SCOPE', {
+  page.drawText('Scope', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1605,7 +1605,7 @@ function drawDocumentLimitations(
   }
 
   ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('PROJECT-SPECIFIC LIMITATIONS', {
+  page.drawText('Project-Specific Limitations', {
     x: MARGIN,
     y: yPosition,
     size: 14,
@@ -1660,12 +1660,12 @@ function drawComputedAssuranceSummary(
                       undefined;
 
   const overallLevel = safeString(summary?.overallLevel, mappedLevel || 'Unknown').toLowerCase();
-  const overallLevelLabel = safeString(overallLevel, 'unknown').toUpperCase();
+  const overallLevelLabel = safeString(overallLevel, 'unknown').charAt(0).toUpperCase() + safeString(overallLevel, 'unknown').slice(1);
   const levelReason = safeString(summary?.levelReason);
   const deviations = Array.isArray(summary?.deviations) ? summary.deviations : [];
   const infoGaps = Array.isArray(summary?.infoGaps) ? summary.infoGaps : [];
 
-  page.drawText('COMPUTED ASSURANCE SUMMARY', {
+  page.drawText('Computed Assurance Summary', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1845,7 +1845,7 @@ function drawDeviationRegister(
 ): PDFPage {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('DEVIATION REGISTER', {
+  page.drawText('Deviation Register', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1996,7 +1996,7 @@ function drawAssuranceChecks(
 ): PDFPage {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('ASSURANCE CHECKS', {
+  page.drawText('Assurance Checks', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2131,7 +2131,7 @@ function drawDesignAssuranceCommentary(
 
   const paragraphs = [levelSentence, strengthsSentence, riskSentence, acceptabilitySentence];
 
-  page.drawText('DESIGN ASSURANCE COMMENTARY', {
+  page.drawText('Design Assurance Commentary', {
     x: MARGIN,
     y: yPosition,
     size: 16,

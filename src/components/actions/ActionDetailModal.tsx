@@ -764,7 +764,7 @@ export default function ActionDetailModal({
                       <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{targetDate ? formatDate(targetDate) : 'No target completion date set'}</p>
                     )}
                     <p className="mt-1 text-xs text-neutral-500">
-                      Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'To be agreed'}
+                      Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'Not yet specified'}
                       {suggestedTargetDate ? ` (${formatDate(suggestedTargetDate)})` : ''}.
                     </p>
                   </div>

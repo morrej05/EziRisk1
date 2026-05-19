@@ -127,7 +127,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   // 1. OVERALL RISK TO LIFE (Large, Prominent)
   // ========================================================
   yPosition -= 20;
-  page.drawText('OVERALL RISK TO LIFE ASSESSMENT', {
+  page.drawText('Overall Risk to Life Assessment', {
     x: MARGIN,
     y: yPosition,
     size: 18,

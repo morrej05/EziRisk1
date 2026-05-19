@@ -1676,7 +1676,7 @@ export function drawRecommendationsSection(
     const { page } = addNewPage(pdfDoc, isDraft, totalPages);
     let yPosition = PAGE_TOP_Y;
 
-    page.drawText('RECOMMENDATIONS', {
+    page.drawText('Recommendations', {
       x: MARGIN,
       y: yPosition,
       size: 16,

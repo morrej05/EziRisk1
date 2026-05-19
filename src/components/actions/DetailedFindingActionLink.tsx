@@ -314,7 +314,7 @@ export default function DetailedFindingActionLink({
               {visibleLinks.map((link) => link.actions && (
                 <div key={link.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-blue-900">
                   <span>
-                    Linked recommendation: <strong>{formatActionRef(link.actions)}</strong> / {link.actions.status.replace(/_/g, ' ')}
+                    Linked recommendation: <strong>{formatActionRef(link.actions)}</strong> / {link.actions.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                   </span>
                   <Link
                     to={buildLinkedActionUrl(link.actions.id)}
