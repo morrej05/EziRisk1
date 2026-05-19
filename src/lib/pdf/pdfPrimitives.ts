@@ -719,7 +719,7 @@ export function drawContentsRow(
 
 // Action Register Intro Box Constants (private to this module)
 const ACTION_REGISTER_INTRO_TITLE = "Recommendations Register";
-const ACTION_REGISTER_INTRO_BODY = "The following actions arise from the findings of this Fire Risk Assessment. Each action has been prioritised based on potential life safety impact and overall risk. Recommended timescales should be considered alongside operational constraints and statutory obligations.";
+const ACTION_REGISTER_INTRO_BODY = "The following recommendations arise from the findings of this Fire Risk Assessment. Each recommendation has been prioritised based on potential life safety impact and overall risk. Recommended timescales should be considered alongside operational constraints and statutory obligations.";
 const AR_INTRO_PADDING = 12;
 const AR_INTRO_TITLE_GAP = 6;
 const AR_INTRO_TITLE_SIZE = 12;

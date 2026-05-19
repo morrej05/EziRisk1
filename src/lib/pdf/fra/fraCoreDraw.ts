@@ -371,9 +371,9 @@ function drawTwoColumnRows(args: {
 
   // MATCH SECTION 5 GRID EXACTLY
   const labelX = MARGIN;
-  const valueX = MARGIN + 150; // <-- EXACT match to Section 5's VALUE_X
-  const valueWidth = CONTENT_WIDTH - 150;
-  const rowGap = 12;
+  const valueX = MARGIN + 170;
+  const valueWidth = CONTENT_WIDTH - 170;
+  const rowGap = 14;
 
   for (const [label, value] of rows) {
     if (!value || !String(value).trim()) continue;
@@ -388,7 +388,7 @@ function drawTwoColumnRows(args: {
     const valueLinesForEstimate = wrapText(safeValue, valueWidth, 10, font);
 
     // label line + value lines + small padding
-    const estimatedHeight = 14 + (valueLinesForEstimate.length * 14) + 10;
+    const estimatedHeight = 14 + (valueLinesForEstimate.length * 14) + 12;
 
     if (yPosition - estimatedHeight < MARGIN + 40) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
@@ -843,7 +843,7 @@ const normalizedValue = String(value ?? '').trim().toLowerCase();
     font: fontBold,
     color: rgb(0, 0, 0),
   });
-  yPosition -= 22;
+  yPosition -= 24;
 
   // Draw using Section 5 grid alignment
   const result = drawTwoColumnRows({
@@ -860,7 +860,7 @@ const normalizedValue = String(value ?? '').trim().toLowerCase();
   yPosition = result.yPosition;
 
   // Small gap before next block
-  yPosition -= 8;
+  yPosition -= 12;
 
   return { page, yPosition };
 }
@@ -1303,6 +1303,28 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
       image = await pdfDoc.embedPng(bytes);
     } else if (fileType === 'image/jpg' || fileType === 'image/jpeg' || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
       image = await pdfDoc.embedJpg(bytes);
+    } else if (fileType === 'image/webp' || fileName.endsWith('.webp')) {
+      const blob = new Blob([bytes], { type: 'image/webp' });
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, htmlImage.naturalWidth || htmlImage.width);
+        canvas.height = Math.max(1, htmlImage.naturalHeight || htmlImage.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(htmlImage, 0, 0);
+        const pngDataUrl = canvas.toDataURL('image/png');
+        const pngBase64 = pngDataUrl.split(',')[1];
+        image = await pdfDoc.embedPng(Uint8Array.from(atob(pngBase64), c => c.charCodeAt(0)));
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
     } else {
       return null;
     }
@@ -1775,7 +1797,7 @@ export async function drawActionRegister(
   yPosition -= 28;
 
   // Use Arup-style page title
-  yPosition = drawPageTitle(page, MARGIN, yPosition, 'Recommendations Register', { regular: font, bold: fontBold });
+  yPosition = drawPageTitle(page, MARGIN, yPosition, 'Recommendations', { regular: font, bold: fontBold });
 
   // Action Register intro box with preflight
   const INTRO_BOX_GAP_AFTER = 12;
