@@ -454,18 +454,8 @@ export function drawModuleKeyDetails(
       if (document.assessor_role) keyDetails.push(['Assessor Role', document.assessor_role]);
       if (document.assessment_date) keyDetails.push(['Assessment Date', formatDate(document.assessment_date)]);
       if (document.review_date) keyDetails.push(['Review Date', formatDate(document.review_date)]);
-      if (document.scope_description) {
-        const truncated = document.scope_description.length > 200
-          ? document.scope_description.substring(0, 200) + '...'
-          : document.scope_description;
-        keyDetails.push(['Scope', truncated]);
-      }
-      if (document.limitations_assumptions) {
-        const truncated = document.limitations_assumptions.length > 200
-          ? document.limitations_assumptions.substring(0, 200) + '...'
-          : document.limitations_assumptions;
-        keyDetails.push(['Limitations', truncated]);
-      }
+      if (document.scope_description) keyDetails.push(['Scope', document.scope_description]);
+      if (document.limitations_assumptions) keyDetails.push(['Limitations', document.limitations_assumptions]);
       if (document.standards_selected && document.standards_selected.length > 0) {
         keyDetails.push(['Standards Selected', document.standards_selected.join(', ')]);
       }
@@ -774,35 +764,15 @@ export function drawModuleKeyDetails(
       if (data.insulation_combustibility_known) keyDetails.push(['Insulation Combustibility Known', data.insulation_combustibility_known]);
       if (data.cavity_barriers_status) keyDetails.push(['Cavity Barriers Status', data.cavity_barriers_status]);
       if (data.pas9980_or_equivalent_appraisal) keyDetails.push(['PAS9980 Appraisal Status', data.pas9980_or_equivalent_appraisal]);
-      if (data.interim_measures) {
-        const truncated = data.interim_measures.length > 150
-          ? data.interim_measures.substring(0, 150) + '...'
-          : data.interim_measures;
-        keyDetails.push(['Interim Measures', truncated]);
-      }
+      if (data.interim_measures) keyDetails.push(['Interim Measures', data.interim_measures]);
       break;
 
     case 'FRA_4_SIGNIFICANT_FINDINGS':
     case 'FRA_90_SIGNIFICANT_FINDINGS':
       if (data.overall_risk_rating) keyDetails.push(['Overall Risk Rating', data.overall_risk_rating.toUpperCase()]);
-      if (data.executive_summary) {
-        const truncated = data.executive_summary.length > 200
-          ? data.executive_summary.substring(0, 200) + '...'
-          : data.executive_summary;
-        keyDetails.push(['Executive Summary', truncated]);
-      }
-      if (data.key_assumptions) {
-        const truncated = data.key_assumptions.length > 200
-          ? data.key_assumptions.substring(0, 200) + '...'
-          : data.key_assumptions;
-        keyDetails.push(['Key Assumptions', truncated]);
-      }
-      if (data.review_recommendation) {
-        const truncated = data.review_recommendation.length > 200
-          ? data.review_recommendation.substring(0, 200) + '...'
-          : data.review_recommendation;
-        keyDetails.push(['Review Recommendation', truncated]);
-      }
+      if (data.executive_summary) keyDetails.push(['Executive Summary', data.executive_summary]);
+      if (data.key_assumptions) keyDetails.push(['Key Assumptions', data.key_assumptions]);
+      if (data.review_recommendation) keyDetails.push(['Review Recommendation', data.review_recommendation]);
       if (data.override_justification) keyDetails.push(['Override Justification', data.override_justification]);
       break;
   }
@@ -1189,18 +1159,18 @@ export function drawSectionHeader(
     throw new Error(`[PDF] drawSectionHeader received missing page (section=${sectionId} ${sectionTitle})`);
   }
 
-  yPosition -= 20;
+  yPosition -= 28;
 
   const headerText = `${sectionId}. ${sectionTitle}`;
   page.drawText(headerText, {
     x: MARGIN,
     y: yPosition,
-    size: 16,
+    size: 13,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.1),
   });
 
-  yPosition -= 30;
+  yPosition -= 24;
   return { page, yPosition };
 }
 
@@ -1802,7 +1772,7 @@ export async function drawActionRegister(
   options?: { showIntroBox?: boolean }
 ): Promise<{ page: PDFPage; yPosition: number }> {
   let { page, yPosition } = cursor;
-  yPosition -= 20;
+  yPosition -= 28;
 
   // Use Arup-style page title
   yPosition = drawPageTitle(page, MARGIN, yPosition, 'Recommendations Register', { regular: font, bold: fontBold });
@@ -2347,7 +2317,7 @@ export async function drawAttachmentsIndex(
 ): Promise<{ page: PDFPage; yPosition: number }> {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('ATTACHMENTS & EVIDENCE INDEX', {
+  page.drawText('EVIDENCE INDEX', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2467,7 +2437,7 @@ export async function drawAttachmentsIndex(
     if (attachment.action_id) {
       const action = actions.find((a) => a.id === attachment.action_id);
       if (action) {
-        linkedTo.push(`Recommendation: [${action.priority_band}] ${sanitizePdfText(action.recommended_action || '')}`);
+        linkedTo.push(`Recommendation: [${action.priority_band}]`);
       }
     }
 
