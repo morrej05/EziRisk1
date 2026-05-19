@@ -298,6 +298,7 @@ export default function RE10SitePhotosForm({
               type="file"
               accept="image/jpeg,image/jpg,image/png,image/heic"
               multiple
+              capture="environment"
               className="hidden"
               disabled={uploadingPhoto}
               onChange={(e) => {

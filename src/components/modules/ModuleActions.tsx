@@ -680,6 +680,7 @@ export default function ModuleActions({
               <input
                 type="file"
                 multiple
+                capture="environment"
                 accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
                 onChange={handleInlineEvidenceUpload}
                 disabled={isUploadingEvidence}

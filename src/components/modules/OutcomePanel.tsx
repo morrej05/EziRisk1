@@ -207,7 +207,7 @@ export default function OutcomePanel({
             value={assessorNotes}
             onChange={(e) => onNotesChange(e.target.value)}
             placeholder="Add any notes, observations, or context relevant to this module assessment..."
-            rows={4}
+            rows={6}
             className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
           />
           <p className="text-xs text-neutral-500 mt-1">
