@@ -55,6 +55,8 @@ export function sanitizePdfText(input: unknown): string {
   // Preserve line breaks/tabs for narrative rendering while still stripping
   // unsupported control characters for PDF font output.
   sanitized = sanitized
+    .replace(/\bNone\.\s*/g, '')
+    .replace(/\s{2,}/g, ' ')
     .replace(/\r\n?/g, '\n')
     .replace(/[^\n\t\x20-\x7E\xA0-\xFF]/g, '');
 

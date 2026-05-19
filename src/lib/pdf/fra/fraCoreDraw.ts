@@ -873,7 +873,7 @@ const normalizedValue = String(value ?? '').trim().toLowerCase();
     font: fontBold,
     color: rgb(0, 0, 0),
   });
-  yPosition -= 18;
+  yPosition -= 22;
 
   // Draw using Section 5 grid alignment
   const result = drawTwoColumnRows({
@@ -1805,7 +1805,7 @@ export async function drawActionRegister(
   yPosition -= 20;
 
   // Use Arup-style page title
-  yPosition = drawPageTitle(page, MARGIN, yPosition, 'Action Register', { regular: font, bold: fontBold });
+  yPosition = drawPageTitle(page, MARGIN, yPosition, 'Recommendations Register', { regular: font, bold: fontBold });
 
   // Action Register intro box with preflight
   const INTRO_BOX_GAP_AFTER = 12;
@@ -1892,10 +1892,7 @@ export async function drawActionRegister(
     // Use priority band directly (P1/P2/P3/P4)
     const priorityBand = action.priority_band || 'P4';
     // Derive short title for system actions, full text for manual actions
-    const actionText = deriveSystemActionTitle({
-      recommended_action: action.recommended_action,
-      source: action.source,
-    }) || '(No action text provided)';
+    const actionText = sanitizePdfText((action.recommended_action || '').trim()) || '(No recommendation text provided)';
     const owner = action.owner_display_name || undefined;
     const target = action.target_date ? formatDate(action.target_date) : undefined;
     const status = action.status || 'open';
@@ -2402,8 +2399,36 @@ export async function drawAttachmentsIndex(
 
     const refNum = `E-${String(i + 1).padStart(3, '0')}`;
 
+    const rowTopY = yPosition;
+    const thumbnailSize = 48;
+    const thumbnailX = MARGIN;
+    const contentX = MARGIN + thumbnailSize + 12;
+
+    const embeddedThumb = isImageAttachment(attachment)
+      ? await embedImage(pdfDoc, attachment)
+      : null;
+
+    if (embeddedThumb) {
+      try {
+        const thumbScale = Math.min(
+          thumbnailSize / embeddedThumb.width,
+          thumbnailSize / embeddedThumb.height
+        );
+        const drawWidth = embeddedThumb.width * thumbScale;
+        const drawHeight = embeddedThumb.height * thumbScale;
+        page.drawImage(embeddedThumb, {
+          x: thumbnailX + (thumbnailSize - drawWidth) / 2,
+          y: rowTopY - drawHeight - 2,
+          width: drawWidth,
+          height: drawHeight,
+        });
+      } catch {
+        // Graceful fallback to text-only row if image rendering fails
+      }
+    }
+
     page.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
-      x: MARGIN,
+      x: contentX,
       y: yPosition,
       size: 10,
       font: fontBold,
@@ -2420,7 +2445,7 @@ export async function drawAttachmentsIndex(
           yPosition = PAGE_TOP_Y;
         }
         page.drawText(line, {
-          x: MARGIN + 10,
+          x: contentX,
           y: yPosition,
           size: 9,
           font,
@@ -2442,13 +2467,13 @@ export async function drawAttachmentsIndex(
     if (attachment.action_id) {
       const action = actions.find((a) => a.id === attachment.action_id);
       if (action) {
-        linkedTo.push(`Action: [${action.priority_band}] ${action.recommended_action.substring(0, 40)}...`);
+        linkedTo.push(`Recommendation: [${action.priority_band}] ${sanitizePdfText(action.recommended_action || '')}`);
       }
     }
 
     if (linkedTo.length > 0) {
       page.drawText(`Linked to: ${sanitizePdfText(linkedTo.join(', '))}`, {
-        x: MARGIN + 10,
+        x: contentX,
         y: yPosition,
         size: 8,
         font,
@@ -2463,14 +2488,15 @@ export async function drawAttachmentsIndex(
       : '';
 
     page.drawText(`Uploaded: ${uploadDate}${fileSize ? ` | Size: ${fileSize}` : ''}`, {
-      x: MARGIN + 10,
+      x: contentX,
       y: yPosition,
       size: 8,
       font,
       color: rgb(0.6, 0.6, 0.6),
     });
-
-    yPosition -= 20;
+    const textBottomY = yPosition - 20;
+    const thumbBottomY = rowTopY - thumbnailSize - 6;
+    yPosition = Math.min(textBottomY, thumbBottomY);
 
     page.drawLine({
       start: { x: MARGIN, y: yPosition },
