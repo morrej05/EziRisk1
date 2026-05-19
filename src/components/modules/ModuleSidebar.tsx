@@ -7,7 +7,7 @@ import {
   isDerivedModule,
   type ModuleInstance,
 } from '../../lib/modules/moduleDisplay';
-import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getFraOutcomeLabel, getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
+import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getUnifiedOutcomeLabel } from '../../lib/modules/moduleCatalog';
 import { getModuleCompletionDetails } from '../../utils/moduleCompletion';
 
 interface ModuleSidebarProps {
@@ -107,28 +107,11 @@ export default function ModuleSidebar({
     return false;
   };
 
-  const getOutcomeLabel = (outcome: string, moduleKey: string): string => {
-    if (fireRiskKeys.has(moduleKey)) {
-      return getFraOutcomeLabel(outcome);
-    }
 
-    const category = getModuleOutcomeCategory(moduleKey);
-
-    if (category === 'governance') {
-      if (outcome === 'compliant') return 'Adequate';
-      if (outcome === 'minor_def') return 'Improvement Recommended';
-      if (outcome === 'material_def') return 'Significant Improvement Required';
-      if (outcome === 'info_gap') return 'Information Incomplete';
-      if (outcome === 'na') return 'Not Applicable';
-    } else {
-      if (outcome === 'compliant') return 'Compliant';
-      if (outcome === 'minor_def') return 'Minor Deficiency';
-      if (outcome === 'material_def') return 'Material Deficiency';
-      if (outcome === 'info_gap') return 'Information Gap';
-      if (outcome === 'na') return 'Not Applicable';
-    }
-
-    return outcome;
+  const hasOpenRecommendations = (module: ModuleInstance): boolean => {
+    const data = module.data || {};
+    const buckets = [data.recommendations, data.actions, data.open_recommendations];
+    return buckets.some((v) => Array.isArray(v) && v.length > 0);
   };
 
   const ModuleNavItem = ({ module, productTag }: { module: ModuleInstance; productTag?: 'fire' | 'explosion' | null }) => {
@@ -233,7 +216,7 @@ export default function ModuleSidebar({
                 storedOutcome
               )}`}
             >
-              {getOutcomeLabel(storedOutcome, module.module_key)}
+              {getUnifiedOutcomeLabel(storedOutcome, { hasRecommendations: hasOpenRecommendations(module) })}
             </span>
           )}
         </div>

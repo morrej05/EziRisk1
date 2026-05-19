@@ -1,6 +1,6 @@
 // src/pages/documents/DocumentWorkspace.tsx
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -215,6 +215,8 @@ export default function DocumentWorkspace() {
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [isActionsPanelCollapsed, setIsActionsPanelCollapsed] = useState(false);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
+  const moduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const [saveState, setSaveState] = useState<'unsaved' | 'saving' | 'saved' | 'error'>('saved');
 
   const openActionId = searchParams.get('openAction');
 
@@ -573,6 +575,7 @@ export default function DocumentWorkspace() {
   }, [searchParams, actionScope]);
 
   const handleModuleSaved = async (moduleId?: string, updatedData?: any) => {
+    setSaveState('saved');
     if (moduleId && updatedData) {
       const now = new Date().toISOString();
       setModules((prevModules) =>
@@ -618,6 +621,29 @@ export default function DocumentWorkspace() {
     const found = modules.find((m) => m.id === selectedModuleId) ?? null;
     if (found) setSelectedStable(found);
   }, [modules, selectedModuleId]);
+
+  useEffect(() => {
+    if (!selectedModuleId) return;
+    moduleScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [selectedModuleId]);
+
+  useEffect(() => {
+    const onInput = () => setSaveState('unsaved');
+    const onSubmit = () => setSaveState('saving');
+    const onError = () => setSaveState('error');
+    const root = moduleScrollRef.current;
+    if (!root) return;
+    root.addEventListener('input', onInput, true);
+    root.addEventListener('change', onInput, true);
+    root.addEventListener('submit', onSubmit, true);
+    root.addEventListener('error', onError, true);
+    return () => {
+      root.removeEventListener('input', onInput, true);
+      root.removeEventListener('change', onInput, true);
+      root.removeEventListener('submit', onSubmit, true);
+      root.removeEventListener('error', onError, true);
+    };
+  }, [selectedModuleId]);
 
   if (documentNotFound) {
     return (
@@ -772,7 +798,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
           documentAssessmentDate={document?.assessment_date ?? null}
         />
 
-        <div className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
+        <div ref={moduleScrollRef} className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
           <div className="w-full p-4 sm:p-6">
             {['FRA', 'DSEAR', 'FSD'].includes(document.document_type) && organisation?.id && (
               <ExecutiveSummaryPanel
@@ -904,6 +930,15 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                 )}
               </div>
             )}
+
+            <div className="sticky bottom-0 z-20 mb-4 rounded-xl border border-neutral-200 bg-white/95 backdrop-blur px-4 py-2 shadow-sm">
+              <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
+                <span className="font-medium text-neutral-700">Module save status</span>
+                <span className={saveState === 'saved' ? 'text-emerald-700' : saveState === 'saving' ? 'text-blue-700' : saveState === 'error' ? 'text-red-700' : 'text-amber-700'}>
+                  {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save error' : 'Unsaved changes'}
+                </span>
+              </div>
+            </div>
 
             {selectedStable ? (
               <ModuleRenderer key={selectedStable.id} moduleInstance={selectedStable} document={document} onSaved={handleModuleSaved} />
