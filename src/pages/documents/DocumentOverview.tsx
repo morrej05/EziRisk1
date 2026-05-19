@@ -845,24 +845,7 @@ export default function DocumentOverview() {
     }
   };
 
-  const getOutcomeLabel = (outcome: string | null) => {
-    switch (outcome) {
-      case "compliant":
-        return "Compliant";
-      case "satisfactory":
-        return "Satisfactory";
-      case "minor_def":
-        return "Minor Deficiency";
-      case "material_def":
-        return "Material Deficiency";
-      case "info_gap":
-        return "Information Gap";
-      case "na":
-        return "Not Applicable";
-      default:
-        return "Pending";
-    }
-  };
+  const getOutcomeLabel = (outcome: string | null) => getUnifiedOutcomeLabel(outcome) || 'Pending';
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "No date recorded yet";

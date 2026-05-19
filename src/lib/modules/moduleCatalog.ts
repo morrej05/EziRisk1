@@ -473,6 +473,22 @@ export function getModuleOutcomeCategory(moduleKey: string): 'critical' | 'gover
 }
 
 
+
+export function getUnifiedOutcomeLabel(outcome: string | null | undefined, options?: { hasRecommendations?: boolean }): string {
+  const normalized = (outcome || '').toLowerCase().trim();
+  if (!normalized) return '';
+
+  if (normalized in {'na':1,'n/a':1,'not_applicable':1,'not applicable':1}) return 'Not Applicable';
+  if (normalized in {'info_gap':1,'information_gap':1,'information gap':1,'information_incomplete':1}) return 'Information Gap';
+  if (normalized in {'material_def':1,'material deficiency':1,'significant_def':1,'significant deficiency':1}) return 'Significant Deficiency';
+  if (normalized in {'moderate_def':1,'moderate deficiency':1}) return 'Moderate Deficiency';
+  if (normalized in {'minor_def':1,'minor deficiency':1}) return 'Minor Deficiency';
+  if (normalized in {'adequate':1,'improvement recommended':1,'requires_improvement':1}) return 'Broadly Compliant / Adequate with Improvements';
+  if (normalized in {'compliant':1,'satisfactory':1}) return options?.hasRecommendations ? 'Compliant with recommendations' : 'Compliant';
+
+  return outcome || '';
+}
+
 /**
  * FRA display wording keeps fire risk assessment modules on compliance terminology.
  * This is display-only: stored canonical outcome values remain unchanged.
