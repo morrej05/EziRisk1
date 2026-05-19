@@ -28,9 +28,11 @@ function Badge({ children }: { children: React.ReactNode }) {
 const CRITICAL_OPTIONS = [
   { value: 'compliant', label: 'Compliant' },
   { value: 'minor_def', label: 'Minor Deficiency' },
-  { value: 'material_def', label: 'Material Deficiency' },
+  { value: 'moderate_def', label: 'Moderate Deficiency' },
+  { value: 'material_def', label: 'Significant Deficiency' },
   { value: 'info_gap', label: 'Information Gap' },
   { value: 'na', label: 'Not Applicable' },
+  { value: 'not_assessed', label: 'Not Assessed' },
 ] as const;
 
 const GOVERNANCE_OPTIONS = [
@@ -57,13 +59,23 @@ function normalizeOutcomeValue(value: string | null | undefined): string {
     return 'minor_def';
   }
 
+  if (normalized === 'moderate_def' || normalized === 'moderate deficiency' || normalized === 'moderate_deficiency') {
+    return 'moderate_def';
+  }
+
   if (
     normalized === 'material_def' ||
     normalized === 'material deficiency' ||
     normalized === 'material_deficiency' ||
+    normalized === 'significant_def' ||
+    normalized === 'significant deficiency' ||
     normalized === 'significant improvement required'
   ) {
     return 'material_def';
+  }
+
+  if (normalized === 'not_assessed' || normalized === 'not assessed') {
+    return 'not_assessed';
   }
 
   if (

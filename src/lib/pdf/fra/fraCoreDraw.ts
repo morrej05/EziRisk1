@@ -2354,7 +2354,7 @@ export async function drawAttachmentsIndex(
 ): Promise<{ page: PDFPage; yPosition: number }> {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('EVIDENCE INDEX', {
+  page.drawText('Evidence Index', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2398,7 +2398,7 @@ export async function drawAttachmentsIndex(
   for (let i = 0; i < filteredAttachments.length; i++) {
     const attachment = filteredAttachments[i];
 
-    if (yPosition < MARGIN + 100) {
+    if (yPosition < MARGIN + 120) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
       page = result.page;
       yPosition = PAGE_TOP_Y;
@@ -2407,9 +2407,9 @@ export async function drawAttachmentsIndex(
     const refNum = `E-${String(i + 1).padStart(3, '0')}`;
 
     const rowTopY = yPosition;
-    const thumbnailSize = 48;
+    const thumbnailSize = 72;
     const thumbnailX = MARGIN;
-    const contentX = MARGIN + thumbnailSize + 12;
+    const contentX = MARGIN + thumbnailSize + 14;
 
     const embeddedThumb = isImageAttachment(attachment)
       ? await embedImage(pdfDoc, attachment)

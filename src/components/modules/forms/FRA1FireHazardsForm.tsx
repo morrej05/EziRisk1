@@ -1363,19 +1363,6 @@ export default function FRA1FireHazardsForm({
               }}
             />
 
-            <div className="pt-4">
-              <ModuleActions
-                documentId={document.id}
-                moduleInstanceId={moduleInstance.id}
-                buttonLabel="Add Recommendation"
-                sectionKey={EICR_SECTION_KEY}
-                sectionLabel={EICR_SECTION_LABEL}
-                sourceKey={EICR_SECTION_KEY}
-                sourceLabel={EICR_SOURCE_LABEL}
-                defaultCategory="Electrical installation"
-                compact
-              />
-            </div>
           </div>
         </div>
 
