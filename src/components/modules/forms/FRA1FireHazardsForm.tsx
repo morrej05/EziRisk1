@@ -1040,6 +1040,9 @@ export default function FRA1FireHazardsForm({
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
+                <option value="not_applicable_not_installed">Not applicable — system not installed</option>
+                <option value="not_applicable_landlord_controlled">Not applicable — landlord-controlled</option>
+                <option value="not_applicable_outside_tenant_control">Not applicable — outside tenant control</option>
               </select>
             </div>
             <div>
@@ -1063,6 +1066,7 @@ export default function FRA1FireHazardsForm({
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
+                <option value="not_applicable_not_required">Not applicable — not required for this premises</option>
               </select>
             </div>
           </div>
@@ -1709,6 +1713,7 @@ export default function FRA1FireHazardsForm({
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
+                <option value="not_applicable_no_substances">Not applicable — no relevant dangerous substances or combustible dusts identified</option>
               </select>
             </div>
 
