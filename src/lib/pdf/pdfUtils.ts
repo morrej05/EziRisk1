@@ -410,6 +410,11 @@ export function normalizeDisplayValue(value: unknown): string {
   if (!raw) return '';
 
   const s = raw.toLowerCase();
+  const normalizedRaw = raw
+    .replace(/(\d{3,4})'s\b/g, '$1s')
+    .replace(/:([A-Za-z])/g, ': $1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 
   if (['yes', 'y', 'true', '1'].includes(s)) return 'Yes';
   if (['no', 'n', 'false', '0'].includes(s)) return 'No';
@@ -417,14 +422,14 @@ export function normalizeDisplayValue(value: unknown): string {
   if (['unknown', 'not known', 'not_known'].includes(s)) return 'Unknown';
 
   // Auto Title Case for fully lowercase words/phrases
-  if (/^[a-z\s]+$/.test(raw)) {
-    return raw
+  if (/^[a-z\s]+$/.test(normalizedRaw)) {
+    return normalizedRaw
       .split(' ')
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
   }
 
-  return raw;
+  return normalizedRaw;
 }
 
 /**

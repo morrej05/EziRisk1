@@ -1440,17 +1440,66 @@ export function renderSection14Review(
 
   yPosition -= 20;
 
-  const reviewText = `This fire risk assessment should be reviewed and, where necessary, updated:
+  const introLines = wrapText('This fire risk assessment should be reviewed and, where necessary, updated:', CONTENT_WIDTH, 11, font);
+  for (const line of introLines) {
+    if (yPosition < MARGIN + 50) {
+      const result = addNewPage(pdfDoc, isDraft, totalPages);
+      page = result.page;
+      yPosition = PAGE_TOP_Y;
+    }
+    page.drawText(line, {
+      x: MARGIN,
+      y: yPosition,
+      size: 11,
+      font,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    yPosition -= 16;
+  }
+  yPosition -= 2;
 
-• following any significant change to the building, occupancy, or use
-• following a fire, alarm activation, or near-miss incident
-• following enforcement action or formal notification by the fire authority
-• as part of the ongoing fire safety management programme
+  const bullets = [
+    'following any significant change to the building, occupancy, or use',
+    'following a fire, alarm activation, or near-miss incident',
+    'following enforcement action or formal notification by the fire authority',
+    'as part of the ongoing fire safety management programme',
+  ];
 
-Next formal reassessment recommended: ${document.review_date ? formatDate(document.review_date) : 'To be determined by the duty holder based on risk profile and material change'}`;
+  for (const bullet of bullets) {
+    const bulletLines = wrapText(bullet, CONTENT_WIDTH - 14, 11, font);
+    for (let i = 0; i < bulletLines.length; i++) {
+      if (yPosition < MARGIN + 50) {
+        const result = addNewPage(pdfDoc, isDraft, totalPages);
+        page = result.page;
+        yPosition = PAGE_TOP_Y;
+      }
+      page.drawText(i === 0 ? '•' : '', {
+        x: MARGIN,
+        y: yPosition,
+        size: 11,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      page.drawText(bulletLines[i], {
+        x: MARGIN + 12,
+        y: yPosition,
+        size: 11,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      yPosition -= 15;
+    }
+    yPosition -= 2;
+  }
 
-  const reviewLines = wrapText(reviewText, CONTENT_WIDTH, 11, font);
-  for (const line of reviewLines) {
+  yPosition -= 4;
+  const nextReviewLines = wrapText(
+    `Next formal reassessment recommended: ${document.review_date ? formatDate(document.review_date) : 'To be determined by the duty holder based on risk profile and material change'}`,
+    CONTENT_WIDTH,
+    11,
+    font
+  );
+  for (const line of nextReviewLines) {
     if (yPosition < MARGIN + 50) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
       page = result.page;
