@@ -900,8 +900,8 @@ export default function AddActionModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-neutral-900">Add Recommendation</h2>
           <button
             onClick={onClose}
@@ -911,7 +911,7 @@ export default function AddActionModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form id="add-action-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
               Recommendation / action required <span className="text-red-600">*</span>
@@ -1347,27 +1347,28 @@ export default function AddActionModal({
             </p>
           </div>
 
-          <div className="flex items-center gap-3 justify-end pt-4 border-t border-neutral-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !formData.recommendedAction.trim()}
-              className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
-                isSubmitting || !formData.recommendedAction.trim()
-                  ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                  : 'bg-neutral-900 text-white hover:bg-neutral-800'
-              }`}
-            >
-              {isSubmitting ? 'Creating...' : 'Create Recommendation'}
-            </button>
-          </div>
         </form>
+        <div className="flex-shrink-0 flex items-center gap-3 justify-end px-6 py-4 border-t border-neutral-200 bg-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="add-action-form"
+            disabled={isSubmitting || !formData.recommendedAction.trim()}
+            className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
+              isSubmitting || !formData.recommendedAction.trim()
+                ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
+                : 'bg-neutral-900 text-white hover:bg-neutral-800'
+            }`}
+          >
+            {isSubmitting ? 'Creating...' : 'Create Recommendation'}
+          </button>
+        </div>
       </div>
     </div>
   );

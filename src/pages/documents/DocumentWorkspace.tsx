@@ -799,7 +799,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
         />
 
         <div ref={moduleScrollRef} className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
-          <div className="w-full p-4 pb-24 sm:p-6 sm:pb-28">
+          <div className="w-full p-4 sm:p-6" style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}>
             {['FRA', 'DSEAR', 'FSD'].includes(document.document_type) && organisation?.id && (
               <ExecutiveSummaryPanel
                 documentId={document.id}

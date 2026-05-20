@@ -209,7 +209,7 @@ export function RecommendationCard({ item, onOpen, onDelete, deleteLabel = 'Dele
           <button
             type="button"
             onClick={onDelete}
-            className="w-full rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 lg:w-auto"
+            className="w-full rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 transition-colors lg:w-auto"
           >
             {deleteLabel}
           </button>
