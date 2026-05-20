@@ -34,6 +34,12 @@ interface QuickActionTemplate {
   action: string;
   likelihood: number;
   impact: number;
+  source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
+  sectionKey?: string;
+  sectionLabel?: string;
+  sourceKey?: string;
+  sourceLabel?: string;
+  defaultCategory?: string;
 }
 
 type AssessmentStatus = 'adequate' | 'inadequate' | 'unknown' | 'not_applicable';
@@ -358,13 +364,16 @@ export default function FRA3FireProtectionForm({
   const suggestedOutcome = getSuggestedOutcome();
 
   const handleSave = async () => {
+    window.dispatchEvent(new CustomEvent('module:save-start'));
     setIsSaving(true);
 
     try {
+      const completedAt = outcome ? new Date().toISOString() : null;
       const payload = sanitizeModuleInstancePayload({
         data: buildSaveData(moduleInstance.data, formData),
         outcome,
         assessor_notes: assessorNotes,
+        completed_at: completedAt,
         updated_at: new Date().toISOString(),
       }, moduleInstance.module_key);
 
@@ -497,6 +506,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Install or verify suitable fire detection and alarm system to appropriate category (BS 5839-1). System should provide adequate warning time for safe evacuation based on building use and occupancy.',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-alarm',
+                    sectionLabel: 'Fire Alarm System',
+                    sourceKey: 'fire_alarm_system',
+                    sourceLabel: 'Fire Alarm System',
+                    defaultCategory: 'Active fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -559,6 +574,12 @@ export default function FRA3FireProtectionForm({
                         action: 'Implement documented weekly fire alarm testing regime (BS 5839-1 Clause 45): test different call point each week, maintain logbook, arrange quarterly inspection by competent person',
                         likelihood: 4,
                         impact: 4,
+                        source: 'recommendation',
+                        sectionKey: 'fra3-alarm',
+                        sectionLabel: 'Fire Alarm System',
+                        sourceKey: 'fire_alarm_system',
+                        sourceLabel: 'Fire Alarm System',
+                        defaultCategory: 'Active fire protection',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -607,6 +628,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Install or verify emergency lighting to BS 5266 standard on all escape routes, stairways, changes in level, final exits, and fire safety equipment locations. Ensure 3-hour duration where required.',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-lighting',
+                    sectionLabel: 'Emergency Lighting',
+                    sourceKey: 'emergency_lighting',
+                    sourceLabel: 'Emergency Lighting',
+                    defaultCategory: 'Active fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -647,6 +674,12 @@ export default function FRA3FireProtectionForm({
                         action: 'Implement documented emergency lighting testing regime (BS 5266): monthly function tests, annual 3-hour duration test, maintain logbook, arrange periodic inspection by competent person',
                         likelihood: 4,
                         impact: 4,
+                        source: 'recommendation',
+                        sectionKey: 'fra3-lighting',
+                        sectionLabel: 'Emergency Lighting',
+                        sourceKey: 'emergency_lighting',
+                        sourceLabel: 'Emergency Lighting',
+                        defaultCategory: 'Active fire protection',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -695,6 +728,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Inspect all fire doors and remediate defects: repair/replace damaged leaves, seals, and glazing; install/repair self-closers; replace inadequate ironmongery; install appropriate signage; implement 6-monthly inspection programme',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-doors',
+                    sectionLabel: 'Fire Doors',
+                    sourceKey: 'fire_doors',
+                    sourceLabel: 'Fire Doors',
+                    defaultCategory: 'Passive fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -764,6 +803,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Commission comprehensive compartmentation survey to identify all breaches in fire-resisting construction. Remediate all identified breaches using appropriate fire-rated materials and third-party certified products.',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-compartmentation',
+                    sectionLabel: 'Compartmentation & Fire Stopping',
+                    sourceKey: 'compartmentation',
+                    sourceLabel: 'Compartmentation',
+                    defaultCategory: 'Passive fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -800,6 +845,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Commission intrusive fire stopping survey to verify integrity of concealed penetrations, service routes through compartment boundaries, and above ceiling voids. Establish fire stopping register.',
                     likelihood: 4,
                     impact: 4,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-compartmentation',
+                    sectionLabel: 'Compartmentation & Fire Stopping',
+                    sourceKey: 'fire_stopping',
+                    sourceLabel: 'Fire Stopping',
+                    defaultCategory: 'Passive fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -1007,6 +1058,12 @@ export default function FRA3FireProtectionForm({
                         action: 'Provide suitable and sufficient portable fire extinguishers (BS EN 3) at appropriate locations: final exits, high-risk areas, and within travel distance limits. Arrange annual servicing by competent engineer.',
                         likelihood: 3,
                         impact: 3,
+                        source: 'recommendation',
+                        sectionKey: 'fra3-extinguishers',
+                        sectionLabel: 'Portable Fire Extinguishers',
+                        sourceKey: 'portable_extinguishers',
+                        sourceLabel: 'Portable Fire Extinguishers',
+                        defaultCategory: 'Firefighting equipment',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -1649,6 +1706,12 @@ export default function FRA3FireProtectionForm({
           defaultAction={quickActionTemplate?.action}
           defaultLikelihood={quickActionTemplate?.likelihood}
           defaultImpact={quickActionTemplate?.impact}
+          source={quickActionTemplate?.source}
+          sectionKey={quickActionTemplate?.sectionKey}
+          sectionLabel={quickActionTemplate?.sectionLabel}
+          sourceKey={quickActionTemplate?.sourceKey}
+          sourceLabel={quickActionTemplate?.sourceLabel}
+          defaultCategory={quickActionTemplate?.defaultCategory}
         />
       )}
     </div>
