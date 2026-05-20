@@ -88,12 +88,10 @@ import {
   drawModuleContent,
   renderFilteredModuleData,
   drawActionRegister,
-  drawAssumptionsAndLimitations,
   drawRegulatoryFramework,
   drawResponsiblePersonDuties,
   drawAttachmentsIndex,
   drawScope,
-  drawLimitations,
   drawTableOfContents,
   drawCleanAuditPage1,
   drawFraOutcomeTag,
@@ -487,9 +485,6 @@ page = r.page;
 yPosition = PAGE_TOP_Y;
 drawTableOfContents(page, font, fontBold);
 
-  // Add "Using This Report" guide section (after TOC, before exec summary)
-  drawUsingThisReportSection(pdfDoc, font, fontBold, isDraft, totalPages);
-
   addExecutiveSummaryPages(
     pdfDoc,
     isDraft,
@@ -499,6 +494,9 @@ drawTableOfContents(page, font, fontBold);
     document.executive_summary_author,
     { bold: fontBold, regular: font }
   );
+
+  // Add "Using This Report" guide section (after exec summary, before action plan)
+  drawUsingThisReportSection(pdfDoc, font, fontBold, isDraft, totalPages);
 
   // Add Assurance Gaps block if quality issues detected (after exec summary)
   if (qualityResult.assuranceGaps.length > 0) {
@@ -596,13 +594,6 @@ drawTableOfContents(page, font, fontBold);
   //   yPosition = PAGE_TOP_Y;
   //   ({ page, yPosition } = drawScope({ page, yPosition }, document.scope_description, font, fontBold, pdfDoc, isDraft, totalPages));
   // }
-
-  if (document.limitations_assumptions) {
-    const limResult = addNewPage(pdfDoc, isDraft, totalPages);
-    page = limResult.page;
-    yPosition = PAGE_TOP_Y;
-    ({ page, yPosition } = drawLimitations({ page, yPosition }, document.limitations_assumptions, font, fontBold, pdfDoc, isDraft, totalPages));
-  }
 
   // Section-based rendering using fixed PAS-79 skeleton
   const fra4Module = moduleInstances.find((m) =>
@@ -1022,10 +1013,10 @@ if (section.id === 5) {
       totalPages
     );
   } else {
+    // Start action register on a fresh page (mirrors the issued-mode path above)
     const resultLI = addNewPage(pdfDoc, isDraft, totalPages);
     page = resultLI.page;
     yPosition = PAGE_TOP_Y;
-    yPosition = drawLikelihoodConsequenceExplanation(page, font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
 
     if (import.meta.env.DEV) console.log('[PDF] actions sample (before register)', (actionsWithRefs || []).slice(0,3).map(a => ({
       id: a.id,
@@ -1038,13 +1029,9 @@ if (section.id === 5) {
   }
 
 // --- APPENDICES ---
-// Goal:
-// 1) Action Register stands alone (no forced blank pre-page).
-// 2) Attachments & Evidence Index ALWAYS starts on a fresh page.
-// 3) Assumptions & Limitations follows on the SAME page as Attachments if there is space,
-//    otherwise it starts a new page.
-
-const ASSUMPTIONS_MIN = 160; // header + a few lines (tune if needed)
+// Attachments & Evidence Index ALWAYS starts on a fresh page.
+// Assumptions & Limitations are rendered once only in the Assessment Basis and Scope
+// front-matter section (drawFraConsultancyFrontMatter) — not repeated here.
 
 if (attachments.length > 0) {
   // Start attachments on a fresh page (appendix-style)
@@ -1063,34 +1050,6 @@ if (attachments.length > 0) {
     isDraft,
     totalPages
   ));
-
-  // Try to keep Assumptions & Limitations on the same page as the attachments index
-  ({ page, yPosition } = ensureSpace(ASSUMPTIONS_MIN, page, yPosition, pdfDoc, isDraft, totalPages));
-
-  ({ page, yPosition } = drawAssumptionsAndLimitations(
-    { page, yPosition },
-    document,
-    fra4Module,
-    font,
-    fontBold,
-    pdfDoc,
-    isDraft,
-    totalPages
-  ));
-} else {
-  // No attachments: render Assumptions & Limitations as normal (no attempt to share)
-  ({ page, yPosition } = ensureSpace(ASSUMPTIONS_MIN, page, yPosition, pdfDoc, isDraft, totalPages));
-
-  ({ page, yPosition } = drawAssumptionsAndLimitations(
-    { page, yPosition },
-    document,
-    fra4Module,
-    font,
-    fontBold,
-    pdfDoc,
-    isDraft,
-    totalPages
-  ));
 }
 
 // (footer logic continues below as you already have it)
@@ -1101,7 +1060,7 @@ if (attachments.length > 0) {
   });
   const versionNum = (document as any).version_number ?? document.version ?? 1;
   const footerReportTitle = getReportFooterTitle(document.document_type, document.title);
-  const footerText = `FRA Report — ${footerReportTitle} —     v${versionNum}.0 — Generated ${today}`;
+  const footerText = `FRA Report — ${footerReportTitle} — v${versionNum}.0 — Generated ${today}`;
 
   const startPageForFooters = isIssuedMode ? 2 : 1;
   for (let i = startPageForFooters; i < totalPages.length; i++) {
