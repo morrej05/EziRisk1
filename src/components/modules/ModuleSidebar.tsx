@@ -156,7 +156,7 @@ export default function ModuleSidebar({
                 <AlertCircle className="w-4 h-4 text-amber-600" />
               </button>
               {openIncompleteHelpForModuleId === module.id && (
-                <div className="absolute left-6 top-0 z-20 w-64 rounded-lg border border-amber-200 bg-white p-3 shadow-lg">
+                <div className="absolute left-6 top-0 z-20 w-64 rounded-lg border border-amber-200 bg-white p-3 shadow-lg max-h-64 overflow-y-auto overscroll-contain">
                   <p className="text-xs font-semibold text-amber-900">This module is incomplete</p>
                   {completion.missingRequirements.length > 0 && (
                     <ul className="mt-2 list-disc pl-4 text-xs text-slate-700 space-y-1">
