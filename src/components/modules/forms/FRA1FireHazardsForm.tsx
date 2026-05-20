@@ -510,6 +510,7 @@ export default function FRA1FireHazardsForm({
   };
 
   const handleSave = async () => {
+    window.dispatchEvent(new CustomEvent('module:save-start'));
     setIsSaving(true);
 
     try {
@@ -706,7 +707,7 @@ export default function FRA1FireHazardsForm({
                 className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
               >
                 <Plus className="h-4 w-4" />
-                Add evidence
+                Add recommendation
               </button>
             </div>
             {legacyEvidenceNotes && (
@@ -1034,67 +1035,6 @@ export default function FRA1FireHazardsForm({
             </div>
 
 
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
-          <h3 className="text-lg font-bold text-neutral-900 mb-4">
-            DSEAR / Hazardous Substances Screening
-          </h3>
-          <p className="text-sm text-neutral-600 mb-4">
-            Triage flammable liquids, gases, vapours and combustible dusts before completing the detailed DSEAR section below.
-          </p>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Flammable substances or combustible dusts present?
-              </label>
-              <select
-                value={formData.dsear_screen.flammables_present || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    dsear_screen: {
-                      ...formData.dsear_screen,
-                      flammables_present: e.target.value || null,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              >
-                <option value="">Not stated</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-                <option value="unknown">Unknown</option>
-                <option value="not_applicable_not_installed">Not applicable — system not installed</option>
-                <option value="not_applicable_landlord_controlled">Not applicable — landlord-controlled</option>
-                <option value="not_applicable_outside_tenant_control">Not applicable — outside tenant control</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Explosive atmospheres possible?
-              </label>
-              <select
-                value={formData.dsear_screen.explosive_atmospheres_possible || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    dsear_screen: {
-                      ...formData.dsear_screen,
-                      explosive_atmospheres_possible: e.target.value || null,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              >
-                <option value="">Not stated</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-                <option value="unknown">Unknown</option>
-                <option value="not_applicable_not_required">Not applicable — not required for this premises</option>
-              </select>
-            </div>
           </div>
         </div>
 
@@ -1702,6 +1642,9 @@ export default function FRA1FireHazardsForm({
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
+                <option value="not_applicable_not_installed">Not applicable — system not installed</option>
+                <option value="not_applicable_landlord_controlled">Not applicable — landlord-controlled</option>
+                <option value="not_applicable_outside_tenant_control">Not applicable — outside tenant control</option>
               </select>
             </div>
 
@@ -1727,6 +1670,7 @@ export default function FRA1FireHazardsForm({
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
                 <option value="not_applicable_no_substances">Not applicable — no relevant dangerous substances or combustible dusts identified</option>
+                <option value="not_applicable_not_required">Not applicable — not required for this premises</option>
               </select>
             </div>
 
