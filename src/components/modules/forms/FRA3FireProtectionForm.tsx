@@ -540,8 +540,8 @@ export default function FRA3FireProtectionForm({
                     <option value="L3">L3 - Escape routes only</option>
                     <option value="L4">L4 - Manual call points only</option>
                     <option value="L5">L5 - As designed (custom)</option>
-                    <option value="P1">P1 - Property protection (full)</option>
-                    <option value="P2">P2 - Property protection (defined areas)</option>
+                    <option value="P1">P1 (BS 5839-1) — Property protection, full coverage</option>
+                    <option value="P2">P2 (BS 5839-1) — Property protection, defined areas</option>
                   </select>
                   <p className="text-xs text-neutral-500 mt-1">
                     Category determines extent of detection coverage
