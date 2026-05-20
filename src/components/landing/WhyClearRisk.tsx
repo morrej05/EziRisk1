@@ -15,7 +15,7 @@ const benefits = [
   {
     icon: FileText,
     title: 'Reports follow a consistent structure',
-    description: 'Governed templates reduce missing context and ad hoc assembly.',
+    description: 'Consistent templates reduce missing context and ad hoc assembly.',
   },
   {
     icon: ShieldCheck,
@@ -75,7 +75,7 @@ export default function WhyClearRisk() {
 
         <div className="mt-16 rounded-xl border border-neutral-700 bg-neutral-800/50 p-8 text-center">
           <p className="mx-auto max-w-3xl text-lg text-neutral-300">
-            Replace scattered files with a governed assessment record that is easier to review, issue and repeat.
+            Replace scattered files with a single assessment record that is easier to review, issue and repeat.
           </p>
         </div>
       </div>

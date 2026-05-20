@@ -48,7 +48,7 @@ export default function HowItWorks() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-12 max-w-2xl">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
-            One governed assessment workflow
+            One end-to-end assessment workflow
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
             From site walk to issued report
