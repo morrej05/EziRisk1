@@ -1,0 +1,38 @@
+## Summary
+
+- **Scroll to top** — module workspace gains a ChevronUp button that appears after 300 px of downward scroll, positioned above the save status pill. Clicking scrolls the module container smoothly back to top.
+- **FRA1 section jump nav** — sticky nav strip with 8 jump links: Ignition, Fuel, Activities, Source cards, EICR, Lightning, Duct & extract, DSEAR. Each target section has an `id` and `scroll-mt-4`.
+- **FRA3 section jump nav** — same pattern, conditionally rendering only sections visible for the active module key (showActive / showPassive / showFirefighting).
+- **FRA1 + FRA3 outer padding** — `p-6` reduced to `p-4 sm:p-6` so tablet portrait recovers ~16 px of usable form width.
+- **ModuleSidebar help popover** — `max-h-64 overflow-y-auto overscroll-contain` prevents viewport overflow when a module has many missing requirements.
+- **CookieConsentBanner safe-area** — `env(safe-area-inset-bottom)` padding added, consistent with Phase 2 treatment of StickySaveButton and FloatingSaveBar.
+
+## Files changed
+
+| File | Change |
+|---|---|
+| `src/pages/documents/DocumentWorkspace.tsx` | Scroll-to-top state + passive scroll listener + fixed button |
+| `src/components/modules/forms/FRA1FireHazardsForm.tsx` | 8 section ids, sticky jump nav, responsive outer padding |
+| `src/components/modules/forms/FRA3FireProtectionForm.tsx` | 8 section ids, conditional jump nav, responsive outer padding |
+| `src/components/modules/ModuleSidebar.tsx` | Popover max-h + overflow-y-auto |
+| `src/components/CookieConsentBanner.tsx` | Safe-area-inset-bottom padding |
+
+## Reviewer notes
+
+- No business logic, database schema, or module architecture changes.
+- `scrollIntoView({ behavior: 'smooth' })` degrades to instant-jump on Safari < 15.4 — functional either way.
+- Section jump nav uses native `document.getElementById` — targets the correct scroll container because forms are mounted inside `moduleScrollRef` (the nearest scrollable ancestor).
+- Desktop behaviour is unchanged across all files.
+- Build: 2001 modules, no errors. `tsc --noEmit`: zero type errors.
+
+## Test plan
+
+- [ ] `npm run build` passes
+- [ ] `tsc --noEmit` passes
+- [ ] At ~768 px width: scroll FRA1 down > 300 px, confirm scroll-to-top button appears and scrolls correctly
+- [ ] FRA1 section jump nav sticks at top while scrolling; all 8 links jump to the correct section
+- [ ] FRA3 jump nav shows only sections relevant to the loaded module key
+- [ ] ModuleSidebar: module with many missing requirements shows a capped, scrollable popover
+- [ ] CookieConsentBanner clears the home indicator on iPad/iPhone
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
