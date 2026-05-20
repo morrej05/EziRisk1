@@ -626,6 +626,7 @@ export default function DocumentWorkspace() {
   useEffect(() => {
     if (!selectedModuleId) return;
     moduleScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    setShowScrollToTop(false);
   }, [selectedModuleId]);
 
   useEffect(() => {
