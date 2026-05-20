@@ -751,7 +751,7 @@ export default function FRA1FireHazardsForm({
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <Flame className="w-6 h-6 text-neutral-700" />
@@ -789,8 +789,33 @@ export default function FRA1FireHazardsForm({
         />
       </div>
 
+      <nav aria-label="Module sections" className="sticky top-0 z-10 -mx-4 sm:-mx-6 mb-4 border-b border-neutral-100 bg-neutral-50/95 backdrop-blur-sm px-4 py-2">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-1 shrink-0 text-xs font-medium text-neutral-400">Jump:</span>
+          {[
+            { id: 'fra1-ignition', label: 'Ignition' },
+            { id: 'fra1-fuel', label: 'Fuel' },
+            { id: 'fra1-activities', label: 'Activities' },
+            { id: 'fra1-source-cards', label: 'Source cards' },
+            { id: 'fixed-wiring-eicr-section', label: 'EICR' },
+            { id: 'fra1-lightning', label: 'Lightning' },
+            { id: 'fra1-duct', label: 'Duct & extract' },
+            { id: 'fra1-dsear', label: 'DSEAR' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
       <div className="space-y-6">
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-ignition" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Ignition Sources
           </h3>
@@ -843,7 +868,7 @@ export default function FRA1FireHazardsForm({
           </div>
         )}
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-fuel" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Fuel Sources
           </h3>
@@ -944,7 +969,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-activities" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             High-Risk Activities
           </h3>
@@ -982,7 +1007,7 @@ export default function FRA1FireHazardsForm({
 
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-arson" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Arson Risk & Lone Working
           </h3>
@@ -1088,7 +1113,7 @@ export default function FRA1FireHazardsForm({
           />
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-source-cards" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-2">
             Contextual Ignition Source Cards
           </h3>
@@ -1114,7 +1139,7 @@ export default function FRA1FireHazardsForm({
 
 
 
-        <div id="fixed-wiring-eicr-section" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-6">
+        <div id="fixed-wiring-eicr-section" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-5 h-5 text-amber-600" />
             <h3 className="text-lg font-bold text-neutral-900">
@@ -1367,7 +1392,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-lightning" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Lightning Protection
           </h3>
@@ -1514,7 +1539,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-duct" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Duct & Extract Cleaning
           </h3>
@@ -1647,7 +1672,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-dsear" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             DSEAR Screening
           </h3>

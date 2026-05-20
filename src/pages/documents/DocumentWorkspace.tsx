@@ -217,6 +217,7 @@ export default function DocumentWorkspace() {
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
   const moduleScrollRef = useRef<HTMLDivElement | null>(null);
   const [saveState, setSaveState] = useState<'unsaved' | 'saving' | 'saved' | 'error'>('saved');
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
 
   const openActionId = searchParams.get('openAction');
 
@@ -645,6 +646,14 @@ export default function DocumentWorkspace() {
     };
   }, [selectedModuleId]);
 
+  useEffect(() => {
+    const el = moduleScrollRef.current;
+    if (!el) return;
+    const onScroll = () => setShowScrollToTop(el.scrollTop > 300);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
   if (documentNotFound) {
     return (
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
@@ -941,6 +950,17 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                 </div>
               </div>
             </div>
+
+            {showScrollToTop && (
+              <button
+                type="button"
+                onClick={() => moduleScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="fixed bottom-16 right-4 z-40 rounded-full border border-neutral-200 bg-white p-2.5 shadow-md text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50 transition-colors"
+                aria-label="Scroll to top of module"
+              >
+                <ChevronUp className="w-4 h-4" />
+              </button>
+            )}
 
             {selectedStable ? (
               <ModuleRenderer key={selectedStable.id} moduleInstance={selectedStable} document={document} onSaved={handleModuleSaved} />

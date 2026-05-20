@@ -55,7 +55,7 @@ export default function CookieConsentBanner() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-neutral-200 bg-white/95 backdrop-blur-sm shadow-lg">
+    <div className="fixed bottom-0 left-0 right-0 z-[60] border-t border-neutral-200 bg-white/95 backdrop-blur-sm shadow-lg" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
         <p className="text-sm text-neutral-700">
           This site uses cookies to improve your experience.

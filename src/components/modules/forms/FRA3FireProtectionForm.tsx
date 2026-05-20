@@ -397,7 +397,7 @@ export default function FRA3FireProtectionForm({
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <Shield className="w-6 h-6 text-neutral-700" />
@@ -440,9 +440,35 @@ export default function FRA3FireProtectionForm({
         </div>
       )}
 
+      <nav aria-label="Module sections" className="sticky top-0 z-10 -mx-4 sm:-mx-6 mb-4 border-b border-neutral-100 bg-neutral-50/95 backdrop-blur-sm px-4 py-2">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-1 shrink-0 text-xs font-medium text-neutral-400">Jump:</span>
+          {showActive && (
+            <>
+              <button type="button" onClick={() => document.getElementById('fra3-alarm')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Alarm</button>
+              <button type="button" onClick={() => document.getElementById('fra3-lighting')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Em. lighting</button>
+            </>
+          )}
+          {showPassive && (
+            <>
+              <button type="button" onClick={() => document.getElementById('fra3-doors')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Fire doors</button>
+              <button type="button" onClick={() => document.getElementById('fra3-compartmentation')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Compartmentation</button>
+              <button type="button" onClick={() => document.getElementById('fra3-passive')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Passive areas</button>
+            </>
+          )}
+          {showFirefighting && (
+            <>
+              <button type="button" onClick={() => document.getElementById('fra3-extinguishers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Extinguishers</button>
+              <button type="button" onClick={() => document.getElementById('fra3-hose')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Hose reels</button>
+              <button type="button" onClick={() => document.getElementById('fra3-fixed')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Fixed systems</button>
+            </>
+          )}
+        </div>
+      </nav>
+
       <div className="space-y-6">
         {showActive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-alarm" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Fire Alarm System
             </h3>
@@ -548,7 +574,7 @@ export default function FRA3FireProtectionForm({
         )}
 
         {showActive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-lighting" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Emergency Lighting
             </h3>
@@ -636,7 +662,7 @@ export default function FRA3FireProtectionForm({
         )}
 
         {showPassive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-doors" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Fire Doors
             </h3>
@@ -701,7 +727,7 @@ export default function FRA3FireProtectionForm({
         )}
 
         {showPassive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-compartmentation" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Compartmentation & Fire Stopping
             </h3>
@@ -788,7 +814,7 @@ export default function FRA3FireProtectionForm({
 
 
         {showPassive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-passive" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-2">Optional Detailed Passive Fire Protection Assessment Areas</h3>
             <p className="text-sm text-neutral-600 mb-4">
               Open only the areas needed for the assessment. Saving retains the broad legacy fields and stores detailed area findings under <code>passive_fire_protection_assessments</code> with a camelCase compatibility alias.
@@ -860,7 +886,7 @@ export default function FRA3FireProtectionForm({
         {showFirefighting && (
           <div className="space-y-6">
             {/* Portable Extinguishers */}
-            <div className="bg-white rounded-lg border border-neutral-200 p-6">
+            <div id="fra3-extinguishers" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
               <h3 className="text-lg font-bold text-neutral-900 mb-2">
                 Portable Fire Extinguishers
               </h3>
@@ -993,7 +1019,7 @@ export default function FRA3FireProtectionForm({
             </div>
 
             {/* Hose Reels */}
-            <div className="bg-white rounded-lg border border-neutral-200 p-6">
+            <div id="fra3-hose" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
               <h3 className="text-lg font-bold text-neutral-900 mb-2">
                 Hose Reels
               </h3>
@@ -1109,7 +1135,7 @@ export default function FRA3FireProtectionForm({
             </div>
 
             {/* Fixed Firefighting Facilities */}
-            <div className="bg-white rounded-lg border border-neutral-200 p-6">
+            <div id="fra3-fixed" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
               <h3 className="text-lg font-bold text-neutral-900 mb-2">
                 Fixed Firefighting Facilities
               </h3>
