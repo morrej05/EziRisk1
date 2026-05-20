@@ -42,7 +42,7 @@ export default function WhoItsFor() {
             For consultants who need controlled reporting
           </h2>
           <p className="text-xl text-neutral-600">
-            Complete assessments, evidence judgement and issue reports clients can rely on.
+            Complete assessments with full evidence context and issue reports clients can rely on.
           </p>
         </div>
 

@@ -14,12 +14,12 @@ const reportTypes = [
   {
     icon: AlertTriangle,
     title: 'DSEAR / explosive atmosphere assessments',
-    description: 'Capture hazardous substance observations, controls and evidence in a governed assessment record.',
+    description: 'Capture hazardous substance observations, controls and evidence in a professional assessment record.',
   },
   {
     icon: Building2,
     title: 'Insurer-style risk engineering reviews',
-    description: 'Support property and operational risk reviews using the same governed evidence and reporting workflow.',
+    description: 'Support property and operational risk reviews using the same evidence, recommendations and reporting approach.',
   },
 ];
 
@@ -43,7 +43,7 @@ export default function SupportedReports() {
             Built around professional assessment delivery
           </h2>
           <p className="mb-7 max-w-2xl text-lg leading-8 text-slate-600">
-            FRA-first, with structured paths for FSD, DSEAR and risk engineering review work.
+            FRA-first, with clear paths for FSD, DSEAR and risk engineering review work.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {reportTypes.map((report) => {

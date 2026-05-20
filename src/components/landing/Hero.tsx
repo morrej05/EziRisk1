@@ -1,5 +1,12 @@
 import { Link } from 'react-router-dom';
 
+const PRODUCTS = [
+  'Fire Risk Assessments',
+  'Fire Strategy Documents',
+  'DSEAR',
+  'Risk Engineering',
+];
+
 export default function Hero() {
   return (
     <section className="relative min-h-[90vh] flex items-center overflow-hidden">
@@ -21,28 +28,35 @@ export default function Hero() {
           Finish professional fire assessment reports in one structured workflow.
         </h1>
 
-        <p className="mb-8 max-w-xl text-lg leading-8 text-blue-100">
-          Capture findings, link evidence, create recommendations and issue governed FRA, FSD and DSEAR reports — with the same structured workflow supporting broader risk engineering reviews when required.
+        <p className="mb-5 max-w-xl text-lg leading-8 text-blue-100">
+          Capture findings, link evidence and create traceable recommendations — then issue professional reports with readiness checks and evidence context intact.
         </p>
 
+        <div className="mb-7 flex flex-wrap gap-2">
+          {PRODUCTS.map((product) => (
+            <span
+              key={product}
+              className="inline-flex items-center rounded border border-white/20 bg-white/10 px-2.5 py-1 text-xs font-medium text-blue-100"
+            >
+              {product}
+            </span>
+          ))}
+        </div>
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <a
-            href="#how-it-works"
-            className="inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 font-semibold text-blue-900 transition hover:bg-gray-100"
-          >
-            See the assessment workflow →
-          </a>
           <Link
             to="/signin"
-            className="inline-flex items-center justify-center rounded-lg border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
+            className="inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 font-semibold text-blue-900 transition hover:bg-gray-100"
           >
             Start an assessment
           </Link>
+          <a
+            href="#how-it-works"
+            className="inline-flex items-center justify-center rounded-lg border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
+          >
+            See how it works
+          </a>
         </div>
-
-        <p className="mt-4 max-w-lg text-sm text-blue-200">
-          Keep findings, evidence, recommendations and report issue controls connected from assessment to issued report.
-        </p>
       </div>
     </section>
   );
