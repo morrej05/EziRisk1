@@ -2,11 +2,9 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, DoorOpen } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
-import ModuleActions from '../ModuleActions';
 import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { getUnifiedOutcomeLabel } from '../../../lib/modules/moduleCatalog';
-import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 
 type AssessmentStatus = 'adequate' | 'inadequate' | 'unknown' | 'not_applicable';
 type RiskSignificance = 'low' | 'medium' | 'high' | 'critical' | 'unknown';
@@ -159,7 +157,6 @@ export default function FRA2MeansOfEscapeForm({
 }: FRA2MeansOfEscapeFormProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
-  const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const [formData, setFormData] = useState({
     escape_strategy_current: asString(moduleInstance.data.escape_strategy_current || moduleInstance.data.escape_strategy) || 'unknown',
@@ -277,13 +274,16 @@ export default function FRA2MeansOfEscapeForm({
   const suggestedOutcome = getSuggestedOutcome();
 
   const handleSave = async () => {
+    window.dispatchEvent(new CustomEvent('module:save-start'));
     setIsSaving(true);
 
     try {
+      const completedAt = outcome ? new Date().toISOString() : null;
       const payload = sanitizeModuleInstancePayload({
         data: buildSaveData(moduleInstance.data, formData),
         outcome,
         assessor_notes: assessorNotes,
+        completed_at: completedAt,
         updated_at: new Date().toISOString(),
       }, moduleInstance.module_key);
 
@@ -499,6 +499,8 @@ export default function FRA2MeansOfEscapeForm({
                       sourceAssessmentType="means_of_escape_assessments"
                       sourceAssessmentKey={area.key}
                       sourceAssessmentLabel={area.title}
+                      sectionKey={area.key}
+                      sectionLabel={area.title}
                       assessment={assessment}
                       legacyLinkedActionReference={assessment.linked_action_reference}
                     />
@@ -517,9 +519,6 @@ export default function FRA2MeansOfEscapeForm({
 
       <OutcomePanel moduleKey={moduleInstance.module_key} outcome={outcome} assessorNotes={assessorNotes} onOutcomeChange={setOutcome} onNotesChange={setAssessorNotes} onSave={handleSave} isSaving={isSaving} />
 
-      {document?.id && moduleInstance?.id && (
-        <ModuleActions key={actionsRefreshKey} documentId={document.id} moduleInstanceId={moduleInstance.id} />
-      )}
 
     </div>
   );

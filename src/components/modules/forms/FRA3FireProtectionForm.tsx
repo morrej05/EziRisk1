@@ -923,6 +923,8 @@ export default function FRA3FireProtectionForm({
                         sourceAssessmentType="passive_fire_protection_assessments"
                         sourceAssessmentKey={area.key}
                         sourceAssessmentLabel={area.title}
+                        sectionKey={area.key}
+                        sectionLabel={area.title}
                         assessment={assessment}
                         legacyLinkedActionReference={assessment.linked_action_reference}
                       />

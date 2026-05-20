@@ -2,10 +2,8 @@ import { useState } from 'react';
 import { Building2, CheckCircle, Plus } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
-import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import { getUnifiedOutcomeLabel } from '../../../lib/modules/moduleCatalog';
 
 interface Document {
@@ -15,6 +13,7 @@ interface Document {
 
 interface ModuleInstance {
   id: string;
+  module_key: string;
   outcome: string | null;
   assessor_notes: string;
   data: Record<string, any>;
@@ -30,6 +29,12 @@ interface QuickActionTemplate {
   action: string;
   likelihood: number;
   impact: number;
+  source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
+  sectionKey?: string;
+  sectionLabel?: string;
+  sourceKey?: string;
+  sourceLabel?: string;
+  defaultCategory?: string;
 }
 
 export default function FRA5ExternalFireSpreadForm({
@@ -41,7 +46,6 @@ export default function FRA5ExternalFireSpreadForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
-  const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const [formData, setFormData] = useState({
     external_wall_system_applicable: moduleInstance.data.external_wall_system_applicable || 'unknown',
@@ -123,13 +127,16 @@ export default function FRA5ExternalFireSpreadForm({
   const suggestedOutcome = getSuggestedOutcome();
 
   const handleSave = async () => {
+    window.dispatchEvent(new CustomEvent('module:save-start'));
     setIsSaving(true);
 
     try {
+      const completedAt = outcome ? new Date().toISOString() : null;
       const payload = sanitizeModuleInstancePayload({
         data: formData,
         outcome,
         assessor_notes: assessorNotes,
+        completed_at: completedAt,
         updated_at: new Date().toISOString(),
       }, moduleInstance.module_key);
 
@@ -303,6 +310,12 @@ export default function FRA5ExternalFireSpreadForm({
                         action: 'Commission external wall system information review and appraisal: obtain original construction drawings, product datasheets, and fire test certificates. Where unavailable, commission intrusive investigation to identify cladding materials, insulation type and class, cavity barriers, and fire-stopping details. Consider PAS 9980 appraisal for buildings ≥18m.',
                         likelihood: 4,
                         impact: 5,
+                        source: 'recommendation',
+                        sectionKey: 'fra5-external-wall',
+                        sectionLabel: 'External Wall Construction',
+                        sourceKey: 'fra5',
+                        sourceLabel: 'FRA-5 External Fire Spread',
+                        defaultCategory: 'external_fire_spread',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -349,6 +362,12 @@ export default function FRA5ExternalFireSpreadForm({
                         action: 'Investigate cavity barrier provision and integrity: commission intrusive survey of external wall cavities to verify presence, location, and condition of cavity barriers at compartment floor levels and around openings. Remediate any missing or damaged barriers to restore compartmentation.',
                         likelihood: 4,
                         impact: 5,
+                        source: 'recommendation',
+                        sectionKey: 'fra5-cavity-barriers',
+                        sectionLabel: 'Cavity Barriers & Fire Stopping',
+                        sourceKey: 'fra5',
+                        sourceLabel: 'FRA-5 External Fire Spread',
+                        defaultCategory: 'external_fire_spread',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -386,6 +405,12 @@ export default function FRA5ExternalFireSpreadForm({
                         action: 'Survey and remediate fire-stopping at external wall penetrations and openings: identify all service penetrations (mechanical, electrical, drainage) through external walls at compartment boundaries. Install appropriate fire-stopping to maintain compartmentation integrity.',
                         likelihood: 4,
                         impact: 5,
+                        source: 'recommendation',
+                        sectionKey: 'fra5-cavity-barriers',
+                        sectionLabel: 'Cavity Barriers & Fire Stopping',
+                        sourceKey: 'fra5',
+                        sourceLabel: 'FRA-5 External Fire Spread',
+                        defaultCategory: 'external_fire_spread',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -491,6 +516,12 @@ export default function FRA5ExternalFireSpreadForm({
                         action: 'Confirm requirement for PAS 9980 style external wall system appraisal and commission report: engage competent fire engineer to assess external wall construction, cladding materials, insulation type, cavity barriers, and fire spread risk. Obtain formal appraisal report with recommended actions.',
                         likelihood: 4,
                         impact: 5,
+                        source: 'recommendation',
+                        sectionKey: 'fra5-ews-appraisal',
+                        sectionLabel: 'External Wall System Appraisal',
+                        sourceKey: 'fra5',
+                        sourceLabel: 'FRA-5 External Fire Spread',
+                        defaultCategory: 'external_fire_spread',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -547,26 +578,6 @@ export default function FRA5ExternalFireSpreadForm({
         isSaving={isSaving}
       />
 
-      {document?.id && moduleInstance?.id && (
-
-
-        <ModuleActions
-
-
-          key={actionsRefreshKey}
-
-
-          documentId={document.id}
-
-
-          moduleInstanceId={moduleInstance.id}
-
-
-        />
-
-
-      )}
-
       {showActionModal && (
         <AddActionModal
           documentId={document.id}
@@ -582,6 +593,11 @@ export default function FRA5ExternalFireSpreadForm({
           defaultAction={quickActionTemplate?.action}
           defaultLikelihood={quickActionTemplate?.likelihood}
           defaultImpact={quickActionTemplate?.impact}
+          sectionKey={quickActionTemplate?.sectionKey}
+          sectionLabel={quickActionTemplate?.sectionLabel}
+          sourceKey={quickActionTemplate?.sourceKey}
+          sourceLabel={quickActionTemplate?.sourceLabel}
+          defaultCategory={quickActionTemplate?.defaultCategory}
         />
       )}
     </div>
