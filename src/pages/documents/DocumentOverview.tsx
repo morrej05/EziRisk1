@@ -1421,17 +1421,6 @@ export default function DocumentOverview() {
     </div>
   );
 
-  const workflowStages = [
-    "Overview",
-    "Site setup",
-    "Site walk & hazards",
-    "Technical assessment",
-    "Findings & actions",
-    "Evidence library",
-    "Report preview",
-    "Review & issue",
-  ];
-
   return (
     <div className="min-h-screen bg-neutral-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -1773,26 +1762,6 @@ export default function DocumentOverview() {
             )}
           </Card>
         )}
-
-        {/* Workflow order */}
-        <Card className="mb-6">
-          <h2 className="text-lg font-semibold text-neutral-900 mb-3">
-            Assessment workflow
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-            {workflowStages.map((stage, index) => (
-              <div
-                key={stage}
-                className={`rounded-lg border px-3 py-2 ${index === 0 ? "bg-blue-50 border-blue-200 text-blue-900" : index === workflowStages.length - 1 ? "bg-slate-50 border-slate-200 text-slate-800" : "bg-white border-neutral-200 text-neutral-800"}`}
-              >
-                <span className="text-xs font-semibold text-neutral-500">
-                  {index + 1}
-                </span>
-                <p className="text-sm font-medium">{stage}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
 
         {/* Consolidated issue readiness */}
         <Card className="mb-6">
