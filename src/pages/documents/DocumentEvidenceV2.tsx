@@ -16,7 +16,6 @@ import {
   Unlink,
   Filter,
   Link as LinkIcon,
-  Info,
 } from 'lucide-react';
 import {
   getDocumentStatus,
@@ -444,21 +443,6 @@ export default function DocumentEvidenceV2() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium text-blue-900 mb-1">DocumentEvidenceV2 Debug Info</p>
-              <div className="text-sm text-blue-800 space-y-1">
-                <p>Total attachments loaded: {attachments.length}</p>
-                <p>Modules loaded: {modules.length}</p>
-                <p>Actions loaded: {actions.length}</p>
-                <p>Thumbnails loaded: {Object.keys(thumbnails).length}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {isLocked && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
