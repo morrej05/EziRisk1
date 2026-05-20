@@ -215,9 +215,9 @@ export function drawRiskSignificanceBlock(args: {
 function normalizeOutcome(outcome: string) {
   const o = (outcome || '').toLowerCase();
   if (o.includes('compliant') || o === 'ok' || o === 'pass') return { label: 'Compliant', key: 'compliant' as const };
-  if (o.includes('minor')) return { label: 'Minor action', key: 'minor' as const };
-  if (o.includes('material') || o.includes('major')) return { label: 'Material', key: 'material' as const };
-  if (o.includes('info') || o.includes('gap') || o.includes('incomplete')) return { label: 'Info gap', key: 'info' as const };
+  if (o.includes('minor')) return { label: 'Minor Deficiency', key: 'minor' as const };
+  if (o.includes('material') || o.includes('major') || o.includes('significant')) return { label: 'Significant Deficiency', key: 'material' as const };
+  if (o.includes('info') || o.includes('gap') || o.includes('incomplete')) return { label: 'Information Gap', key: 'info' as const };
   return { label: outcome || 'Unknown', key: 'info' as const };
 }
 

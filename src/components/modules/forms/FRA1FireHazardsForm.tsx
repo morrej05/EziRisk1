@@ -799,7 +799,7 @@ export default function FRA1FireHazardsForm({
           </p>
           <div className="space-y-2">
             {IGNITION_OPTIONS.map((option) => (
-              <label key={option} className="flex items-center gap-2 cursor-pointer">
+              <label key={option} className="flex items-center gap-2 cursor-pointer py-2">
                 <input
                   type="checkbox"
                   checked={formData.ignition_sources.includes(option)}
@@ -852,7 +852,7 @@ export default function FRA1FireHazardsForm({
           </p>
           <div className="space-y-2">
             {FUEL_OPTIONS.map((option) => (
-              <label key={option} className="flex items-center gap-2 cursor-pointer">
+              <label key={option} className="flex items-center gap-2 cursor-pointer py-2">
                 <input
                   type="checkbox"
                   checked={formData.fuel_sources.includes(option)}
@@ -953,7 +953,7 @@ export default function FRA1FireHazardsForm({
           </p>
           <div className="space-y-2">
             {HIGH_RISK_ACTIVITIES.map((option) => (
-              <label key={option} className="flex items-center gap-2 cursor-pointer">
+              <label key={option} className="flex items-center gap-2 cursor-pointer py-2">
                 <input
                   type="checkbox"
                   checked={formData.high_risk_activities.includes(option)}

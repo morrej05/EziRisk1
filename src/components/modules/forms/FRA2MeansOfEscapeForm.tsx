@@ -478,7 +478,7 @@ export default function FRA2MeansOfEscapeForm({
                         </select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                       <textarea value={assessment.observations} onChange={(e) => updateAssessment(area.key, { observations: e.target.value })} placeholder="Observations" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />
                       <textarea value={assessment.deficiencies} onChange={(e) => updateAssessment(area.key, { deficiencies: e.target.value })} placeholder="Deficiencies" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />
                       <textarea value={assessment.existing_controls} onChange={(e) => updateAssessment(area.key, { existing_controls: e.target.value })} placeholder="Existing controls" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />

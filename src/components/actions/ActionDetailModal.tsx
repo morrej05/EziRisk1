@@ -698,7 +698,7 @@ export default function ActionDetailModal({
                         <textarea
                           value={String(detail[key as keyof RecommendationDetail] || '')}
                           onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
-                          rows={3}
+                          rows={5}
                           className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
                         />
                       ) : (
@@ -764,7 +764,7 @@ export default function ActionDetailModal({
                       <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{targetDate ? formatDate(targetDate) : 'No target completion date set'}</p>
                     )}
                     <p className="mt-1 text-xs text-neutral-500">
-                      Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'To be agreed'}
+                      Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'Not yet specified'}
                       {suggestedTargetDate ? ` (${formatDate(suggestedTargetDate)})` : ''}.
                     </p>
                   </div>
@@ -778,7 +778,7 @@ export default function ActionDetailModal({
                     <textarea
                       value={targetDateJustification}
                       onChange={(e) => setTargetDateJustification(e.target.value)}
-                      rows={2}
+                      rows={3}
                       placeholder="Explain why the target completion date is later than the suggested completion."
                       className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700 resize-none text-sm bg-white"
                     />
@@ -808,7 +808,7 @@ export default function ActionDetailModal({
                             <textarea
                               value={String(detail[key as keyof RecommendationDetail] || '')}
                               onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
-                              rows={key === 'rationale' ? 3 : 2}
+                              rows={key === 'rationale' ? 4 : 3}
                               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
                             />
                           ) : (
@@ -983,6 +983,7 @@ export default function ActionDetailModal({
                   ref={fileInputRef}
                   type="file"
                   multiple
+                  capture="environment"
                   accept="image/*,.pdf,.doc,.docx"
                   onChange={handleFileSelect}
                   className="hidden"

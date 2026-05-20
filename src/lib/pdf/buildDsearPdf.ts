@@ -1479,7 +1479,7 @@ async function drawAttachmentsIndex(
     ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
     yPosition = PAGE_TOP_Y;
 
-    page.drawText('DOCUMENT-LEVEL PHOTO EVIDENCE', {
+    page.drawText('Document-Level Photo Evidence', {
       x: MARGIN,
       y: yPosition,
       size: 14,
@@ -1809,7 +1809,7 @@ function drawExplosionCriticalitySummary(
     color: criticalityColor,
   });
 
-  page.drawText(`OVERALL CRITICALITY: ${explosionSummary.overall.toUpperCase()}`, {
+  page.drawText(`Overall Criticality: ${explosionSummary.overall.charAt(0).toUpperCase() + explosionSummary.overall.slice(1)}`, {
     x: MARGIN + 10,
     y: yPosition + 5,
     size: 14,

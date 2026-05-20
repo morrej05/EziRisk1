@@ -828,6 +828,7 @@ export default function AddActionModal({
               ref={fileInputRef}
               type="file"
               multiple
+              capture="environment"
               accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
               onChange={handleAttachmentUpload}
               className="hidden"
@@ -923,7 +924,7 @@ export default function AddActionModal({
                 setUserEditedActionText(true);
               }}
               placeholder="Describe the recommended action to address the identified deficiency or risk..."
-              rows={4}
+              rows={6}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
               required
             />
@@ -939,7 +940,7 @@ export default function AddActionModal({
                   recommendationDetail: { ...formData.recommendationDetail, observation: e.target.value },
                 })}
                 placeholder="What was found or observed?"
-                rows={2}
+                rows={3}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
               />
             </div>
@@ -952,7 +953,7 @@ export default function AddActionModal({
                   recommendationDetail: { ...formData.recommendationDetail, consequence: e.target.value },
                 })}
                 placeholder="Why does this matter from a fire safety perspective?"
-                rows={2}
+                rows={3}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
               />
             </div>
@@ -1006,7 +1007,7 @@ export default function AddActionModal({
                         recommendationDetail: { ...formData.recommendationDetail, [key]: e.target.value },
                       })}
                       placeholder={placeholder}
-                      rows={key === 'rationale' || key === 'consequence' ? 3 : 2}
+                      rows={key === 'rationale' || key === 'consequence' ? 4 : 3}
                       className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
                     />
                   </div>
