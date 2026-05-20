@@ -404,7 +404,7 @@ export default function FRA1FireHazardsForm({
     );
 
     ids.forEach(id => {
-      const el = document.getElementById(id);
+      const el = window.document.getElementById(id);
       if (el) observer.observe(el);
     });
 
@@ -413,7 +413,7 @@ export default function FRA1FireHazardsForm({
   }, []);
 
   const scrollToSection = (id: string) => {
-    const el = document.getElementById(id);
+    const el = window.document.getElementById(id);
     if (!el) return;
     setActiveSection(id);
     const NAV_HEIGHT = 48;
