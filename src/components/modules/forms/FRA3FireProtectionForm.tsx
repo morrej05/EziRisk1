@@ -2,13 +2,11 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, Shield, CheckCircle, Plus } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
-import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
 import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import { getUnifiedOutcomeLabel } from '../../../lib/modules/moduleCatalog';
 
 interface Document {
@@ -157,7 +155,6 @@ export default function FRA3FireProtectionForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
-  const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const key = moduleInstance.module_key;
   const showActive = key === 'FRA_3_ACTIVE_SYSTEMS' || key === 'FRA_3_PROTECTION_ASIS';
@@ -244,6 +241,9 @@ export default function FRA3FireProtectionForm({
 
   const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
+  const [scoringData, setScoringData] = useState<{ extent?: string; gapType?: string }>(
+    (moduleInstance.data.scoring as { extent?: string; gapType?: string }) || {}
+  );
 
   const updatePassiveAssessment = (areaKey: string, patch: Partial<PassiveProtectionAssessmentDetail>) => {
     setFormData((current) => ({
@@ -370,7 +370,7 @@ export default function FRA3FireProtectionForm({
     try {
       const completedAt = outcome ? new Date().toISOString() : null;
       const payload = sanitizeModuleInstancePayload({
-        data: buildSaveData(moduleInstance.data, formData),
+        data: { ...buildSaveData(moduleInstance.data, formData), scoring: scoringData },
         outcome,
         assessor_notes: assessorNotes,
         completed_at: completedAt,
@@ -1655,6 +1655,8 @@ export default function FRA3FireProtectionForm({
         onSave={handleSave}
         isSaving={isSaving}
         moduleKey={moduleInstance.module_key}
+        scoringData={scoringData}
+        onScoringChange={setScoringData}
       />
 
       {(() => {
@@ -1678,17 +1680,6 @@ export default function FRA3FireProtectionForm({
         ) : null;
       })()}
 
-      {document?.id && moduleInstance?.id && (
-
-
-        <ModuleActions
-        key={actionsRefreshKey}
-        documentId={document.id}
-        moduleInstanceId={moduleInstance.id}
-      />
-
-
-      )}
 
       {showActionModal && (
         <AddActionModal

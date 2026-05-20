@@ -9,7 +9,6 @@ import AddActionModal from '../../actions/AddActionModal';
 import ModuleAreaRecommendationControls from '../ModuleAreaRecommendationControls';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
-import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import {
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
@@ -313,7 +312,6 @@ export default function FRA1FireHazardsForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
-  const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
   const moduleData = moduleInstance.data || {};
   const getString = (key: string, fallback = ''): string =>
     typeof moduleData[key] === 'string' ? String(moduleData[key]) : fallback;
@@ -801,6 +799,8 @@ export default function FRA1FireHazardsForm({
             { id: 'fixed-wiring-eicr-section', label: 'EICR' },
             { id: 'fra1-lightning', label: 'Lightning' },
             { id: 'fra1-duct', label: 'Duct & extract' },
+            { id: 'fra1-oxygen', label: 'Oxygen' },
+            { id: 'fra1-arson', label: 'Arson' },
             { id: 'fra1-dsear', label: 'DSEAR' },
           ].map(({ id, label }) => (
             <button
@@ -925,7 +925,7 @@ export default function FRA1FireHazardsForm({
 
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-oxygen" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Oxygen Enrichment
           </h3>
@@ -1773,18 +1773,6 @@ export default function FRA1FireHazardsForm({
         onScoringChange={setScoringData}
       />
 
-      {document?.id && moduleInstance?.id && (
-
-
-        <ModuleActions
-        key={actionsRefreshKey}
-        documentId={document.id}
-        moduleInstanceId={moduleInstance.id}
-        summaryOnly
-      />
-
-
-      )}
 
       {showActionModal && (
         <AddActionModal
