@@ -619,16 +619,16 @@ export default function FRA1FireHazardsForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">Controls adequacy</label>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Risk significance</label>
               <select
                 value={assessment.risk_significance || ''}
                 onChange={(e) => updateSourceAssessment(source.key, { risk_significance: e.target.value as IgnitionAssessment['risk_significance'] })}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               >
                 <option value="">Not stated</option>
-                <option value="low">Adequate / low significance</option>
-                <option value="medium">Partially adequate / medium significance</option>
-                <option value="high">Inadequate / high significance</option>
+                <option value="low">Low — risk well controlled</option>
+                <option value="medium">Medium — controls partially adequate</option>
+                <option value="high">High — significant risk or controls inadequate</option>
                 <option value="unknown">Unknown</option>
               </select>
             </div>
