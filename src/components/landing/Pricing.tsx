@@ -10,6 +10,7 @@ const plans = [
     price: 'Free',
     details: ['14-day trial', '1 user', 'Up to 5 reports'],
     cta: 'Start free trial',
+    recommended: false,
   },
   {
     title: 'Standard',
@@ -17,6 +18,7 @@ const plans = [
     annualPrice: `or £${getPricing(region, 'standard', 'annual')} / year`,
     details: ['For individual consultants', 'Up to 2 users', 'Up to 10 reports'],
     cta: 'Upgrade to Standard',
+    recommended: false,
   },
   {
     title: 'Professional',
@@ -24,6 +26,7 @@ const plans = [
     annualPrice: `or £${getPricing(region, 'professional', 'annual')} / year`,
     details: ['For teams and consultancies', 'Up to 5 users', 'Up to 30 reports'],
     cta: 'Upgrade to Professional',
+    recommended: true,
   },
 ];
 
@@ -38,9 +41,21 @@ export default function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
           {plans.map((plan) => (
-            <div key={plan.title} className="p-6 bg-white rounded-xl border border-neutral-200">
+            <div
+              key={plan.title}
+              className={`relative p-6 bg-white rounded-xl border transition-shadow ${
+                plan.recommended
+                  ? 'border-primary-400 shadow-md ring-1 ring-primary-300'
+                  : 'border-neutral-200'
+              }`}
+            >
+              {plan.recommended && (
+                <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full border border-primary-200 bg-primary-50 px-3 py-0.5 text-xs font-semibold text-primary-700">
+                  Recommended
+                </span>
+              )}
               <h3 className="text-xl font-semibold text-neutral-900">{plan.title}</h3>
               <p className="text-3xl font-bold text-neutral-900 mt-3">{plan.price}</p>
               {plan.annualPrice && <p className="mt-1 text-sm text-neutral-500">{plan.annualPrice}</p>}

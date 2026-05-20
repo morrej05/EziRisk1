@@ -626,23 +626,26 @@ export default function DocumentWorkspace() {
   useEffect(() => {
     if (!selectedModuleId) return;
     moduleScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    setShowScrollToTop(false);
   }, [selectedModuleId]);
 
   useEffect(() => {
     const onInput = () => setSaveState('unsaved');
-    const onSubmit = () => setSaveState('saving');
+    const onSaving = () => setSaveState('saving');
     const onError = () => setSaveState('error');
     const root = moduleScrollRef.current;
     if (!root) return;
     root.addEventListener('input', onInput, true);
     root.addEventListener('change', onInput, true);
-    root.addEventListener('submit', onSubmit, true);
+    root.addEventListener('submit', onSaving, true);
     root.addEventListener('error', onError, true);
+    window.addEventListener('module:save-start', onSaving);
     return () => {
       root.removeEventListener('input', onInput, true);
       root.removeEventListener('change', onInput, true);
-      root.removeEventListener('submit', onSubmit, true);
+      root.removeEventListener('submit', onSaving, true);
       root.removeEventListener('error', onError, true);
+      window.removeEventListener('module:save-start', onSaving);
     };
   }, [selectedModuleId]);
 
@@ -917,7 +920,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                                     action.status
                                   )}`}
                                 >
-                                  {action.status}
+                                  {action.status?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                                 </span>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-neutral-900 line-clamp-2">{action.recommended_action}</p>

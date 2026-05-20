@@ -1,5 +1,6 @@
 import Navbar from '../components/landing/Navbar';
 import Hero from '../components/landing/Hero';
+import TrustStrip from '../components/landing/TrustStrip';
 import SupportedReports from '../components/landing/SupportedReports';
 import WhatItDoes from '../components/landing/WhatItDoes';
 import HowItWorks from '../components/landing/HowItWorks';
@@ -15,6 +16,7 @@ export default function LandingPage() {
     <div className="min-h-screen">
       <Navbar />
       <Hero />
+      <TrustStrip />
       <HowItWorks />
       <SupportedReports />
       <WhatItDoes />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Flame, CheckCircle, Plus, Zap, ChevronDown, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
@@ -9,7 +9,6 @@ import AddActionModal from '../../actions/AddActionModal';
 import ModuleAreaRecommendationControls from '../ModuleAreaRecommendationControls';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
-import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import {
   getActiveIgnitionSourceCards,
   getEffectiveIgnitionPresence,
@@ -313,7 +312,6 @@ export default function FRA1FireHazardsForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
-  const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
   const moduleData = moduleInstance.data || {};
   const getString = (key: string, fallback = ''): string =>
     typeof moduleData[key] === 'string' ? String(moduleData[key]) : fallback;
@@ -371,7 +369,63 @@ export default function FRA1FireHazardsForm({
   const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
   const [scoringData, setScoringData] = useState(moduleData.scoring || {});
+  const [activeSection, setActiveSection] = useState('fra1-ignition');
 
+  const NAV_SECTIONS = [
+    { id: 'fra1-ignition', label: 'Ignition' },
+    { id: 'fra1-fuel', label: 'Fuel' },
+    { id: 'fra1-oxygen', label: 'Oxygen' },
+    { id: 'fra1-activities', label: 'Activities' },
+    { id: 'fra1-arson', label: 'Arson' },
+    { id: 'fra1-source-cards', label: 'Source cards' },
+    { id: 'fixed-wiring-eicr-section', label: 'EICR' },
+    { id: 'fra1-lightning', label: 'Lightning' },
+    { id: 'fra1-duct', label: 'Duct & extract' },
+    { id: 'fra1-dsear', label: 'DSEAR' },
+  ];
+
+  useEffect(() => {
+    const visible = new Set<string>();
+    const ids = NAV_SECTIONS.map(s => s.id);
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            visible.add(entry.target.id);
+          } else {
+            visible.delete(entry.target.id);
+          }
+        });
+        const first = ids.find(id => visible.has(id));
+        if (first) setActiveSection(first);
+      },
+      { rootMargin: '-44px 0px -50% 0px', threshold: 0 },
+    );
+
+    ids.forEach(id => {
+      const el = window.document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const scrollToSection = (id: string) => {
+    const el = window.document.getElementById(id);
+    if (!el) return;
+    setActiveSection(id);
+    const NAV_HEIGHT = 48;
+    const container = el.closest('.overflow-y-auto') as HTMLElement | null;
+    if (container) {
+      const elTop = el.getBoundingClientRect().top;
+      const containerTop = container.getBoundingClientRect().top;
+      container.scrollBy({ top: elTop - containerTop - NAV_HEIGHT, behavior: 'smooth' });
+    } else {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   const toggleMultiSelect = (field: 'ignition_sources' | 'fuel_sources' | 'high_risk_activities', value: string) => {
     const current = formData[field] as string[];
@@ -510,6 +564,7 @@ export default function FRA1FireHazardsForm({
   };
 
   const handleSave = async () => {
+    window.dispatchEvent(new CustomEvent('module:save-start'));
     setIsSaving(true);
 
     try {
@@ -620,16 +675,16 @@ export default function FRA1FireHazardsForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">Controls adequacy</label>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Risk significance</label>
               <select
                 value={assessment.risk_significance || ''}
                 onChange={(e) => updateSourceAssessment(source.key, { risk_significance: e.target.value as IgnitionAssessment['risk_significance'] })}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               >
                 <option value="">Not stated</option>
-                <option value="low">Adequate / low significance</option>
-                <option value="medium">Partially adequate / medium significance</option>
-                <option value="high">Inadequate / high significance</option>
+                <option value="low">Low — risk well controlled</option>
+                <option value="medium">Medium — controls partially adequate</option>
+                <option value="high">High — significant risk or controls inadequate</option>
                 <option value="unknown">Unknown</option>
               </select>
             </div>
@@ -706,7 +761,7 @@ export default function FRA1FireHazardsForm({
                 className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-100"
               >
                 <Plus className="h-4 w-4" />
-                Add evidence
+                Add recommendation
               </button>
             </div>
             {legacyEvidenceNotes && (
@@ -789,24 +844,15 @@ export default function FRA1FireHazardsForm({
         />
       </div>
 
-      <nav aria-label="Module sections" className="sticky top-0 z-10 -mx-4 sm:-mx-6 mb-4 border-b border-neutral-100 bg-neutral-50/95 backdrop-blur-sm px-4 py-2">
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="mr-1 shrink-0 text-xs font-medium text-neutral-400">Jump:</span>
-          {[
-            { id: 'fra1-ignition', label: 'Ignition' },
-            { id: 'fra1-fuel', label: 'Fuel' },
-            { id: 'fra1-activities', label: 'Activities' },
-            { id: 'fra1-source-cards', label: 'Source cards' },
-            { id: 'fixed-wiring-eicr-section', label: 'EICR' },
-            { id: 'fra1-lightning', label: 'Lightning' },
-            { id: 'fra1-duct', label: 'Duct & extract' },
-            { id: 'fra1-dsear', label: 'DSEAR' },
-          ].map(({ id, label }) => (
+      <nav aria-label="Module sections" className="sticky top-0 z-10 -mx-4 sm:-mx-6 mb-4 border-b border-neutral-100 bg-neutral-50/95 px-4 py-1.5">
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
+          <span className="mr-1 shrink-0 text-xs text-neutral-400">Jump:</span>
+          {NAV_SECTIONS.map(({ id, label }) => (
             <button
               key={id}
               type="button"
-              onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900"
+              onClick={() => scrollToSection(id)}
+              className={`rounded px-1.5 py-0.5 text-xs transition-colors ${activeSection === id ? 'font-medium text-neutral-900 underline underline-offset-2' : 'text-neutral-500 hover:text-neutral-800'}`}
             >
               {label}
             </button>
@@ -815,7 +861,7 @@ export default function FRA1FireHazardsForm({
       </nav>
 
       <div className="space-y-6">
-        <div id="fra1-ignition" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-ignition" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Ignition Sources
           </h3>
@@ -868,7 +914,7 @@ export default function FRA1FireHazardsForm({
           </div>
         )}
 
-        <div id="fra1-fuel" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-fuel" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Fuel Sources
           </h3>
@@ -924,7 +970,7 @@ export default function FRA1FireHazardsForm({
 
         </div>
 
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
+        <div id="fra1-oxygen" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Oxygen Enrichment
           </h3>
@@ -969,7 +1015,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div id="fra1-activities" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-activities" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             High-Risk Activities
           </h3>
@@ -1007,7 +1053,7 @@ export default function FRA1FireHazardsForm({
 
         </div>
 
-        <div id="fra1-arson" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-arson" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Arson Risk & Lone Working
           </h3>
@@ -1039,67 +1085,6 @@ export default function FRA1FireHazardsForm({
 
         <div className="bg-white rounded-lg border border-neutral-200 p-6">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
-            DSEAR / Hazardous Substances Screening
-          </h3>
-          <p className="text-sm text-neutral-600 mb-4">
-            Triage flammable liquids, gases, vapours and combustible dusts before completing the detailed DSEAR section below.
-          </p>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Flammable substances or combustible dusts present?
-              </label>
-              <select
-                value={formData.dsear_screen.flammables_present || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    dsear_screen: {
-                      ...formData.dsear_screen,
-                      flammables_present: e.target.value || null,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              >
-                <option value="">Not stated</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-                <option value="unknown">Unknown</option>
-                <option value="not_applicable_not_installed">Not applicable — system not installed</option>
-                <option value="not_applicable_landlord_controlled">Not applicable — landlord-controlled</option>
-                <option value="not_applicable_outside_tenant_control">Not applicable — outside tenant control</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Explosive atmospheres possible?
-              </label>
-              <select
-                value={formData.dsear_screen.explosive_atmospheres_possible || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    dsear_screen: {
-                      ...formData.dsear_screen,
-                      explosive_atmospheres_possible: e.target.value || null,
-                    },
-                  })
-                }
-                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              >
-                <option value="">Not stated</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-                <option value="unknown">Unknown</option>
-                <option value="not_applicable_not_required">Not applicable — not required for this premises</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg border border-neutral-200 p-6">
-          <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Additional Hazard Notes
           </h3>
           <textarea
@@ -1113,7 +1098,7 @@ export default function FRA1FireHazardsForm({
           />
         </div>
 
-        <div id="fra1-source-cards" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-source-cards" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-2">
             Contextual Ignition Source Cards
           </h3>
@@ -1139,7 +1124,7 @@ export default function FRA1FireHazardsForm({
 
 
 
-        <div id="fixed-wiring-eicr-section" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fixed-wiring-eicr-section" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-5 h-5 text-amber-600" />
             <h3 className="text-lg font-bold text-neutral-900">
@@ -1392,7 +1377,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div id="fra1-lightning" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-lightning" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Lightning Protection
           </h3>
@@ -1539,7 +1524,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div id="fra1-duct" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-duct" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             Duct & Extract Cleaning
           </h3>
@@ -1672,7 +1657,7 @@ export default function FRA1FireHazardsForm({
           </div>
         </div>
 
-        <div id="fra1-dsear" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+        <div id="fra1-dsear" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-12">
           <h3 className="text-lg font-bold text-neutral-900 mb-4">
             DSEAR Screening
           </h3>
@@ -1702,6 +1687,9 @@ export default function FRA1FireHazardsForm({
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
+                <option value="not_applicable_not_installed">Not applicable — system not installed</option>
+                <option value="not_applicable_landlord_controlled">Not applicable — landlord-controlled</option>
+                <option value="not_applicable_outside_tenant_control">Not applicable — outside tenant control</option>
               </select>
             </div>
 
@@ -1727,6 +1715,7 @@ export default function FRA1FireHazardsForm({
                 <option value="no">No</option>
                 <option value="unknown">Unknown</option>
                 <option value="not_applicable_no_substances">Not applicable — no relevant dangerous substances or combustible dusts identified</option>
+                <option value="not_applicable_not_required">Not applicable — not required for this premises</option>
               </select>
             </div>
 
@@ -1829,18 +1818,6 @@ export default function FRA1FireHazardsForm({
         onScoringChange={setScoringData}
       />
 
-      {document?.id && moduleInstance?.id && (
-
-
-        <ModuleActions
-        key={actionsRefreshKey}
-        documentId={document.id}
-        moduleInstanceId={moduleInstance.id}
-        summaryOnly
-      />
-
-
-      )}
 
       {showActionModal && (
         <AddActionModal
