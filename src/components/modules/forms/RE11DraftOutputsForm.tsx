@@ -44,6 +44,7 @@ interface Recommendation {
   owner: string;
   status: string;
   source_module_key: string;
+  photos?: Array<{ path: string }>;
 }
 
 export default function RE11DraftOutputsForm({
@@ -92,7 +93,7 @@ export default function RE11DraftOutputsForm({
     try {
       const { data, error } = await supabase
         .from('re_recommendations')
-        .select('id, rec_number, title, observation_text, action_required_text, priority, target_date, owner, status, source_module_key')
+        .select('id, rec_number, title, observation_text, action_required_text, priority, target_date, owner, status, source_module_key, photos')
         .eq('document_id', moduleInstance.document_id)
         .eq('is_suppressed', false)
         .order('rec_number', { ascending: true });
@@ -796,16 +797,34 @@ export default function RE11DraftOutputsForm({
                                   {rec.action_required_text && (
                                     <div className="mt-1 text-slate-700">{rec.action_required_text}</div>
                                   )}
-                                  <div className="mt-1 text-xs text-slate-500">
-                                    Target:{' '}
-                                    {rec.target_date
-                                      ? new Date(rec.target_date).toLocaleDateString('en-GB', {
-                                          day: 'numeric',
-                                          month: 'long',
-                                          year: 'numeric',
-                                        })
-                                      : 'Not set'}{' '}
-                                    | Owner: {rec.owner || 'Unassigned'} | Status: {rec.status}
+                                  <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                                    <span>
+                                      Target:{' '}
+                                      {rec.target_date
+                                        ? new Date(rec.target_date).toLocaleDateString('en-GB', {
+                                            day: 'numeric',
+                                            month: 'long',
+                                            year: 'numeric',
+                                          })
+                                        : 'Not set'}
+                                    </span>
+                                    <span>Owner: {rec.owner || 'Unassigned'}</span>
+                                    <span
+                                      className={`inline-flex items-center px-1.5 py-0.5 rounded font-medium ${
+                                        rec.status === 'Completed'
+                                          ? 'bg-green-100 text-green-700'
+                                          : rec.status === 'In Progress'
+                                          ? 'bg-amber-100 text-amber-700'
+                                          : 'bg-red-100 text-red-700'
+                                      }`}
+                                    >
+                                      {rec.status}
+                                    </span>
+                                    {(rec.photos?.length ?? 0) > 0 && (
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
+                                        📷 {rec.photos!.length} photo{rec.photos!.length !== 1 ? 's' : ''}
+                                      </span>
+                                    )}
                                   </div>
                                 </li>
                               ))}

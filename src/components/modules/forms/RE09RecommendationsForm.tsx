@@ -140,11 +140,13 @@ export default function RE09RecommendationsForm({
     isOpen: boolean;
     title: string;
     message: string;
+    confirmText?: string;
     onConfirm: () => void;
   }>({
     isOpen: false,
     title: '',
     message: '',
+    confirmText: 'Delete',
     onConfirm: () => {},
   });
 
@@ -347,16 +349,20 @@ export default function RE09RecommendationsForm({
         }
       } else {
         setFeedback({
+          isOpen: true,
           type: 'success',
-          message: 'Recommendation saved to library successfully!',
+          title: 'Saved to library',
+          message: 'Recommendation saved to library successfully.',
           autoClose: true,
         });
       }
     } catch (error: any) {
       console.error('Error saving to library:', error);
       setFeedback({
+        isOpen: true,
         type: 'error',
-        message: error.message || 'Failed to save recommendation to library',
+        title: 'Save to library failed',
+        message: error.message || 'Failed to save recommendation to library. Please try again.',
         autoClose: false,
       });
     } finally {
@@ -375,6 +381,7 @@ export default function RE09RecommendationsForm({
       message: isAutoRec
         ? 'This will suppress the auto-generated recommendation so it no longer appears in reports. It can be restored by re-scoring the relevant area.'
         : 'Are you sure you want to permanently delete this recommendation? This action cannot be undone.',
+      confirmText: isAutoRec ? 'Suppress' : 'Delete',
       onConfirm: async () => {
         setConfirmDialog({ ...confirmDialog, isOpen: false });
 
@@ -683,6 +690,7 @@ export default function RE09RecommendationsForm({
   const manualCount = recommendations.filter((r) => r.source_type === 'manual').length;
   const overdueCount = recommendations.filter((r) => r.status !== 'Completed' && r.target_date && new Date(r.target_date) < new Date()).length;
   const highPriorityOpenCount = recommendations.filter((r) => r.status !== 'Completed' && r.priority === 'High').length;
+  const totalPhotoCount = recommendations.reduce((sum, r) => sum + (r.photos?.length ?? 0), 0);
   const byStatus = recommendations.reduce<Record<string, number>>((acc, rec) => {
     acc[rec.status] = (acc[rec.status] || 0) + 1;
     return acc;
@@ -722,13 +730,14 @@ export default function RE09RecommendationsForm({
             <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="font-semibold text-blue-900 mb-1">Document-wide recommendation summary</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 text-sm text-blue-800 mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 text-sm text-blue-800 mb-3">
                 <div><span className="font-semibold">{recommendations.length}</span> Total</div>
                 <div><span className="font-semibold">{activeCount}</span> Open</div>
                 <div><span className="font-semibold">{overdueCount}</span> Overdue</div>
                 <div><span className="font-semibold">{highPriorityOpenCount}</span> High Priority</div>
                 <div><span className="font-semibold">{autoCount}</span> Auto</div>
                 <div><span className="font-semibold">{manualCount}</span> Manual</div>
+                <div><span className="font-semibold">{totalPhotoCount}</span> Photos</div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-900">
                 <div>
@@ -1349,7 +1358,7 @@ export default function RE09RecommendationsForm({
         onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
         title={confirmDialog.title}
         message={confirmDialog.message}
-        confirmText="Delete"
+        confirmText={confirmDialog.confirmText || 'Delete'}
         cancelText="Cancel"
         type="danger"
       />
