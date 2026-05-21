@@ -661,641 +661,427 @@ async function saveMezz() {
     );
   };
 
-  if (loading) return <div className="p-4">Loading…</div>;
+  if (loading) return <div className="p-6 text-slate-500 text-sm">Loading buildings…</div>;
 
   return (
-    <div className="p-4">
-      {error && <div className="mb-3 p-2 border rounded bg-red-50 text-red-800 text-sm">{error}</div>}
+    <div className="p-4 space-y-4">
+      {error && (
+        <div className="p-3 border border-red-200 rounded-lg bg-red-50 text-red-800 text-sm">{error}</div>
+      )}
 
-      <div className="flex items-center justify-between mb-3">
-        <div className="font-semibold">Buildings</div>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-slate-900">Buildings ({rows.length})</h3>
         {mode !== 'fire_protection' && (
-          <button className="px-3 py-2 border rounded" onClick={addBuilding}>
+          <button
+            className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm font-medium transition-colors"
+            onClick={addBuilding}
+          >
             + Add Building
           </button>
         )}
       </div>
 
-      {/* Mobile/Tablet Card View — shown below lg breakpoint */}
-      <div className="lg:hidden space-y-3">
-        {rows.map((b, idx) => {
+      {/* Empty state */}
+      {rows.length === 0 && (
+        <div className="text-center py-10 text-slate-500 text-sm border-2 border-dashed border-slate-200 rounded-xl">
+          No buildings added yet. Click &ldquo;Add Building&rdquo; to start.
+        </div>
+      )}
+
+      {/* Building cards */}
+      <div className="space-y-4">
+      {rows.map((b, idx) => {
           const extra = b.id ? buildingExtras[b.id] : null;
           const computed = b.id ? computeConstruction(b, extra) : null;
+          const isSaving = savingId === (b.id ?? `new-${idx}`);
+          const roofTotalPct = b.id ? sumPercentObject(buildingExtras[b.id]?.roof_construction_percent) : null;
+          const wallTotalPct = b.id ? sumPercentObject(buildingExtras[b.id]?.wall_construction_percent) : null;
+          const mezzTotalPct = b.id ? sumPercentObject(buildingExtras[b.id]?.mezzanine_construction_percent) : null;
+
           return (
-            <div key={b.id ?? `card-${idx}`} className="border rounded-lg bg-white overflow-hidden">
-              <div className="p-3 bg-slate-50 border-b flex items-center gap-2">
-                <input
-                  className="flex-1 border rounded px-2 py-1.5 text-sm font-medium"
-                  value={b.ref ?? ''}
-                  onChange={e => updateRow(idx, { ref: e.target.value })}
-                  placeholder="Building ref / name (e.g. B1)"
-                />
+            <div key={b.id ?? `card-${idx}`} className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+
+              {/* Card header — identity + actions */}
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
+                <div className="flex-1">
+                  <input
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold placeholder:font-normal focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    value={b.ref ?? ''}
+                    onChange={e => updateRow(idx, { ref: e.target.value })}
+                    placeholder="Building name / ref (e.g. Warehouse A, B1)"
+                  />
+                </div>
                 {mode !== 'fire_protection' && (
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex gap-2 shrink-0">
                     <button
-                      className="p-2 border rounded bg-white"
+                      className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[40px]"
                       onClick={() => saveRow(idx)}
-                      disabled={savingId === (b.id ?? `new-${idx}`)}
-                      title="Save"
+                      disabled={isSaving}
                     >
                       <Save className="w-4 h-4" />
+                      {isSaving ? 'Saving…' : 'Save'}
                     </button>
                     <button
-                      className="p-2 border rounded bg-white"
+                      className="flex items-center gap-1.5 px-3 py-2 border border-slate-300 bg-white text-slate-700 rounded-lg text-sm hover:bg-red-50 hover:border-red-300 hover:text-red-700 disabled:opacity-50 transition-colors min-h-[40px]"
                       onClick={() => removeRow(idx)}
-                      disabled={savingId === (b.id ?? `new-${idx}`)}
-                      title="Delete"
+                      disabled={isSaving}
+                      title="Delete building"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 )}
               </div>
-              <div className="p-3 space-y-3">
+
+              {/* Card body */}
+              <div className="p-4 space-y-6">
+
+                {/* Geometry */}
                 {mode !== 'fire_protection' && (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Geometry</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Roof area (m²)</label>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="number"
-                            className="w-full border rounded px-2 py-1.5 text-sm"
-                            value={b.roof_area_m2 ?? ''}
-                            placeholder="m²"
-                            onChange={e => updateRow(idx, { roof_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
-                          />
-                          {b.id && (
-                            <>
-                              <button className="p-1.5 border rounded bg-white shrink-0" onClick={() => openRoof(b.id!)} title="Edit roof composition">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <CompletionBadge status={getCompletionStatus(b.id, 'roof_construction_percent')} />
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Mezz / upper floors (m²)</label>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="number"
-                            className="w-full border rounded px-2 py-1.5 text-sm"
-                            value={b.mezzanine_area_m2 ?? ''}
-                            placeholder="m²"
-                            onChange={e => updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
-                          />
-                          {b.id && (
-                            <>
-                              <button className="p-1.5 border rounded bg-white shrink-0" onClick={() => openMezz(b.id!)} title="Edit mezzanine composition">
-                                <Pencil className="w-3.5 h-3.5" />
-                              </button>
-                              <CompletionBadge status={getCompletionStatus(b.id, 'mezzanine_construction_percent')} />
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-slate-600">Wall composition</span>
-                      {b.id ? (
-                        <div className="flex items-center gap-2">
-                          <button className="flex items-center gap-1 px-2 py-1.5 border rounded text-sm bg-white" onClick={() => openWalls(b.id!)}>
-                            <Pencil className="w-3.5 h-3.5" /> Edit %
-                          </button>
-                          <CompletionBadge status={getCompletionStatus(b.id, 'wall_construction_percent')} />
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-500">Save first</span>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Storeys</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Roof area (m²)</label>
                         <input
                           type="number"
-                          className="w-full border rounded px-2 py-1.5 text-sm"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          value={b.roof_area_m2 ?? ''}
+                          placeholder="m²"
+                          onChange={e => updateRow(idx, { roof_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Mezz area (m²)</label>
+                        <input
+                          type="number"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          value={b.mezzanine_area_m2 ?? ''}
+                          placeholder="m²"
+                          onChange={e => updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Floors</label>
+                        <input
+                          type="number"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.storeys ?? ''}
+                          placeholder="e.g. 1"
                           onChange={e => updateRow(idx, { storeys: e.target.value === '' ? null : Number(e.target.value) })}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Basements</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Basements</label>
                         <input
                           type="number"
-                          className="w-full border rounded px-2 py-1.5 text-sm"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.basements ?? ''}
                           placeholder="0"
-                          max={0}
                           onChange={e => updateRow(idx, { basements: e.target.value === '' ? null : Number(e.target.value) })}
                         />
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Frame type</label>
-                      <select
-                        className="w-full border rounded px-2 py-1.5 text-sm"
-                        value={b.frame_type}
-                        onChange={e => updateRow(idx, { frame_type: e.target.value })}
-                      >
-                        <option value="unknown">Unknown</option>
-                        <option value="steel">Steel</option>
-                        <option value="protected_steel">Protected steel</option>
-                        <option value="reinforced_concrete">Reinforced concrete</option>
-                        <option value="timber">Timber</option>
-                        <option value="masonry">Masonry</option>
-                        <option value="mixed">Mixed</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Compartmentation</label>
-                      <select
-                        className="w-full border rounded px-2 py-1.5 text-sm"
-                        value={b.compartmentation_minutes ?? ''}
-                        onChange={e => updateRow(idx, { compartmentation_minutes: e.target.value === '' ? null : Number(e.target.value) })}
-                      >
-                        <option value="">Unknown</option>
-                        <option value="0">None / open plan</option>
-                        <option value="60">Basic (≤60 min)</option>
-                        <option value="120">Standard (90–120 min)</option>
-                        <option value="180">Enhanced (180 min)</option>
-                        <option value="240">High (240 min / 4 hours)</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id={`card-cladding-${idx}`}
-                        checked={b.cladding_present === true && b.cladding_combustible === true}
-                        onChange={e => updateRow(idx, { cladding_present: e.target.checked, cladding_combustible: e.target.checked ? true : null })}
-                        className="w-4 h-4 rounded"
-                      />
-                      <label htmlFor={`card-cladding-${idx}`} className="text-sm text-slate-700">Combustible cladding present</label>
-                    </div>
-                  </>
-                )}
-                {mode !== 'construction' && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Sprinklers</label>
-                      <select
-                        className="w-full border rounded px-2 py-1.5 text-sm"
-                        value={b.sprinklers_present ? 'yes' : 'no'}
-                        onChange={e => updateRow(idx, { sprinklers_present: e.target.value === 'yes' })}
-                      >
-                        <option value="no">No</option>
-                        <option value="yes">Yes</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Detection</label>
-                      <select
-                        className="w-full border rounded px-2 py-1.5 text-sm"
-                        value={b.detection_present ? 'yes' : 'no'}
-                        onChange={e => updateRow(idx, { detection_present: e.target.value === 'yes' })}
-                      >
-                        <option value="no">No</option>
-                        <option value="yes">Yes</option>
-                      </select>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Height (m)</label>
+                        <input
+                          type="number"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          value={b.height_m ?? ''}
+                          placeholder="m"
+                          onChange={e => updateRow(idx, { height_m: e.target.value === '' ? null : Number(e.target.value) })}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
-                {mode !== 'fire_protection' && computed && (
-                  <div className="rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span>Score: <strong className="text-blue-700">{computed.score}</strong></span>
-                      <span>Combustible: <strong>{isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}</strong></span>
-                      <button
-                        type="button"
-                        className="ml-auto text-slate-500 hover:text-slate-800 flex items-center gap-1"
-                        onClick={() => setOpenExplanationForBuildingId((current) => (current === b.id ? null : b.id ?? null))}
-                      >
-                        <Info className="w-3.5 h-3.5" /> Explain
-                      </button>
+
+                {/* Material breakdowns */}
+                {mode !== 'fire_protection' && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Material Breakdowns</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Roof */}
+                      <div className="border border-slate-200 rounded-lg p-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-slate-700">Roof</span>
+                          <CompletionBadge status={b.id ? getCompletionStatus(b.id, 'roof_construction_percent') : 'missing'} />
+                        </div>
+                        {roofTotalPct !== null && (
+                          <p className="text-xs text-slate-500">
+                            Total recorded:{' '}
+                            <span className={roofTotalPct === 100 ? 'text-green-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                              {roofTotalPct}%
+                            </span>
+                          </p>
+                        )}
+                        <button
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
+                          onClick={() => b.id && openRoof(b.id)}
+                          disabled={!b.id}
+                          title={!b.id ? 'Save building first' : 'Edit roof material breakdown'}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit roof materials
+                        </button>
+                        {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                      </div>
+
+                      {/* Walls */}
+                      <div className="border border-slate-200 rounded-lg p-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-slate-700">Walls</span>
+                          <CompletionBadge status={b.id ? getCompletionStatus(b.id, 'wall_construction_percent') : 'missing'} />
+                        </div>
+                        {wallTotalPct !== null && (
+                          <p className="text-xs text-slate-500">
+                            Total recorded:{' '}
+                            <span className={wallTotalPct === 100 ? 'text-green-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                              {wallTotalPct}%
+                            </span>
+                          </p>
+                        )}
+                        <button
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
+                          onClick={() => b.id && openWalls(b.id)}
+                          disabled={!b.id}
+                          title={!b.id ? 'Save building first' : 'Edit wall material breakdown'}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit wall materials
+                        </button>
+                        {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                      </div>
+
+                      {/* Mezzanine / Upper floors */}
+                      <div className="border border-slate-200 rounded-lg p-3 flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-slate-700">Mezzanine / Upper floors</span>
+                          <CompletionBadge status={b.id ? getCompletionStatus(b.id, 'mezzanine_construction_percent') : 'missing'} />
+                        </div>
+                        {mezzTotalPct !== null && (
+                          <p className="text-xs text-slate-500">
+                            Total recorded:{' '}
+                            <span className={mezzTotalPct === 100 ? 'text-green-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                              {mezzTotalPct}%
+                            </span>
+                          </p>
+                        )}
+                        <button
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
+                          onClick={() => b.id && openMezz(b.id)}
+                          disabled={!b.id}
+                          title={!b.id ? 'Save building first' : 'Edit mezzanine/floor material breakdown'}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit mezzanine/floor materials
+                        </button>
+                        {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                      </div>
                     </div>
-                    {openExplanationForBuildingId === b.id && (
-                      <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
-                        <p>{computed.explanation}</p>
+                  </div>
+                )}
+
+                {/* Structure */}
+                {mode !== 'fire_protection' && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Structure</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Frame type</label>
+                        <select
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                          value={b.frame_type}
+                          onChange={e => updateRow(idx, { frame_type: e.target.value })}
+                        >
+                          <option value="unknown">Unknown</option>
+                          <option value="steel">Steel</option>
+                          <option value="protected_steel">Protected steel</option>
+                          <option value="reinforced_concrete">Reinforced concrete</option>
+                          <option value="timber">Timber</option>
+                          <option value="masonry">Masonry</option>
+                          <option value="mixed">Mixed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Compartmentation</label>
+                        <select
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                          value={b.compartmentation_minutes ?? ''}
+                          onChange={e => updateRow(idx, { compartmentation_minutes: e.target.value === '' ? null : Number(e.target.value) })}
+                        >
+                          <option value="">Unknown</option>
+                          <option value="0">None / open plan</option>
+                          <option value="60">Basic (≤60 min)</option>
+                          <option value="120">Standard (90–120 min)</option>
+                          <option value="180">Enhanced (180 min)</option>
+                          <option value="240">High (240 min / 4 hours)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cladding */}
+                {mode !== 'fire_protection' && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Cladding</h4>
+                    <label className="flex items-center gap-3 cursor-pointer py-1">
+                      <input
+                        type="checkbox"
+                        className="w-5 h-5 rounded border-slate-300 accent-blue-600 cursor-pointer"
+                        checked={b.cladding_present === true && b.cladding_combustible === true}
+                        onChange={e => updateRow(idx, {
+                          cladding_present: e.target.checked,
+                          cladding_combustible: e.target.checked ? true : null,
+                        })}
+                      />
+                      <span className="text-sm text-slate-700 font-medium">Combustible cladding present</span>
+                    </label>
+                    {b.cladding_present && b.cladding_combustible && (
+                      <div className="mt-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Cladding system details</label>
+                        <input
+                          type="text"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          value={b.cladding_system ?? ''}
+                          placeholder="e.g. ACM panels, PIR sandwich panels…"
+                          onChange={e => updateRow(idx, { cladding_system: e.target.value || null })}
+                        />
                       </div>
                     )}
                   </div>
                 )}
+
+                {/* Fire protection */}
+                {mode !== 'construction' && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Fire Protection</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Sprinklers</label>
+                        <select
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                          value={b.sprinklers_present ? 'yes' : 'no'}
+                          onChange={e => updateRow(idx, { sprinklers_present: e.target.value === 'yes' })}
+                        >
+                          <option value="no">No</option>
+                          <option value="yes">Yes</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Detection</label>
+                        <select
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+                          value={b.detection_present ? 'yes' : 'no'}
+                          onChange={e => updateRow(idx, { detection_present: e.target.value === 'yes' })}
+                        >
+                          <option value="no">No</option>
+                          <option value="yes">Yes</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Calculated metrics */}
+                {mode !== 'fire_protection' && computed && (
+                  <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-6">
+                        <div>
+                          <div className="text-xs font-medium text-blue-700">RE-02 Score</div>
+                          <div className="text-2xl font-bold text-blue-900">{computed.score}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-blue-700">Combustible</div>
+                          <div className="text-2xl font-bold text-blue-900">
+                            {isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 text-sm text-blue-700 hover:text-blue-900 px-2 py-1 rounded hover:bg-blue-100 transition-colors"
+                        onClick={() => setOpenExplanationForBuildingId(curr => curr === b.id ? null : b.id ?? null)}
+                      >
+                        <Info className="w-4 h-4" />
+                        {openExplanationForBuildingId === b.id ? 'Hide' : 'Explain'}
+                      </button>
+                    </div>
+                    {openExplanationForBuildingId === b.id && (
+                      <div className="mt-3 pt-3 border-t border-blue-200 text-sm text-blue-900 space-y-2">
+                        <p>{computed.explanation}</p>
+                        <div className="text-xs text-blue-700 space-y-0.5">
+                          <div>Roof: {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} combustible</div>
+                          <div>Walls: {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} combustible</div>
+                          <div>Mezz: {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`} combustible</div>
+                          {siteWeightTotal > 0 && (() => {
+                            const area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
+                            const effective = area > 0 ? area : 1;
+                            return (
+                              <div className="mt-1">
+                                Area weight: {((effective / siteWeightTotal) * 100).toFixed(1)}% of site
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
               </div>
             </div>
           );
         })}
-        {rows.length === 0 && (
-          <p className="text-sm text-slate-500 py-4 text-center">No buildings added yet.</p>
-        )}
       </div>
 
-      {/* Desktop Table View — hidden below lg breakpoint */}
-      <div className="hidden lg:block overflow-x-auto border rounded">
-        <table className="min-w-[980px] w-full text-sm">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="text-left p-2 border-b">Ref / Name</th>
-          
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Roof (m²)</th>
-              )}
-          
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Upper floors / mezz (m²)</th>
-              )}
-          
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Walls (%)</th>
-              )}
-
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Storeys</th>
-              )}
-
-              {mode !== 'fire_protection' && (
-  <th className="text-left p-2 border-b">Basements</th>
-)}
-          
-              {mode !== 'construction' && (
-                <th className="text-left p-2 border-b">Sprinklers</th>
-              )}
-          
-              {mode !== 'construction' && (
-                <th className="text-left p-2 border-b">Detection</th>
-              )}
-          
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Comb. cladding</th>
-              )}
-          
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Frame</th>
-              )}
-
-              {mode !== 'fire_protection' && (
-                <th className="text-left p-2 border-b">Compartmentation</th>
-              )}
-
-              <th className="text-left p-2 border-b">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {rows.map((b, idx) => {
-              const extra = b.id ? buildingExtras[b.id] : null;
-              const computed = b.id ? computeConstruction(b, extra) : null;
-
-              return (
-                <>
-                  <tr key={b.id ?? `tmp-${idx}`} className="border-b">
-                    <td className="p-2">
-                      <input
-                        className="w-72 border rounded p-2"
-                        value={b.ref ?? ''}
-                        onChange={e => updateRow(idx, { ref: e.target.value })}
-                        placeholder="B1"
-                      />
-                    </td>
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        className="w-20 border rounded p-2"
-                        value={b.roof_area_m2 ?? ''}
-                        onChange={e =>
-                          updateRow(idx, { roof_area_m2: e.target.value === '' ? null : Number(e.target.value) })
-                        }
-                        placeholder="m²"
-                      />
-
-                      {b.id ? (
-                        <>
-                          <button
-                            className="p-2 border rounded"
-                            onClick={() => openRoof(b.id!)}
-                            aria-label="Edit roof composition"
-                            title="Edit roof composition (%)"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <CompletionBadge status={getCompletionStatus(b.id, 'roof_construction_percent')} />
-                        </>
-                      ) : (
-                        <span className="text-xs opacity-70">Save first</span>
-                      )}
-                    </div>
-                  </td>
-                )}
-                
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        className="w-20 border rounded p-2"
-                        value={b.mezzanine_area_m2 ?? ''}
-                        onChange={e =>
-                          updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Number(e.target.value) })
-                        }
-                        placeholder="m²"
-                      />
-
-                      {b.id ? (
-                        <>
-                          <button
-                            className="p-2 border rounded"
-                            onClick={() => openMezz(b.id!)}
-                            aria-label="Edit mezzanine/floors composition"
-                            title="Edit mezzanine/floors composition (%)"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-
-                          <CompletionBadge status={getCompletionStatus(b.id, 'mezzanine_construction_percent')} />
-                        </>
-                      ) : (
-                        <span className="text-xs opacity-70">Save first</span>
-                      )}
-                    </div>
-                  </td>
-                )}
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <div className="flex items-center gap-2">
-                      {b.id ? (
-                        <>
-                          <button
-                            className="p-2 border rounded"
-                            onClick={() => openWalls(b.id!)}
-                            aria-label="Edit walls composition"
-                            title="Edit walls composition (%)"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <CompletionBadge status={getCompletionStatus(b.id, 'wall_construction_percent')} />
-                        </>
-                      ) : (
-                        <span className="text-xs opacity-70">Save first</span>
-                      )}
-                    </div>
-                  </td>
-                )}
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      className="w-24 border rounded p-2"
-                      value={b.storeys ?? ''}
-                      onChange={e => updateRow(idx, { storeys: e.target.value === '' ? null : Number(e.target.value) })}
-                    />
-                  </td>
-                )}
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      className="w-24 border rounded p-2"
-                      value={b.basements ?? ''}
-                      onChange={e => updateRow(idx, { basements: e.target.value === '' ? null : Number(e.target.value) })}
-                      placeholder="0"
-                      max={0}
-                      title="Basements (0 or negative)"
-                    />
-                  </td>
-                )}
-
-                {mode !== 'construction' && (
-                  <td className="p-2">
-                    <select
-                      className="border rounded p-2"
-                      value={b.sprinklers_present ? 'yes' : 'no'}
-                      onChange={e => updateRow(idx, { sprinklers_present: e.target.value === 'yes' })}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </td>
-                )}
-                
-                {mode !== 'construction' && (
-                  <td className="p-2">
-                    <select
-                      className="border rounded p-2"
-                      value={b.detection_present ? 'yes' : 'no'}
-                      onChange={e => updateRow(idx, { detection_present: e.target.value === 'yes' })}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </td>
-                )}
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <input
-                      type="checkbox"
-                      checked={b.cladding_present === true && b.cladding_combustible === true}
-                      onChange={e =>
-                        updateRow(idx, {
-                          cladding_present: e.target.checked,
-                          cladding_combustible: e.target.checked ? true : null,
-                        })
-                      }
-                    />
-                  </td>
-                )}
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <select
-                      className="border rounded p-2"
-                      value={b.frame_type}
-                      onChange={e => updateRow(idx, { frame_type: e.target.value })}
-                    >
-                      <option value="unknown">Unknown</option>
-                      <option value="steel">Steel</option>
-                      <option value="protected_steel">Protected steel</option>
-                      <option value="reinforced_concrete">Reinforced concrete</option>
-                      <option value="timber">Timber</option>
-                      <option value="masonry">Masonry</option>
-                      <option value="mixed">Mixed</option>
-                    </select>
-                  </td>
-                )}
-
-                {mode !== 'fire_protection' && (
-                  <td className="p-2">
-                    <select
-                      className="border rounded p-2 w-full"
-                      value={b.compartmentation_minutes ?? ''}
-                      onChange={e => updateRow(idx, { compartmentation_minutes: e.target.value === '' ? null : Number(e.target.value) })}
-                    >
-                      <option value="">Unknown</option>
-                      <option value="0">None / open plan</option>
-                      <option value="60">Basic (≤60 min)</option>
-                      <option value="120">Standard (90–120 min)</option>
-                      <option value="180">Enhanced (180 min)</option>
-                      <option value="240">High (240 min / 4 hours)</option>
-                    </select>
-                  </td>
-                )}
-
-                <td className="p-2">
-                  <div className="flex gap-2">
-                    {mode !== 'fire_protection' && (
-                      <button
-                        className="p-2 border rounded"
-                        onClick={() => saveRow(idx)}
-                        disabled={savingId === (b.id ?? `new-${idx}`)}
-                        aria-label="Save building"
-                        title="Save"
-                      >
-                        <Save className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    {mode !== 'fire_protection' && (
-                      <button
-                        className="p-2 border rounded"
-                        onClick={() => removeRow(idx)}
-                        disabled={savingId === (b.id ?? `new-${idx}`)}
-                        aria-label="Delete building"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-
-              {/* Computed score row - only in construction/all mode */}
-              {mode !== 'fire_protection' && computed && (
-                <tr className="bg-slate-50/50 text-sm">
-                  <td className="px-2 py-1" colSpan={mode === 'all' ? 10 : 7}>
-                    <div className="flex items-center gap-4">
-                      <span className="font-medium">
-                        RE-02 score: <span className="text-blue-700">{computed.score}</span>
-                      </span>
-                      <span className="text-slate-600">
-                        Combustible %: <span className="font-medium">{isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}</span>
-                      </span>
-                      <span className="text-xs text-slate-500" title={`Roof: ${isNaN(computed.roofCombustiblePercent) ? '—' : computed.roofCombustiblePercent + '%'} | Walls: ${isNaN(computed.wallCombustiblePercent) ? '—' : computed.wallCombustiblePercent + '%'} | Mezz: ${isNaN(computed.mezzCombustiblePercent) ? '—' : computed.mezzCombustiblePercent + '%'}`}>
-                        (R: {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} | W: {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} | M: {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`})
-                      </span>
-                      <button
-                        type="button"
-                        className="ml-auto flex items-center gap-1 text-slate-600 hover:text-slate-900"
-                        onClick={() => setOpenExplanationForBuildingId((current) => (current === b.id ? null : b.id ?? null))}
-                        title="Show score explanation"
-                      >
-                        <Info className="w-4 h-4" />
-                        <span className="text-xs">Explanation</span>
-                      </button>
-                    </div>
-                    {openExplanationForBuildingId === b.id && (
-                      <div className="mt-2 rounded-md border border-slate-200 bg-white p-3 text-xs text-slate-700 space-y-2">
-                        <p className="font-medium text-slate-900">How this RE-02 score was derived</p>
-                        <p>{computed.explanation}</p>
-                        <ul className="list-disc pl-4 space-y-1">
-                          <li>Building RE-02 score: <span className="font-semibold">{computed.score}</span></li>
-                          <li>
-                            Building combustible %: <span className="font-semibold">
-                              {isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}
-                            </span>
-                          </li>
-                          <li>
-                            Components (roof / walls / mezz):{' '}
-                            <span className="font-semibold">
-                              {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} /{' '}
-                              {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} /{' '}
-                              {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`}
-                            </span>
-                          </li>
-                          <li>
-                            Area weighting in site score: <span className="font-semibold">
-                              {(() => {
-                                const area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
-                                const effectiveArea = area > 0 ? area : 1;
-                                if (!siteWeightTotal) return '—';
-                                return `${((effectiveArea / siteWeightTotal) * 100).toFixed(1)}%`;
-                              })()}
-                            </span>
-                          </li>
-                          <li>
-                            Site context: score <span className="font-semibold">
-                              {isNaN(siteMetrics.score) ? '—' : siteMetrics.score.toFixed(1)}
-                            </span>{' '}
-                            / combustible{' '}
-                            <span className="font-semibold">
-                              {isNaN(siteMetrics.combustiblePercent) ? '—' : `${siteMetrics.combustiblePercent}%`}
-                            </span>
-                          </li>
-                        </ul>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )}
-            </>
-            );
-          })}
-
-            {/* Totals row – construction / all only */}
-              {mode !== 'fire_protection' && (
-                <tr className="bg-slate-50 font-medium">
-                  <td className="p-2">Totals</td>
-
-                  <td className="p-2">
-                    Roof: {totals.roof.toLocaleString()} m²
-                  </td>
-
-                  <td className="p-2">
-                    Mezz: {totals.mezz.toLocaleString()} m²
-                  </td>
-
-                  <td
-                    className="p-2"
-                    colSpan={mode === 'all' ? 8 : 4}
-                  >
-                    <div className="flex items-center gap-4">
-                      <span>Known total (roof + mezz): {(totals.roof + totals.mezz).toLocaleString()} m²</span>
-                      <span className="text-blue-700 font-semibold">
-                        Site RE-02 score: {isNaN(siteMetrics.score) ? '—' : siteMetrics.score.toFixed(1)}
-                      </span>
-                      <span className="text-blue-700">
-                        Site combustible %: {isNaN(siteMetrics.combustiblePercent) ? '—' : `${siteMetrics.combustiblePercent}%`}
-                      </span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-          </tbody>
-        </table>
-      </div>
+      {/* Site-level summary strip */}
+      {mode !== 'fire_protection' && rows.some(b => b.id) && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-center flex-wrap gap-x-6 gap-y-2 text-sm">
+            <div>
+              <span className="text-slate-500">Total roof:</span>{' '}
+              <span className="font-semibold text-slate-900">{totals.roof.toLocaleString()} m²</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Total mezz/floors:</span>{' '}
+              <span className="font-semibold text-slate-900">{totals.mezz.toLocaleString()} m²</span>
+            </div>
+            {!isNaN(siteMetrics.score) && (
+              <div>
+                <span className="text-slate-500">Site RE-02 score:</span>{' '}
+                <span className="font-bold text-blue-700">{siteMetrics.score.toFixed(1)}</span>
+              </div>
+            )}
+            {!isNaN(siteMetrics.combustiblePercent) && (
+              <div>
+                <span className="text-slate-500">Site combustible:</span>{' '}
+                <span className="font-semibold text-slate-900">{siteMetrics.combustiblePercent}%</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Site-level construction notes */}
       {mode !== 'fire_protection' && (
-        <div className="mt-6 border rounded p-4">
-          <label className="block font-semibold mb-2">Site-level construction notes</label>
+        <div className="border border-slate-200 rounded-xl bg-white p-4">
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Site-level construction notes</label>
           <textarea
-            className="w-full border rounded p-2 min-h-[100px]"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm min-h-[100px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
             value={constructionNotes}
             onChange={e => setConstructionNotes(e.target.value)}
-            placeholder="Enter general construction observations that apply across the site..."
+            placeholder="Enter general construction observations that apply across the site…"
           />
           <div className="flex justify-end mt-2">
             <button
-              className="px-3 py-2 border rounded bg-white hover:bg-slate-50"
+              className="px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm font-medium transition-colors disabled:opacity-50"
               onClick={saveSiteNotes}
               disabled={savingNotes}
             >
-              {savingNotes ? 'Saving...' : 'Save notes'}
+              {savingNotes ? 'Saving…' : 'Save notes'}
             </button>
           </div>
         </div>
