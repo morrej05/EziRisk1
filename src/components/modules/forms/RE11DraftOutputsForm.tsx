@@ -55,11 +55,11 @@ export default function RE11DraftOutputsForm({
 
   const defaultSurveySections: SurveySection[] = [
     { heading: 'Introduction', content: '' },
-    { heading: 'Construction', content: '', source_module: 'RE02_CONSTRUCTION' },
-    { heading: 'Occupancy & Hazards', content: '', source_module: 'RE03_OCCUPANCY' },
-    { heading: 'Fire Protection Systems', content: '', source_module: 'RE06_FIRE_PROTECTION' },
-    { heading: 'Utilities & Services', content: '', source_module: 'RE08_UTILITIES' },
-    { heading: 'Loss Values', content: '', source_module: 'RE12_LOSS_VALUES' },
+    { heading: 'Construction', content: '', source_module: 'RE_02_CONSTRUCTION' },
+    { heading: 'Occupancy & Hazards', content: '', source_module: 'RE_03_OCCUPANCY' },
+    { heading: 'Fire Protection Systems', content: '', source_module: 'RE_06_FIRE_PROTECTION' },
+    { heading: 'Utilities & Services', content: '', source_module: 'RE_08_UTILITIES' },
+    { heading: 'Loss Values', content: '', source_module: 'RE_12_LOSS_VALUES' },
     { heading: 'Conclusion', content: '' },
   ];
 
@@ -89,7 +89,7 @@ export default function RE11DraftOutputsForm({
         .from('module_instances')
         .select('data')
         .eq('document_id', moduleInstance.document_id)
-        .eq('module_key', 'RE09_RECOMMENDATIONS')
+        .eq('module_key', 'RE_13_RECOMMENDATIONS')
         .single();
 
       if (error) throw error;
@@ -121,19 +121,19 @@ export default function RE11DraftOutputsForm({
         let generatedContent = '';
 
         switch (section.source_module) {
-          case 'RE02_CONSTRUCTION':
+          case 'RE_02_CONSTRUCTION':
             generatedContent = generateConstructionContent(sourceModule.data);
             break;
-          case 'RE03_OCCUPANCY':
+          case 'RE_03_OCCUPANCY':
             generatedContent = generateOccupancyContent(sourceModule.data);
             break;
-          case 'RE06_FIRE_PROTECTION':
+          case 'RE_06_FIRE_PROTECTION':
             generatedContent = generateFireProtectionContent(sourceModule.data);
             break;
-          case 'RE08_UTILITIES':
+          case 'RE_08_UTILITIES':
             generatedContent = generateUtilitiesContent(sourceModule.data);
             break;
-          case 'RE12_LOSS_VALUES':
+          case 'RE_12_LOSS_VALUES':
             generatedContent = generateLossValuesContent(sourceModule.data);
             break;
         }
@@ -155,23 +155,47 @@ export default function RE11DraftOutputsForm({
     if (!construction) return 'No construction data available.';
 
     const buildings = construction.buildings || [];
-    let content = `The site comprises ${buildings.length} building(s).\n\n`;
+    if (buildings.length === 0) return 'No buildings recorded.';
+
+    let content = `The site comprises ${buildings.length} building${buildings.length !== 1 ? 's' : ''}.\n\n`;
 
     buildings.forEach((b: any, idx: number) => {
-      content += `Building ${idx + 1} (${b.building_name || 'Unnamed'}): `;
-      content += `${b.num_floors || 0} floor(s), ${b.num_basements || 0} basement(s), `;
-      content += `height ${b.height_m || 0}m. `;
-      content += `Roof: ${b.roof_ceiling_material || 'not specified'}. `;
-      content += `Combustibility: ${b.combustibility_band || 'unknown'} (${b.combustibility_score || 0}%). `;
-      content += `Frame: ${b.frame_type || 'not specified'} (${b.frame_protected || 'not specified'}). `;
-      if (b.cladding_panels_present) {
-        content += `Cladding present: ${b.cladding_panels_details}. `;
+      const name = b.building_name || b.ref || `Building ${idx + 1}`;
+      const floors = b.geometry?.floors ?? 0;
+      const basements = b.geometry?.basements ?? 0;
+      const heightM = b.geometry?.height_m ?? 0;
+      const frameType = b.frame_type || 'not specified';
+      const claddingPresent = b.combustible_cladding?.present;
+      const claddingDetails = b.combustible_cladding?.details || '';
+      const combustiblePct = b.calculated?.combustible_percent ?? null;
+      const constructionScore = b.calculated?.construction_score ?? null;
+      const compartmentation = b.compartmentation_minutes ?? null;
+
+      content += `${name}: `;
+      content += `${floors} storey${floors !== 1 ? 's' : ''}`;
+      if (basements > 0) content += `, ${basements} basement${basements !== 1 ? 's' : ''}`;
+      content += `, height ${heightM}m. `;
+      content += `Frame: ${frameType}. `;
+      if (combustiblePct !== null) {
+        content += `Combustible content: ${combustiblePct}%. `;
+      }
+      if (constructionScore !== null) {
+        content += `Construction score: ${constructionScore}/5. `;
+      }
+      if (claddingPresent) {
+        content += `Combustible cladding present${claddingDetails ? `: ${claddingDetails}` : ''}. `;
+      }
+      if (compartmentation !== null) {
+        content += `Compartmentation: ${compartmentation} min. `;
       }
       content += `\n`;
     });
 
-    content += `\nSite construction rating: ${construction.site_rating_1_to_5}/5.`;
-    return content;
+    if (construction.site_rating_1_to_5) {
+      content += `\nSite construction rating: ${construction.site_rating_1_to_5}/5.`;
+    }
+
+    return content.trim();
   };
 
   const generateOccupancyContent = (data: any): string => {
@@ -421,11 +445,6 @@ export default function RE11DraftOutputsForm({
             <div key={section.heading} className="bg-white rounded-lg border border-slate-200 p-6">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">
                 {section.heading}
-                {section.source_module && (
-                  <span className="ml-2 text-xs text-slate-500 font-normal">
-                    (from {section.source_module})
-                  </span>
-                )}
               </h3>
               <AutoExpandTextarea
                 value={section.content}

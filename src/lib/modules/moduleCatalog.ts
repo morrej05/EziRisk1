@@ -40,13 +40,13 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     type: 'input',
   },
   RE_07_NATURAL_HAZARDS: {
-    name: 'RE-05 – Exposures',
+    name: 'RE-04 – Exposures',
     docTypes: ['RE'],
     order: 4,
     type: 'input',
   },
   RE_06_FIRE_PROTECTION: {
-    name: 'RE-06 – Fire Protection',
+    name: 'RE-05 – Fire Protection',
     docTypes: ['RE'],
     order: 5,
     type: 'input',
@@ -82,7 +82,7 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     type: 'input',
   },
   RE_14_DRAFT_OUTPUTS: {
-    name: 'RE-11 - Summary & Key Findings',
+    name: 'RE-11 – Summary & Key Findings',
     docTypes: ['RE'],
     order: 999,
     type: 'derived',

@@ -69,14 +69,14 @@ const MAX_PHOTO_SIZE_MB = 15;
 const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_MB * 1024 * 1024;
 
 const MODULE_SECTIONS = [
-  { key: 'RE_01_DOC_CONTROL', label: 'RE-01 Document Control' },
-  { key: 'RE_02_CONSTRUCTION', label: 'RE-02 Construction' },
-  { key: 'RE_03_OCCUPANCY', label: 'RE-03 Occupancy' },
-  { key: 'RE_06_FIRE_PROTECTION', label: 'RE-04 Fire Protection' },
-  { key: 'RE_07_NATURAL_HAZARDS', label: 'RE-05 Exposures' },
-  { key: 'RE_08_UTILITIES', label: 'RE-06 Utilities' },
-  { key: 'RE_09_MANAGEMENT', label: 'RE-07 Management Systems' },
-  { key: 'RE_12_LOSS_VALUES', label: 'RE-08 Loss & Values' },
+  { key: 'RE_01_DOC_CONTROL', label: 'RE-01 – Document Control' },
+  { key: 'RE_02_CONSTRUCTION', label: 'RE-02 – Construction' },
+  { key: 'RE_03_OCCUPANCY', label: 'RE-03 – Occupancy' },
+  { key: 'RE_07_NATURAL_HAZARDS', label: 'RE-04 – Exposures' },
+  { key: 'RE_06_FIRE_PROTECTION', label: 'RE-05 – Fire Protection' },
+  { key: 'RE_08_UTILITIES', label: 'RE-06 – Utilities & Critical Services' },
+  { key: 'RE_09_MANAGEMENT', label: 'RE-07 – Management Systems' },
+  { key: 'RE_12_LOSS_VALUES', label: 'RE-08 – Loss & Values' },
   { key: 'OTHER', label: 'Other' },
 ];
 
@@ -639,16 +639,8 @@ export default function RE09RecommendationsForm({
     return true;
   });
 
-  // Generate display numbers (contiguous, UI-only, after filtering)
   const getDisplayNumber = (rec: Recommendation): string => {
-    const index = filteredRecommendations.findIndex(r => r.id === rec.id);
-    if (index === -1) return rec.rec_number || 'New';
-
-    const year = document.assessment_date
-      ? new Date(document.assessment_date).getFullYear()
-      : new Date().getFullYear();
-    const displayNum = String(index + 1).padStart(2, '0');
-    return `${year}-${displayNum}`;
+    return rec.rec_number || 'New';
   };
 
   // Sort for report view
