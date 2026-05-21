@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { FileText, RefreshCw, AlertCircle } from 'lucide-react';
+import { FileText, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { getModuleDisplayLabel } from '../../../lib/modules/moduleCatalog';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
@@ -54,6 +54,7 @@ export default function RE11DraftOutputsForm({
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'survey' | 'loss_prevention'>('survey');
+  const [populateError, setPopulateError] = useState<string | null>(null);
   const d = moduleInstance.data || {};
 
   const defaultSurveySections: SurveySection[] = [
@@ -144,7 +145,7 @@ export default function RE11DraftOutputsForm({
       setSurveySections(updatedSections);
     } catch (err) {
       console.error('Error auto-populating survey:', err);
-      alert('Failed to auto-populate survey. Please check module data.');
+      setPopulateError('Failed to refresh report content from modules. Check that assessment modules have been completed and try again.');
     } finally {
       setLoading(false);
     }
@@ -152,54 +153,154 @@ export default function RE11DraftOutputsForm({
 
   const generateConstructionContent = (data: any): string => {
     const construction = data?.construction;
-    if (!construction) return 'No construction data available.';
+    if (!construction) return '';
 
-    const buildings = construction.buildings || [];
-    if (buildings.length === 0) return 'No buildings recorded.';
+    const buildings = (construction.buildings || []) as any[];
+    if (buildings.length === 0) return '';
 
-    let content = `The site comprises ${buildings.length} building${buildings.length !== 1 ? 's' : ''}.\n\n`;
+    const FRAME_LABELS: Record<string, string> = {
+      steel: 'steel framing',
+      protected_steel: 'fire-protected steel framing',
+      reinforced_concrete: 'reinforced concrete framing',
+      timber: 'timber framing',
+      masonry: 'masonry construction',
+      mixed: 'mixed structural framing',
+      unknown: 'structural framing (type not confirmed)',
+    };
+
+    const COMPARTMENTATION_LABELS: Record<number, string> = {
+      0: 'no compartmentation (open plan)',
+      60: 'basic compartmentation (≤60 minutes)',
+      120: 'standard compartmentation (90–120 minutes)',
+      180: 'enhanced compartmentation (180 minutes)',
+      240: 'high-integrity compartmentation (≥4 hours)',
+    };
+
+    const numWord = (n: number): string => {
+      const words = ['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
+      return n >= 0 && n < words.length ? words[n] : String(n);
+    };
+
+    const buildingCount = buildings.length;
+    const intro = buildingCount === 1
+      ? 'The site comprises a single structure.'
+      : `The site comprises ${numWord(buildingCount)} structures.`;
+
+    const paragraphs: string[] = [intro];
 
     buildings.forEach((b: any, idx: number) => {
       const name = b.building_name || b.ref || `Building ${idx + 1}`;
-      const floors = b.geometry?.floors ?? 0;
-      const basements = b.geometry?.basements ?? 0;
-      const heightM = b.geometry?.height_m ?? 0;
-      const frameType = b.frame_type || 'not specified';
-      const claddingPresent = b.combustible_cladding?.present;
-      const claddingDetails = b.combustible_cladding?.details || '';
-      const combustiblePct = b.calculated?.combustible_percent ?? null;
-      const constructionScore = b.calculated?.construction_score ?? null;
-      const compartmentation = b.compartmentation_minutes ?? null;
+      const floors = b.geometry?.floors ?? b.storeys ?? null;
+      const basements = b.geometry?.basements ?? b.basements ?? null;
+      const heightM = b.geometry?.height_m ?? null;
+      const roofAreaM2 = b.roof_area_m2 ?? null;
+      const mezzAreaM2 = b.mezzanine_area_m2 ?? null;
+      const frameType: string = b.frame_type || 'unknown';
+      const claddingPresent = b.combustible_cladding?.present === true;
+      const claddingDetails: string = b.combustible_cladding?.details || '';
+      const combustiblePct: number | null = b.calculated?.combustible_percent ?? null;
+      const compartmentationMin: number | null = b.compartmentation_minutes ?? null;
 
-      content += `${name}: `;
-      content += `${floors} storey${floors !== 1 ? 's' : ''}`;
-      if (basements > 0) content += `, ${basements} basement${basements !== 1 ? 's' : ''}`;
-      content += `, height ${heightM}m. `;
-      content += `Frame: ${frameType}. `;
-      if (combustiblePct !== null) {
-        content += `Combustible content: ${combustiblePct}%. `;
+      const parts: string[] = [];
+
+      // Geometry sentence
+      const geomParts: string[] = [];
+      if (floors !== null && floors > 0) {
+        geomParts.push(`${numWord(floors)}-storey`);
+      } else if (floors === 1 || floors === null) {
+        geomParts.push('single-storey');
       }
-      if (constructionScore !== null) {
-        content += `Construction score: ${constructionScore}/5. `;
+      if (heightM && heightM > 0) geomParts.push(`with an eaves height of ${heightM}m`);
+      if (roofAreaM2 && roofAreaM2 > 0) geomParts.push(`and a total roof area of ${roofAreaM2.toLocaleString()}m²`);
+      if (geomParts.length) parts.push(`${name} is a ${geomParts.join(' ')} structure.`);
+
+      // Frame
+      if (frameType !== 'unknown') {
+        parts.push(`The primary structural frame is ${FRAME_LABELS[frameType] || frameType}.`);
       }
+
+      // Mezzanine
+      if (mezzAreaM2 && mezzAreaM2 > 0) {
+        parts.push(`Mezzanine or upper-floor area totals ${mezzAreaM2.toLocaleString()}m².`);
+      }
+
+      // Basements
+      if (basements && basements < 0) {
+        parts.push(`The building includes ${Math.abs(basements)} basement level${Math.abs(basements) !== 1 ? 's' : ''}.`);
+      }
+
+      // Combustibility
+      if (combustiblePct !== null && !isNaN(combustiblePct)) {
+        if (combustiblePct >= 50) {
+          parts.push(`Construction materials are predominantly combustible, with approximately ${combustiblePct}% of assessed surface area carrying combustible loading.`);
+        } else if (combustiblePct >= 20) {
+          parts.push(`Construction materials are of mixed combustibility, with approximately ${combustiblePct}% of assessed surface area carrying combustible loading.`);
+        } else if (combustiblePct > 0) {
+          parts.push(`The majority of construction materials are non-combustible; approximately ${combustiblePct}% of assessed surface area carries combustible loading.`);
+        } else {
+          parts.push('Construction materials are predominantly non-combustible.');
+        }
+      }
+
+      // Cladding
       if (claddingPresent) {
-        content += `Combustible cladding present${claddingDetails ? `: ${claddingDetails}` : ''}. `;
+        parts.push(`Combustible cladding has been identified${claddingDetails ? ` (${claddingDetails})` : ''}, which may present a significant fire spread risk.`);
       }
-      if (compartmentation !== null) {
-        content += `Compartmentation: ${compartmentation} min. `;
+
+      // Compartmentation
+      if (compartmentationMin !== null) {
+        const compLabel = COMPARTMENTATION_LABELS[compartmentationMin] || `${compartmentationMin}-minute compartmentation`;
+        parts.push(`The building is assessed as having ${compLabel}.`);
       }
-      content += `\n`;
+
+      if (parts.length > 0) {
+        paragraphs.push(parts.join(' '));
+      }
     });
 
-    if (construction.site_rating_1_to_5) {
-      content += `\nSite construction rating: ${construction.site_rating_1_to_5}/5.`;
+    // Site summary
+    const siteCombustible = construction.site_combustible_percent ?? null;
+    const siteScore = construction.completion?.site_score ?? null;
+    if (siteCombustible !== null || siteScore !== null) {
+      const summaryParts: string[] = [];
+      if (siteScore !== null) summaryParts.push(`The overall site construction risk score is ${Number(siteScore).toFixed(1)}/5`);
+      if (siteCombustible !== null) summaryParts.push(`with an average site combustibility of approximately ${siteCombustible}%`);
+      if (summaryParts.length) paragraphs.push(summaryParts.join(', ') + '.');
     }
 
-    return content.trim();
+    if (construction.site_notes?.trim()) {
+      paragraphs.push(construction.site_notes.trim());
+    }
+
+    return paragraphs.join('\n\n');
   };
 
   const generateOccupancyContent = (data: any): string => {
-    return 'Occupancy details to be documented based on site observations.';
+    const occ = data?.occupancy;
+    const processOverview = occ?.process_overview || occ?.site_process_overview || '';
+    const specialHazards = occ?.industry_special_hazards_notes || occ?.special_hazards_notes || '';
+
+    const parts: string[] = [];
+
+    if (processOverview?.trim()) {
+      parts.push(processOverview.trim());
+    }
+    if (specialHazards?.trim()) {
+      parts.push(specialHazards.trim());
+    }
+
+    const hazardList = Array.isArray(occ?.hazards) ? occ.hazards : [];
+    const significantHazards = hazardList.filter((h: any) => h?.description?.trim());
+    if (significantHazards.length > 0) {
+      const hazardSummary = significantHazards
+        .map((h: any) => h.type ? `${h.type}: ${h.description}` : h.description)
+        .join('; ');
+      parts.push(`The following occupancy-specific hazards were identified: ${hazardSummary}.`);
+    }
+
+    return parts.length > 0
+      ? parts.join('\n\n')
+      : '[Occupancy details to be completed by the assessor based on site observations.]';
   };
 
   const generateFireProtectionContent = (data: any): string => {
