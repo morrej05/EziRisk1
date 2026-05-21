@@ -258,8 +258,8 @@ export default function RE11DraftOutputsForm({
     const overallLine = `Overall fire protection view: ${scoreBand(overallRaw)} (raw ${overallRaw ?? 'not rated'}/4, mapped ${supplementary.overall_score ?? 'not rated'}/5).`;
 
     return [
-      `RE-04 engineering score (mapped): ${supplementary.overall_score ?? 'Not rated'}/5.`,
-      `RE-04 engineering score (raw): ${overallRaw ?? 'Not rated'}/4.`,
+      `RE-05 engineering score (mapped): ${supplementary.overall_score ?? 'Not rated'}/5.`,
+      `RE-05 engineering score (raw): ${overallRaw ?? 'Not rated'}/4.`,
       '',
       adequacyLine,
       reliabilityLine,
@@ -381,7 +381,7 @@ export default function RE11DraftOutputsForm({
     <>
     <div className="p-6 max-w-5xl mx-auto pb-24">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">RE-11 - Draft Outputs</h2>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">RE-11 – Draft Outputs</h2>
         <p className="text-slate-600">
           Draft reports auto-populated from assessment data with manual editing capability
         </p>
