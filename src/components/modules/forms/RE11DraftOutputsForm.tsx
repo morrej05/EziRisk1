@@ -55,6 +55,7 @@ export default function RE11DraftOutputsForm({
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'survey' | 'loss_prevention'>('survey');
   const [populateError, setPopulateError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const d = moduleInstance.data || {};
 
   const defaultSurveySections: SurveySection[] = [
@@ -305,73 +306,227 @@ export default function RE11DraftOutputsForm({
 
   const generateFireProtectionContent = (data: any): string => {
     const fp = data?.fire_protection;
-    if (!fp) return 'No fire protection data available.';
+    if (!fp) return '';
 
+    const buildingEntries = Object.values(fp.buildings || {}) as any[];
     const supplementary = fp.supplementary_assessment || {};
-    const questions = Array.isArray(supplementary.questions) ? supplementary.questions : [];
-    const rated = questions.filter((q: any) => q?.score_1_5 !== null && q?.score_1_5 !== undefined);
+    const overallScore: number | null = supplementary.overall_score ?? null;
+    const paragraphs: string[] = [];
 
-    const groupQuestions = (group: string) => rated.filter((q: any) => q.group === group);
-    const weakPrompts = (group: string) =>
-      groupQuestions(group)
-        .filter((q: any) => Number(q.score_1_5) <= 2)
-        .map((q: any) => q.prompt)
-        .slice(0, 2);
+    if (buildingEntries.length > 0) {
+      const totalBuildings = buildingEntries.length;
+      const sprinkleredBuildings = buildingEntries.filter(
+        (b: any) => b?.sprinklerData?.sprinklers_installed === 'Yes'
+      ).length;
+      const detectedBuildings = buildingEntries.filter(
+        (b: any) => b?.sprinklerData?.detection_installed === 'Yes'
+      ).length;
 
-    const scoreBand = (value: number | null | undefined) => {
-      if (value === null || value === undefined) return 'not rated';
-      if (value < 1.75) return 'weak';
-      if (value < 3) return 'mixed';
-      if (value < 4.2) return 'broadly adequate';
-      return 'strong';
-    };
+      const allDetectionTypes = new Set<string>();
+      buildingEntries.forEach((b: any) => {
+        (b?.sprinklerData?.detection_types || []).forEach((t: string) => {
+          if (t) allDetectionTypes.add(t);
+        });
+      });
 
-    const adequacyWeak = weakPrompts('adequacy');
-    const reliabilityWeak = weakPrompts('reliability');
-    const localisedApplicable = groupQuestions('localised').length > 0;
-    const localisedWeak = weakPrompts('localised');
-    const evidenceWeak = weakPrompts('evidence');
+      const localisedRequired = buildingEntries.filter(
+        (b: any) => b?.sprinklerData?.localised_required === 'Yes'
+      ).length;
+      const localisedPresent = buildingEntries.filter(
+        (b: any) => b?.sprinklerData?.localised_present === 'Yes'
+      ).length;
 
-    const adequacyScore = supplementary.adequacy_subscore_raw_0_4 ?? null;
-    const reliabilityScore = supplementary.reliability_subscore_raw_0_4 ?? null;
-    const localisedScore = supplementary.localised_subscore_raw_0_4 ?? null;
-    const evidenceScore = supplementary.evidence_subscore_raw_0_4 ?? null;
-    const overallRaw = supplementary.overall_raw_0_4 ?? null;
+      // Suppression coverage
+      if (sprinkleredBuildings === totalBuildings) {
+        paragraphs.push(
+          'Automatic sprinkler protection is installed throughout all assessed structures.'
+        );
+      } else if (sprinkleredBuildings > 0) {
+        const unprotected = totalBuildings - sprinkleredBuildings;
+        paragraphs.push(
+          `Sprinkler protection is installed in ${sprinkleredBuildings} of ${totalBuildings} structures; ` +
+          `the remaining ${unprotected} structure${unprotected !== 1 ? 's' : ''} rel${unprotected !== 1 ? 'y' : 'ies'} on portable suppression means only.`
+        );
+      } else {
+        paragraphs.push(
+          'No automatic sprinkler protection has been installed. ' +
+          'Suppression capability relies on portable fire extinguishers and manual brigade response.'
+        );
+      }
 
-    const adequacyLine = adequacyWeak.length
-      ? `Adequacy is ${scoreBand(adequacyScore)} with limitations in ${adequacyWeak.join('; ')}.`
-      : `Adequacy is ${scoreBand(adequacyScore)} based on provision, suitability, coverage, and extinguishing supply.`;
+      // Detection coverage
+      const detTypes = Array.from(allDetectionTypes).filter(Boolean);
+      if (detectedBuildings > 0) {
+        const coverage =
+          detectedBuildings === totalBuildings
+            ? 'throughout all structures'
+            : `in ${detectedBuildings} of ${totalBuildings} structures`;
+        const typeStr =
+          detTypes.length > 0
+            ? ` Systems include ${detTypes.join(', ').toLowerCase()}.`
+            : '';
+        paragraphs.push(`Automatic fire detection is installed ${coverage}.${typeStr}`);
+      } else {
+        paragraphs.push(
+          'Automatic fire detection coverage has not been confirmed for the assessed structures.'
+        );
+      }
 
-    const reliabilityLine = reliabilityWeak.length
-      ? `Reliability is ${scoreBand(reliabilityScore)}; confidence is reduced by ${reliabilityWeak.join('; ')}.`
-      : `Reliability is ${scoreBand(reliabilityScore)} across component dependability, ITM quality, and impairment governance.`;
+      // Localised protection
+      if (localisedRequired > 0) {
+        if (localisedPresent >= localisedRequired) {
+          paragraphs.push(
+            'Localised fire protection provisions are in place for identified process or equipment hazards.'
+          );
+        } else {
+          const gap = localisedRequired - localisedPresent;
+          paragraphs.push(
+            `Localised fire protection is required for identified process hazards but has not been fully installed; ` +
+            `${gap} area${gap !== 1 ? 's' : ''} remain unprotected.`
+          );
+        }
+      }
+    }
 
-    const localisedLine = localisedApplicable
-      ? localisedWeak.length
-        ? `Localised/special hazard protection is applicable and currently ${scoreBand(localisedScore)}, with weaknesses in ${localisedWeak.join('; ')}.`
-        : `Localised/special hazard protection is applicable and ${scoreBand(localisedScore)} for identified hazards.`
-      : 'Localised/special hazard protection is not applicable for the assessed hazards and was excluded from scoring.';
+    // Site water supply
+    const waterScore: number | null = fp.site?.water_score_1_5 ?? null;
+    if (waterScore !== null) {
+      const waterDesc =
+        waterScore >= 4
+          ? 'adequate for the assessed risk'
+          : waterScore >= 3
+          ? 'generally adequate, with some limitations noted'
+          : waterScore >= 2
+          ? 'limited and may not fully meet demand requirements under a major loss scenario'
+          : 'inadequate for the assessed risk profile';
+      paragraphs.push(
+        `The site water supply for fire-fighting purposes is assessed as ${waterDesc}.`
+      );
+    }
 
-    const evidenceLine = evidenceWeak.length
-      ? `Evidence/confidence is ${scoreBand(evidenceScore)} with gaps in ${evidenceWeak.join('; ')}.`
-      : `Evidence/confidence is ${scoreBand(evidenceScore)} based on available design, performance, and change-control records.`;
+    // Overall fire protection assessment
+    if (overallScore !== null) {
+      const overallDesc =
+        overallScore >= 4
+          ? 'well-suited to the assessed risk profile'
+          : overallScore >= 3
+          ? 'broadly adequate for the assessed risk profile'
+          : overallScore >= 2
+          ? 'requiring enhancement in a number of areas'
+          : 'presenting material weaknesses requiring prompt attention';
+      paragraphs.push(
+        `Overall, the site fire protection arrangements are assessed as ${overallDesc} ` +
+        `(fire protection score: ${Number(overallScore).toFixed(1)}/5).`
+      );
+    }
 
-    const overallLine = `Overall fire protection view: ${scoreBand(overallRaw)} (raw ${overallRaw ?? 'not rated'}/4, mapped ${supplementary.overall_score ?? 'not rated'}/5).`;
+    // Site-level assessor comments
+    const siteComments = fp.site?.comments?.trim?.();
+    if (siteComments) paragraphs.push(siteComments);
 
-    return [
-      `RE-05 engineering score (mapped): ${supplementary.overall_score ?? 'Not rated'}/5.`,
-      `RE-05 engineering score (raw): ${overallRaw ?? 'Not rated'}/4.`,
-      '',
-      adequacyLine,
-      reliabilityLine,
-      localisedLine,
-      evidenceLine,
-      overallLine,
-    ].join('\n');
+    return paragraphs.length > 0
+      ? paragraphs.join('\n\n')
+      : '[Fire protection details to be completed by the assessor based on site observations.]';
   };
 
   const generateUtilitiesContent = (data: any): string => {
-    return 'Utilities and services details to be documented.';
+    const powerResilience = data?.power_resilience;
+    const criticalServices: any[] = Array.isArray(data?.critical_services)
+      ? data.critical_services
+      : [];
+    const criticalEquipment: any[] = Array.isArray(data?.critical_equipment)
+      ? data.critical_equipment
+      : [];
+
+    const paragraphs: string[] = [];
+
+    // Power resilience
+    if (powerResilience) {
+      const backupPresent = powerResilience.backup_power_present;
+      const backupStr =
+        backupPresent === true
+          ? 'Backup power generation is available at the site.'
+          : backupPresent === false
+          ? 'No backup power generation is installed; the site is reliant on mains supply continuity.'
+          : '';
+      const powerNotes = powerResilience.notes?.trim?.() || '';
+      const generatorNotes = powerResilience.generator_capacity_notes?.trim?.() || '';
+      const powerParts = [backupStr, generatorNotes, powerNotes].filter(Boolean);
+      if (powerParts.length) paragraphs.push(powerParts.join(' '));
+    }
+
+    // Critical services
+    const serviceLabel = (s: any) =>
+      s.service_type === 'custom'
+        ? s.custom_label || 'custom service'
+        : s.service_type || 'service';
+
+    const presentServices = criticalServices.filter(
+      (s: any) => s?.present === true || s?.present === 'Yes'
+    );
+    const absentServices = criticalServices.filter(
+      (s: any) => s?.present === false || s?.present === 'No'
+    );
+
+    if (presentServices.length > 0) {
+      const highCriticality = presentServices.filter(
+        (s: any) => s.criticality === 'High' || s.criticality === 'Critical'
+      );
+      let servicePara = `The following utility services are present at the site: ${presentServices.map(serviceLabel).join(', ')}.`;
+      if (highCriticality.length > 0) {
+        servicePara +=
+          ` ${highCriticality.map(serviceLabel).join(', ')} ${highCriticality.length !== 1 ? 'are' : 'is'} assessed as high-criticality.`;
+      }
+      const withoutBackup = presentServices.filter(
+        (s: any) => s.backup_available === false || s.backup_available === 'No'
+      );
+      if (withoutBackup.length > 0) {
+        servicePara += ` No backup provision is available for ${withoutBackup.map(serviceLabel).join(', ')}.`;
+      }
+      paragraphs.push(servicePara);
+    }
+    if (absentServices.length > 0) {
+      paragraphs.push(
+        `The following utility services are not present at the site: ${absentServices.map(serviceLabel).join(', ')}.`
+      );
+    }
+
+    // Critical equipment
+    if (criticalEquipment.length > 0) {
+      const equipLabel = (e: any) => {
+        const base =
+          e.equipment_type === 'custom'
+            ? e.custom_label || 'equipment'
+            : e.equipment_type || 'equipment';
+        return e.tag_or_name ? `${base} (${e.tag_or_name})` : base;
+      };
+      const highCritEquip = criticalEquipment.filter(
+        (e: any) => e?.criticality === 'High' || e?.criticality === 'Critical'
+      );
+      if (highCritEquip.length > 0) {
+        paragraphs.push(
+          `${highCritEquip.length} high-criticality equipment item${highCritEquip.length !== 1 ? 's' : ''} identified: ` +
+          `${highCritEquip.map(equipLabel).join(', ')}.`
+        );
+      } else {
+        paragraphs.push(
+          `${criticalEquipment.length} critical equipment item${criticalEquipment.length !== 1 ? 's' : ''} assessed.`
+        );
+      }
+      const noRedundancy = criticalEquipment.filter(
+        (e: any) => e?.redundancy === 'None' || e?.redundancy === 'No'
+      );
+      if (noRedundancy.length > 0) {
+        paragraphs.push(
+          `${noRedundancy.length} item${noRedundancy.length !== 1 ? 's have' : ' has'} no redundancy provision: ` +
+          `${noRedundancy.map(equipLabel).join(', ')}.`
+        );
+      }
+    }
+
+    return paragraphs.length > 0
+      ? paragraphs.join('\n\n')
+      : '[Utilities and services details to be completed by the assessor based on site observations.]';
   };
 
   const generateLossValuesContent = (data: any): string => {
@@ -466,10 +621,11 @@ export default function RE11DraftOutputsForm({
         .eq('id', moduleInstance.id);
 
       if (error) throw error;
+      setSaveError(null);
       onSaved();
     } catch (error) {
       console.error('Error saving module:', error);
-      alert('Failed to save module. Please try again.');
+      setSaveError('Failed to save. Please check your connection and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -541,6 +697,22 @@ export default function RE11DraftOutputsForm({
             </div>
           </div>
 
+          {populateError && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 text-sm text-amber-900">
+                <p className="font-semibold mb-1">Auto-population failed</p>
+                <p>{populateError}</p>
+              </div>
+              <button
+                onClick={() => setPopulateError(null)}
+                className="text-amber-600 hover:text-amber-800 text-xs shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {surveySections.map((section) => (
             <div key={section.heading} className="bg-white rounded-lg border border-slate-200 p-6">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">
@@ -610,12 +782,30 @@ export default function RE11DraftOutputsForm({
                             <ul className="space-y-3">
                               {recs.map((rec) => (
                                 <li key={rec.id} className="text-sm text-slate-600">
-                                  <div className="font-medium text-slate-900">{rec.title}</div>
-                                  {rec.observation_text && <div className="mt-1">{rec.observation_text}</div>}
-                                  {rec.action_required_text && <div className="mt-1 text-slate-700">{rec.action_required_text}</div>}
+                                  <div className="font-medium text-slate-900">
+                                    {rec.rec_number && (
+                                      <span className="inline-block text-blue-700 font-semibold mr-2">
+                                        {rec.rec_number}
+                                      </span>
+                                    )}
+                                    {rec.title}
+                                  </div>
+                                  {rec.observation_text && (
+                                    <div className="mt-1">{rec.observation_text}</div>
+                                  )}
+                                  {rec.action_required_text && (
+                                    <div className="mt-1 text-slate-700">{rec.action_required_text}</div>
+                                  )}
                                   <div className="mt-1 text-xs text-slate-500">
-                                    Target: {rec.target_date || 'Not set'} | Owner:{' '}
-                                    {rec.owner || 'Unassigned'} | Status: {rec.status}
+                                    Target:{' '}
+                                    {rec.target_date
+                                      ? new Date(rec.target_date).toLocaleDateString('en-GB', {
+                                          day: 'numeric',
+                                          month: 'long',
+                                          year: 'numeric',
+                                        })
+                                      : 'Not set'}{' '}
+                                    | Owner: {rec.owner || 'Unassigned'} | Status: {rec.status}
                                   </div>
                                 </li>
                               ))}
@@ -629,6 +819,22 @@ export default function RE11DraftOutputsForm({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 text-sm text-red-900">
+            <p className="font-semibold mb-1">Save failed</p>
+            <p>{saveError}</p>
+          </div>
+          <button
+            onClick={() => setSaveError(null)}
+            className="text-red-600 hover:text-red-800 text-xs shrink-0"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

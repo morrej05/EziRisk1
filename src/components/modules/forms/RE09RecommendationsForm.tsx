@@ -202,10 +202,11 @@ export default function RE09RecommendationsForm({
     loadRecommendations();
   }, [document.id]);
 
-  // Load photo URLs when recommendations change
+  // Load photo URLs only when the set of photo paths actually changes (not on every field edit)
+  const photoPathsKey = recommendations.flatMap((r) => r.photos.map((p) => p.path)).join(',');
   useEffect(() => {
     loadPhotoUrls();
-  }, [recommendations]);
+  }, [photoPathsKey]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -335,8 +336,10 @@ export default function RE09RecommendationsForm({
       if (!response.ok) {
         if (result.isDuplicate) {
           setFeedback({
+            isOpen: true,
             type: 'warning',
-            message: 'This recommendation already exists in the library',
+            title: 'Duplicate recommendation',
+            message: 'This recommendation already exists in the library.',
             autoClose: true,
           });
         } else {
@@ -365,10 +368,13 @@ export default function RE09RecommendationsForm({
     const rec = recommendations.find((r) => r.id === id);
     if (!rec) return;
 
+    const isAutoRec = rec.source_type === 'auto';
     setConfirmDialog({
       isOpen: true,
-      title: 'Delete recommendation',
-      message: 'Are you sure you want to delete this recommendation? This action cannot be undone.',
+      title: isAutoRec ? 'Suppress recommendation' : 'Delete recommendation',
+      message: isAutoRec
+        ? 'This will suppress the auto-generated recommendation so it no longer appears in reports. It can be restored by re-scoring the relevant area.'
+        : 'Are you sure you want to permanently delete this recommendation? This action cannot be undone.',
       onConfirm: async () => {
         setConfirmDialog({ ...confirmDialog, isOpen: false });
 
@@ -396,8 +402,11 @@ export default function RE09RecommendationsForm({
           setFeedback({
             isOpen: true,
             type: 'success',
-            title: 'Recommendation deleted',
-            message: 'The recommendation has been successfully removed.',
+            title: rec.source_type === 'auto' ? 'Recommendation suppressed' : 'Recommendation deleted',
+            message:
+              rec.source_type === 'auto'
+                ? 'The recommendation has been suppressed and will no longer appear in reports.'
+                : 'The recommendation has been permanently deleted.',
             autoClose: true,
           });
         } catch (error) {
@@ -552,6 +561,7 @@ export default function RE09RecommendationsForm({
         }
       }
 
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const seenRecommendationKeys = new Set<string>();
 
       for (const rec of recommendations) {
@@ -587,7 +597,7 @@ export default function RE09RecommendationsForm({
             uploaded_at: photo.uploaded_at,
           })),
           is_suppressed: rec.is_suppressed || false,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
+          created_by: currentUser?.id,
         };
 
         const { error } = await supabase
@@ -879,7 +889,7 @@ export default function RE09RecommendationsForm({
                       type="button"
                       onClick={() => removeRecommendation(rec.id)}
                       className="text-red-600 hover:text-red-700 p-1"
-                      title="Delete recommendation"
+                      title={rec.source_type === 'auto' ? 'Suppress recommendation' : 'Delete recommendation'}
                     >
                       <X className="w-5 h-5" />
                     </button>
