@@ -676,7 +676,221 @@ async function saveMezz() {
         )}
       </div>
 
-      <div className="overflow-x-auto border rounded">
+      {/* Mobile/Tablet Card View — shown below lg breakpoint */}
+      <div className="lg:hidden space-y-3">
+        {rows.map((b, idx) => {
+          const extra = b.id ? buildingExtras[b.id] : null;
+          const computed = b.id ? computeConstruction(b, extra) : null;
+          return (
+            <div key={b.id ?? `card-${idx}`} className="border rounded-lg bg-white overflow-hidden">
+              <div className="p-3 bg-slate-50 border-b flex items-center gap-2">
+                <input
+                  className="flex-1 border rounded px-2 py-1.5 text-sm font-medium"
+                  value={b.ref ?? ''}
+                  onChange={e => updateRow(idx, { ref: e.target.value })}
+                  placeholder="Building ref / name (e.g. B1)"
+                />
+                {mode !== 'fire_protection' && (
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      className="p-2 border rounded bg-white"
+                      onClick={() => saveRow(idx)}
+                      disabled={savingId === (b.id ?? `new-${idx}`)}
+                      title="Save"
+                    >
+                      <Save className="w-4 h-4" />
+                    </button>
+                    <button
+                      className="p-2 border rounded bg-white"
+                      onClick={() => removeRow(idx)}
+                      disabled={savingId === (b.id ?? `new-${idx}`)}
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="p-3 space-y-3">
+                {mode !== 'fire_protection' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Roof area (m²)</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            className="w-full border rounded px-2 py-1.5 text-sm"
+                            value={b.roof_area_m2 ?? ''}
+                            placeholder="m²"
+                            onChange={e => updateRow(idx, { roof_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                          />
+                          {b.id && (
+                            <>
+                              <button className="p-1.5 border rounded bg-white shrink-0" onClick={() => openRoof(b.id!)} title="Edit roof composition">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <CompletionBadge status={getCompletionStatus(b.id, 'roof_construction_percent')} />
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Mezz / upper floors (m²)</label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            className="w-full border rounded px-2 py-1.5 text-sm"
+                            value={b.mezzanine_area_m2 ?? ''}
+                            placeholder="m²"
+                            onChange={e => updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                          />
+                          {b.id && (
+                            <>
+                              <button className="p-1.5 border rounded bg-white shrink-0" onClick={() => openMezz(b.id!)} title="Edit mezzanine composition">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <CompletionBadge status={getCompletionStatus(b.id, 'mezzanine_construction_percent')} />
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-600">Wall composition</span>
+                      {b.id ? (
+                        <div className="flex items-center gap-2">
+                          <button className="flex items-center gap-1 px-2 py-1.5 border rounded text-sm bg-white" onClick={() => openWalls(b.id!)}>
+                            <Pencil className="w-3.5 h-3.5" /> Edit %
+                          </button>
+                          <CompletionBadge status={getCompletionStatus(b.id, 'wall_construction_percent')} />
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Save first</span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Storeys</label>
+                        <input
+                          type="number"
+                          className="w-full border rounded px-2 py-1.5 text-sm"
+                          value={b.storeys ?? ''}
+                          onChange={e => updateRow(idx, { storeys: e.target.value === '' ? null : Number(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Basements</label>
+                        <input
+                          type="number"
+                          className="w-full border rounded px-2 py-1.5 text-sm"
+                          value={b.basements ?? ''}
+                          placeholder="0"
+                          max={0}
+                          onChange={e => updateRow(idx, { basements: e.target.value === '' ? null : Number(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Frame type</label>
+                      <select
+                        className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={b.frame_type}
+                        onChange={e => updateRow(idx, { frame_type: e.target.value })}
+                      >
+                        <option value="unknown">Unknown</option>
+                        <option value="steel">Steel</option>
+                        <option value="protected_steel">Protected steel</option>
+                        <option value="reinforced_concrete">Reinforced concrete</option>
+                        <option value="timber">Timber</option>
+                        <option value="masonry">Masonry</option>
+                        <option value="mixed">Mixed</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Compartmentation</label>
+                      <select
+                        className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={b.compartmentation_minutes ?? ''}
+                        onChange={e => updateRow(idx, { compartmentation_minutes: e.target.value === '' ? null : Number(e.target.value) })}
+                      >
+                        <option value="">Unknown</option>
+                        <option value="0">None / open plan</option>
+                        <option value="60">Basic (≤60 min)</option>
+                        <option value="120">Standard (90–120 min)</option>
+                        <option value="180">Enhanced (180 min)</option>
+                        <option value="240">High (240 min / 4 hours)</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`card-cladding-${idx}`}
+                        checked={b.cladding_present === true && b.cladding_combustible === true}
+                        onChange={e => updateRow(idx, { cladding_present: e.target.checked, cladding_combustible: e.target.checked ? true : null })}
+                        className="w-4 h-4 rounded"
+                      />
+                      <label htmlFor={`card-cladding-${idx}`} className="text-sm text-slate-700">Combustible cladding present</label>
+                    </div>
+                  </>
+                )}
+                {mode !== 'construction' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Sprinklers</label>
+                      <select
+                        className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={b.sprinklers_present ? 'yes' : 'no'}
+                        onChange={e => updateRow(idx, { sprinklers_present: e.target.value === 'yes' })}
+                      >
+                        <option value="no">No</option>
+                        <option value="yes">Yes</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Detection</label>
+                      <select
+                        className="w-full border rounded px-2 py-1.5 text-sm"
+                        value={b.detection_present ? 'yes' : 'no'}
+                        onChange={e => updateRow(idx, { detection_present: e.target.value === 'yes' })}
+                      >
+                        <option value="no">No</option>
+                        <option value="yes">Yes</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+                {mode !== 'fire_protection' && computed && (
+                  <div className="rounded-md bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-700">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span>Score: <strong className="text-blue-700">{computed.score}</strong></span>
+                      <span>Combustible: <strong>{isNaN(computed.combustiblePercent) ? '—' : `${computed.combustiblePercent}%`}</strong></span>
+                      <button
+                        type="button"
+                        className="ml-auto text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                        onClick={() => setOpenExplanationForBuildingId((current) => (current === b.id ? null : b.id ?? null))}
+                      >
+                        <Info className="w-3.5 h-3.5" /> Explain
+                      </button>
+                    </div>
+                    {openExplanationForBuildingId === b.id && (
+                      <div className="mt-2 pt-2 border-t border-slate-200 space-y-1">
+                        <p>{computed.explanation}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {rows.length === 0 && (
+          <p className="text-sm text-slate-500 py-4 text-center">No buildings added yet.</p>
+        )}
+      </div>
+
+      {/* Desktop Table View — hidden below lg breakpoint */}
+      <div className="hidden lg:block overflow-x-auto border rounded">
         <table className="min-w-[980px] w-full text-sm">
           <thead className="bg-slate-50">
             <tr>

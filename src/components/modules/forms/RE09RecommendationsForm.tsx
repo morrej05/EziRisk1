@@ -1192,6 +1192,9 @@ export default function RE09RecommendationsForm({
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">
                           Owner
                         </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">
+                          Photos
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1214,7 +1217,19 @@ export default function RE09RecommendationsForm({
                                 {rec.priority}
                               </span>
                             </td>
-                            <td className="px-4 py-3">{rec.status}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs rounded-full font-medium ${
+                                  rec.status === 'Open'
+                                    ? 'bg-red-100 text-red-800'
+                                    : rec.status === 'In Progress'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {rec.status}
+                              </span>
+                            </td>
                             <td className="px-4 py-3">
                               {rec.target_date
                                 ? new Date(rec.target_date).toLocaleDateString()
@@ -1225,6 +1240,15 @@ export default function RE09RecommendationsForm({
                                 ?.label || getModuleDisplayLabel(rec.source_module_key)}
                             </td>
                             <td className="px-4 py-3">{rec.owner || '—'}</td>
+                            <td className="px-4 py-3 text-xs text-slate-600">
+                              {rec.photos.length > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-blue-700 font-medium">
+                                  {rec.photos.length}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                     </tbody>

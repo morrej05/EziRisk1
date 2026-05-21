@@ -215,6 +215,7 @@ export default function DocumentWorkspace() {
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [isActionsPanelCollapsed, setIsActionsPanelCollapsed] = useState(false);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
+  const [reModuleKeysWithActiveRecs, setReModuleKeysWithActiveRecs] = useState<Set<string> | null>(null);
   const moduleScrollRef = useRef<HTMLDivElement | null>(null);
   const [saveState, setSaveState] = useState<'unsaved' | 'saving' | 'saved' | 'error'>('saved');
   const [showScrollToTop, setShowScrollToTop] = useState(false);
@@ -271,6 +272,24 @@ export default function DocumentWorkspace() {
     fetchActions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, selectedModuleId, actionScope, actionsVersion, modules]);
+
+  useEffect(() => {
+    if (!id || document?.document_type !== 'RE') return;
+    supabase
+      .from('re_recommendations')
+      .select('source_module_key')
+      .eq('document_id', id)
+      .eq('is_suppressed', false)
+      .in('status', ['Open', 'In Progress'])
+      .then(({ data }) => {
+        if (data) {
+          setReModuleKeysWithActiveRecs(
+            new Set(data.map((r) => r.source_module_key).filter(Boolean) as string[])
+          );
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, document?.document_type, actionsVersion]);
 
   useEffect(() => {
     if (searchParams.get('openAction')) return;
@@ -808,6 +827,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
           onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
           documentId={document?.id}
           documentAssessmentDate={document?.assessment_date ?? null}
+          reModuleKeysWithActiveRecs={reModuleKeysWithActiveRecs ?? undefined}
         />
 
         <div ref={moduleScrollRef} className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">

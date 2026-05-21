@@ -1841,36 +1841,55 @@ export default function DocumentOverview() {
             )}
 
             {recommendedIssueItems.length > 0 && (
-              <section className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-amber-950">
-                      Recommended before issue
-                    </h3>
-                    <p className="text-xs text-amber-800">
-                      These items do not technically block issue, but should be reviewed by the assessor.
-                    </p>
+              isReDocument ? (
+                <details className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
+                  <summary className="cursor-pointer list-none marker:hidden">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="flex items-center gap-2 text-sm font-semibold text-amber-950">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        {recommendedIssueItems.length} advisory item{recommendedIssueItems.length !== 1 ? 's' : ''} to review before issue
+                      </span>
+                      <span className="text-xs text-amber-700 shrink-0">Click to expand</span>
+                    </span>
+                  </summary>
+                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {recommendedIssueItems.map(renderReadinessItem)}
                   </div>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                    {recommendedIssueItems.length} to review
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {recommendedIssueItems.map(renderReadinessItem)}
-                </div>
-              </section>
+                </details>
+              ) : (
+                <section className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-amber-950">
+                        Recommended before issue
+                      </h3>
+                      <p className="text-xs text-amber-800">
+                        These items do not technically block issue, but should be reviewed by the assessor.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+                      {recommendedIssueItems.length} to review
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {recommendedIssueItems.map(renderReadinessItem)}
+                  </div>
+                </section>
+              )
             )}
 
-            {blockingIssueItems.length === 0 && recommendedIssueItems.length === 0 && (
+            {blockingIssueItems.length === 0 && (recommendedIssueItems.length === 0 || isReDocument) && (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
                 <div className="flex items-start gap-3">
                   <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <h3 className="text-sm font-semibold text-emerald-950">
-                      Ready to issue
+                      {isReDocument && recommendedIssueItems.length > 0 ? "No blocking issues" : "Ready to issue"}
                     </h3>
                     <p className="text-sm text-emerald-800">
-                      No blocking or advisory readiness items are currently outstanding.
+                      {isReDocument && recommendedIssueItems.length > 0
+                        ? `${recommendedIssueItems.length} advisory item${recommendedIssueItems.length !== 1 ? 's' : ''} to review — expand above to see them.`
+                        : "No blocking or advisory readiness items are currently outstanding."}
                     </p>
                   </div>
                 </div>
@@ -2010,7 +2029,7 @@ export default function DocumentOverview() {
 
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-          <Card>
+          {!isReDocument && <Card>
             <h3 className="text-sm font-medium text-neutral-500 uppercase mb-4">
               Module Progress
             </h3>
@@ -2030,12 +2049,12 @@ export default function DocumentOverview() {
                 />
               </div>
             </div>
-          </Card>
+          </Card>}
 
-          <Card>
+          {!isReDocument && <Card>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-neutral-500 uppercase">
-                {isReDocument ? "Active Recommendations" : "Open Actions"}
+                {"Open Actions"}
               </h3>
               <button
                 onClick={() =>
@@ -2095,7 +2114,7 @@ export default function DocumentOverview() {
                 </div>
               </div>
             </div>
-          </Card>
+          </Card>}
 
           {explosionSummary && (
             <Card>

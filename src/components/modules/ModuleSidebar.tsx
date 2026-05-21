@@ -19,6 +19,7 @@ interface ModuleSidebarProps {
   onCloseMobileMenu: () => void;
   documentId?: string;
   documentAssessmentDate?: string | null;
+  reModuleKeysWithActiveRecs?: Set<string>;
 }
 
 export default function ModuleSidebar({
@@ -30,6 +31,7 @@ export default function ModuleSidebar({
   onCloseMobileMenu,
   documentId,
   documentAssessmentDate,
+  reModuleKeysWithActiveRecs,
 }: ModuleSidebarProps) {
   // Load/save expand/collapse state from localStorage
   const storageKey = documentId ? `moduleNavGroups:${documentId}` : null;
@@ -109,6 +111,9 @@ export default function ModuleSidebar({
 
 
   const hasOpenRecommendations = (module: ModuleInstance): boolean => {
+    if (module.module_key?.startsWith('RE_') && reModuleKeysWithActiveRecs !== undefined) {
+      return reModuleKeysWithActiveRecs.has(module.module_key);
+    }
     const data = module.data || {};
     const buckets = [data.recommendations, data.actions, data.open_recommendations];
     return buckets.some((v) => Array.isArray(v) && v.length > 0);
