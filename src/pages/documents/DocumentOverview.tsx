@@ -105,6 +105,7 @@ import {
   type IssueValidatorResult,
   type ReadinessState,
 } from "../../utils/issueReadiness";
+import ReAssessorCockpit from "../../components/re/ReAssessorCockpit";
 
 interface DocumentMeta {
   report_previewed_at?: string | null;
@@ -1376,11 +1377,20 @@ export default function DocumentOverview() {
     },
   ];
 
+  const RE_IRRELEVANT_GATE_KEYS = new Set([
+    "high-priority-evidence",
+    "executive-summary",
+    "review-assurance",
+  ]);
+  const filteredReviewGateItems = isReDocument
+    ? reviewGateItems.filter((item) => !RE_IRRELEVANT_GATE_KEYS.has(item.key))
+    : reviewGateItems;
+
   const qualityGateItems = [
     ...getValidatorBlockerItems(issueValidation),
     ...getValidatorReviewItems(issueValidation),
-    ...reviewGateItems.filter((item) => item.state === "needs_review"),
-    ...reviewGateItems.filter((item) => item.state === "ready"),
+    ...filteredReviewGateItems.filter((item) => item.state === "needs_review"),
+    ...filteredReviewGateItems.filter((item) => item.state === "ready"),
   ];
   const blockingIssueItems = qualityGateItems.filter(
     (item) => item.state === "blocked",
@@ -1610,8 +1620,27 @@ export default function DocumentOverview() {
           )}
         </Card>
 
-        {/* Next Steps Section - Only for Draft */}
-        {document.issue_status === "draft" && (
+        {/* RE Assessor Cockpit — replaces generic Next Steps for RE draft documents */}
+        {isReDocument && document.issue_status === "draft" && (
+          <ReAssessorCockpit
+            modules={modules}
+            completedModules={completedModules}
+            totalModules={totalModules}
+            firstIncomplete={firstIncomplete}
+            actionCounts={actionCounts}
+            totalActions={totalActions}
+            blockingCount={blockingIssueItems.length}
+            reviewCount={recommendedIssueItems.length}
+            onContinue={handleContinueAssessment}
+            onOpenWorkspace={handleOpenWorkspace}
+            documentId={id!}
+            navigateTo={(path) => navigate(path)}
+            recommendationsPath={recommendationsRegisterPath}
+          />
+        )}
+
+        {/* Next Steps Section - Only for non-RE Draft documents */}
+        {!isReDocument && document.issue_status === "draft" && (
           <Card className="mb-6">
             <h2 className="text-lg font-semibold text-neutral-900 mb-4">
               Next Steps

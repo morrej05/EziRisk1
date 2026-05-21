@@ -150,16 +150,16 @@ export default function ReRatingPanel({
               <label className="block text-sm font-medium text-slate-700 mb-3">
                 Engineer Rating (1-5)
               </label>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 {[1, 2, 3, 4, 5].map((value) => (
                   <button
                     key={value}
                     type="button"
                     onClick={() => onChangeRating(value)}
-                    className={`flex-1 px-3 py-2 rounded-lg border-2 transition-all text-center ${getRatingButtonStyles(value, rating === value)}`}
+                    className={`w-full min-h-[4rem] px-1 py-3 rounded-lg border-2 transition-all text-center ${getRatingButtonStyles(value, rating === value)}`}
                   >
                     <div className="text-lg font-bold">{value}</div>
-                    <div className="text-xs mt-0.5">{RATING_LABELS[value]}</div>
+                    <div className="text-xs mt-0.5 leading-tight">{RATING_LABELS[value]}</div>
                   </button>
                 ))}
               </div>
