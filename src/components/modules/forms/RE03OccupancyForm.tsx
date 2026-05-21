@@ -7,7 +7,6 @@ import FloatingSaveBar from './FloatingSaveBar';
 import FeedbackModal from '../../FeedbackModal';
 import { getHrgConfig, HRG_MASTER_MAP } from '../../../lib/re/reference/hrgMasterMap';
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
-import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import { Plus, X, AlertCircle, BookOpen } from 'lucide-react';
@@ -163,15 +162,6 @@ export default function RE03OccupancyForm({
         bumpActionsVersion();
       }
 
-      const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
-      if (updatedFormData !== formData) {
-        setFormData(updatedFormData);
-        const sanitized = sanitizeModuleInstancePayload({ data: { occupancy: updatedFormData } });
-        await supabase
-          .from('module_instances')
-          .update({ data: sanitized.data })
-          .eq('id', moduleInstance.id);
-      }
     } catch (err) {
       console.error('Error updating rating:', err);
       setFeedback({

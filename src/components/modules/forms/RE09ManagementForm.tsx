@@ -522,6 +522,9 @@ export default function RE09ManagementForm({
                     </div>
                   </div>
                   {document?.id && moduleInstance?.id && (
+                    // Per-category entry point: sourceKey is distinct per category (management_<key>)
+                    // so these cannot duplicate either each other or the module-level button below.
+                    // Auto-recs from syncAutoRecToRegister use source_type='auto'; manual entries here use source_type='manual'.
                     <ModuleActions
                       documentId={document.id}
                       moduleInstanceId={moduleInstance.id}
@@ -541,6 +544,8 @@ export default function RE09ManagementForm({
         </div>
 
         {document?.id && moduleInstance?.id && (
+          // Module-level entry point: sourceKey="management_systems_module_summary" is distinct
+          // from all per-category sourceKeys above, so no duplicates are created.
           <ModuleActions
             documentId={document.id}
             moduleInstanceId={moduleInstance.id}

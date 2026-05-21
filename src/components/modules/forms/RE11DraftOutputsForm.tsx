@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { FileText, RefreshCw, Save, AlertCircle } from 'lucide-react';
+import { FileText, RefreshCw, AlertCircle } from 'lucide-react';
+import { getModuleDisplayLabel } from '../../../lib/modules/moduleCatalog';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
@@ -34,13 +35,15 @@ interface SurveySection {
 
 interface Recommendation {
   id: string;
+  rec_number: string;
   title: string;
-  detail: string;
+  observation_text: string;
+  action_required_text: string;
   priority: string;
   target_date: string;
   owner: string;
   status: string;
-  related_section: string;
+  source_module_key: string;
 }
 
 export default function RE11DraftOutputsForm({
@@ -85,18 +88,15 @@ export default function RE11DraftOutputsForm({
 
   const loadRecommendations = async () => {
     try {
-      const { data: recModule, error } = await supabase
-        .from('module_instances')
-        .select('data')
+      const { data, error } = await supabase
+        .from('re_recommendations')
+        .select('id, rec_number, title, observation_text, action_required_text, priority, target_date, owner, status, source_module_key')
         .eq('document_id', moduleInstance.document_id)
-        .eq('module_key', 'RE_13_RECOMMENDATIONS')
-        .single();
+        .eq('is_suppressed', false)
+        .order('rec_number', { ascending: true });
 
       if (error) throw error;
-
-      if (recModule?.data?.recommendations) {
-        setRecommendations(recModule.data.recommendations);
-      }
+      setRecommendations(data || []);
     } catch (err) {
       console.error('Error loading recommendations:', err);
     }
@@ -318,10 +318,7 @@ export default function RE11DraftOutputsForm({
   };
 
   const groupRecommendationsByPriorityAndSection = () => {
-    const grouped: Record<
-      string,
-      Record<string, Recommendation[]>
-    > = {
+    const grouped: Record<string, Record<string, Recommendation[]>> = {
       High: {},
       Medium: {},
       Low: {},
@@ -329,7 +326,9 @@ export default function RE11DraftOutputsForm({
 
     recommendations.forEach((rec) => {
       const priority = rec.priority || 'Medium';
-      const section = rec.related_section || 'Other';
+      const section = rec.source_module_key
+        ? (getModuleDisplayLabel(rec.source_module_key) || 'Other')
+        : 'Other';
 
       if (!grouped[priority][section]) {
         grouped[priority][section] = [];
@@ -508,10 +507,11 @@ export default function RE11DraftOutputsForm({
                           <div key={section} className="border-l-4 border-slate-300 pl-4">
                             <h4 className="font-semibold text-slate-700 mb-2">{section}</h4>
                             <ul className="space-y-3">
-                              {recs.map((rec, idx) => (
+                              {recs.map((rec) => (
                                 <li key={rec.id} className="text-sm text-slate-600">
                                   <div className="font-medium text-slate-900">{rec.title}</div>
-                                  <div className="mt-1">{rec.detail}</div>
+                                  {rec.observation_text && <div className="mt-1">{rec.observation_text}</div>}
+                                  {rec.action_required_text && <div className="mt-1 text-slate-700">{rec.action_required_text}</div>}
                                   <div className="mt-1 text-xs text-slate-500">
                                     Target: {rec.target_date || 'Not set'} | Owner:{' '}
                                     {rec.owner || 'Unassigned'} | Status: {rec.status}
