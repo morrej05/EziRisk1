@@ -1,8 +1,10 @@
 import BuildingsGrid from '../../re/BuildingsGrid';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -23,12 +25,14 @@ export default function RE02ConstructionForm({
   document,
   onSaved
 }: RE02ConstructionFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   return (
     <BuildingsGrid
       documentId={document.id}
       mode="construction"
       onAfterSave={onSaved}
       moduleInstanceId={moduleInstance.id}
+      isLocked={isLocked}
     />
   );
 }

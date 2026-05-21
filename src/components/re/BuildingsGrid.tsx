@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BuildingInput } from '../../lib/re/buildingsModel';
 import { createEmptyBuilding } from '../../lib/re/buildingsModel';
-import { Save, Trash2, Pencil, CheckCircle2, AlertTriangle, CircleDashed, Info, PlusCircle } from 'lucide-react';
+import { Save, Trash2, Pencil, CheckCircle2, AlertTriangle, CircleDashed, Info, PlusCircle, Lock } from 'lucide-react';
 import {
   listBuildings,
   upsertBuilding,
@@ -21,6 +21,7 @@ type Props = {
   mode?: GridMode;
   onAfterSave?: () => Promise<void> | void;
   moduleInstanceId?: string;
+  isLocked?: boolean;
 };
 
 type WallRow = { material: string; percent: number };
@@ -84,6 +85,7 @@ export default function BuildingsGrid({
   mode = 'all',
   onAfterSave,
   moduleInstanceId: moduleInstanceIdProp,
+  isLocked = false,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<BuildingInput[]>([]);
@@ -176,6 +178,7 @@ export default function BuildingsGrid({
   }
 
   async function saveSiteNotes() {
+    if (isLocked) return;
     setSavingNotes(true);
     try {
       const { error } = await supabase
@@ -229,6 +232,7 @@ export default function BuildingsGrid({
   }
 
   async function addBuilding() {
+    if (isLocked) return;
     // Create locally then save to get an id
     const ref = `B${rows.length + 1}`;
     const draft = createEmptyBuilding(documentId, ref);
@@ -236,6 +240,7 @@ export default function BuildingsGrid({
   }
 
   async function saveRow(idx: number) {
+    if (isLocked) return;
     const b = rows[idx];
     setError(null);
 
@@ -262,6 +267,7 @@ export default function BuildingsGrid({
   }
 
   async function removeRow(idx: number) {
+    if (isLocked) return;
     const b = rows[idx];
     setError(null);
 
@@ -312,7 +318,7 @@ export default function BuildingsGrid({
   }
 
   async function saveWalls() {
-    if (!wallsOpenForId) return;
+    if (isLocked || !wallsOpenForId) return;
 
     setWallsError(null);
 
@@ -364,7 +370,7 @@ async function openRoof(buildingId: string) {
 }
 
 async function saveRoof() {
-  if (!roofOpenForId) return;
+  if (isLocked || !roofOpenForId) return;
   const total = rowsTotal(roofDraft);
   if (total !== 100) {
     setRoofError(`Roof % must total 100. Current total: ${total}`);
@@ -401,7 +407,7 @@ async function openMezz(buildingId: string) {
 }
 
 async function saveMezz() {
-  if (!mezzOpenForId) return;
+  if (isLocked || !mezzOpenForId) return;
   const total = rowsTotal(mezzDraft);
   if (total !== 100) {
     setMezzError(`Mezzanine/floors % must total 100. Current total: ${total}`);
@@ -690,6 +696,16 @@ async function saveMezz() {
 
   return (
     <div className="p-4 space-y-4">
+      {/* Locked banner */}
+      {isLocked && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm font-medium text-amber-900">
+            Issued document — construction data is read-only. No changes can be saved.
+          </p>
+        </div>
+      )}
+
       {error && (
         <div className="p-3 border border-red-200 rounded-lg bg-red-50 text-red-800 text-sm">{error}</div>
       )}
@@ -698,7 +714,7 @@ async function saveMezz() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h3 className="font-semibold text-slate-900">Buildings ({rows.length})</h3>
         <div className="flex items-center gap-2">
-          {mode !== 'fire_protection' && resolvedModuleInstanceId && (
+          {!isLocked && mode !== 'fire_protection' && resolvedModuleInstanceId && (
             <button
               className="flex items-center gap-2 px-4 py-2 border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-sm font-medium transition-colors"
               onClick={() => setShowAddRecModal(true)}
@@ -707,7 +723,7 @@ async function saveMezz() {
               Add construction recommendation
             </button>
           )}
-          {mode !== 'fire_protection' && (
+          {!isLocked && mode !== 'fire_protection' && (
             <button
               className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm font-medium transition-colors"
               onClick={addBuilding}
@@ -748,7 +764,7 @@ async function saveMezz() {
                     placeholder="Building name / ref (e.g. Warehouse A, B1)"
                   />
                 </div>
-                {mode !== 'fire_protection' && (
+                {mode !== 'fire_protection' && !isLocked && (
                   <div className="flex gap-2 shrink-0">
                     <button
                       className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors min-h-[40px]"
@@ -851,16 +867,20 @@ async function saveMezz() {
                             </span>
                           </p>
                         )}
-                        <button
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
-                          onClick={() => b.id && openRoof(b.id)}
-                          disabled={!b.id}
-                          title={!b.id ? 'Save building first' : 'Edit roof material breakdown'}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Edit roof materials
-                        </button>
-                        {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                        {!isLocked && (
+                          <>
+                            <button
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
+                              onClick={() => b.id && openRoof(b.id)}
+                              disabled={!b.id}
+                              title={!b.id ? 'Save building first' : 'Edit roof material breakdown'}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit roof materials
+                            </button>
+                            {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                          </>
+                        )}
                       </div>
 
                       {/* Walls */}
@@ -877,16 +897,20 @@ async function saveMezz() {
                             </span>
                           </p>
                         )}
-                        <button
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
-                          onClick={() => b.id && openWalls(b.id)}
-                          disabled={!b.id}
-                          title={!b.id ? 'Save building first' : 'Edit wall material breakdown'}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Edit wall materials
-                        </button>
-                        {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                        {!isLocked && (
+                          <>
+                            <button
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
+                              onClick={() => b.id && openWalls(b.id)}
+                              disabled={!b.id}
+                              title={!b.id ? 'Save building first' : 'Edit wall material breakdown'}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit wall materials
+                            </button>
+                            {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                          </>
+                        )}
                       </div>
 
                       {/* Mezzanine / Upper floors */}
@@ -903,17 +927,20 @@ async function saveMezz() {
                             </span>
                           </p>
                         )}
-                        <button
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
-                          onClick={() => b.id && openMezz(b.id)}
-                          disabled={!b.id}
-                          title={!b.id ? 'Save building first' : 'Edit mezzanine/floor material breakdown'}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          Edit mezzanine/floor materials
-                        </button>
-                        {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
-                      </div>
+                        {!isLocked && (
+                          <>
+                            <button
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm transition-colors disabled:opacity-40 min-h-[44px] font-medium"
+                              onClick={() => b.id && openMezz(b.id)}
+                              disabled={!b.id}
+                              title={!b.id ? 'Save building first' : 'Edit mezzanine/floor material breakdown'}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit mezzanine/floor materials
+                            </button>
+                            {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
+                          </>
+                        )}
                     </div>
                   </div>
                 )}
@@ -1115,7 +1142,7 @@ async function saveMezz() {
             <button
               className="px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm font-medium transition-colors disabled:opacity-50"
               onClick={saveSiteNotes}
-              disabled={savingNotes}
+              disabled={savingNotes || isLocked}
             >
               {savingNotes ? 'Saving…' : 'Save notes'}
             </button>

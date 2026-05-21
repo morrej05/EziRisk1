@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { X, Upload, Image as ImageIcon, FileText, AlertCircle } from 'lucide-react';
 import FloatingSaveBar from './FloatingSaveBar';
@@ -28,6 +29,7 @@ async function getSignedUrl(path: string): Promise<string | null> {
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -62,6 +64,7 @@ export default function RE10SitePhotosForm({
   document,
   onSaved,
 }: RE10SitePhotosFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingSitePlan, setUploadingSitePlan] = useState(false);
@@ -229,6 +232,7 @@ export default function RE10SitePhotosForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const payload = sanitizeModuleInstancePayload({

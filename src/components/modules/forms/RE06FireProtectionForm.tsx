@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, Info, Building as BuildingIcon, TrendingUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import {
   generateFireProtectionRecommendations,
   getBuildingRecommendations,
@@ -27,6 +28,7 @@ interface Document {
   id: string;
   title: string;
   document_type: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -465,6 +467,7 @@ export default function RE06FireProtectionForm({
   document,
   onSaved,
 }: RE06FireProtectionFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -658,7 +661,7 @@ export default function RE06FireProtectionForm({
 
 
   const saveData = useCallback(async () => {
-    if (saving) return;
+    if (isLocked || saving) return;
 
     setSaving(true);
     setSaveError(null);

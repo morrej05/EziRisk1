@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
 import FloatingSaveBar from './FloatingSaveBar';
@@ -12,6 +13,7 @@ import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommend
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -37,8 +39,10 @@ const CANONICAL_KEYS = [
 
 export default function RE10ProcessRiskForm({
   moduleInstance,
+  document,
   onSaved,
 }: RE10ProcessRiskFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance.data || {};
 
@@ -112,6 +116,7 @@ export default function RE10ProcessRiskForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const completedAt = outcome ? new Date().toISOString() : null;

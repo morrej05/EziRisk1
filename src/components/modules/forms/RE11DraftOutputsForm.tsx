@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { FileText, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
+import { FileText, RefreshCw, AlertCircle, AlertTriangle, Lock } from 'lucide-react';
 import { getModuleDisplayLabel } from '../../../lib/modules/moduleCatalog';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -52,6 +54,7 @@ export default function RE11DraftOutputsForm({
   document,
   onSaved,
 }: RE11DraftOutputsFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'survey' | 'loss_prevention'>('survey');
@@ -106,6 +109,7 @@ export default function RE11DraftOutputsForm({
   };
 
   const autoPopulateSurveyReport = async () => {
+    if (isLocked) return;
     setLoading(true);
     try {
       const { data: modules, error } = await supabase
@@ -598,6 +602,7 @@ export default function RE11DraftOutputsForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const completedAt = outcome ? new Date().toISOString() : null;
@@ -644,6 +649,16 @@ export default function RE11DraftOutputsForm({
         </p>
       </div>
 
+      {/* Locked banner */}
+      {isLocked && (
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6">
+          <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+          <p className="text-sm font-medium text-amber-900">
+            Issued document — draft outputs are read-only. No changes can be saved.
+          </p>
+        </div>
+      )}
+
       <div className="mb-6">
         <div className="border-b border-slate-200">
           <nav className="flex gap-4">
@@ -689,7 +704,7 @@ export default function RE11DraftOutputsForm({
               </div>
               <button
                 onClick={autoPopulateSurveyReport}
-                disabled={loading}
+                disabled={loading || isLocked}
                 className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -871,7 +886,7 @@ export default function RE11DraftOutputsForm({
       )}
     </div>
 
-      <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
+      {!isLocked && <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />}
     </>
   );
 }

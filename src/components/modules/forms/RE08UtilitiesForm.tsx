@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import FloatingSaveBar from './FloatingSaveBar';
 import ReRatingPanel from '../../re/ReRatingPanel';
@@ -13,6 +14,7 @@ import { Plus, Trash2 } from 'lucide-react';
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -74,8 +76,10 @@ const SERVICE_TYPE_OPTIONS = [
 
 export default function RE08UtilitiesForm({
   moduleInstance,
+  document,
   onSaved,
 }: RE08UtilitiesFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance.data || {};
 
@@ -277,6 +281,7 @@ export default function RE08UtilitiesForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const sanitized = sanitizeModuleInstancePayload({ data: formData });

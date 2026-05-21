@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../../lib/supabase";
+import { isReDocumentLocked } from "../../../lib/re/documentLock";
 import { sanitizeModuleInstancePayload } from "../../../utils/modulePayloadSanitizer";
 import ModuleActions from "../ModuleActions";
 import FloatingSaveBar from "./FloatingSaveBar";
@@ -13,6 +14,7 @@ import RatingButtons from "../../re/RatingButtons";
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -102,6 +104,7 @@ export default function RE09ManagementForm({
   document,
   onSaved,
 }: RE09ManagementFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState(() =>
@@ -316,6 +319,7 @@ export default function RE09ManagementForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       // Invert ratings back to storage format before saving

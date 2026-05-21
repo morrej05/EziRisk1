@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { AlertCircle, TrendingUp, FileText, Save, Sparkles, Copy } from 'lucide-react';
 import FloatingSaveBar from './FloatingSaveBar';
 import { buildRiskEngineeringScoreBreakdown, getMissingRequiredRatings, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
@@ -11,6 +12,7 @@ interface Document {
   title: string;
   assessment_date?: string | null;
   assessor_name?: string | null;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -59,6 +61,7 @@ export default function RE14DraftOutputsForm({
   document,
   onSaved,
 }: RE14DraftOutputsFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -203,6 +206,7 @@ export default function RE14DraftOutputsForm({
   }, [moduleInstance.document_id]);
 
   const handleSaveExecutiveSummary = async () => {
+    if (isLocked) return;
     setSaving(true);
     const updatedData = {
       ...moduleInstance.data,

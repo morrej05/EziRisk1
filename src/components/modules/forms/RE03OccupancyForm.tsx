@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import ModuleActions from '../ModuleActions';
 import ReRatingPanel from '../../re/ReRatingPanel';
@@ -15,6 +16,7 @@ import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommend
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -63,6 +65,7 @@ export default function RE03OccupancyForm({
   document,
   onSaved,
 }: RE03OccupancyFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance?.data ?? {};
 
@@ -211,6 +214,7 @@ export default function RE03OccupancyForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const sanitized = sanitizeModuleInstancePayload({ data: { occupancy: formData } });

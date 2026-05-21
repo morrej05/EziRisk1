@@ -59,6 +59,7 @@ interface Document {
   scope_description: string | null;
   limitations_assumptions: string | null;
   standards_selected: string[];
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
