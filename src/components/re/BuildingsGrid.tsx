@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { BuildingInput } from '../../lib/re/buildingsModel';
 import { createEmptyBuilding } from '../../lib/re/buildingsModel';
-import { Save, Trash2, Pencil, CheckCircle2, AlertTriangle, CircleDashed, Info } from 'lucide-react';
+import { Save, Trash2, Pencil, CheckCircle2, AlertTriangle, CircleDashed, Info, PlusCircle } from 'lucide-react';
 import {
   listBuildings,
   upsertBuilding,
@@ -11,6 +11,8 @@ import {
 } from '../../lib/re/buildingsRepo';
 import { computeConstruction } from '../../lib/re/buildingsCompute';
 import { supabase } from '../../lib/supabase';
+import CanonicalReRecommendationModal from './CanonicalReRecommendationModal';
+import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 
 type GridMode = 'all' | 'construction' | 'fire_protection';
 
@@ -18,6 +20,7 @@ type Props = {
   documentId: string;
   mode?: GridMode;
   onAfterSave?: () => Promise<void> | void;
+  moduleInstanceId?: string;
 };
 
 type WallRow = { material: string; percent: number };
@@ -80,11 +83,14 @@ export default function BuildingsGrid({
   documentId,
   mode = 'all',
   onAfterSave,
+  moduleInstanceId: moduleInstanceIdProp,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<BuildingInput[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [resolvedModuleInstanceId, setResolvedModuleInstanceId] = useState<string | null>(moduleInstanceIdProp ?? null);
+  const [showAddRecModal, setShowAddRecModal] = useState(false);
 
   // Walls modal state
   const [wallsOpenForId, setWallsOpenForId] = useState<string | null>(null);
@@ -194,6 +200,25 @@ export default function BuildingsGrid({
     loadSiteNotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId]);
+
+  // Resolve RE_02_CONSTRUCTION module instance ID if not supplied by caller
+  useEffect(() => {
+    if (moduleInstanceIdProp) {
+      setResolvedModuleInstanceId(moduleInstanceIdProp);
+      return;
+    }
+    if (mode === 'fire_protection') return;
+    supabase
+      .from('module_instances')
+      .select('id')
+      .eq('document_id', documentId)
+      .eq('module_key', 'RE_02_CONSTRUCTION')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.id) setResolvedModuleInstanceId(data.id);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, moduleInstanceIdProp, mode]);
 
   function updateRow(idx: number, patch: Partial<BuildingInput>) {
     setRows(prev => {
@@ -670,16 +695,27 @@ async function saveMezz() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h3 className="font-semibold text-slate-900">Buildings ({rows.length})</h3>
-        {mode !== 'fire_protection' && (
-          <button
-            className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm font-medium transition-colors"
-            onClick={addBuilding}
-          >
-            + Add Building
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {mode !== 'fire_protection' && resolvedModuleInstanceId && (
+            <button
+              className="flex items-center gap-2 px-4 py-2 border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-sm font-medium transition-colors"
+              onClick={() => setShowAddRecModal(true)}
+            >
+              <PlusCircle className="w-4 h-4" />
+              Add construction recommendation
+            </button>
+          )}
+          {mode !== 'fire_protection' && (
+            <button
+              className="flex items-center gap-2 px-4 py-2 border border-slate-300 rounded-lg bg-white hover:bg-slate-50 text-sm font-medium transition-colors"
+              onClick={addBuilding}
+            >
+              + Add Building
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Empty state */}
@@ -1085,6 +1121,22 @@ async function saveMezz() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Add construction recommendation modal */}
+      {resolvedModuleInstanceId && (
+        <CanonicalReRecommendationModal
+          isOpen={showAddRecModal}
+          onClose={() => setShowAddRecModal(false)}
+          onSaved={async () => {
+            bumpActionsVersion();
+            if (onAfterSave) await onAfterSave();
+          }}
+          documentId={documentId}
+          moduleInstanceId={resolvedModuleInstanceId}
+          sourceModuleKey="RE_02_CONSTRUCTION"
+          sectionLabel="RE-02 – Construction"
+        />
       )}
 
       {/* Walls modal */}

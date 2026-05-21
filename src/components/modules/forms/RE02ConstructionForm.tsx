@@ -19,6 +19,7 @@ interface RE02ConstructionFormProps {
 }
 
 export default function RE02ConstructionForm({
+  moduleInstance,
   document,
   onSaved
 }: RE02ConstructionFormProps) {
@@ -27,6 +28,7 @@ export default function RE02ConstructionForm({
       documentId={document.id}
       mode="construction"
       onAfterSave={onSaved}
+      moduleInstanceId={moduleInstance.id}
     />
   );
 }
