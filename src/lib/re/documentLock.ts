@@ -1,14 +1,9 @@
 /**
- * RE document lock helper.
+ * RE document lock helper — thin re-export of the shared utility.
  *
- * A document is considered locked (read-only) once it has been issued or
- * superseded. Draft documents remain fully editable.
- *
- * All RE form components and BuildingsGrid use this single source of truth so
- * the lock rule can be changed in one place without touching individual forms.
+ * All RE form components and BuildingsGrid import from here so the symbol name
+ * (isReDocumentLocked) stays stable.  The underlying logic lives in
+ * src/utils/documentLock.ts which is also used by FSD and DSEAR forms.
  */
-export type IssueStatus = 'draft' | 'issued' | 'superseded';
-
-export function isReDocumentLocked(issueStatus: IssueStatus | string | null | undefined): boolean {
-  return issueStatus === 'issued' || issueStatus === 'superseded';
-}
+export type { IssueStatus } from '../../utils/documentLock';
+export { isDocumentLocked as isReDocumentLocked } from '../../utils/documentLock';

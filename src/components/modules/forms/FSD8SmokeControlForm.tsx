@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Wind, CheckCircle, Plus } from 'lucide-react';
+import { Wind, CheckCircle, Plus, Lock, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { isDocumentLocked } from '../../../utils/documentLock';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
@@ -13,6 +14,7 @@ interface Document {
   id: string;
   title: string;
   jurisdiction?: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -39,7 +41,9 @@ export default function FSD8SmokeControlForm({
   document,
   onSaved,
 }: FSD8SmokeControlFormProps) {
+  const isLocked = isDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
@@ -97,6 +101,7 @@ export default function FSD8SmokeControlForm({
   const suggestedOutcome = !outcome ? getSuggestedOutcome() : null;
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const payload = sanitizeModuleInstancePayload({
@@ -115,10 +120,11 @@ export default function FSD8SmokeControlForm({
 
       const now = new Date().toLocaleTimeString();
       setLastSaved(now);
+      setSaveError(null);
       onSaved();
     } catch (error) {
       console.error('Error saving FSD-8 module:', error);
-      alert('Failed to save. Please try again.');
+      setSaveError('Failed to save. Please check your connection and try again.');
     } finally {
       setIsSaving(false);
     }
@@ -141,6 +147,23 @@ export default function FSD8SmokeControlForm({
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+      {isLocked && (
+        <div className="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg flex items-start gap-3">
+          <Lock className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-blue-900">Issued — Read Only</p>
+            <p className="text-sm text-blue-800 mt-1">This document has been issued and cannot be edited.</p>
+          </div>
+        </div>
+      )}
+      {saveError && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start justify-between gap-3">
+          <p className="text-sm text-red-900">{saveError}</p>
+          <button onClick={() => setSaveError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <Wind className="w-6 h-6 text-neutral-700" />

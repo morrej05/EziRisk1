@@ -13,9 +13,20 @@ export default function EditLockBanner({
   onNavigateToSuccessor,
   className = '',
 }: EditLockBannerProps) {
-  // Only show banner for superseded documents (issued documents show lock status in compact banner)
-  if (issueStatus !== 'superseded') {
-    return null;
+  if (issueStatus === 'issued') {
+    return (
+      <div className={`bg-blue-50 border-l-4 border-blue-500 p-4 ${className}`}>
+        <div className="flex items-start gap-3">
+          <Lock className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium text-blue-900">Issued — Read Only</p>
+            <p className="text-sm text-blue-800 mt-1">
+              This document has been issued and cannot be edited. All form fields are read-only.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (issueStatus === 'superseded') {
@@ -24,7 +35,7 @@ export default function EditLockBanner({
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
-            <p className="font-medium text-amber-900">Document Superseded</p>
+            <p className="font-medium text-amber-900">Superseded — Archived Version</p>
             <p className="text-sm text-amber-800 mt-1">
               This document has been superseded by a newer version and cannot be edited.
               {supersededByDocumentId && ' View the current version for the latest information.'}

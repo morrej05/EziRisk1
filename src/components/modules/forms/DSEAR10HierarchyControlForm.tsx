@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Lock, X } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { isDocumentLocked } from '../../../utils/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
@@ -8,11 +9,13 @@ import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 
 interface ModuleInstance { id: string; module_key: string; outcome: string | null; assessor_notes: string; data: Record<string, any>; }
-interface Document { id: string; title: string; }
+interface Document { id: string; title: string; issue_status?: 'draft' | 'issued' | 'superseded'; }
 interface Props { moduleInstance: ModuleInstance; document: Document; onSaved: () => void; }
 
 export default function DSEAR10HierarchyControlForm({ moduleInstance, document, onSaved }: Props) {
+  const isLocked = isDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
   const [substitutionConsidered, setSubstitutionConsidered] = useState(moduleInstance.data.substitution_considered || '');
@@ -31,6 +34,7 @@ export default function DSEAR10HierarchyControlForm({ moduleInstance, document, 
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const payload = sanitizeModuleInstancePayload({ data: { substitution_considered: substitutionConsidered, elimination_possible: eliminationPossible, engineering_controls: engineeringControls, administrative_controls: administrativeControls, PPE_controls: ppeControls, justification_for_retained_risk: justification }, outcome, assessor_notes: assessorNotes, updated_at: new Date().toISOString() }, moduleInstance.module_key);
@@ -38,12 +42,35 @@ export default function DSEAR10HierarchyControlForm({ moduleInstance, document, 
       const { error } = await supabase.from('module_instances').update(payload).eq('id', moduleInstance.id);
       if (error) throw error;
       setLastSaved(new Date().toLocaleTimeString());
+      setSaveError(null);
       onSaved();
-    } catch (error) { console.error('Error:', error); alert('Failed to save.'); } finally { setIsSaving(false); }
+    } catch (error) {
+      console.error('Error:', error);
+      setSaveError('Failed to save. Please check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+      {isLocked && (
+        <div className="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg flex items-start gap-3">
+          <Lock className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-blue-900">Issued — Read Only</p>
+            <p className="text-sm text-blue-800 mt-1">This document has been issued and cannot be edited.</p>
+          </div>
+        </div>
+      )}
+      {saveError && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-start justify-between gap-3">
+          <p className="text-sm text-red-900">{saveError}</p>
+          <button onClick={() => setSaveError(null)} className="text-red-400 hover:text-red-600 flex-shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-neutral-900 mb-2">DSEAR-10 - Hierarchy of Control</h2>
         <p className="text-neutral-600">Apply the hierarchy of control to minimize explosion risk</p>
