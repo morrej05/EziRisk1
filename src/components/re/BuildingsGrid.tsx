@@ -941,6 +941,7 @@ async function saveMezz() {
                             {!b.id && <p className="text-xs text-slate-400 text-center">Save building first</p>}
                           </>
                         )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1079,15 +1080,14 @@ async function saveMezz() {
                           <div>Roof: {isNaN(computed.roofCombustiblePercent) ? '—' : `${computed.roofCombustiblePercent}%`} combustible</div>
                           <div>Walls: {isNaN(computed.wallCombustiblePercent) ? '—' : `${computed.wallCombustiblePercent}%`} combustible</div>
                           <div>Mezz: {isNaN(computed.mezzCombustiblePercent) ? '—' : `${computed.mezzCombustiblePercent}%`} combustible</div>
-                          {siteWeightTotal > 0 && (() => {
-                            const area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
-                            const effective = area > 0 ? area : 1;
-                            return (
-                              <div className="mt-1">
-                                Area weight: {((effective / siteWeightTotal) * 100).toFixed(1)}% of site
-                              </div>
-                            );
-                          })()}
+                          {siteWeightTotal > 0 && (
+                            <div className="mt-1">
+                              {`Area weight: ${(
+                                (Math.max((b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0), 1) /
+                                  siteWeightTotal) * 100
+                              ).toFixed(1)}% of site`}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
