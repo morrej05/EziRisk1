@@ -227,15 +227,18 @@ export async function downloadAttachment(filePath: string, fileName: string): Pr
   }
 }
 
+// evidence is a private bucket — signed URLs are required. getPublicUrl returns
+// a non-functional URL for private buckets and is not used here.
 export async function getAttachmentPublicUrl(filePath: string): Promise<string | null> {
   try {
-    const { data } = supabase.storage
+    const { data, error } = await supabase.storage
       .from('evidence')
-      .getPublicUrl(filePath);
+      .createSignedUrl(filePath, 3600);
 
-    return data.publicUrl;
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
   } catch (error) {
-    console.error('Error getting public URL:', error);
+    console.error('Error getting signed URL:', error);
     return null;
   }
 }

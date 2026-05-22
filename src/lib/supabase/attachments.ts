@@ -352,12 +352,15 @@ export async function uploadEvidenceFile(
   };
 }
 
-export function getPublicUrl(filePath: string): string {
-  const { data } = supabase.storage
+// evidence is a private bucket — signed URLs are required.
+// getPublicUrl returns a non-functional URL for private buckets; use getSignedUrl instead.
+export async function getPublicUrl(filePath: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
     .from('evidence')
-    .getPublicUrl(filePath);
+    .createSignedUrl(filePath, 3600);
 
-  return data.publicUrl;
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
 }
 
 export async function getSignedUrl(input: string | any, expiresIn: number = 3600): Promise<string> {

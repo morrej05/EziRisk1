@@ -171,14 +171,13 @@ export default function CanonicalReRecommendationModal({
     setPhotoUrls({});
   };
 
+  // evidence is a private bucket; getPublicUrl returns a non-functional URL.
+  // Always use signed URLs — the public URL path never works here.
   const getStorageUrl = async (path: string): Promise<string | null> => {
-    const { data } = supabase.storage.from("evidence").getPublicUrl(path);
-    if (data?.publicUrl) return data.publicUrl;
-
     const { data: signedData } = await supabase.storage
       .from("evidence")
       .createSignedUrl(path, 3600);
-    return signedData?.signedUrl || null;
+    return signedData?.signedUrl ?? null;
   };
 
   const handleUploadPhoto = async (file: File) => {

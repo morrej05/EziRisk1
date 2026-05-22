@@ -32,11 +32,21 @@ Deno.serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Phase 9 two-client pattern:
+    // 1. Anon client with the caller's bearer token for JWT verification.
+    //    This client runs under the caller's identity and cannot bypass RLS.
+    // 2. Service-role client for privileged DB writes (status update, audit log).
+    //    This client is never used for user identity resolution.
+    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    // Verify the caller's JWT using the anon client (no service-role privileges)
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
 
     if (authError || !user) {
       return new Response(
