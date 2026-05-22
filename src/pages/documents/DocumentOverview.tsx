@@ -1410,23 +1410,27 @@ export default function DocumentOverview() {
 
   const getReadinessIcon = (state: ReadinessState) => {
     if (state === "blocked") {
-      return <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />;
+      return <AlertTriangle className="w-3.5 h-3.5 text-red-600 flex-shrink-0 mt-0.5" />;
     }
     if (state === "needs_review") {
-      return <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />;
+      return <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />;
     }
-    return <CheckCircle className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />;
+    return <CheckCircle className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />;
   };
 
   const renderReadinessItem = (item: IssueReadinessItem) => (
     <div
       key={item.key}
-      className={`flex items-start gap-3 rounded-lg border px-3 py-2 ${getReadinessRowClass(item.state)}`}
+      className={`flex items-start gap-2 rounded border px-2 py-1.5 ${getReadinessRowClass(item.state)}`}
     >
       {getReadinessIcon(item.state)}
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-neutral-900">{item.label}</p>
-        <p className="text-xs text-neutral-600">{item.detail}</p>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-neutral-900 leading-snug">{item.label}</p>
+        {item.detail && (
+          <p className="text-xs text-neutral-500 leading-snug truncate" title={item.detail}>
+            {item.detail}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1794,23 +1798,38 @@ export default function DocumentOverview() {
 
         {/* Consolidated issue readiness */}
         <Card className="mb-6">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div>
-              <h2 className="text-lg font-semibold text-neutral-900">
-                Issue readiness
-              </h2>
-              <p className="text-sm text-neutral-600 mt-1">
-                Uses the same issue validator as the issue flow. Blocking issues prevent issue; recommendations are advisory.
-              </p>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Issue readiness</h2>
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={handleOpenWorkspace}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                <Edit3 className="h-3 w-3" />
+                Workspace
+              </button>
+              <button
+                onClick={() => navigate(`/documents/${id}/evidence`)}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                <Image className="h-3 w-3" />
+                Evidence
+              </button>
+              <button
+                onClick={() => navigate(`/documents/${id}/preview`)}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                <FileText className="h-3 w-3" />
+                Preview
+              </button>
+              <button
+                onClick={() => setShowVersionHistoryModal(true)}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                <Clock className="h-3 w-3" />
+                History
+              </button>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate(`/documents/${id}/preview`)}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Preview report
-            </Button>
           </div>
           {isCheckingIssueReadiness && (
             <p className="mb-3 text-sm text-neutral-500">
@@ -1818,94 +1837,65 @@ export default function DocumentOverview() {
             </p>
           )}
 
-          <div className="space-y-4">
+          <div className="space-y-2">
             {blockingIssueItems.length > 0 && (
-              <section className="rounded-xl border border-red-200 bg-red-50/40 p-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-red-950">
-                      Blocking issues
-                    </h3>
-                    <p className="text-xs text-red-800">
-                      These validator items must be resolved before issue.
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-800">
+              <section className="rounded-lg border border-red-200 bg-red-50/30 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-red-950">
+                    <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                    Blocking issues
+                  </span>
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">
                     {blockingIssueItems.length} to resolve
                   </span>
                 </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
                   {blockingIssueItems.map(renderReadinessItem)}
                 </div>
               </section>
             )}
 
             {recommendedIssueItems.length > 0 && (
-              isReDocument ? (
-                <details className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
-                  <summary className="cursor-pointer list-none marker:hidden">
-                    <span className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-2 text-sm font-semibold text-amber-950">
-                        <AlertCircle className="h-4 w-4 text-amber-600" />
-                        {recommendedIssueItems.length} advisory item{recommendedIssueItems.length !== 1 ? 's' : ''} to review before issue
-                      </span>
-                      <span className="text-xs text-amber-700 shrink-0">Click to expand</span>
+              <details className="rounded-lg border border-amber-200 bg-amber-50/30 p-2.5">
+                <summary className="cursor-pointer list-none marker:hidden">
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-950">
+                      <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                      {recommendedIssueItems.length} advisory item{recommendedIssueItems.length !== 1 ? 's' : ''} to review before issue
                     </span>
-                  </summary>
-                  <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {recommendedIssueItems.map(renderReadinessItem)}
-                  </div>
-                </details>
-              ) : (
-                <section className="rounded-xl border border-amber-200 bg-amber-50/30 p-3">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-semibold text-amber-950">
-                        Recommended before issue
-                      </h3>
-                      <p className="text-xs text-amber-800">
-                        These items do not technically block issue, but should be reviewed by the assessor.
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                      {recommendedIssueItems.length} to review
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {recommendedIssueItems.map(renderReadinessItem)}
-                  </div>
-                </section>
-              )
+                    <span className="shrink-0 text-xs text-amber-700">Click to expand</span>
+                  </span>
+                </summary>
+                <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-2">
+                  {recommendedIssueItems.map(renderReadinessItem)}
+                </div>
+              </details>
             )}
 
-            {blockingIssueItems.length === 0 && (recommendedIssueItems.length === 0 || isReDocument) && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                <div className="flex items-start gap-3">
-                  <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <h3 className="text-sm font-semibold text-emerald-950">
-                      {isReDocument && recommendedIssueItems.length > 0 ? "No blocking issues" : "Ready to issue"}
-                    </h3>
-                    <p className="text-sm text-emerald-800">
-                      {isReDocument && recommendedIssueItems.length > 0
-                        ? `${recommendedIssueItems.length} advisory item${recommendedIssueItems.length !== 1 ? 's' : ''} to review — expand above to see them.`
-                        : "No blocking or advisory readiness items are currently outstanding."}
-                    </p>
-                  </div>
-                </div>
+            {blockingIssueItems.length === 0 && (
+              <div className="flex items-center gap-2 py-0.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                  {recommendedIssueItems.length > 0 ? "No blocking issues" : "Ready to issue"}
+                </span>
+                {recommendedIssueItems.length > 0 && (
+                  <span className="text-xs text-neutral-500">
+                    {recommendedIssueItems.length} advisory item{recommendedIssueItems.length !== 1 ? 's' : ''} to review above
+                  </span>
+                )}
               </div>
             )}
 
             {readyQualityGateItems.length > 0 && (
-              <details className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
-                <summary className="cursor-pointer list-none text-sm font-medium text-emerald-950 marker:hidden">
-                  <span className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-emerald-600" />
-                    <span className="font-semibold">{readyQualityGateItems.length} readiness checks passed</span>
-                    <span className="text-xs font-normal text-emerald-700">View completed checks</span>
+              <details className="rounded-lg border border-emerald-200 bg-emerald-50/30 p-2.5">
+                <summary className="cursor-pointer list-none marker:hidden">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-xs font-semibold text-emerald-800">{readyQualityGateItems.length} readiness checks passed</span>
+                    <span className="text-xs font-normal text-emerald-600">— view</span>
                   </span>
                 </summary>
-                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-2">
                   {readyQualityGateItems.map(renderReadinessItem)}
                 </div>
               </details>
@@ -1917,23 +1907,13 @@ export default function DocumentOverview() {
         {document &&
           !document.meta?.site?.address?.line1 &&
           !document.meta?.site?.address?.postcode && (
-            <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
-              <div className="flex items-start gap-3">
-                <Info className="w-4 h-4 text-neutral-500 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 mb-1">
-                    Assessment guidance
-                  </p>
-                  <p className="text-sm font-medium text-neutral-900 mb-1">
-                    Add site address
-                  </p>
-                  <p className="text-sm text-neutral-600">
-                    Add the site address in module A1 to support mapping and
-                    keep the report identity consistent across all outputs.
-                  </p>
-                </div>
-              </div>
-            </section>
+            <div className="mb-4 flex items-center gap-2 rounded border border-neutral-200 bg-neutral-50 px-3 py-2">
+              <Info className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400" />
+              <p className="flex-1 text-xs text-neutral-600">
+                <span className="font-medium text-neutral-700">No site address set</span>
+                {" "}— add in module A1 for mapping and consistent report identity.
+              </p>
+            </div>
           )}
 
         {/* Available Outputs */}
