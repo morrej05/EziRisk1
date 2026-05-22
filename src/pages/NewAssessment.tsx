@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getModuleKeysForDocType } from '../lib/modules/moduleCatalog';
 import { getAssessmentDisplayName } from '../utils/displayNames';
 import { getAvailableJurisdictions, normalizeJurisdiction } from '../lib/jurisdictions';
+import { resolveDisplayName } from '../utils/pdfIdentity';
 
 export default function NewAssessment() {
   const { user, organisation } = useAuth();
@@ -284,7 +285,7 @@ export default function NewAssessment() {
                     Assessor Name
                   </label>
                   <div className="w-full border border-neutral-200 rounded-lg px-4 py-2 bg-neutral-50 text-sm text-neutral-700">
-                    {user?.name || user?.email || 'Authenticated User'}
+                    {resolveDisplayName(user) || 'Authenticated User'}
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">
                     Assessor identity is derived from your authenticated account and cannot be changed here.

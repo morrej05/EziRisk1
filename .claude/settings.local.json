@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v \"node_modules\\\\|//\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

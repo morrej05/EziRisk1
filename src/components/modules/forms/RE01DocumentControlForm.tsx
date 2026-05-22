@@ -8,6 +8,7 @@ import { updateDocumentMeta } from '../../../lib/documents/updateDocumentMeta';
 import { useAuth } from '../../../contexts/AuthContext';
 import FloatingSaveBar from './FloatingSaveBar';
 import { Plus, X } from 'lucide-react';
+import { resolveDisplayName } from '../../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -339,7 +340,7 @@ export default function RE01DocumentControlForm({
           ...formData,
           assessor: {
             ...formData.assessor,
-            name: user?.name || user?.email || '',
+            name: resolveDisplayName(user) || '',
           },
         },
       });
@@ -428,7 +429,7 @@ export default function RE01DocumentControlForm({
               <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
               <input
                 type="text"
-                value={user?.name || user?.email || 'Authenticated User'}
+                value={resolveDisplayName(user) || 'Authenticated User'}
                 readOnly
                 disabled
                 className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-slate-50 text-slate-500 cursor-not-allowed"

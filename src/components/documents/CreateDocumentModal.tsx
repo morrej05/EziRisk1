@@ -9,6 +9,7 @@ import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlem
 import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
 import { buildUpgradePath } from '../../utils/upgradeNavigation';
 import { getStandardsOptions } from '../../lib/jurisdictions';
+import { resolveDisplayName } from '../../utils/pdfIdentity';
 
 interface CreateDocumentModalProps {
   onClose: () => void;
@@ -434,7 +435,7 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">Report Author</label>
               <div className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-700">
-                {user?.name || user?.email || 'Authenticated user'}
+                {resolveDisplayName(user) || 'Authenticated User'}
               </div>
             </div>
 

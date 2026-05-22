@@ -60,6 +60,7 @@ type OrganisationLike = {
 type UserLike = {
   name?: string | null;
   email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
 } | null;
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
@@ -90,9 +91,16 @@ async function loadCurrentUser(): Promise<UserLike> {
 
   if (!authUser) return null;
 
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('name')
+    .eq('id', authUser.id)
+    .single();
+
   return {
-    name: authUser.user_metadata?.name || authUser.user_metadata?.full_name || null,
+    name: (profile?.name as string | null | undefined) || null,
     email: authUser.email || null,
+    user_metadata: (authUser.user_metadata as Record<string, unknown>) || null,
   };
 }
 
