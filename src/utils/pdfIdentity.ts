@@ -7,11 +7,20 @@ type AuthLikeUser = {
 } | null | undefined;
 
 export function resolveDisplayName(user: AuthLikeUser): string | null {
-  // 1. Profile name (user_profiles.name, surfaced as user.name)
   const profileName = user?.name?.trim();
-  if (profileName) return profileName;
-
   const meta = user?.user_metadata;
+
+  if (import.meta.env.DEV) {
+    console.log('[resolveDisplayName] input:', {
+      name: user?.name,
+      email: user?.email,
+      user_metadata: meta,
+    });
+  }
+
+  // 1. Profile name — but skip if it looks like an email (profile was seeded
+  //    from the email address at signup, not a real display name)
+  if (profileName && !profileName.includes('@')) return profileName;
 
   // 2. user_metadata.full_name (OAuth / signup flows)
   const metaFullName = (meta?.full_name as string | undefined)?.trim();
@@ -27,13 +36,27 @@ export function resolveDisplayName(user: AuthLikeUser): string | null {
   const metaName = (meta?.name as string | undefined)?.trim();
   if (metaName) return metaName;
 
-  // 5. Email prefix only — never the full raw email address
+  // 5. Profile name that happens to be an email — use its prefix as last resort
+  //    (catches the case where name was seeded from email at signup)
+  if (profileName?.includes('@')) {
+    const prefix = profileName.split('@')[0];
+    if (prefix) {
+      if (import.meta.env.DEV) console.log('[resolveDisplayName] resolved from profile email prefix:', prefix);
+      return prefix;
+    }
+  }
+
+  // 6. auth email prefix — never the full raw email address
   const email = user?.email?.trim();
   if (email) {
     const prefix = email.split('@')[0];
-    if (prefix) return prefix;
+    if (prefix) {
+      if (import.meta.env.DEV) console.log('[resolveDisplayName] resolved from auth email prefix:', prefix);
+      return prefix;
+    }
   }
 
+  if (import.meta.env.DEV) console.log('[resolveDisplayName] could not resolve, returning null');
   return null;
 }
 

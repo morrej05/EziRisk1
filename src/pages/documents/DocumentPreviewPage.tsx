@@ -20,6 +20,8 @@ import type { FraContext } from '../../lib/modules/fra/severityEngine';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { normalizeJurisdiction } from '../../lib/jurisdictions';
 import { buildPdfIdentityOptions } from '../../utils/pdfIdentity';
+import { needsDisplayName } from '../../utils/displayNameGuard';
+import DisplayNameModal from '../../components/profile/DisplayNameModal';
 
 type OutputMode = 'FRA' | 'FSD' | 'DSEAR' | 'COMBINED' | 'FIRE_EXPLOSION_COMBINED';
 type ReReportTab = 're_survey' | 're_lp';
@@ -39,6 +41,7 @@ export default function DocumentPreviewPage() {
   const [outputMode, setOutputMode] = useState<OutputMode>('FRA');
   const [availableModes, setAvailableModes] = useState<OutputMode[]>(['FRA']);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
 
   // RE-specific state
   const [reActiveTab, setReActiveTab] = useState<ReReportTab>('re_survey');
@@ -278,6 +281,12 @@ export default function DocumentPreviewPage() {
   const handleGeneratePdf = async () => {
     if (!document || !organisation?.id) return;
 
+    // Guard: reports must show a real name, not a raw email address.
+    if (needsDisplayName(user)) {
+      setShowNamePrompt(true);
+      return;
+    }
+
     setIsGenerating(true);
     setErrorMsg(null);
 
@@ -394,6 +403,17 @@ export default function DocumentPreviewPage() {
         );
       }
 
+      const identityOptions = buildPdfIdentityOptions(organisation, user);
+      if (import.meta.env.DEV) {
+        console.log('[DocumentPreviewPage] identity debug:', {
+          'user.id':    user?.id,
+          'user.name':  user?.name,
+          'user.email': user?.email,
+          'user.user_metadata': (user as any)?.user_metadata,
+          'identityOptions': identityOptions,
+        });
+      }
+
       const pdfOptions = {
         document,
         moduleInstances,
@@ -405,7 +425,7 @@ export default function DocumentPreviewPage() {
           branding_logo_path: freshOrg.branding_logo_path,
         },
         renderMode: (document.issue_status === 'issued' || document.issue_status === 'superseded') ? 'issued' as const : 'preview' as const,
-        ...buildPdfIdentityOptions(organisation, user),
+        ...identityOptions,
       };
 
       let pdfBytes: Uint8Array;
@@ -912,6 +932,15 @@ export default function DocumentPreviewPage() {
           )}
         </div>
       </div>
+
+      {/* Display-name prompt — shown when user tries to generate a PDF without a valid name */}
+      {showNamePrompt && (
+        <DisplayNameModal
+          mode="prompt"
+          onSaved={() => setShowNamePrompt(false)}
+          onDismiss={() => setShowNamePrompt(false)}
+        />
+      )}
     </div>
   );
 }

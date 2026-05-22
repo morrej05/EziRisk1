@@ -2,7 +2,24 @@
   "permissions": {
     "allow": [
       "Bash(grep -v \"node_modules\\\\|//\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(supabase --version)",
+      "Bash(supabase status *)",
+      "Bash(supabase db *)",
+      "Bash(cat ~/.config/supabase/access-token 2>/dev/null | head -1; ls ~/.config/supabase/ 2>/dev/null)",
+      "Bash(psql --version)",
+      "Bash(echo \"EXIT:$?\")",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\supabase\" -Recurse -File 2>$null | Select-Object FullName)",
+      "Bash(Get-ChildItem -Filter \"*.sql\")",
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(Sort-Object)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\JamesMorrell\\\\Documents\\\\GitHub\\\\EziRisk1\\\\src\" -Recurse -File)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-Table FullName)",
+      "Bash(findstr /S \"profile\" pages\\\\*.tsx components\\\\*.tsx)",
+      "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\JamesMorrell\\\\Documents\\\\GitHub\\\\EziRisk1\\\\src\\\\components\\\\profile\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Host \"done\")"
     ]
   }
 }

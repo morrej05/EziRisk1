@@ -8,6 +8,9 @@ import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import { Button, Callout } from '../ui/DesignSystem';
 import { buildIssuedPdfForDocument, storeIssuedPdfWithEdgeFunction } from '../../utils/issuedPdfGeneration';
 import { ensureDocumentIdentitySnapshot } from '../../lib/documents/documentIdentity';
+import { useAuth } from '../../contexts/AuthContext';
+import { needsDisplayName } from '../../utils/displayNameGuard';
+import DisplayNameModal from '../profile/DisplayNameModal';
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -50,8 +53,10 @@ export default function IssueDocumentModal({
   const [issueProgress, setIssueProgress] = useState<string>('');
   const [documentVersion, setDocumentVersion] = useState<number>(1);
   const [partialSuccessWarning, setPartialSuccessWarning] = useState<string>('');
+  const [showNameModal, setShowNameModal] = useState(false);
 
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Helper to extract module keys from error messages
   const extractMissingModules = (errors: string[]): string[] => {
@@ -67,6 +72,13 @@ export default function IssueDocumentModal({
   };
 
   const handleValidate = async () => {
+    // Guard: a valid display name is required before issuing.
+    // Issued documents are immutable, so the assessor name must be correct.
+    if (needsDisplayName(user)) {
+      setShowNameModal(true);
+      return;
+    }
+
     setIsValidating(true);
     try {
       const { data: doc } = await supabase
@@ -462,6 +474,15 @@ export default function IssueDocumentModal({
           )}
         </div>
       </div>
+
+      {/* Display-name prompt — shown when user tries to validate without a valid name */}
+      {showNameModal && (
+        <DisplayNameModal
+          mode="prompt"
+          onSaved={() => setShowNameModal(false)}
+          onDismiss={() => setShowNameModal(false)}
+        />
+      )}
     </div>
   );
 }

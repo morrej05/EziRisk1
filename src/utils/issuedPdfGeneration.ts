@@ -97,11 +97,22 @@ async function loadCurrentUser(): Promise<UserLike> {
     .eq('id', authUser.id)
     .single();
 
-  return {
+  const result = {
     name: (profile?.name as string | null | undefined) || null,
     email: authUser.email || null,
     user_metadata: (authUser.user_metadata as Record<string, unknown>) || null,
   };
+
+  if (import.meta.env.DEV) {
+    console.log('[issuedPdfGeneration] loadCurrentUser:', {
+      'profile.name': profile?.name,
+      'authUser.email': authUser.email,
+      'user_metadata': authUser.user_metadata,
+      'result.name': result.name,
+    });
+  }
+
+  return result;
 }
 
 export async function buildIssuedPdfForDocument(
