@@ -164,7 +164,6 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         enabled_products: ['FRA', 'DSEAR'],
       } : {};
 
-      const resolvedAuthorName = user?.name || user?.email || null;
       const resolvedAuthorRole = userRole || null;
 
       const documentData = {
@@ -175,13 +174,11 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         status: 'draft',
         version: 1,
         assessment_date: formData.assessmentDate,
-        assessor_name: resolvedAuthorName,
+        // assessor_name, created_by_user_id, author_profile_id,
+        // author_name_snapshot, and display_author_name are enforced
+        // server-side by trg_enforce_document_author_identity — do not send.
         assessor_role: resolvedAuthorRole,
-        created_by_user_id: user?.id ?? null,
-        author_profile_id: user?.id ?? null,
-        author_name_snapshot: resolvedAuthorName,
         author_role_snapshot: resolvedAuthorRole,
-        display_author_name: resolvedAuthorName,
         display_author_role: resolvedAuthorRole,
         display_author_organisation: organisation.name,
         responsible_person: formData.responsiblePerson.trim() || null,
