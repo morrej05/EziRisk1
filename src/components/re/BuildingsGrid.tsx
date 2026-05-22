@@ -432,6 +432,7 @@ async function saveMezz() {
   const totals = useMemo(() => {
     return {
       roof: sum(rows.map(r => r.roof_area_m2)),
+      gia: sum(rows.map(r => r.total_floor_area_m2)),
       mezz: sum(rows.map(r => r.mezzanine_area_m2)),
     };
   }, [rows]);
@@ -441,8 +442,9 @@ async function saveMezz() {
     const buildingsWithData = rows.filter(b => b.id && buildingExtras[b.id!]).map(b => {
       const extra = buildingExtras[b.id!];
       const computed = computeConstruction(b, extra);
-      let area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
-      if (area <= 0) area = 1; // Default weight
+      // Prefer explicit GIA; fall back to roof + mezz for legacy records; minimum weight 1
+      let area = b.total_floor_area_m2 ?? ((b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0));
+      if (area <= 0) area = 1;
       return {
         combustiblePercent: computed.combustiblePercent,
         score: computed.score,
@@ -479,7 +481,8 @@ async function saveMezz() {
     const weightedBuildings = rows
       .filter((b) => b.id && buildingExtras[b.id])
       .map((b) => {
-        let area = (b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0);
+        // Prefer GIA; fall back to roof + mezz for legacy records; minimum weight 1
+        let area = b.total_floor_area_m2 ?? ((b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0));
         if (area <= 0) area = 1;
         return area;
       });
@@ -514,11 +517,16 @@ async function saveMezz() {
             include_in_scoring: true,
             frame_type: row.frame_type,
             roof_area_m2: row.roof_area_m2,
+            /** Explicit GIA — do not infer from roof × storeys */
+            total_floor_area_m2: row.total_floor_area_m2 ?? null,
             mezzanine_area_m2: row.mezzanine_area_m2 ?? 0,
             storeys: row.storeys,
             basements: row.basements,
             geometry: {
+              // Keep 'floors' for backward-compat with PDF lookups that use geometry.floors
               floors: row.storeys,
+              storeys: row.storeys,
+              storeys_above_ground: row.storeys,
               basements: row.basements,
               height_m: row.height_m,
             },
@@ -793,11 +801,12 @@ async function saveMezz() {
                 {mode !== 'fire_protection' && (
                   <div>
                     <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Geometry</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Roof area (m²)</label>
                         <input
                           type="number"
+                          min="0"
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.roof_area_m2 ?? ''}
                           placeholder="m²"
@@ -805,19 +814,36 @@ async function saveMezz() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Mezz area (m²)</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Total floor area / GIA (m²)
+                        </label>
                         <input
                           type="number"
+                          min="0"
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          value={b.total_floor_area_m2 ?? ''}
+                          placeholder="m²"
+                          title="Gross Internal Area — enter directly; do not infer from roof area × storeys"
+                          onChange={e => updateRow(idx, { total_floor_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Mezzanine / upper floor area (m²)</label>
+                        <input
+                          type="number"
+                          min="0"
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.mezzanine_area_m2 ?? ''}
                           placeholder="m²"
+                          title="Mezzanine or upper floor area — used for combustible material scoring"
                           onChange={e => updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Floors</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Storeys above ground</label>
                         <input
                           type="number"
+                          min="0"
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.storeys ?? ''}
                           placeholder="e.g. 1"
@@ -825,9 +851,10 @@ async function saveMezz() {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Basements</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Basement levels</label>
                         <input
                           type="number"
+                          min="0"
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.basements ?? ''}
                           placeholder="0"
@@ -838,6 +865,7 @@ async function saveMezz() {
                         <label className="block text-sm font-medium text-slate-700 mb-1">Height (m)</label>
                         <input
                           type="number"
+                          min="0"
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.height_m ?? ''}
                           placeholder="m"
@@ -1083,9 +1111,9 @@ async function saveMezz() {
                           {siteWeightTotal > 0 && (
                             <div className="mt-1">
                               {`Area weight: ${(
-                                (Math.max((b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0), 1) /
+                                (Math.max(b.total_floor_area_m2 ?? ((b.roof_area_m2 ?? 0) + (b.mezzanine_area_m2 ?? 0)), 1) /
                                   siteWeightTotal) * 100
-                              ).toFixed(1)}% of site`}
+                              ).toFixed(1)}% of site${b.total_floor_area_m2 ? ' (GIA)' : ' (roof+mezz fallback)'}`}
                             </div>
                           )}
                         </div>
@@ -1105,13 +1133,21 @@ async function saveMezz() {
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
           <div className="flex items-center flex-wrap gap-x-6 gap-y-2 text-sm">
             <div>
-              <span className="text-slate-500">Total roof:</span>{' '}
+              <span className="text-slate-500">Total roof area:</span>{' '}
               <span className="font-semibold text-slate-900">{totals.roof.toLocaleString()} m²</span>
             </div>
-            <div>
-              <span className="text-slate-500">Total mezz/floors:</span>{' '}
-              <span className="font-semibold text-slate-900">{totals.mezz.toLocaleString()} m²</span>
-            </div>
+            {totals.gia > 0 && (
+              <div>
+                <span className="text-slate-500">Total GIA:</span>{' '}
+                <span className="font-semibold text-slate-900">{totals.gia.toLocaleString()} m²</span>
+              </div>
+            )}
+            {totals.mezz > 0 && (
+              <div>
+                <span className="text-slate-500">Total mezzanine / upper floor area:</span>{' '}
+                <span className="font-semibold text-slate-900">{totals.mezz.toLocaleString()} m²</span>
+              </div>
+            )}
             {!isNaN(siteMetrics.score) && (
               <div>
                 <span className="text-slate-500">Site RE-02 score:</span>{' '}
