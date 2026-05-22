@@ -810,7 +810,7 @@ async function saveMezz() {
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.roof_area_m2 ?? ''}
                           placeholder="m²"
-                          onChange={e => updateRow(idx, { roof_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                          onChange={e => updateRow(idx, { roof_area_m2: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
                         />
                       </div>
                       <div>
@@ -824,7 +824,7 @@ async function saveMezz() {
                           value={b.total_floor_area_m2 ?? ''}
                           placeholder="m²"
                           title="Gross Internal Area — enter directly; do not infer from roof area × storeys"
-                          onChange={e => updateRow(idx, { total_floor_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                          onChange={e => updateRow(idx, { total_floor_area_m2: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
                         />
                       </div>
                       <div>
@@ -836,7 +836,7 @@ async function saveMezz() {
                           value={b.mezzanine_area_m2 ?? ''}
                           placeholder="m²"
                           title="Mezzanine or upper floor area — used for combustible material scoring"
-                          onChange={e => updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Number(e.target.value) })}
+                          onChange={e => updateRow(idx, { mezzanine_area_m2: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
                         />
                       </div>
                       <div>
@@ -847,7 +847,7 @@ async function saveMezz() {
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.storeys ?? ''}
                           placeholder="e.g. 1"
-                          onChange={e => updateRow(idx, { storeys: e.target.value === '' ? null : Number(e.target.value) })}
+                          onChange={e => updateRow(idx, { storeys: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
                         />
                       </div>
                       <div>
@@ -858,7 +858,7 @@ async function saveMezz() {
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.basements ?? ''}
                           placeholder="0"
-                          onChange={e => updateRow(idx, { basements: e.target.value === '' ? null : Number(e.target.value) })}
+                          onChange={e => updateRow(idx, { basements: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
                         />
                       </div>
                       <div>
@@ -869,7 +869,7 @@ async function saveMezz() {
                           className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                           value={b.height_m ?? ''}
                           placeholder="m"
-                          onChange={e => updateRow(idx, { height_m: e.target.value === '' ? null : Number(e.target.value) })}
+                          onChange={e => updateRow(idx, { height_m: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) })}
                         />
                       </div>
                     </div>
