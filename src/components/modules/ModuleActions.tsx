@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Plus, AlertCircle, Upload } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import { isDocumentLocked } from "../../utils/documentLock";
 import AddActionModal from "../actions/AddActionModal";
 import ActionDetailModal from "../actions/ActionDetailModal";
 import FeedbackModal from "../FeedbackModal";
@@ -204,6 +205,7 @@ export default function ModuleActions({
     useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [documentStatus, setDocumentStatus] = useState<string>("draft");
+  const [isLocked, setIsLocked] = useState(false);
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
   const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
@@ -529,12 +531,15 @@ export default function ModuleActions({
     try {
       const { data, error } = await supabase
         .from("documents")
-        .select("status, document_type")
+        .select("status, document_type, issue_status")
         .eq("id", documentId)
         .maybeSingle();
 
       if (error) throw error;
-      if (data) setDocumentStatus(data.status);
+      if (data) {
+        setDocumentStatus(data.status);
+        setIsLocked(isDocumentLocked(data.issue_status));
+      }
     } catch (error) {
       console.error("Error fetching document status:", error);
     }
@@ -748,7 +753,10 @@ export default function ModuleActions({
                     `recommendation-${action.id}`;
                   return;
                 }
-                setSelectedAction(action);
+                // Editing is blocked for issued/superseded documents
+                if (!isLocked) {
+                  setSelectedAction(action);
+                }
               }}
               onDelete={
                 isDeletable && action.source !== "re_recommendations"
@@ -800,7 +808,7 @@ export default function ModuleActions({
         />
       )}
 
-      {selectedAction && selectedAction.source !== "re_recommendations" && (
+      {!isLocked && selectedAction && selectedAction.source !== "re_recommendations" && (
         <ActionDetailModal
           returnTo={`/documents/${documentId}/workspace?m=${moduleInstanceId}`}
           action={selectedAction}
@@ -839,10 +847,9 @@ export default function ModuleActions({
         </div>
       )}
 
-      {!isDeletable && actions.length > 0 && (
+      {isLocked && actions.length > 0 && (
         <p className="text-xs text-neutral-500 mt-3 italic">
-          Document is issued — actions cannot be deleted. You can close them
-          instead.
+          Document is issued — actions are read-only and cannot be edited or deleted.
         </p>
       )}
 
