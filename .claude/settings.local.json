@@ -19,7 +19,14 @@
       "Bash(findstr /S \"profile\" pages\\\\*.tsx components\\\\*.tsx)",
       "Bash(New-Item -ItemType Directory -Force \"C:\\\\Users\\\\JamesMorrell\\\\Documents\\\\GitHub\\\\EziRisk1\\\\src\\\\components\\\\profile\")",
       "Bash(Out-Null)",
-      "Bash(Write-Host \"done\")"
+      "Bash(Write-Host \"done\")",
+      "Bash(supabase migration *)",
+      "Bash(awk '{print $1, \"|\", $3}')",
+      "Bash(grep \" | $\")",
+      "Bash(grep \" | $\\\\| |  \")",
+      "Bash(mv 20260316103000_auth_final_membership_first_recommendations_and_orgs.sql 20260316103001_auth_final_membership_first_recommendations_and_orgs.sql)",
+      "Bash(mv 20260509120000_fix_document_pdf_storage_policies.sql 20260509120001_fix_document_pdf_storage_policies.sql)",
+      "Bash(mv 20260509120000_repair_document_change_summaries.sql 20260509120002_repair_document_change_summaries.sql)"
     ]
   }
 }
