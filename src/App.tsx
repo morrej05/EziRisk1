@@ -24,6 +24,7 @@ import CombinedReportsPage from './pages/ezirisk/CombinedReportsPage';
 import ImpairmentsPage from './pages/ezirisk/ImpairmentsPage';
 import LibraryPage from './pages/ezirisk/LibraryPage';
 import AdminPage from './pages/ezirisk/AdminPage';
+import ProfilePage from './pages/ezirisk/ProfilePage';
 import AdminRoute from './components/AdminRoute';
 import PlatformAdminRoute from './components/SuperAdminRoute';
 import AuthedLayout from './components/AuthedLayout';
@@ -298,6 +299,14 @@ function App() {
             element={
               <AuthedLayout>
                 <LibraryPage />
+              </AuthedLayout>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <AuthedLayout>
+                <ProfilePage />
               </AuthedLayout>
             }
           />

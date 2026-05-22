@@ -1,12 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, Shield, Pencil } from 'lucide-react';
+import { LogOut, Shield, UserCircle } from 'lucide-react';
 import { canAccessAdmin, canAccessPlatformSettings, canAccessPortfolio, type User as EntitlementsUser } from '../utils/entitlements';
 import { useState } from 'react';
 import { resolveLogoUrl } from '../utils/logo';
 import { resolveDisplayName } from '../utils/pdfIdentity';
 import { needsDisplayName } from '../utils/displayNameGuard';
-import DisplayNameModal from './profile/DisplayNameModal';
 
 type AuthUserWithPlatform = { platform?: boolean };
 
@@ -14,7 +13,6 @@ export default function PrimaryNavigation() {
   const location = useLocation();
   const { signOut, user, organisation } = useAuth();
   const [logoError, setLogoError] = useState(false);
-  const [showEditName, setShowEditName] = useState(false);
 
   const isActive = (path: string) => {
     if (path === '/dashboard') {
@@ -55,7 +53,6 @@ export default function PrimaryNavigation() {
   };
 
   return (
-    <>
     <nav className="bg-white border-b border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
@@ -115,26 +112,25 @@ export default function PrimaryNavigation() {
             </div>
           </div>
 
-          {/* User display + name edit */}
+          {/* User display + profile link */}
           <div className="flex items-center gap-1">
             {user && (
-              <button
-                type="button"
-                onClick={() => setShowEditName(true)}
-                title="Edit your display name"
+              <Link
+                to="/profile"
+                title="Go to profile settings"
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
                   needsDisplayName(user)
                     ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
+                <UserCircle className="w-4 h-4 flex-shrink-0" />
                 <span className="max-w-[160px] truncate">
                   {needsDisplayName(user)
                     ? 'Set your name'
                     : (resolveDisplayName(user) ?? user.email ?? 'My profile')}
                 </span>
-                <Pencil className="w-3 h-3 flex-shrink-0" />
-              </button>
+              </Link>
             )}
 
             <button
@@ -148,15 +144,5 @@ export default function PrimaryNavigation() {
         </div>
       </div>
     </nav>
-
-    {/* Edit display name modal */}
-    {showEditName && (
-      <DisplayNameModal
-        mode="edit"
-        onSaved={() => setShowEditName(false)}
-        onDismiss={() => setShowEditName(false)}
-      />
-    )}
-  </>
   );
 }
