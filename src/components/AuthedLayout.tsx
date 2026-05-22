@@ -1,7 +1,10 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import ProtectedRoute from './ProtectedRoute';
 import AppLayout from './AppLayout';
 import { useInactivityLogout } from '../hooks/useInactivityLogout';
+import { useAuth } from '../contexts/AuthContext';
+import { needsDisplayName } from '../utils/displayNameGuard';
+import DisplayNameModal from './profile/DisplayNameModal';
 
 interface AuthedLayoutProps {
   children: ReactNode;
@@ -65,11 +68,35 @@ function InactivityLogoutModal() {
   );
 }
 
+/**
+ * Shown once per session when the logged-in user has no valid display name.
+ * Uses in-memory "dismissed" state so it never re-appears after the user
+ * either saves a name or explicitly skips — until their next login.
+ */
+function DisplayNamePrompt() {
+  const { user } = useAuth();
+  const [dismissed, setDismissed] = useState(false);
+
+  // Don't render while user is loading (user === null) or once dismissed.
+  if (dismissed || !user || !needsDisplayName(user)) {
+    return null;
+  }
+
+  return (
+    <DisplayNameModal
+      mode="prompt"
+      onSaved={() => setDismissed(true)}
+      onDismiss={() => setDismissed(true)}
+    />
+  );
+}
+
 export default function AuthedLayout({ children }: AuthedLayoutProps) {
   return (
     <ProtectedRoute>
       <AppLayout>{children}</AppLayout>
       <InactivityLogoutModal />
+      <DisplayNamePrompt />
     </ProtectedRoute>
   );
 }

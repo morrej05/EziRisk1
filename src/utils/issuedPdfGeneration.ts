@@ -60,6 +60,7 @@ type OrganisationLike = {
 type UserLike = {
   name?: string | null;
   email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
 } | null;
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
@@ -90,9 +91,16 @@ async function loadCurrentUser(): Promise<UserLike> {
 
   if (!authUser) return null;
 
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('name')
+    .eq('id', authUser.id)
+    .single();
+
   return {
-    name: authUser.user_metadata?.name || authUser.user_metadata?.full_name || null,
+    name: (profile?.name as string | null | undefined) || null,
     email: authUser.email || null,
+    user_metadata: (authUser.user_metadata as Record<string, unknown>) || null,
   };
 }
 
@@ -191,7 +199,9 @@ export async function buildIssuedPdfForDocument(
     authorLength: String(document.executive_summary_author || '').trim().length,
     keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
   };
-  console.info('[Issued PDF] Before PDF build selected executive summary:', executiveSummaryDiagnostics);
+  if (import.meta.env.DEV) {
+    console.info('[Issued PDF] Before PDF build selected executive summary:', executiveSummaryDiagnostics);
+  }
 
   const pdfOptions = {
     document,
@@ -264,13 +274,15 @@ export async function storeIssuedPdfWithEdgeFunction(
     }),
   });
 
-  console.info('[Issued PDF] generate-issued-pdf payload summary section keys:', {
-    documentId: document.id,
-    keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
-    mode: document.executive_summary_mode,
-    aiLength: String(document.executive_summary_ai || '').trim().length,
-    authorLength: String(document.executive_summary_author || '').trim().length,
-  });
+  if (import.meta.env.DEV) {
+    console.info('[Issued PDF] generate-issued-pdf payload summary section keys:', {
+      documentId: document.id,
+      keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
+      mode: document.executive_summary_mode,
+      aiLength: String(document.executive_summary_ai || '').trim().length,
+      authorLength: String(document.executive_summary_author || '').trim().length,
+    });
+  }
 
   const responseText = await response.text();
   let responseJson: StoreIssuedPdfResponse | null = null;

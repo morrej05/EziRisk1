@@ -6,6 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 import { getModuleKeysForDocType } from '../lib/modules/moduleCatalog';
 import { getAssessmentDisplayName } from '../utils/displayNames';
 import { getAvailableJurisdictions, normalizeJurisdiction } from '../lib/jurisdictions';
+import { resolveDisplayName } from '../utils/pdfIdentity';
 
 export default function NewAssessment() {
   const { user, organisation } = useAuth();
@@ -18,7 +19,6 @@ export default function NewAssessment() {
     site_address: '',
     client_name: '',
     client_address: '',
-    assessor_name: user?.user_metadata?.name || user?.email || '',
     assessor_company: '',
     assessment_date: new Date().toISOString().split('T')[0],
   });
@@ -51,7 +51,7 @@ export default function NewAssessment() {
       return;
     }
 
-    if (!formData.site_name || !formData.assessor_name || !formData.assessment_date) {
+    if (!formData.site_name || !formData.assessment_date) {
       alert('Please fill in all required fields');
       return;
     }
@@ -74,7 +74,10 @@ export default function NewAssessment() {
           enabled_modules: enabledModules,
           title: title,
           assessment_date: formData.assessment_date,
-          assessor_name: formData.assessor_name,
+          // assessor_name, created_by_user_id, author_profile_id,
+          // author_name_snapshot, and display_author_name are enforced
+          // server-side by trg_enforce_document_author_identity — do not send.
+          display_author_organisation: organisation.name,
           responsible_person: formData.client_name.trim() || null,
           scope_description: formData.site_name.trim() || null,
           meta: {
@@ -279,16 +282,14 @@ export default function NewAssessment() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 mb-2">
-                    Assessor Name <span className="text-red-600">*</span>
+                    Assessor Name
                   </label>
-                  <input
-                    type="text"
-                    value={formData.assessor_name}
-                    onChange={(e) => setFormData({ ...formData, assessor_name: e.target.value })}
-                    required
-                    className="w-full border border-neutral-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="Enter assessor name"
-                  />
+                  <div className="w-full border border-neutral-200 rounded-lg px-4 py-2 bg-neutral-50 text-sm text-neutral-700">
+                    {resolveDisplayName(user) || 'Authenticated User'}
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Assessor identity is derived from your authenticated account and cannot be changed here.
+                  </p>
                 </div>
 
                 <div>

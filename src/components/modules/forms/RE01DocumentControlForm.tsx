@@ -5,8 +5,10 @@ import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanit
 import { HRG_MASTER_MAP, humanizeIndustryKey } from '../../../lib/re/reference/hrgMasterMap';
 import { ensureRatingsObject } from '../../../lib/re/scoring/riskEngineeringHelpers';
 import { updateDocumentMeta } from '../../../lib/documents/updateDocumentMeta';
+import { useAuth } from '../../../contexts/AuthContext';
 import FloatingSaveBar from './FloatingSaveBar';
 import { Plus, X } from 'lucide-react';
+import { resolveDisplayName } from '../../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -48,6 +50,7 @@ export default function RE01DocumentControlForm({
   document,
   onSaved,
 }: RE01DocumentControlFormProps) {
+  const { user } = useAuth();
   const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance.data || {};
@@ -332,7 +335,15 @@ export default function RE01DocumentControlForm({
     if (isLocked) return;
     setIsSaving(true);
     try {
-      const sanitized = sanitizeModuleInstancePayload({ data: formData });
+      const sanitized = sanitizeModuleInstancePayload({
+        data: {
+          ...formData,
+          assessor: {
+            ...formData.assessor,
+            name: resolveDisplayName(user) || '',
+          },
+        },
+      });
 
       const { error } = await supabase
         .from('module_instances')
@@ -418,10 +429,12 @@ export default function RE01DocumentControlForm({
               <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
               <input
                 type="text"
-                value={formData.assessor.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, assessor: { ...prev.assessor, name: e.target.value } }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                value={resolveDisplayName(user) || 'Authenticated User'}
+                readOnly
+                disabled
+                className="w-full px-3 py-2 border border-slate-200 rounded-md text-sm bg-slate-50 text-slate-500 cursor-not-allowed"
               />
+              <p className="mt-1 text-xs text-slate-400">Derived from your authenticated account</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
@@ -429,7 +442,8 @@ export default function RE01DocumentControlForm({
                 type="text"
                 value={formData.assessor.role}
                 onChange={(e) => setFormData(prev => ({ ...prev, assessor: { ...prev.assessor, role: e.target.value } }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                disabled={isLocked}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm disabled:bg-slate-50 disabled:text-slate-500"
               />
             </div>
             <div>
@@ -438,7 +452,8 @@ export default function RE01DocumentControlForm({
                 type="text"
                 value={formData.assessor.company}
                 onChange={(e) => setFormData(prev => ({ ...prev, assessor: { ...prev.assessor, company: e.target.value } }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                disabled={isLocked}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm disabled:bg-slate-50 disabled:text-slate-500"
               />
             </div>
           </div>
