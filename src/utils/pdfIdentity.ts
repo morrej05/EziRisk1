@@ -10,14 +10,6 @@ export function resolveDisplayName(user: AuthLikeUser): string | null {
   const profileName = user?.name?.trim();
   const meta = user?.user_metadata;
 
-  if (import.meta.env.DEV) {
-    console.log('[resolveDisplayName] input:', {
-      name: user?.name,
-      email: user?.email,
-      user_metadata: meta,
-    });
-  }
-
   // 1. Profile name — but skip if it looks like an email (profile was seeded
   //    from the email address at signup, not a real display name)
   if (profileName && !profileName.includes('@')) return profileName;
@@ -40,23 +32,16 @@ export function resolveDisplayName(user: AuthLikeUser): string | null {
   //    (catches the case where name was seeded from email at signup)
   if (profileName?.includes('@')) {
     const prefix = profileName.split('@')[0];
-    if (prefix) {
-      if (import.meta.env.DEV) console.log('[resolveDisplayName] resolved from profile email prefix:', prefix);
-      return prefix;
-    }
+    if (prefix) return prefix;
   }
 
   // 6. auth email prefix — never the full raw email address
   const email = user?.email?.trim();
   if (email) {
     const prefix = email.split('@')[0];
-    if (prefix) {
-      if (import.meta.env.DEV) console.log('[resolveDisplayName] resolved from auth email prefix:', prefix);
-      return prefix;
-    }
+    if (prefix) return prefix;
   }
 
-  if (import.meta.env.DEV) console.log('[resolveDisplayName] could not resolve, returning null');
   return null;
 }
 

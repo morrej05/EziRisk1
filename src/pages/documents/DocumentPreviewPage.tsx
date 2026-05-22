@@ -404,15 +404,6 @@ export default function DocumentPreviewPage() {
       }
 
       const identityOptions = buildPdfIdentityOptions(organisation, user);
-      if (import.meta.env.DEV) {
-        console.log('[DocumentPreviewPage] identity debug:', {
-          'user.id':    user?.id,
-          'user.name':  user?.name,
-          'user.email': user?.email,
-          'user.user_metadata': (user as any)?.user_metadata,
-          'identityOptions': identityOptions,
-        });
-      }
 
       const pdfOptions = {
         document,

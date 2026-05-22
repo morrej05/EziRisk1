@@ -97,22 +97,11 @@ async function loadCurrentUser(): Promise<UserLike> {
     .eq('id', authUser.id)
     .single();
 
-  const result = {
+  return {
     name: (profile?.name as string | null | undefined) || null,
     email: authUser.email || null,
     user_metadata: (authUser.user_metadata as Record<string, unknown>) || null,
   };
-
-  if (import.meta.env.DEV) {
-    console.log('[issuedPdfGeneration] loadCurrentUser:', {
-      'profile.name': profile?.name,
-      'authUser.email': authUser.email,
-      'user_metadata': authUser.user_metadata,
-      'result.name': result.name,
-    });
-  }
-
-  return result;
 }
 
 export async function buildIssuedPdfForDocument(
@@ -210,7 +199,9 @@ export async function buildIssuedPdfForDocument(
     authorLength: String(document.executive_summary_author || '').trim().length,
     keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
   };
-  console.info('[Issued PDF] Before PDF build selected executive summary:', executiveSummaryDiagnostics);
+  if (import.meta.env.DEV) {
+    console.info('[Issued PDF] Before PDF build selected executive summary:', executiveSummaryDiagnostics);
+  }
 
   const pdfOptions = {
     document,
@@ -283,13 +274,15 @@ export async function storeIssuedPdfWithEdgeFunction(
     }),
   });
 
-  console.info('[Issued PDF] generate-issued-pdf payload summary section keys:', {
-    documentId: document.id,
-    keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
-    mode: document.executive_summary_mode,
-    aiLength: String(document.executive_summary_ai || '').trim().length,
-    authorLength: String(document.executive_summary_author || '').trim().length,
-  });
+  if (import.meta.env.DEV) {
+    console.info('[Issued PDF] generate-issued-pdf payload summary section keys:', {
+      documentId: document.id,
+      keys: Object.keys(document).filter((key) => key.startsWith('executive_summary')),
+      mode: document.executive_summary_mode,
+      aiLength: String(document.executive_summary_ai || '').trim().length,
+      authorLength: String(document.executive_summary_author || '').trim().length,
+    });
+  }
 
   const responseText = await response.text();
   let responseJson: StoreIssuedPdfResponse | null = null;
