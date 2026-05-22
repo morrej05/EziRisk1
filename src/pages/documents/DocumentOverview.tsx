@@ -1907,7 +1907,7 @@ export default function DocumentOverview() {
         {document &&
           !document.meta?.site?.address?.line1 &&
           !document.meta?.site?.address?.postcode && (
-            <div className="mb-4 flex items-center gap-2 rounded border border-neutral-200 bg-neutral-50 px-3 py-2">
+            <div className="mb-3 flex items-center gap-2 rounded border border-neutral-200 bg-neutral-50 px-3 py-2">
               <Info className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400" />
               <p className="flex-1 text-xs text-neutral-600">
                 <span className="font-medium text-neutral-700">No site address set</span>
@@ -2148,43 +2148,6 @@ export default function DocumentOverview() {
             </Card>
           )}
 
-          <Card>
-            <h3 className="text-sm font-medium text-neutral-500 uppercase mb-4">
-              Quick Links
-            </h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => navigate(`/documents/${id}/workspace`)}
-                className="w-full text-left px-3 py-2 rounded-md hover:bg-neutral-50 transition-colors flex items-center gap-2 text-sm"
-              >
-                <Edit3 className="w-4 h-4 text-neutral-600" />
-                <span className="text-neutral-900">Workspace</span>
-              </button>
-              <button
-                onClick={() => navigate(`/documents/${id}/evidence`)}
-                className="w-full text-left px-3 py-2 rounded-md hover:bg-neutral-50 transition-colors flex items-center gap-2 text-sm"
-              >
-                <Image className="w-4 h-4 text-neutral-600" />
-                <span className="text-neutral-900">
-                  Evidence ({evidenceCount})
-                </span>
-              </button>
-              <button
-                onClick={() => navigate(`/documents/${id}/preview`)}
-                className="w-full text-left px-3 py-2 rounded-md hover:bg-neutral-50 transition-colors flex items-center gap-2 text-sm"
-              >
-                <FileText className="w-4 h-4 text-neutral-600" />
-                <span className="text-neutral-900">Preview Report</span>
-              </button>
-              <button
-                onClick={() => setShowVersionHistoryModal(true)}
-                className="w-full text-left px-3 py-2 rounded-md hover:bg-neutral-50 transition-colors flex items-center gap-2 text-sm"
-              >
-                <Clock className="w-4 h-4 text-neutral-600" />
-                <span className="text-neutral-900">Version History</span>
-              </button>
-            </div>
-          </Card>
         </div>
 
         {/* Actions/Recommendations Panel */}
