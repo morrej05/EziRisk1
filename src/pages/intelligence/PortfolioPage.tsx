@@ -10,9 +10,9 @@ import {
   type PortfolioAiInsights,
   type PortfolioAiPayload,
 } from '../../lib/ai/generatePortfolioInsights';
-import { canAccessPortfolio } from '../../utils/entitlements';
+import { canAccessPortfolio, isDev } from '../../utils/entitlements';
 import { buildUpgradePath } from '../../utils/upgradeNavigation';
-import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
+import { formatPortfolioGroupLabel } from '../../utils/portfolio/formatPortfolioLabels';
 import {
   generatePortfolioMarkdown,
   generatePortfolioPdf,
@@ -101,7 +101,7 @@ function isMatchingSavedScope(scope: SavedPortfolioViewFilters, filters: SavedPo
   return normaliseNullable(scope.client) === normaliseNullable(filters.client)
     && normaliseNullable(scope.discipline) === normaliseNullable(filters.discipline)
     && scope.window === filters.window
-    && scope.site === filters.site;
+    && scope.site.trim() === filters.site.trim();
 }
 
 function TrendDelta({ value, windowDays }: { value: number; windowDays: 30 | 90 }) {
@@ -145,7 +145,7 @@ function InteractiveRow({
   );
 }
 
-const SHOW_PORTFOLIO_AI = import.meta.env.DEV;
+const SHOW_PORTFOLIO_AI = isDev();
 
 export default function PortfolioPage() {
   const navigate = useNavigate();
@@ -191,15 +191,30 @@ export default function PortfolioPage() {
   const [savedViewsError, setSavedViewsError] = useState<string | null>(null);
   const [savedViewsNotice, setSavedViewsNotice] = useState<string | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [siteInputValue, setSiteInputValue] = useState(siteParam);
+
+  // Sync local input when the URL param changes externally (saved view load, reset scope, etc.)
+  useEffect(() => {
+    setSiteInputValue(siteParam);
+  }, [siteParam]);
+
+  // Debounce site filter — avoid firing a metrics recompute on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (!siteInputValue.trim()) {
+          next.delete('site');
+        } else {
+          next.set('site', siteInputValue);
+        }
+        return next;
+      }, { replace: true });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [siteInputValue, setSearchParams]);
 
   const portfolioLocked = Boolean(organisation) && !isPlatformAdmin && !canAccessPortfolio(organisation);
-
-  useEffect(() => {
-    if (portfolioLocked) {
-      setShowUpgradeModal(true);
-    }
-  }, [portfolioLocked]);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -252,10 +267,10 @@ export default function PortfolioPage() {
           </button>
         </div>
         <UpgradeBlockModal
-          open={showUpgradeModal}
+          open={portfolioLocked}
           reason="portfolio_locked"
           detail="Portfolio analytics are only available on plans with portfolio access."
-          onClose={() => setShowUpgradeModal(false)}
+          onClose={() => {/* locked; dismiss navigates away */}}
           onUpgrade={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
         />
       </div>
@@ -418,7 +433,7 @@ export default function PortfolioPage() {
     setSelectedSavedViewId(matchingView?.id || '');
   }, [savedViews, currentScopeFilters]);
 
-  const activeScopeCount = Number(Boolean(scope.client)) + Number(Boolean(scope.disciplineOrType)) + Number(Boolean(scope.siteQuery?.trim()));
+  const activeScopeCount = [scope.client, scope.disciplineOrType, scope.siteQuery?.trim()].filter(Boolean).length;
 
   const appendScopeToPath = (path: string) => {
     const next = new URLSearchParams();
@@ -649,12 +664,10 @@ export default function PortfolioPage() {
     scope.siteQuery,
   ]);
 
-  const payloadSignature = useMemo(() => JSON.stringify(portfolioAiPayload), [portfolioAiPayload]);
-
   useEffect(() => {
     setReportAiError(null);
     setLatestAiInsights(null);
-  }, [payloadSignature]);
+  }, [portfolioAiPayload]);
 
   const assessmentActionTrend = useMemo(
     () => metrics.remediationTrends.find((row) => row.sourceType === 'assessment_action' && !row.discipline),
@@ -912,8 +925,8 @@ export default function PortfolioPage() {
           <label className="text-sm text-slate-700">
             <span className="block mb-1 font-medium">Site search</span>
             <input
-              value={scope.siteQuery || ''}
-              onChange={(event) => setSiteQuery(event.target.value)}
+              value={siteInputValue}
+              onChange={(event) => setSiteInputValue(event.target.value)}
               placeholder="Site or client"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
@@ -1168,7 +1181,7 @@ export default function PortfolioPage() {
                       className="rounded-md border border-slate-200 p-3 hover:bg-slate-50 cursor-pointer transition-colors"
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="font-medium text-slate-700">{formatPortfolioStatusLabel(row.label)}</span>
+                        <span className="font-medium text-slate-700">{formatPortfolioGroupLabel(row.label)}</span>
                         <span className="text-slate-600">{row.count} ({percentage}%)</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -1248,7 +1261,7 @@ export default function PortfolioPage() {
                     actionStatusRows.map((row) => (
                       <InteractiveRow
                         key={row.label}
-                        label={formatPortfolioStatusLabel(row.label)}
+                        label={formatPortfolioGroupLabel(row.label)}
                         value={String(row.count)}
                         onClick={() => navigate(appendScopeToPath(`/remediation/actions?status=${encodeURIComponent(row.label)}`))}
                       />

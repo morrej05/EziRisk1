@@ -157,8 +157,10 @@ function parseDate(value: string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 function calculateAgeDays(createdAt: Date, now: Date): number {
-  return Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / (24 * 60 * 60 * 1000)));
+  return Math.max(0, Math.floor((now.getTime() - createdAt.getTime()) / MS_PER_DAY));
 }
 
 function isActionClosed(status: string | null | undefined): boolean {
@@ -169,11 +171,16 @@ function isReRecommendationCompleted(status: string | null | undefined): boolean
   return (status || '').trim().toLowerCase() === 'completed';
 }
 
+function isOlderThan90Days(createdAt: Date | null, now: Date): boolean {
+  if (!createdAt) return false;
+  return Math.floor((now.getTime() - createdAt.getTime()) / MS_PER_DAY) > 90;
+}
+
 function calculateAgeingBuckets(items: Array<{ createdAt: Date | null }>, now: Date): RemediationAgeingBuckets {
   return items.reduce<RemediationAgeingBuckets>((acc, item) => {
     if (!item.createdAt) return acc;
 
-    const ageInDays = Math.floor((now.getTime() - item.createdAt.getTime()) / (24 * 60 * 60 * 1000));
+    const ageInDays = Math.floor((now.getTime() - item.createdAt.getTime()) / MS_PER_DAY);
 
     if (ageInDays <= 30) acc.bucket_0_30 += 1;
     else if (ageInDays <= 60) acc.bucket_31_60 += 1;
@@ -187,6 +194,63 @@ function calculateAgeingBuckets(items: Array<{ createdAt: Date | null }>, now: D
     bucket_61_90: 0,
     bucket_90_plus: 0,
   });
+}
+
+function isWithinRange(date: Date | null, rangeStart: Date, rangeEnd: Date): boolean {
+  if (!date) return false;
+  return date >= rangeStart && date < rangeEnd;
+}
+
+type HotspotAccumulator = {
+  openP1AssessmentActions: number;
+  openHighReRecommendations: number;
+  ageing90PlusItems: number;
+  totalOpenItems: number;
+  openAssessmentActions: number;
+  openReRecommendations: number;
+  ageing90PlusAssessmentActions: number;
+  ageing90PlusReRecommendations: number;
+};
+
+function makeHotspotAccumulator(): HotspotAccumulator {
+  return {
+    openP1AssessmentActions: 0,
+    openHighReRecommendations: 0,
+    ageing90PlusItems: 0,
+    totalOpenItems: 0,
+    openAssessmentActions: 0,
+    openReRecommendations: 0,
+    ageing90PlusAssessmentActions: 0,
+    ageing90PlusReRecommendations: 0,
+  };
+}
+
+function ensureSiteHotspotEntry(
+  siteHotspotMap: Map<string, SiteHotspotRow>,
+  siteKey: string,
+  seed: { documentId: string; siteName: string; clientName: string }
+): SiteHotspotRow {
+  if (!siteHotspotMap.has(siteKey)) {
+    siteHotspotMap.set(siteKey, {
+      ...seed,
+      openP1AssessmentActions: 0,
+      openHighReRecommendations: 0,
+      ageing90PlusItems: 0,
+      totalOpenItems: 0,
+      hotspotScore: 0,
+    });
+  }
+  return siteHotspotMap.get(siteKey)!;
+}
+
+function incrementMapValues(
+  map: Map<string, HotspotAccumulator>,
+  key: string,
+  updater: (values: HotspotAccumulator) => void
+): void {
+  const row = map.get(key) ?? makeHotspotAccumulator();
+  updater(row);
+  map.set(key, row);
 }
 
 // This is a prioritisation heuristic for ranking remediation burden hotspots.
@@ -283,7 +347,8 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
             documents!inner(id, title, organisation_id)
           `)
           .eq('is_suppressed', false)
-          .eq('documents.organisation_id', organisation.id);
+          .eq('documents.organisation_id', organisation.id)
+          .in('status', ['Open', 'In Progress']);
 
         if (error) throw error;
 
@@ -334,12 +399,15 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
     };
   }, [actions, assessments, reRecommendations]);
 
+  const assessmentById = useMemo(
+    () => new Map(assessments.map((assessment) => [assessment.id, assessment])),
+    [assessments],
+  );
+
   const metrics = useMemo(() => {
     const selectedClient = scope.client?.trim() || null;
     const selectedDisciplineOrType = normaliseDisciplineOrType(scope.disciplineOrType);
     const selectedSiteQuery = scope.siteQuery?.trim().toLowerCase() || '';
-
-    const assessmentById = new Map(assessments.map((assessment) => [assessment.id, assessment]));
 
     const scopedAssessments = assessments.filter((assessment) => {
       if (selectedClient && assessment.clientName !== selectedClient) return false;
@@ -403,15 +471,8 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
     });
 
     const uniqueSites = new Set(scopedAssessments.map((assessment) => `${assessment.clientName}::${assessment.siteName}`));
-    const draftAssessments = scopedAssessments.filter((assessment) => assessment.status === 'Draft').length;
-    const issuedAssessments = scopedAssessments.filter((assessment) => assessment.status === 'Issued').length;
 
     const { now, currentWindowStart, previousWindowStart } = getPortfolioWindowBounds(scope.windowDays);
-
-    const isWithinRange = (date: Date | null, rangeStart: Date, rangeEnd: Date) => {
-      if (!date) return false;
-      return date >= rangeStart && date < rangeEnd;
-    };
 
     const updatedWithinWindowDays = scopedAssessments.filter((assessment) => assessment.updatedAt >= currentWindowStart).length;
     const createdCurrentWindow = scopedAssessments.filter((assessment) => isWithinRange(assessment.createdAt, currentWindowStart, now)).length;
@@ -423,16 +484,6 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       acc[assessment.status] = (acc[assessment.status] || 0) + 1;
       return acc;
     }, {});
-
-    const assessmentTypeCounts = scopedAssessments.reduce<Record<string, number>>((acc, assessment) => {
-      acc[assessment.type] = (acc[assessment.type] || 0) + 1;
-      return acc;
-    }, {});
-
-    const commonAssessmentTypes = Object.entries(assessmentTypeCounts)
-      .map(([label, count]) => ({ label, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
 
     const openActions = scopedActions.filter((action) => !isActionClosed(action.status));
     const openHighPriorityActions = openActions.filter((action) => action.priority_band === 'P1').length;
@@ -631,46 +682,6 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       })
       .slice(0, 10);
 
-    type HotspotAccumulator = {
-      openP1AssessmentActions: number;
-      openHighReRecommendations: number;
-      ageing90PlusItems: number;
-      totalOpenItems: number;
-      openAssessmentActions: number;
-      openReRecommendations: number;
-      ageing90PlusAssessmentActions: number;
-      ageing90PlusReRecommendations: number;
-    };
-
-    const makeHotspotAccumulator = (): HotspotAccumulator => ({
-      openP1AssessmentActions: 0,
-      openHighReRecommendations: 0,
-      ageing90PlusItems: 0,
-      totalOpenItems: 0,
-      openAssessmentActions: 0,
-      openReRecommendations: 0,
-      ageing90PlusAssessmentActions: 0,
-      ageing90PlusReRecommendations: 0,
-    });
-
-    const ensureSiteHotspotEntry = (
-      siteHotspotMap: Map<string, SiteHotspotRow>,
-      siteKey: string,
-      seed: { documentId: string; siteName: string; clientName: string }
-    ) => {
-      if (!siteHotspotMap.has(siteKey)) {
-        siteHotspotMap.set(siteKey, {
-          ...seed,
-          openP1AssessmentActions: 0,
-          openHighReRecommendations: 0,
-          ageing90PlusItems: 0,
-          totalOpenItems: 0,
-          hotspotScore: 0,
-        });
-      }
-      return siteHotspotMap.get(siteKey)!;
-    };
-
     const siteHotspotMap = new Map<string, SiteHotspotRow>();
     const clientHotspotMap = new Map<string, HotspotAccumulator>();
     const moduleHotspotMap = new Map<string, HotspotAccumulator>();
@@ -688,24 +699,6 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       }
     });
 
-    const registerActionAgeing = (createdAt: Date | null) => {
-      if (!createdAt) return false;
-      const ageInDays = Math.floor((now.getTime() - createdAt.getTime()) / (24 * 60 * 60 * 1000));
-      return ageInDays > 90;
-    };
-
-    const incrementClientValues = (clientName: string, updater: (values: HotspotAccumulator) => void) => {
-      const row = clientHotspotMap.get(clientName) || makeHotspotAccumulator();
-      updater(row);
-      clientHotspotMap.set(clientName, row);
-    };
-
-    const incrementModuleValues = (moduleKey: string, updater: (values: HotspotAccumulator) => void) => {
-      const row = moduleHotspotMap.get(moduleKey) || makeHotspotAccumulator();
-      updater(row);
-      moduleHotspotMap.set(moduleKey, row);
-    };
-
     scopedActions.forEach((action) => {
       const isOpen = !isActionClosed(action.status);
       if (!isOpen) return;
@@ -720,14 +713,14 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       });
       const moduleKey = action.module_key || 'Unassigned module';
       const createdAt = parseDate(action.created_at);
-      const isAgeing90Plus = registerActionAgeing(createdAt);
+      const isAgeing90Plus = isOlderThan90Days(createdAt, now);
       const isP1 = action.priority_band === 'P1';
 
       site.totalOpenItems += 1;
       if (isP1) site.openP1AssessmentActions += 1;
       if (isAgeing90Plus) site.ageing90PlusItems += 1;
 
-      incrementClientValues(clientName, (values) => {
+      incrementMapValues(clientHotspotMap, clientName, (values) => {
         values.totalOpenItems += 1;
         values.openAssessmentActions += 1;
         if (isP1) values.openP1AssessmentActions += 1;
@@ -737,7 +730,7 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
         }
       });
 
-      incrementModuleValues(moduleKey, (values) => {
+      incrementMapValues(moduleHotspotMap, moduleKey, (values) => {
         values.totalOpenItems += 1;
         values.openAssessmentActions += 1;
         if (isP1) values.openP1AssessmentActions += 1;
@@ -762,14 +755,14 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       });
       const moduleKey = 'RE recommendations';
       const createdAt = parseDate(recommendation.created_at);
-      const isAgeing90Plus = registerActionAgeing(createdAt);
+      const isAgeing90Plus = isOlderThan90Days(createdAt, now);
       const isHigh = recommendation.priority === 'High';
 
       site.totalOpenItems += 1;
       if (isHigh) site.openHighReRecommendations += 1;
       if (isAgeing90Plus) site.ageing90PlusItems += 1;
 
-      incrementClientValues(clientName, (values) => {
+      incrementMapValues(clientHotspotMap, clientName, (values) => {
         values.totalOpenItems += 1;
         values.openReRecommendations += 1;
         if (isHigh) values.openHighReRecommendations += 1;
@@ -779,7 +772,7 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
         }
       });
 
-      incrementModuleValues(moduleKey, (values) => {
+      incrementMapValues(moduleHotspotMap, moduleKey, (values) => {
         values.totalOpenItems += 1;
         values.openReRecommendations += 1;
         if (isHigh) values.openHighReRecommendations += 1;
@@ -930,8 +923,6 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
     return {
       totalSites: uniqueSites.size,
       totalAssessments: scopedAssessments.length,
-      draftAssessments,
-      issuedAssessments,
       selectedWindowDays: scope.windowDays,
       createdCurrentWindow,
       createdPreviousWindow,
@@ -942,7 +933,6 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       openReRecommendations: openReRecommendations.length,
       openHighPriorityReRecommendations,
       assessmentStatusCounts,
-      commonAssessmentTypes,
       totalActions: scopedActions.length,
       totalReRecommendations: scopedReRecommendations.length,
       priorityCounts,
@@ -971,7 +961,7 @@ export function usePortfolioMetrics(scope: PortfolioScope) {
       },
       oldestUnresolvedRemediation,
     };
-  }, [actions, assessments, reRecommendations, scope.client, scope.disciplineOrType, scope.siteQuery, scope.windowDays]);
+  }, [actions, assessmentById, assessments, reRecommendations, scope.client, scope.disciplineOrType, scope.siteQuery, scope.windowDays]);
 
   return {
     assessments,
