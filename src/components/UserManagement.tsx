@@ -336,11 +336,6 @@ export default function UserManagement() {
           setShowUpgradeModal(true);
         } else {
           setModalError(message);
-          // For duplicate-invite errors: refresh the pending list in the background
-          // so the inline Resend button has a fresh invite record to work with.
-          if (lower.includes('already been sent')) {
-            void fetchUsers();
-          }
         }
         return;
       }
@@ -380,39 +375,24 @@ export default function UserManagement() {
     }
   };
 
-  /**
-   * Called from the "Resend invite" shortcut inside the duplicate-error banner.
-   * Looks up the pending invite by email (which was just refreshed in the
-   * background when the error was set) and delegates to handleResendInvite.
-   */
-  const handleResendFromModal = () => {
-    const targetEmail = newUserEmail.trim().toLowerCase();
-    const invite = pendingInvites.find(
-      (i) => i.invited_email.toLowerCase() === targetEmail,
-    );
-
-    if (!invite) {
-      // Shouldn't normally happen — but rather than silently failing, point
-      // the user to the Pending Invitations list where the Resend button lives.
-      setModalError(
-        'Pending invite not found — close this modal and use the Resend button in the Pending Invitations section below.',
-      );
-      return;
-    }
-
-    setShowAddModal(false);
-    setModalError(null);
-    void handleResendInvite(invite);
-  };
-
   // ── Resend / Revoke ──────────────────────────────────────────────────────
 
-  const handleResendInvite = async (invite: PendingInvite) => {
-    setResendingUserId(invite.user_id);
+  /**
+   * Canonical resend handler.  Both call sites (modal CTA and pending-table
+   * Resend button) funnel through here with just an email address.
+   *
+   * Using email as the lookup key mirrors the duplicate-detection query in
+   * invite-org-member so both paths share a single source of truth
+   * (organisation_members.invited_email) and neither depends on React state
+   * being populated.
+   */
+  const handleResendByEmail = async (email: string) => {
+    const normalisedEmail = email.trim().toLowerCase();
+    setResendingUserId(normalisedEmail);
     setActionError(null);
     try {
       const { data: resendData, error } = await supabase.functions.invoke('resend-invite', {
-        body: { organisation_id: currentUser?.organisation_id, user_id: invite.user_id },
+        body: { organisation_id: currentUser?.organisation_id, email: normalisedEmail },
       });
 
       if (error) {
@@ -421,26 +401,41 @@ export default function UserManagement() {
         return;
       }
 
-      // Optimistically update invited_at so the row shows the fresh send time
-      // without waiting for a full fetchUsers() round-trip.
+      // Optimistically stamp the new invited_at on any matching row.
       const newInvitedAt =
         (resendData as { invited_at?: string } | null)?.invited_at ?? new Date().toISOString();
 
       setPendingInvites((prev) =>
         prev.map((i) =>
-          i.user_id === invite.user_id ? { ...i, invited_at: newInvitedAt } : i,
+          i.invited_email.toLowerCase() === normalisedEmail
+            ? { ...i, invited_at: newInvitedAt }
+            : i,
         ),
       );
 
-      setAddSuccessMessage(`Invite resent to ${invite.invited_email}.`);
-      // Refresh in the background to keep state canonical.
+      setAddSuccessMessage(`Invite resent to ${normalisedEmail}.`);
       void fetchUsers();
-    } catch (error: unknown) {
-      const message = await extractEdgeFunctionError(error);
+    } catch (err: unknown) {
+      const message = await extractEdgeFunctionError(err);
       setActionError(`Failed to resend invite: ${message}`);
     } finally {
       setResendingUserId(null);
     }
+  };
+
+  /** Thin wrapper so the pending-invites table can pass a PendingInvite object. */
+  const handleResendInvite = (invite: PendingInvite) =>
+    handleResendByEmail(invite.invited_email);
+
+  /**
+   * Called from the "Resend invite" button in the duplicate-error banner.
+   * Uses the email typed in the modal directly — no pendingInvites lookup
+   * needed, so there is no race condition with fetchUsers().
+   */
+  const handleResendFromModal = () => {
+    setShowAddModal(false);
+    setModalError(null);
+    void handleResendByEmail(newUserEmail.trim());
   };
 
   const handleRevokeInvite = async (invite: PendingInvite) => {
@@ -863,7 +858,7 @@ export default function UserManagement() {
               <tbody className="divide-y divide-slate-100">
                 {pendingInvites.map((invite) => {
                   const displayName = inviteDisplayName(invite);
-                  const isResending = resendingUserId === invite.user_id;
+                  const isResending = resendingUserId === invite.invited_email.toLowerCase();
                   const isRevoking = revokingUserId === invite.user_id;
                   return (
                     <tr key={invite.id} className="hover:bg-amber-50/40 transition-colors">
@@ -929,7 +924,7 @@ export default function UserManagement() {
           <div className="sm:hidden divide-y divide-slate-100">
             {pendingInvites.map((invite) => {
               const displayName = inviteDisplayName(invite);
-              const isResending = resendingUserId === invite.user_id;
+              const isResending = resendingUserId === invite.invited_email.toLowerCase();
               const isRevoking = revokingUserId === invite.user_id;
               return (
                 <div key={invite.id} className="px-4 py-3">

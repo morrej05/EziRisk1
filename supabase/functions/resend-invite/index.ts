@@ -16,7 +16,9 @@ function json(body: Record<string, unknown>, status = 200) {
 
 interface ResendPayload {
   organisation_id: string;
-  user_id: string;
+  // Canonical lookup is by email — mirrors the duplicate-detection query in
+  // invite-org-member so both paths use the same source of truth.
+  email: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -50,9 +52,11 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Invalid JSON in request body' }, 400);
     }
 
-    if (!payload.organisation_id || !payload.user_id) {
-      return json({ error: 'organisation_id and user_id are required' }, 400);
+    if (!payload.organisation_id || !payload.email) {
+      return json({ error: 'organisation_id and email are required' }, 400);
     }
+
+    const emailNormalised = payload.email.toLowerCase().trim();
 
     // Verify caller is an active admin of the target organisation.
     const { data: callerMember, error: memberError } = await userSupabase
@@ -71,12 +75,13 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Fetch the pending membership row to get the email address.
+    // Canonical lookup: by invited_email — same field used by invite-org-member's
+    // duplicate-detection query, so both paths share a single source of truth.
     const { data: invitedMember, error: fetchError } = await adminSupabase
       .from('organisation_members')
-      .select('invited_email, role, status')
+      .select('invited_email, role, status, user_id')
       .eq('organisation_id', payload.organisation_id)
-      .eq('user_id', payload.user_id)
+      .eq('invited_email', emailNormalised)
       .maybeSingle();
 
     if (fetchError) {
@@ -85,33 +90,29 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!invitedMember) {
-      return json({ error: 'Invited membership not found for this user in this organisation' }, 404);
+      return json(
+        { error: `No pending invite found for ${emailNormalised} in this organisation` },
+        404,
+      );
     }
 
     if (invitedMember.status !== 'invited') {
       return json(
-        { error: `Cannot resend: membership status is "${invitedMember.status}", not "invited"` },
+        {
+          error: `Cannot resend: ${emailNormalised} already has status "${invitedMember.status}". They may have already accepted the invite.`,
+        },
         409,
       );
     }
 
-    if (!invitedMember.invited_email) {
-      return json(
-        { error: 'No email address recorded for this invite — try revoking and re-inviting' },
-        400,
-      );
-    }
-
-    // Use generateLink (type: 'invite') instead of inviteUserByEmail.
-    //
-    // Reason: in Supabase v2 `inviteUserByEmail` for an already-created user may
-    // silently succeed (returning the existing user row) without sending a new
-    // email.  `generateLink` always issues a fresh invite token and triggers
-    // Supabase's built-in mailer regardless of whether the user already exists.
+    // Use generateLink (type: 'invite') rather than inviteUserByEmail.
+    // inviteUserByEmail for an already-created user silently returns the
+    // existing user row without sending a new email in Supabase v2.
+    // generateLink always issues a fresh invite token and triggers the mailer.
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
     const { error: linkError } = await adminSupabase.auth.admin.generateLink({
       type: 'invite',
-      email: invitedMember.invited_email,
+      email: emailNormalised,
       options: {
         redirectTo: `${appBaseUrl}/auth/callback`,
         data: {
@@ -128,16 +129,15 @@ Deno.serve(async (req: Request) => {
       return json({ error: `Failed to resend invite: ${linkError.message}` }, 400);
     }
 
-    // Update invited_at to reflect the most recent send time.
+    // Stamp the latest send time — non-fatal if this update fails.
     const now = new Date().toISOString();
     const { error: updateError } = await adminSupabase
       .from('organisation_members')
       .update({ invited_at: now, updated_at: now })
       .eq('organisation_id', payload.organisation_id)
-      .eq('user_id', payload.user_id);
+      .eq('invited_email', emailNormalised);
 
     if (updateError) {
-      // Non-fatal — the email was already sent; just log the timestamp update failure.
       console.warn('[resend-invite] Failed to update invited_at:', updateError.message);
     }
 
