@@ -411,12 +411,30 @@ export default function UserManagement() {
     setResendingUserId(invite.user_id);
     setActionError(null);
     try {
-      const { error } = await supabase.functions.invoke('resend-invite', {
+      const { data: resendData, error } = await supabase.functions.invoke('resend-invite', {
         body: { organisation_id: currentUser?.organisation_id, user_id: invite.user_id },
       });
-      if (error) throw error;
+
+      if (error) {
+        const message = await extractEdgeFunctionError(error);
+        setActionError(`Failed to resend invite: ${message}`);
+        return;
+      }
+
+      // Optimistically update invited_at so the row shows the fresh send time
+      // without waiting for a full fetchUsers() round-trip.
+      const newInvitedAt =
+        (resendData as { invited_at?: string } | null)?.invited_at ?? new Date().toISOString();
+
+      setPendingInvites((prev) =>
+        prev.map((i) =>
+          i.user_id === invite.user_id ? { ...i, invited_at: newInvitedAt } : i,
+        ),
+      );
+
       setAddSuccessMessage(`Invite resent to ${invite.invited_email}.`);
-      await fetchUsers();
+      // Refresh in the background to keep state canonical.
+      void fetchUsers();
     } catch (error: unknown) {
       const message = await extractEdgeFunctionError(error);
       setActionError(`Failed to resend invite: ${message}`);
@@ -802,15 +820,30 @@ export default function UserManagement() {
       {pendingInvites.length > 0 && (
         <div className="border-t border-slate-200">
           {/* Section header */}
-          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
-            <Mail className="w-4 h-4 text-slate-500" />
-            <h3 className="text-sm font-semibold text-slate-700">
-              Pending Invitations
-              <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded">
-                {pendingInvites.length}
-              </span>
-            </h3>
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-slate-500" />
+              <h3 className="text-sm font-semibold text-slate-700">
+                Pending Invitations
+                <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded">
+                  {pendingInvites.length}
+                </span>
+              </h3>
+            </div>
           </div>
+
+          {/* Inline action error — shown here so it's visible when scrolled to this section */}
+          {actionError && (
+            <div className="mx-4 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800 flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                <span>{actionError}</span>
+              </div>
+              <button onClick={() => setActionError(null)} className="shrink-0 text-red-500 hover:text-red-700 ml-1">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
 
           {/* Desktop rows */}
           <div className="hidden sm:block overflow-x-auto">
