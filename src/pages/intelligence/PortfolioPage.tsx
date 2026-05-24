@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Copy, Download, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, Download, Lock, Sparkles, Trash2 } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import {
   type PortfolioAiInsights,
   type PortfolioAiPayload,
@@ -254,25 +253,78 @@ export default function PortfolioPage() {
   };
 
   if (portfolioLocked) {
+    const PORTFOLIO_FEATURES = [
+      {
+        title: 'Remediation trends',
+        desc: 'Open, new and closed actions by discipline across your full portfolio and any time window.',
+      },
+      {
+        title: 'Site & client hotspots',
+        desc: 'Rank sites and clients by P1 actions, 90-day ageing backlog and total open items.',
+      },
+      {
+        title: 'Module hotspots',
+        desc: 'Which assessment modules generate the most persistent unresolved remediation.',
+      },
+      {
+        title: 'Ageing backlog',
+        desc: 'Actions and recommendations outstanding beyond 30, 60 and 90 days — one view.',
+      },
+      {
+        title: 'Scope filters & saved views',
+        desc: 'Filter by client, discipline, site and time window. Save named scopes for reuse.',
+      },
+      {
+        title: 'Portfolio exports',
+        desc: 'Export portfolio summaries as PDF or Markdown for client reporting and internal review.',
+      },
+    ];
+
     return (
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <h1 className="text-2xl font-semibold text-slate-900">Portfolio is locked on your current plan</h1>
-          <p className="mt-2 text-slate-600">Upgrade to unlock portfolio analytics and exports.</p>
-          <button
-            onClick={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
-            className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Upgrade plan
-          </button>
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">Portfolio Analysis</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Cross-site remediation trends, hotspot ranking and risk velocity — available on Professional.
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            <Lock className="h-3 w-3" />
+            Professional plan
+          </span>
         </div>
-        <UpgradeBlockModal
-          open={portfolioLocked}
-          reason="portfolio_locked"
-          detail="Portfolio analytics are only available on plans with portfolio access."
-          onClose={() => {/* locked; dismiss navigates away */}}
-          onUpgrade={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
-        />
+
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2 lg:grid-cols-3">
+            {PORTFOLIO_FEATURES.map((feature) => (
+              <div key={feature.title} className="bg-white px-5 py-4">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                  <p className="text-sm font-semibold text-slate-600">{feature.title}</p>
+                </div>
+                <p className="text-xs leading-relaxed text-slate-500">{feature.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-900">
+                Upgrade to Professional to unlock Portfolio Analysis
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                30 reports/month · up to 5 users · portfolio tools · risk engineering access
+              </p>
+            </div>
+            <button
+              onClick={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
+              className="shrink-0 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              View pricing →
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
