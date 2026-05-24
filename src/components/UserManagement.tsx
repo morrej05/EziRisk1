@@ -33,7 +33,6 @@ async function extractEdgeFunctionError(error: unknown): Promise<string> {
   if (!error || typeof error !== 'object') {
     return 'An unexpected error occurred. Please try again.';
   }
-  // Attempt to read the response body from FunctionsHttpError.context
   const maybeResp = (error as Record<string, unknown>).context;
   if (maybeResp instanceof Response) {
     try {
@@ -62,6 +61,8 @@ interface PendingInvite {
   id: string;
   user_id: string;
   invited_email: string;
+  /** Name from user_profiles if the trigger already created the row; null if not yet. */
+  name: string | null;
   role: UserRole;
   created_at: string;
   invited_at: string | null;
@@ -120,6 +121,11 @@ export default function UserManagement() {
     return message.includes('trial') && message.includes('expired');
   }, [seatEntitlement?.reason]);
 
+  // Derived: is the current modal error a "duplicate pending invite" error?
+  const isDuplicateInviteError = Boolean(
+    modalError?.toLowerCase().includes('already been sent'),
+  );
+
   const refreshSeatEntitlement = async () => {
     if (!currentUser?.organisation_id) { setSeatEntitlement(null); return; }
     const entitlement = await getUserSeatEntitlement(currentUser.organisation_id);
@@ -176,6 +182,7 @@ export default function UserManagement() {
         throw memberResult.error;
       }
 
+      // ── Active members ────────────────────────────────────────────────────
       const activeMembers = (memberResult.data ?? []) as OrganisationMemberRow[];
       const memberIds = activeMembers.map((m) => m.user_id);
 
@@ -199,7 +206,7 @@ export default function UserManagement() {
         const profile = profilesById.get(member.user_id);
         return {
           id: member.user_id,
-          role: fromDbRole(member.role),
+          role: fromDbRole(member.role as unknown as string),
           name: profile?.name ?? null,
           email: member.user_id === currentUser.id ? currentUser.email ?? undefined : undefined,
           created_at: profile?.created_at ?? member.created_at,
@@ -225,13 +232,35 @@ export default function UserManagement() {
 
       setUsers(usersWithMembershipRole);
 
-      // Pending invites — non-fatal if RLS denies (non-admin users)
+      // ── Pending invites ───────────────────────────────────────────────────
+      // Non-fatal if RLS denies (non-admin viewers).
       if (!inviteResult.error && inviteResult.data) {
+        const inviteRows = inviteResult.data;
+
+        // Fetch display names from user_profiles for invited user IDs.
+        // The handle_new_user() trigger creates a user_profiles row with the
+        // name passed in the invite metadata, so this data is available
+        // immediately after the invite is sent.
+        const inviteUserIds = inviteRows.map((r) => r.user_id as string).filter(Boolean);
+        const inviteNameById = new Map<string, string | null>();
+
+        if (inviteUserIds.length > 0) {
+          const { data: inviteProfiles } = await supabase
+            .from('user_profiles')
+            .select('id, name')
+            .in('id', inviteUserIds);
+
+          for (const p of (inviteProfiles ?? []) as { id: string; name: string | null }[]) {
+            inviteNameById.set(p.id, p.name ?? null);
+          }
+        }
+
         setPendingInvites(
-          inviteResult.data.map((row) => ({
+          inviteRows.map((row) => ({
             id: row.id as string,
             user_id: row.user_id as string,
             invited_email: (row.invited_email as string | null) ?? '',
+            name: inviteNameById.get(row.user_id as string) ?? null,
             role: fromDbRole(row.role as string),
             created_at: row.created_at as string,
             invited_at: row.invited_at as string | null,
@@ -251,6 +280,8 @@ export default function UserManagement() {
       setIsLoading(false);
     }
   };
+
+  // ── Invite ───────────────────────────────────────────────────────────────
 
   const handleInviteUser = async () => {
     if (!newUserEmail.trim() || isAddingUser) return;
@@ -290,7 +321,6 @@ export default function UserManagement() {
       });
 
       if (error) {
-        // Read the actual error message from the edge function response body.
         const message = await extractEdgeFunctionError(error);
         const lower = message.toLowerCase();
         if (lower.includes('seat limit') || lower.includes('upgrade') || lower.includes('plan')) {
@@ -299,11 +329,16 @@ export default function UserManagement() {
           setShowUpgradeModal(true);
         } else {
           setModalError(message);
+          // For duplicate-invite errors: refresh the pending list in the background
+          // so the inline Resend button has a fresh invite record to work with.
+          if (lower.includes('already been sent')) {
+            void fetchUsers();
+          }
         }
         return;
       }
 
-      // Success — close modal, reset form, show page banner.
+      // Success — close modal, reset form, show page-level banner, refresh.
       const sentTo = newUserEmail.trim();
       setShowAddModal(false);
       setModalError(null);
@@ -321,6 +356,33 @@ export default function UserManagement() {
       setIsAddingUser(false);
     }
   };
+
+  /**
+   * Called from the "Resend invite" shortcut inside the duplicate-error banner.
+   * Looks up the pending invite by email (which was just refreshed in the
+   * background when the error was set) and delegates to handleResendInvite.
+   */
+  const handleResendFromModal = () => {
+    const targetEmail = newUserEmail.trim().toLowerCase();
+    const invite = pendingInvites.find(
+      (i) => i.invited_email.toLowerCase() === targetEmail,
+    );
+
+    if (!invite) {
+      // Shouldn't normally happen — but rather than silently failing, point
+      // the user to the Pending Invitations list where the Resend button lives.
+      setModalError(
+        'Pending invite not found — close this modal and use the Resend button in the Pending Invitations section below.',
+      );
+      return;
+    }
+
+    setShowAddModal(false);
+    setModalError(null);
+    void handleResendInvite(invite);
+  };
+
+  // ── Resend / Revoke ──────────────────────────────────────────────────────
 
   const handleResendInvite = async (invite: PendingInvite) => {
     setResendingUserId(invite.user_id);
@@ -341,7 +403,11 @@ export default function UserManagement() {
   };
 
   const handleRevokeInvite = async (invite: PendingInvite) => {
-    if (!confirm(`Revoke the invite for ${invite.invited_email}? They won't be able to join using the current invite link.`)) return;
+    if (
+      !confirm(
+        `Revoke the invite for ${invite.invited_email}? They won't be able to join using the current invite link.`,
+      )
+    ) return;
     setRevokingUserId(invite.user_id);
     setActionError(null);
     try {
@@ -358,9 +424,11 @@ export default function UserManagement() {
     }
   };
 
+  // ── Active member actions ────────────────────────────────────────────────
+
   const handleUpdateRole = async (userId: string, newRole: UserRole) => {
-    const adminCount = users.filter(u => u.role === 'admin').length;
-    const target = users.find(u => u.id === userId);
+    const adminCount = users.filter((u) => u.role === 'admin').length;
+    const target = users.find((u) => u.id === userId);
     const isDemotingAdmin = target?.role === 'admin' && newRole !== 'admin';
 
     if (adminCount === 1 && isDemotingAdmin) {
@@ -377,7 +445,7 @@ export default function UserManagement() {
         .eq('user_id', userId)
         .eq('status', 'active');
       if (error) throw error;
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      setUsers(users.map((u) => (u.id === userId ? { ...u, role: newRole } : u)));
       setEditingUserId(null);
     } catch (error) {
       console.error('Error updating role:', error);
@@ -386,14 +454,17 @@ export default function UserManagement() {
   };
 
   const handleTogglePlatformAdmin = async (userId: string, currentValue: boolean) => {
-    if (users.filter(u => u.is_platform_admin).length === 1 && currentValue) {
+    if (users.filter((u) => u.is_platform_admin).length === 1 && currentValue) {
       alert('At least one Platform Admin is required. Cannot remove the last Platform Admin.');
       return;
     }
     try {
-      const { error } = await supabase.from('user_profiles').update({ is_platform_admin: !currentValue }).eq('id', userId);
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ is_platform_admin: !currentValue })
+        .eq('id', userId);
       if (error) throw error;
-      setUsers(users.map(u => u.id === userId ? { ...u, is_platform_admin: !currentValue } : u));
+      setUsers(users.map((u) => (u.id === userId ? { ...u, is_platform_admin: !currentValue } : u)));
     } catch (error) {
       console.error('Error updating platform admin status:', error);
       alert('Failed to update Platform Admin status. Please try again.');
@@ -401,8 +472,8 @@ export default function UserManagement() {
   };
 
   const handleRemoveUser = async (userId: string, userName?: string) => {
-    const adminCount = users.filter(u => u.role === 'admin').length;
-    const target = users.find(u => u.id === userId);
+    const adminCount = users.filter((u) => u.role === 'admin').length;
+    const target = users.find((u) => u.id === userId);
     if (adminCount === 1 && target?.role === 'admin') {
       alert('Cannot remove user: at least one admin must remain in the organisation.');
       return;
@@ -420,6 +491,8 @@ export default function UserManagement() {
     }
   };
 
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
   const getRoleBadgeColor = (role: UserRole) => {
     if (role === 'admin') return 'bg-red-100 text-red-700 border-red-300';
     if (role === 'surveyor') return 'bg-blue-100 text-blue-700 border-blue-300';
@@ -428,6 +501,17 @@ export default function UserManagement() {
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+  const inviteDisplayName = (invite: PendingInvite): string | null => {
+    const n = invite.name?.trim();
+    // Only show name if it doesn't look like an email — the trigger seeds the
+    // name from the invite metadata; if no name was provided it falls back to
+    // the email address, which isn't useful as a display name here.
+    if (n && !n.includes('@')) return n;
+    return null;
+  };
+
+  // ── Loading state ────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -438,8 +522,10 @@ export default function UserManagement() {
     );
   }
 
+  // ── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
+    <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
       {/* ── Banners ── */}
       {isNearSeatLimit && (
         <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
@@ -459,7 +545,11 @@ export default function UserManagement() {
               </p>
               <p className="mt-0.5">{isTrialExpired ? 'Existing data is still available.' : seatLimitCopy.body}</p>
               <button
-                onClick={() => window.location.assign(buildUpgradePath(isTrialExpired ? 'trial_expired' : 'user_limit', { action: 'manage_users' }))}
+                onClick={() =>
+                  window.location.assign(
+                    buildUpgradePath(isTrialExpired ? 'trial_expired' : 'user_limit', { action: 'manage_users' }),
+                  )
+                }
                 className="mt-2 inline-flex rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 transition-colors"
               >
                 Upgrade
@@ -474,7 +564,9 @@ export default function UserManagement() {
       {actionError && (
         <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 flex items-start justify-between gap-2">
           <span>{actionError}</span>
-          <button onClick={() => setActionError(null)} className="shrink-0 text-red-600 hover:text-red-800"><X className="h-4 w-4" /></button>
+          <button onClick={() => setActionError(null)} className="shrink-0 text-red-600 hover:text-red-800">
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
       {addSuccessMessage && (
@@ -483,7 +575,9 @@ export default function UserManagement() {
             <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             <p>{addSuccessMessage}</p>
           </div>
-          <button onClick={() => setAddSuccessMessage(null)} className="shrink-0 text-emerald-600 hover:text-emerald-800"><X className="h-4 w-4" /></button>
+          <button onClick={() => setAddSuccessMessage(null)} className="shrink-0 text-emerald-600 hover:text-emerald-800">
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
@@ -508,65 +602,95 @@ export default function UserManagement() {
       </div>
 
       {/* ── Active users — desktop table ── */}
+      {/* overflow-x-auto lets the table scroll horizontally if needed without
+          breaking the card layout; min-w-[600px] ensures columns don't collapse. */}
       <div className="hidden sm:block overflow-x-auto">
-        <table className="w-full table-fixed">
+        <table className="min-w-full">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="w-[24%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">User</th>
-              <th className="w-[26%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
-              <th className="w-[16%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-[200px]">User</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Email</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-[150px]">Role</th>
               {isPlatformAdmin && (
-                <th className="w-[14%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Platform Admin</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-[130px]">Platform Admin</th>
               )}
-              <th className="w-[12%] px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider whitespace-nowrap">Joined</th>
-              <th className="w-[12%] px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-[100px] whitespace-nowrap">Joined</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider w-[100px]">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {users.map((user) => (
               <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 w-[200px]">
                   <div className="flex items-center gap-2">
                     <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200 flex items-center justify-center">
-                      <span className="text-sm font-medium text-slate-600">{(user.name || user.email || 'U').charAt(0).toUpperCase()}</span>
+                      <span className="text-sm font-medium text-slate-600">
+                        {(user.name || user.email || 'U').charAt(0).toUpperCase()}
+                      </span>
                     </div>
                     <span className="truncate text-sm font-medium text-slate-900">{user.name || 'Unnamed User'}</span>
                   </div>
                 </td>
-                <td className="px-4 py-4 text-sm text-slate-600"><span className="block truncate">{user.email || '—'}</span></td>
-                <td className="px-4 py-4">
+                <td className="px-4 py-4 text-sm text-slate-600 max-w-0">
+                  <span className="block truncate">{user.email || '—'}</span>
+                </td>
+                <td className="px-4 py-4 w-[150px]">
                   {editingUserId === user.id ? (
-                    <div className="flex items-center gap-2">
-                      <select value={editingRole} onChange={(e) => setEditingRole(e.target.value as UserRole)} className="text-sm border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-slate-500">
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={editingRole}
+                        onChange={(e) => setEditingRole(e.target.value as UserRole)}
+                        className="text-sm border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-slate-500"
+                      >
                         <option value="viewer">Viewer</option>
                         <option value="surveyor">Surveyor</option>
                         <option value="admin">Admin</option>
                       </select>
-                      <button onClick={() => handleUpdateRole(user.id, editingRole)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Save"><Check className="w-4 h-4" /></button>
-                      <button onClick={() => setEditingUserId(null)} className="p-1 text-slate-600 hover:bg-slate-100 rounded" title="Cancel"><X className="w-4 h-4" /></button>
+                      <button onClick={() => handleUpdateRole(user.id, editingRole)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Save">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditingUserId(null)} className="p-1 text-slate-600 hover:bg-slate-100 rounded" title="Cancel">
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold ${getRoleBadgeColor(user.role)}`}>
                         <Shield className="w-3 h-3" />{ROLE_LABELS[user.role]}
                       </span>
-                      <button onClick={() => { setEditingUserId(user.id); setEditingRole(user.role); }} className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded" title="Edit role"><Edit2 className="w-3.5 h-3.5" /></button>
+                      <button
+                        onClick={() => { setEditingUserId(user.id); setEditingRole(user.role); }}
+                        className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded"
+                        title="Edit role"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   )}
                 </td>
                 {isPlatformAdmin && (
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4 w-[130px]">
                     {user.role === 'admin' ? (
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={user.is_platform_admin} onChange={() => handleTogglePlatformAdmin(user.id, user.is_platform_admin)} className="w-4 h-4 text-slate-900 border-slate-300 rounded" />
+                        <input
+                          type="checkbox"
+                          checked={user.is_platform_admin}
+                          onChange={() => handleTogglePlatformAdmin(user.id, user.is_platform_admin)}
+                          className="w-4 h-4 text-slate-900 border-slate-300 rounded"
+                        />
                         <span className="text-sm text-slate-700">{user.is_platform_admin ? 'Yes' : 'No'}</span>
                       </label>
-                    ) : <span className="text-sm text-slate-400">—</span>}
+                    ) : (
+                      <span className="text-sm text-slate-400">—</span>
+                    )}
                   </td>
                 )}
-                <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">{formatDate(user.created_at)}</td>
-                <td className="px-4 py-4 text-right">
-                  <button onClick={() => handleRemoveUser(user.id, user.name || undefined)} className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors">
+                <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap w-[100px]">{formatDate(user.created_at)}</td>
+                <td className="px-4 py-4 text-right w-[100px]">
+                  <button
+                    onClick={() => handleRemoveUser(user.id, user.name || undefined)}
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                  >
                     <Trash2 className="w-4 h-4" />Remove
                   </button>
                 </td>
@@ -584,7 +708,9 @@ export default function UserManagement() {
               {/* Left: avatar + info */}
               <div className="flex items-start gap-3 min-w-0">
                 <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 flex items-center justify-center">
-                  <span className="text-sm font-medium text-slate-600">{(user.name || user.email || 'U').charAt(0).toUpperCase()}</span>
+                  <span className="text-sm font-medium text-slate-600">
+                    {(user.name || user.email || 'U').charAt(0).toUpperCase()}
+                  </span>
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 truncate">{user.name || 'Unnamed User'}</p>
@@ -592,7 +718,7 @@ export default function UserManagement() {
                   <p className="text-xs text-slate-400 mt-0.5">Joined {formatDate(user.created_at)}</p>
                 </div>
               </div>
-              {/* Right: role badge + actions */}
+              {/* Right: role badge + action icons */}
               <div className="flex flex-col items-end gap-2 shrink-0">
                 {editingUserId !== user.id && (
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-semibold ${getRoleBadgeColor(user.role)}`}>
@@ -601,18 +727,38 @@ export default function UserManagement() {
                 )}
                 {editingUserId === user.id ? (
                   <div className="flex items-center gap-1.5">
-                    <select value={editingRole} onChange={(e) => setEditingRole(e.target.value as UserRole)} className="text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-500">
+                    <select
+                      value={editingRole}
+                      onChange={(e) => setEditingRole(e.target.value as UserRole)}
+                      className="text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                    >
                       <option value="viewer">Viewer</option>
                       <option value="surveyor">Surveyor</option>
                       <option value="admin">Admin</option>
                     </select>
-                    <button onClick={() => handleUpdateRole(user.id, editingRole)} className="p-1.5 text-green-600 hover:bg-green-50 rounded" title="Save"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => setEditingUserId(null)} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded" title="Cancel"><X className="w-4 h-4" /></button>
+                    <button onClick={() => handleUpdateRole(user.id, editingRole)} className="p-1.5 text-green-600 hover:bg-green-50 rounded" title="Save">
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setEditingUserId(null)} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded" title="Cancel">
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <button onClick={() => { setEditingUserId(user.id); setEditingRole(user.role); }} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded" title="Edit role"><Edit2 className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleRemoveUser(user.id, user.name || undefined)} className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="Remove"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button
+                      onClick={() => { setEditingUserId(user.id); setEditingRole(user.role); }}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"
+                      title="Edit role"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleRemoveUser(user.id, user.name || undefined)}
+                      className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
@@ -632,74 +778,160 @@ export default function UserManagement() {
       {/* ── Pending invitations ── */}
       {pendingInvites.length > 0 && (
         <div className="border-t border-slate-200">
-          <div className="px-4 py-3 bg-slate-50 flex items-center gap-2">
+          {/* Section header */}
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2">
             <Mail className="w-4 h-4 text-slate-500" />
             <h3 className="text-sm font-semibold text-slate-700">
               Pending Invitations
-              <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded">{pendingInvites.length}</span>
+              <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded">
+                {pendingInvites.length}
+              </span>
             </h3>
           </div>
 
-          {/* Desktop table */}
-          <div className="hidden sm:block">
-            <table className="w-full table-fixed">
+          {/* Desktop rows */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="min-w-full">
+              <colgroup>
+                {/* Name/avatar */}
+                <col className="w-[220px]" />
+                {/* Email */}
+                <col />
+                {/* Role */}
+                <col className="w-[140px]" />
+                {/* Invited date */}
+                <col className="w-[110px]" />
+                {/* Actions */}
+                <col className="w-[130px]" />
+              </colgroup>
               <tbody className="divide-y divide-slate-100">
-                {pendingInvites.map((invite) => (
-                  <tr key={invite.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="w-[24%] px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 shrink-0 rounded-full bg-amber-100 flex items-center justify-center"><Mail className="h-4 w-4 text-amber-600" /></div>
-                        <span className="text-sm font-medium text-slate-500 italic">Awaiting signup</span>
-                      </div>
-                    </td>
-                    <td className="w-[26%] px-4 py-3 text-sm text-slate-600"><span className="block truncate">{invite.invited_email}</span></td>
-                    <td className="w-[16%] px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold ${getRoleBadgeColor(invite.role)}`}>
-                        <Shield className="w-3 h-3" />{ROLE_LABELS[invite.role]}
-                      </span>
-                    </td>
-                    {isPlatformAdmin && <td className="w-[14%] px-4 py-3" />}
-                    <td className="w-[12%] px-4 py-3 text-xs text-slate-500 whitespace-nowrap">Invited {formatDate(invite.invited_at ?? invite.created_at)}</td>
-                    <td className="w-[12%] px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => handleResendInvite(invite)} disabled={resendingUserId === invite.user_id} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors disabled:opacity-50" title="Resend invite">
-                          <RotateCcw className="w-3.5 h-3.5" />Resend
-                        </button>
-                        <button onClick={() => handleRevokeInvite(invite)} disabled={revokingUserId === invite.user_id} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50" title="Revoke invite">
-                          <X className="w-3.5 h-3.5" />Revoke
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {pendingInvites.map((invite) => {
+                  const displayName = inviteDisplayName(invite);
+                  const isResending = resendingUserId === invite.user_id;
+                  const isRevoking = revokingUserId === invite.user_id;
+                  return (
+                    <tr key={invite.id} className="hover:bg-amber-50/40 transition-colors">
+                      {/* Name / avatar */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 shrink-0 rounded-full bg-amber-100 flex items-center justify-center">
+                            <span className="text-sm font-medium text-amber-700">
+                              {(displayName || invite.invited_email || 'I').charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          {displayName ? (
+                            <span className="text-sm font-medium text-slate-700 truncate">{displayName}</span>
+                          ) : (
+                            <span className="text-sm text-slate-400 italic">Awaiting signup</span>
+                          )}
+                        </div>
+                      </td>
+                      {/* Email */}
+                      <td className="px-4 py-3 text-sm text-slate-600 max-w-0">
+                        <span className="block truncate">{invite.invited_email}</span>
+                      </td>
+                      {/* Role */}
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-xs font-semibold ${getRoleBadgeColor(invite.role)}`}>
+                          <Shield className="w-3 h-3" />{ROLE_LABELS[invite.role]}
+                        </span>
+                      </td>
+                      {/* Invited date */}
+                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                        {formatDate(invite.invited_at ?? invite.created_at)}
+                      </td>
+                      {/* Actions */}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleResendInvite(invite)}
+                            disabled={isResending || isRevoking}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors disabled:opacity-40"
+                            title="Resend invite"
+                          >
+                            <RotateCcw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
+                            {isResending ? 'Sending…' : 'Resend'}
+                          </button>
+                          <button
+                            onClick={() => handleRevokeInvite(invite)}
+                            disabled={isResending || isRevoking}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-40"
+                            title="Revoke invite"
+                          >
+                            <X className="w-3.5 h-3.5" />Revoke
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          {/* Mobile cards */}
+          {/* Mobile invite cards */}
           <div className="sm:hidden divide-y divide-slate-100">
-            {pendingInvites.map((invite) => (
-              <div key={invite.id} className="px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
+            {pendingInvites.map((invite) => {
+              const displayName = inviteDisplayName(invite);
+              const isResending = resendingUserId === invite.user_id;
+              const isRevoking = revokingUserId === invite.user_id;
+              return (
+                <div key={invite.id} className="px-4 py-3">
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="h-9 w-9 shrink-0 rounded-full bg-amber-100 flex items-center justify-center"><Mail className="h-4 w-4 text-amber-600" /></div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate">{invite.invited_email}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {/* Avatar */}
+                    <div className="h-9 w-9 shrink-0 rounded-full bg-amber-100 flex items-center justify-center">
+                      <span className="text-sm font-medium text-amber-700">
+                        {(displayName || invite.invited_email || 'I').charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    {/* Info + actions */}
+                    <div className="min-w-0 flex-1">
+                      {/* Top row: name/email + action icons */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          {displayName ? (
+                            <>
+                              <p className="text-sm font-medium text-slate-800 truncate">{displayName}</p>
+                              <p className="text-xs text-slate-500 truncate">{invite.invited_email}</p>
+                            </>
+                          ) : (
+                            <p className="text-sm font-medium text-slate-700 truncate">{invite.invited_email}</p>
+                          )}
+                        </div>
+                        {/* Icon-only action buttons on mobile */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => handleResendInvite(invite)}
+                            disabled={isResending || isRevoking}
+                            className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-40"
+                            title="Resend invite"
+                          >
+                            <RotateCcw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+                          </button>
+                          <button
+                            onClick={() => handleRevokeInvite(invite)}
+                            disabled={isResending || isRevoking}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
+                            title="Revoke invite"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                      {/* Bottom row: role badge + date */}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-semibold ${getRoleBadgeColor(invite.role)}`}>
                           <Shield className="w-3 h-3" />{ROLE_LABELS[invite.role]}
                         </span>
-                        <span className="text-xs text-slate-400">Invited {formatDate(invite.invited_at ?? invite.created_at)}</span>
+                        <span className="text-xs text-slate-400">
+                          Invited {formatDate(invite.invited_at ?? invite.created_at)}
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={() => handleResendInvite(invite)} disabled={resendingUserId === invite.user_id} className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-50" title="Resend"><RotateCcw className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => handleRevokeInvite(invite)} disabled={revokingUserId === invite.user_id} className="p-1.5 text-red-500 hover:bg-red-50 rounded disabled:opacity-50" title="Revoke"><X className="w-3.5 h-3.5" /></button>
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -720,16 +952,31 @@ export default function UserManagement() {
                 An invitation email will be sent. The recipient clicks the link to create their account and join your organisation automatically.
               </p>
 
-              {/* Inline modal error */}
+              {/* Inline modal error — with optional Resend shortcut */}
               {modalError && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                  <span>{modalError}</span>
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                    <div className="flex-1 min-w-0">
+                      <p>{modalError}</p>
+                      {isDuplicateInviteError && (
+                        <button
+                          onClick={handleResendFromModal}
+                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 underline underline-offset-2 hover:text-red-900 transition-colors"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          Resend invite to {newUserEmail.trim()}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Email <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Email <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="email"
                   value={newUserEmail}
@@ -752,7 +999,9 @@ export default function UserManagement() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Role <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Role <span className="text-red-500">*</span>
+                </label>
                 <select
                   value={newUserRole}
                   onChange={(e) => setNewUserRole(e.target.value as UserRole)}
@@ -780,9 +1029,15 @@ export default function UserManagement() {
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAddingUser ? (
-                  <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />Sending…</>
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    Sending…
+                  </>
                 ) : (
-                  <><Mail className="w-4 h-4" />Send Invite</>
+                  <>
+                    <Mail className="w-4 h-4" />
+                    Send Invite
+                  </>
                 )}
               </button>
             </div>
