@@ -125,9 +125,13 @@ Deno.serve(async (req: Request) => {
 
     // Send invite via Supabase admin.
     // Metadata is read by the handle_new_user() trigger to set up user_profiles.
+    // redirectTo must point to the production auth callback so the invite link
+    // lands on the app (not the Supabase Site URL fallback / staging domain).
+    const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
     const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
       emailNormalised,
       {
+        redirectTo: `${appBaseUrl}/auth/callback`,
         data: {
           organisation_id: payload.organisation_id,
           role: payload.role,

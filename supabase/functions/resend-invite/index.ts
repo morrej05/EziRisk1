@@ -100,9 +100,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Resend the invite email with the same metadata.
+    const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
     const { error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
       invitedMember.invited_email,
       {
+        redirectTo: `${appBaseUrl}/auth/callback`,
         data: {
           organisation_id: payload.organisation_id,
           role: invitedMember.role,
