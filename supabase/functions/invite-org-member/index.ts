@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
 
     // Check seat limits.
     const { data: seatRows, error: seatError } = await userSupabase
-      .rpc('get_user_seat_entitlement', { p_org_id: payload.organisation_id });
+      .rpc('get_user_seat_entitlement', { p_org_id: payload.organisation_id, p_at: new Date().toISOString() });
 
     if (seatError) {
       console.error('[invite-org-member] Seat check failed:', seatError.message);
