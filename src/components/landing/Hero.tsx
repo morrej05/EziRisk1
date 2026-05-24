@@ -9,9 +9,15 @@ const PRODUCTS = [
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#040814] via-[#0A1630] to-[#13264A]">
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-transparent"></div>
-      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSAxMCAwIEwgMCAwIDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-20"></div>
+    <section className="relative min-h-[90vh] flex items-center overflow-hidden">
+      <img
+        src="/hero-risk.webp"
+        alt="Fire risk assessor completing a site inspection"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-950/95 via-blue-950/78 to-blue-950/20"></div>
+      <div className="scan-line" aria-hidden="true"></div>
 
       <div className="relative z-10 mx-auto max-w-6xl px-6 py-24">
         <p className="mb-4 text-sm font-medium uppercase tracking-[0.2em] text-blue-200">
@@ -44,7 +50,12 @@ export default function Hero() {
           >
             Start an assessment
           </Link>
-          <p className="text-sm text-neutral-300">Free for 14 days. Upgrade to Standard or Professional anytime.</p>
+          <a
+            href="#how-it-works"
+            className="inline-flex items-center justify-center rounded-lg border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
+          >
+            See how it works
+          </a>
         </div>
       </div>
     </section>
