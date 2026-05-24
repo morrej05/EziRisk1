@@ -233,7 +233,10 @@ export default function UserManagement() {
       setUsers(usersWithMembershipRole);
 
       // ── Pending invites ───────────────────────────────────────────────────
-      // Non-fatal if RLS denies (non-admin viewers).
+      // Non-fatal if RLS denies (non-admin viewers), but log so it's visible.
+      if (inviteResult.error) {
+        console.warn('[UserManagement] Pending invites query failed (RLS or schema issue):', inviteResult.error);
+      }
       if (!inviteResult.error && inviteResult.data) {
         const inviteRows = inviteResult.data;
 
@@ -311,12 +314,16 @@ export default function UserManagement() {
         return;
       }
 
-      const { error } = await supabase.functions.invoke('invite-org-member', {
+      const sentEmail = newUserEmail.trim();
+      const sentName = newUserName.trim();
+      const sentRole = newUserRole;
+
+      const { data: inviteResponseData, error } = await supabase.functions.invoke('invite-org-member', {
         body: {
           organisation_id: currentUser.organisation_id,
-          email: newUserEmail.trim(),
-          role: toDbRole(newUserRole),
-          ...(newUserName.trim() ? { name: newUserName.trim() } : {}),
+          email: sentEmail,
+          role: toDbRole(sentRole),
+          ...(sentName ? { name: sentName } : {}),
         },
       });
 
@@ -338,17 +345,33 @@ export default function UserManagement() {
         return;
       }
 
-      // Success — close modal, reset form, show page-level banner, refresh.
-      const sentTo = newUserEmail.trim();
+      // Success — close modal, reset form, show page-level banner.
       setShowAddModal(false);
       setModalError(null);
       setNewUserEmail('');
       setNewUserName('');
       setNewUserRole('viewer');
       setAddSuccessMessage(
-        `Invite sent to ${sentTo}. They'll receive an email with a link to join your organisation.`,
+        `Invite sent to ${sentEmail}. They'll receive an email with a link to join your organisation.`,
       );
-      await fetchUsers();
+
+      // Optimistically add the new invite row immediately so it's visible
+      // without waiting for the background refresh.  The real row (with the
+      // DB-generated id) will replace this once fetchUsers() completes.
+      const responseData = (inviteResponseData ?? {}) as { user_id?: string };
+      const optimisticInvite: PendingInvite = {
+        id: `optimistic-${Date.now()}`,
+        user_id: responseData.user_id ?? '',
+        invited_email: sentEmail,
+        name: sentName || null,
+        role: sentRole,
+        created_at: new Date().toISOString(),
+        invited_at: new Date().toISOString(),
+      };
+      setPendingInvites((prev) => [optimisticInvite, ...prev]);
+
+      // Refresh in the background to get the canonical DB row.
+      void fetchUsers();
     } catch (error: unknown) {
       const message = await extractEdgeFunctionError(error);
       setModalError(message);

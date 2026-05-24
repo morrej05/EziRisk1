@@ -37,6 +37,14 @@ function isRecoveryFlow(searchParams: URLSearchParams, hashParams: URLSearchPara
   );
 }
 
+function isInviteFlow(searchParams: URLSearchParams, hashParams: URLSearchParams) {
+  // Implicit-flow invite links carry type=invite in the hash.
+  if (hashParams.get('type') === 'invite') return true;
+  // PKCE invite links carry just a `code`; detect via search param hint if present.
+  if (searchParams.get('type') === 'invite') return true;
+  return false;
+}
+
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -48,15 +56,25 @@ export default function AuthCallbackPage() {
       const { searchParams, hashParams } = getCallbackParams();
       const nextPath = resolveNextPath(searchParams, hashParams);
       const recoveryFlow = isRecoveryFlow(searchParams, hashParams, nextPath);
+      // Type=invite in the URL (implicit flow) — detect before token exchange.
+      const urlSignalsInvite = isInviteFlow(searchParams, hashParams);
       const code = searchParams.get('code');
       const accessToken = hashParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token');
 
       if (code) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
         if (exchangeError) {
           if (isMounted) setError(exchangeError.message);
+          return;
+        }
+
+        // PKCE invite links don't carry type=invite in the URL, so detect via
+        // the invite_flow flag we embed in the invite metadata.
+        const metaInvite = data?.session?.user?.user_metadata?.invite_flow === 'true';
+        if (urlSignalsInvite || metaInvite) {
+          navigate('/accept-invite', { replace: true });
           return;
         }
 
@@ -72,6 +90,12 @@ export default function AuthCallbackPage() {
 
         if (sessionError) {
           if (isMounted) setError(sessionError.message);
+          return;
+        }
+
+        // Implicit invite tokens carry type=invite in the hash.
+        if (urlSignalsInvite) {
+          navigate('/accept-invite', { replace: true });
           return;
         }
 
