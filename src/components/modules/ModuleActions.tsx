@@ -1,17 +1,26 @@
-import { useState, useEffect } from 'react';
-import { Plus, AlertCircle, ChevronRight, Trash2 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../contexts/AuthContext';
-import AddActionModal from '../actions/AddActionModal';
-import ActionDetailModal from '../actions/ActionDetailModal';
-import FeedbackModal from '../FeedbackModal';
-import { bumpActionsVersion, subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { useState, useEffect } from "react";
+import { Plus, AlertCircle, Upload } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
+import { isDocumentLocked } from "../../utils/documentLock";
+import AddActionModal from "../actions/AddActionModal";
+import ActionDetailModal from "../actions/ActionDetailModal";
+import FeedbackModal from "../FeedbackModal";
+import {
+  bumpActionsVersion,
+  subscribeActionsVersion,
+  getActionsVersion,
+} from "../../lib/actions/actionsInvalidation";
+import { uploadAttachment } from "../../utils/evidenceManagement";
 import {
   filterReRecommendationsByScope,
   hasReRecommendationWorkflow,
   isReRecommendationsRegisterModule,
-} from '../../lib/re/recommendations/moduleRecommendationFilters';
-import CanonicalReRecommendationModal from '../re/CanonicalReRecommendationModal';
+} from "../../lib/re/recommendations/moduleRecommendationFilters";
+import CanonicalReRecommendationModal from "../re/CanonicalReRecommendationModal";
+import { RecommendationCard } from "../recommendations/RecommendationWorkflow";
+import { buildRecommendationContext } from "../../lib/re/recommendations/sectionRecommendationContext";
+import { getModuleDisplayLabel } from "../../lib/modules/moduleCatalog";
 
 interface Action {
   id: string;
@@ -19,15 +28,19 @@ interface Action {
   status: string;
   priority_band: string | null;
   target_date: string | null;
+  timescale?: string | null;
   updated_at: string;
   source: string | null;
   owner_user_id: string | null;
   reference_number?: string;
+  recommendation_detail?: Record<string, unknown> | null;
+  trigger_text?: string | null;
   document: {
     id: string;
     title: string;
     document_type: string;
   } | null;
+  module_instance_id?: string | null;
   module_instance: {
     id: string;
     module_key: string;
@@ -45,19 +58,141 @@ interface ModuleActionsProps {
   moduleInstanceId: string;
   buttonLabel?: string;
   useInPlaceReRecommendationModal?: boolean;
+  sectionKey?: string;
+  sectionLabel?: string;
+  sourceKey?: string;
+  sourceLabel?: string;
+  defaultCategory?: string;
+  compact?: boolean;
+  summaryOnly?: boolean;
 }
+
+
+
+const FRA_1_RECOMMENDATION_SCOPE_KEYS = [
+  "FRA_1_HAZARDS",
+  "fixed_wiring_eicr",
+  "dsear_screening",
+  "lightning",
+  "cooking",
+  "battery_charging_lithium_ion",
+  "duct_cleaning",
+  "hazardous_substances_dsear",
+  "electrical",
+  "portable_heaters",
+  "smoking",
+  "laundry",
+  "plant_machinery",
+  "lighting_high_temp",
+  "arson",
+  "high_risk_other",
+  "other",
+];
+
+type ActionLike = {
+  module_instance_id?: string | null;
+  module_instance?: { id?: string | null; module_key?: string | null } | null;
+  recommendation_detail?: Record<string, unknown> | null;
+};
+
+type RecommendationMatchContext = {
+  moduleInstanceId: string;
+  moduleKey: string;
+  sectionKey: string;
+  sourceKey: string;
+};
+
+const stringValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const getRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const getRecommendationDetailRecords = (action: ActionLike): Record<string, unknown>[] => {
+  const detail = getRecord(action.recommendation_detail);
+  const metadata = getRecord(detail.metadata);
+  const recommendationDetail = getRecord(detail.recommendation_detail);
+  const nestedRecommendationDetail = getRecord(metadata.recommendation_detail);
+  return [detail, metadata, recommendationDetail, nestedRecommendationDetail];
+};
+
+const detailMatchesAny = (
+  action: ActionLike,
+  keys: string[],
+  expectedValues: Array<string | null | undefined>,
+): boolean => {
+  const expected = new Set(expectedValues.map((value) => stringValue(value)).filter(Boolean));
+  if (expected.size === 0) return false;
+
+  return getRecommendationDetailRecords(action).some((record) =>
+    keys.some((key) => expected.has(stringValue(record[key]))),
+  );
+};
+
+const matchesRecommendationModule = (
+  action: ActionLike,
+  moduleInstanceId: string,
+  moduleKey?: string | null,
+): boolean => {
+  const moduleMatches =
+    action.module_instance_id === moduleInstanceId ||
+    action.module_instance?.id === moduleInstanceId ||
+    action.module_instance?.module_key === moduleKey ||
+    detailMatchesAny(action, ["moduleInstanceId", "module_instance_id"], [moduleInstanceId]) ||
+    detailMatchesAny(action, ["moduleKey", "sourceModuleKey", "module_key", "source_module_key"], [moduleKey]);
+
+  if (moduleMatches) return true;
+
+  if (moduleKey === "FRA_1_HAZARDS") {
+    return detailMatchesAny(
+      action,
+      ["sectionKey", "sourceKey", "source_factor_key"],
+      FRA_1_RECOMMENDATION_SCOPE_KEYS,
+    );
+  }
+
+  return false;
+};
+
+const matchesRecommendationSection = (
+  action: ActionLike,
+  context: RecommendationMatchContext,
+): boolean => (
+  matchesRecommendationModule(action, context.moduleInstanceId, context.moduleKey) &&
+  detailMatchesAny(action, ["sectionKey", "sourceKey", "source_factor_key"], [context.sectionKey, context.sourceKey])
+);
+
+const getActionSourceLabel = (action: ActionLike, fallback?: string | null): string | null => {
+  const records = getRecommendationDetailRecords(action);
+  for (const key of ["sourceLabel", "sectionLabel"]) {
+    for (const record of records) {
+      const value = stringValue(record[key]);
+      if (value) return value;
+    }
+  }
+  return fallback || null;
+};
 
 const isValidUUID = (id: string | undefined | null): boolean => {
   if (!id) return false;
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(id);
 };
 
 export default function ModuleActions({
   documentId,
   moduleInstanceId,
-  buttonLabel = 'Add Action',
-  useInPlaceReRecommendationModal = false,
+  buttonLabel = "Add Recommendation",
+  sectionKey,
+  sectionLabel,
+  sourceKey,
+  sourceLabel,
+  defaultCategory,
+  compact = false,
+  summaryOnly = false,
 }: ModuleActionsProps) {
   const { user } = useAuth();
   const [actions, setActions] = useState<Action[]>([]);
@@ -66,37 +201,64 @@ export default function ModuleActions({
   const [isModuleTypeLoaded, setIsModuleTypeLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showReRecommendationModal, setShowReRecommendationModal] = useState(false);
+  const [showReRecommendationModal, setShowReRecommendationModal] =
+    useState(false);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
-  const [documentStatus, setDocumentStatus] = useState<string>('draft');
+  const [documentStatus, setDocumentStatus] = useState<string>("draft");
+  const [isLocked, setIsLocked] = useState(false);
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
+  const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
+
+  const hasSectionRecommendationContext = Boolean(
+    sectionKey || sectionLabel || sourceKey || sourceLabel || defaultCategory,
+  );
+
+  const recommendationContext = sourceModuleKey && hasSectionRecommendationContext
+    ? buildRecommendationContext({
+        documentId,
+        moduleInstanceId,
+        moduleKey: sourceModuleKey,
+        sectionKey,
+        sectionLabel,
+        sourceKey,
+        sourceLabel,
+        defaultCategory,
+        warnOnMissingContext: showReRecommendationModal,
+      })
+    : null;
+
+  const isModuleFooterRollup = summaryOnly || !hasSectionRecommendationContext;
 
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
-    type: 'success' | 'error' | 'warning';
+    type: "success" | "error" | "warning";
     title: string;
     message: string;
     autoClose?: boolean;
   }>({
     isOpen: false,
-    type: 'success',
-    title: '',
-    message: '',
+    type: "success",
+    title: "",
+    message: "",
     autoClose: false,
   });
 
   useEffect(() => {
-    const unsubscribe = subscribeActionsVersion(() => setActionsVersion(getActionsVersion()));
-    return unsubscribe;
+    const unsubscribe = subscribeActionsVersion(() =>
+      setActionsVersion(getActionsVersion()),
+    );
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     const loadModuleType = async () => {
       const { data } = await supabase
-        .from('module_instances')
-        .select('module_key')
-        .eq('id', moduleInstanceId)
+        .from("module_instances")
+        .select("module_key")
+        .eq("id", moduleInstanceId)
         .maybeSingle();
 
       setSourceModuleKey(data?.module_key || null);
@@ -108,24 +270,95 @@ export default function ModuleActions({
   }, [moduleInstanceId]);
 
   useEffect(() => {
-    if (!isModuleTypeLoaded) return;
+    if (!isModuleTypeLoaded || isModuleFooterRollup) return;
     if (!isValidUUID(documentId)) {
-      console.warn('ModuleActions: Invalid documentId provided:', documentId);
+      console.warn("ModuleActions: Invalid documentId provided:", documentId);
       setIsLoading(false);
       return;
     }
     if (!isValidUUID(moduleInstanceId)) {
-      console.warn('ModuleActions: Invalid moduleInstanceId provided:', moduleInstanceId);
+      console.warn(
+        "ModuleActions: Invalid moduleInstanceId provided:",
+        moduleInstanceId,
+      );
       setIsLoading(false);
       return;
     }
     fetchActions();
     fetchDocumentStatus();
-  }, [moduleInstanceId, documentId, actionsVersion, isReModule, sourceModuleKey, isModuleTypeLoaded]);
+  }, [
+    moduleInstanceId,
+    documentId,
+    actionsVersion,
+    isReModule,
+    sourceModuleKey,
+    isModuleTypeLoaded,
+    sectionKey,
+    sourceKey,
+    defaultCategory,
+    summaryOnly,
+    isModuleFooterRollup,
+  ]);
+
+  const handleInlineEvidenceUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = event.target.files;
+    if (!files || files.length === 0 || !user?.id) return;
+
+    setIsUploadingEvidence(true);
+    try {
+      const { data: docData, error: docError } = await supabase
+        .from("documents")
+        .select("organisation_id, base_document_id")
+        .eq("id", documentId)
+        .single();
+
+      if (docError || !docData)
+        throw docError || new Error("Document not found");
+
+      let successCount = 0;
+      for (const file of Array.from(files)) {
+        const result = await uploadAttachment(
+          docData.organisation_id,
+          documentId,
+          docData.base_document_id,
+          file,
+          undefined,
+          moduleInstanceId,
+        );
+        if (!result.success) throw new Error(result.error || "Upload failed");
+        successCount++;
+      }
+
+      setFeedback({
+        isOpen: true,
+        type: "success",
+        title: "Evidence linked",
+        message: `${successCount} file${successCount === 1 ? "" : "s"} linked to this module.`,
+        autoClose: true,
+      });
+      fetchActions();
+    } catch (error) {
+      console.error("Error uploading inline evidence:", error);
+      setFeedback({
+        isOpen: true,
+        type: "error",
+        title: "Evidence upload failed",
+        message: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsUploadingEvidence(false);
+      event.target.value = "";
+    }
+  };
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
-      console.error('ModuleActions.fetchActions: Invalid moduleInstanceId:', moduleInstanceId);
+      console.error(
+        "ModuleActions.fetchActions: Invalid moduleInstanceId:",
+        moduleInstanceId,
+      );
       setIsLoading(false);
       return;
     }
@@ -134,11 +367,13 @@ export default function ModuleActions({
     try {
       if (isReModule) {
         const { data: recs, error: recError } = await supabase
-          .from('re_recommendations')
-          .select('id, title, status, priority, target_date, updated_at, module_instance_id, source_module_key')
-          .eq('document_id', documentId)
-          .eq('is_suppressed', false)
-          .order('created_at', { ascending: false });
+          .from("re_recommendations")
+          .select(
+            "id, title, observation_text, action_required_text, status, priority, target_date, updated_at, module_instance_id, source_module_key, source_factor_key, photos, category, metadata, rec_number",
+          )
+          .eq("document_id", documentId)
+          .eq("is_suppressed", false)
+          .order("created_at", { ascending: false });
 
         if (recError) throw recError;
 
@@ -151,61 +386,99 @@ export default function ModuleActions({
           updated_at: string;
           module_instance_id: string | null;
           source_module_key: string | null;
+          source_factor_key: string | null;
+          observation_text?: string | null;
+          action_required_text?: string | null;
+          photos?: unknown;
+          category?: string | null;
+          metadata?: Record<string, unknown> | null;
+          rec_number?: string | null;
         };
 
-        const moduleScopedRecs = filterReRecommendationsByScope((recs || []) as ReRecommendationRow[], {
-          scope: 'module',
-          moduleInstanceId,
-          isRegisterModule: isReRecommendationsRegisterModule(sourceModuleKey),
-        });
+        const moduleScopedRecs = filterReRecommendationsByScope(
+          (recs || []) as ReRecommendationRow[],
+          {
+            scope: "module",
+            moduleInstanceId,
+            isRegisterModule:
+              isReRecommendationsRegisterModule(sourceModuleKey),
+          },
+        );
 
-        const priorityMap: Record<string, string> = { High: 'P1', Medium: 'P2', Low: 'P3' };
+        const sectionScopedRecs = recommendationContext
+          ? moduleScopedRecs.filter((rec) => {
+              const meta = rec.metadata || {};
+              return (
+                rec.source_factor_key === recommendationContext.sourceKey ||
+                meta.sourceKey === recommendationContext.sourceKey ||
+                meta.sectionKey === recommendationContext.sectionKey
+              );
+            })
+          : moduleScopedRecs;
+
+        const priorityMap: Record<string, string> = {
+          High: "P1",
+          Medium: "P2",
+          Low: "P3",
+        };
         const statusMap: Record<string, string> = {
-          Open: 'open',
-          'In Progress': 'in_progress',
-          Completed: 'closed',
+          Open: "open",
+          "In Progress": "in_progress",
+          Completed: "closed",
         };
 
-        setActions(
-          moduleScopedRecs.map((rec: ReRecommendationRow) => ({
+        const mappedReActions: Action[] = sectionScopedRecs.map((rec: ReRecommendationRow) => ({
             id: rec.id,
-            recommended_action: rec.title,
-            status: statusMap[rec.status] || 'open',
-            priority_band: priorityMap[rec.priority] || 'P3',
+            recommended_action: rec.action_required_text || rec.title,
+            status: statusMap[rec.status] || "open",
+            priority_band: priorityMap[rec.priority] || "P3",
             target_date: rec.target_date,
+            timescale: null,
             updated_at: rec.updated_at,
-            source: 're_recommendations',
+            source: "re_recommendations",
             owner_user_id: null,
-            reference_number: undefined,
+            reference_number: rec.rec_number || undefined,
+            recommendation_detail: {
+              observation: rec.observation_text || rec.title,
+              category: rec.category,
+              metadata: rec.metadata,
+            },
             document: null,
             module_instance: null,
             owner: null,
-            attachment_count: 0,
-          }))
-        );
+            attachment_count: Array.isArray(rec.photos) ? rec.photos.length : 0,
+          }));
+
+        setActions(mappedReActions);
         return;
       }
 
       const { data, error } = await supabase
-        .from('actions')
-        .select(`
+        .from("actions")
+        .select(
+          `
           id,
+          module_instance_id,
           recommended_action,
           status,
           priority_band,
           target_date,
+          timescale,
           updated_at,
           source,
           owner_user_id,
           reference_number,
+          recommendation_detail,
+          trigger_text,
           created_at,
           document:documents!actions_document_id_fkey(id,title,document_type),
           module_instance:module_instances(id,module_key,outcome),
           owner:user_profiles(id,name)
-        `)
-        .eq('module_instance_id', moduleInstanceId)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
+        `,
+        )
+        .eq("document_id", documentId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
 
@@ -214,14 +487,15 @@ export default function ModuleActions({
 
       if (actionIds.length > 0) {
         const { data: attachmentData } = await supabase
-          .from('attachments')
-          .select('action_id')
-          .in('action_id', actionIds)
-          .not('action_id', 'is', null);
+          .from("attachments")
+          .select("action_id")
+          .in("action_id", actionIds)
+          .not("action_id", "is", null);
 
         attachmentData?.forEach((att) => {
           if (att.action_id) {
-            attachmentCounts[att.action_id] = (attachmentCounts[att.action_id] || 0) + 1;
+            attachmentCounts[att.action_id] =
+              (attachmentCounts[att.action_id] || 0) + 1;
           }
         });
       }
@@ -231,9 +505,15 @@ export default function ModuleActions({
         attachment_count: attachmentCounts[action.id] || 0,
       }));
 
-      setActions(actionsWithAttachments);
+      const scopedActions = actionsWithAttachments.filter((action) =>
+        recommendationContext
+          ? matchesRecommendationSection(action, recommendationContext)
+          : matchesRecommendationModule(action, moduleInstanceId, sourceModuleKey),
+      );
+
+      setActions(scopedActions as unknown as Action[]);
     } catch (error) {
-      console.error('Error fetching actions:', error);
+      console.error("Error fetching actions:", error);
     } finally {
       setIsLoading(false);
     }
@@ -241,31 +521,38 @@ export default function ModuleActions({
 
   const fetchDocumentStatus = async () => {
     if (!isValidUUID(documentId)) {
-      console.error('ModuleActions.fetchDocumentStatus: Invalid documentId:', documentId);
+      console.error(
+        "ModuleActions.fetchDocumentStatus: Invalid documentId:",
+        documentId,
+      );
       return;
     }
 
     try {
       const { data, error } = await supabase
-        .from('documents')
-        .select('status, document_type')
-        .eq('id', documentId)
+        .from("documents")
+        .select("status, document_type, issue_status")
+        .eq("id", documentId)
         .maybeSingle();
 
       if (error) throw error;
-      if (data) setDocumentStatus(data.status);
+      if (data) {
+        setDocumentStatus(data.status);
+        setIsLocked(isDocumentLocked(data.issue_status));
+      }
     } catch (error) {
-      console.error('Error fetching document status:', error);
+      console.error("Error fetching document status:", error);
     }
   };
 
   const handleDeleteAction = async (actionId: string) => {
-    if (documentStatus !== 'draft') {
+    if (documentStatus !== "draft") {
       setFeedback({
         isOpen: true,
-        type: 'warning',
-        title: 'Cannot delete action',
-        message: 'Actions can only be deleted when the document is in Draft status.',
+        type: "warning",
+        title: "Cannot delete action",
+        message:
+          "Actions can only be deleted when the document is in Draft status.",
         autoClose: false,
       });
       return;
@@ -274,9 +561,10 @@ export default function ModuleActions({
     if (!user?.id) {
       setFeedback({
         isOpen: true,
-        type: 'error',
-        title: 'User not found',
-        message: 'Unable to identify user. Please refresh the page and try again.',
+        type: "error",
+        title: "User not found",
+        message:
+          "Unable to identify user. Please refresh the page and try again.",
         autoClose: false,
       });
       return;
@@ -284,13 +572,13 @@ export default function ModuleActions({
 
     try {
       const { error } = await supabase
-        .from('actions')
+        .from("actions")
         .update({
           deleted_at: new Date().toISOString(),
           deleted_by: user.id,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', actionId);
+        .eq("id", actionId);
 
       if (error) throw error;
 
@@ -300,75 +588,48 @@ export default function ModuleActions({
 
       setFeedback({
         isOpen: true,
-        type: 'success',
-        title: 'Action deleted',
-        message: 'The action has been successfully removed.',
+        type: "success",
+        title: "Action deleted",
+        message: "The action has been successfully removed.",
         autoClose: true,
       });
     } catch (error) {
-      console.error('Error deleting action:', error);
+      console.error("Error deleting action:", error);
       setFeedback({
         isOpen: true,
-        type: 'error',
-        title: 'Delete failed',
-        message: 'Unable to delete the action. Please try again.',
+        type: "error",
+        title: "Delete failed",
+        message: "Unable to delete the action. Please try again.",
         autoClose: false,
       });
     }
   };
 
-
-  const getPriorityColor = (priority: string | null) => {
-    switch (priority) {
-      case 'P1':
-        return 'bg-red-100 text-red-700 border-red-200';
-      case 'P2':
-        return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'P3':
-        return 'bg-amber-100 text-amber-700 border-amber-200';
-      case 'P4':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
-      default:
-        return 'bg-neutral-100 text-neutral-600 border-neutral-200';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'open':
-        return 'bg-red-100 text-red-700';
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-700';
-      case 'closed':
-        return 'bg-green-100 text-green-700';
-      case 'deferred':
-        return 'bg-amber-100 text-amber-700';
-      case 'not_applicable':
-        return 'bg-neutral-100 text-neutral-600';
-      default:
-        return 'bg-neutral-100 text-neutral-600';
-    }
-  };
-
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—';
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
     });
   };
 
   const formatStatus = (status: string) => {
-    return status.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    return status.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  const isDeletable = documentStatus === 'draft';
+  const isDeletable = documentStatus === "draft";
   const hasValidIds = isValidUUID(documentId) && isValidUUID(moduleInstanceId);
   const hideModuleActionsUi = Boolean(
-    sourceModuleKey === 'RISK_ENGINEERING'
-    || (sourceModuleKey?.startsWith('RE_') && !hasReRecommendationWorkflow(sourceModuleKey))
+    isModuleFooterRollup ||
+    sourceModuleKey === "RISK_ENGINEERING" ||
+    (sourceModuleKey?.startsWith("RE_") &&
+      !hasReRecommendationWorkflow(sourceModuleKey)),
   );
+
+  if (isModuleFooterRollup) {
+    return null;
+  }
 
   if (!hasValidIds) {
     return (
@@ -376,14 +637,19 @@ export default function ModuleActions({
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-sm font-bold text-red-900 mb-1">Invalid Module Configuration</h3>
+            <h3 className="text-sm font-bold text-red-900 mb-1">
+              Invalid Module Configuration
+            </h3>
             <p className="text-sm text-red-700">
-              Cannot load actions: Missing or invalid document ID or module instance ID.
+              Cannot load actions: Missing or invalid document ID or module
+              instance ID.
             </p>
-            <div className="mt-2 text-xs font-mono text-red-600 space-y-1">
-              <div>documentId: {documentId || '(missing)'}</div>
-              <div>moduleInstanceId: {moduleInstanceId || '(missing)'}</div>
-            </div>
+            {import.meta.env.DEV && (
+              <div className="mt-2 text-xs font-mono text-red-600 space-y-1">
+                <div>documentId: {documentId || "(missing)"}</div>
+                <div>moduleInstanceId: {moduleInstanceId || "(missing)"}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -394,63 +660,54 @@ export default function ModuleActions({
     return null;
   }
 
-  // All document types (including RE modules) show actions UI for the active module instance
+  // Section-owned recommendation cards remain available where a section context is provided
   return (
-    <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
+    <div
+      id={recommendationContext?.returnAnchor}
+      className={`bg-white rounded-lg border border-neutral-200 ${compact ? "p-4 mt-4" : "p-6 mt-6"}`}
+    >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-neutral-900">{isReModule ? 'Recommendations from this Module' : 'Actions from this Module'}</h3>
-        <button
-          onClick={() => {
-            if (!isReModule) {
-              setShowAddModal(true);
-              return;
-            }
+        <div>
+          <h3 className="text-lg font-bold text-neutral-900">
+            {`Recommendations — ${recommendationContext?.displayLabel || "Assessment section"}`}
+          </h3>
+          <p className="text-sm text-neutral-500">
+            Section-owned finding, evidence, priority and due-date workflow.
+          </p>
+        </div>
+        {documentStatus === "draft" && !summaryOnly && (
+          <div className="flex items-center gap-2">
+            <label
+              className={`flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium ${isUploadingEvidence ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+            >
+              <Upload className="w-4 h-4" />
+              {isUploadingEvidence ? "Uploading..." : "Add evidence"}
+              <input
+                type="file"
+                multiple
+                capture="environment"
+                accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
+                onChange={handleInlineEvidenceUpload}
+                disabled={isUploadingEvidence}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={() => {
+                if (isReModule) {
+                  setShowReRecommendationModal(true);
+                  return;
+                }
 
-            if (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') {
-              setShowReRecommendationModal(true);
-              return;
-            }
-
-            const openRecommendationComposer = async () => {
-              console.info('[RE04 Add Recommendation] click', {
-                documentId,
-                sourceModuleInstanceId: moduleInstanceId,
-                sourceModuleKey,
-              });
-
-              const { data: registerModule } = await supabase
-                .from('module_instances')
-                .select('id')
-                .eq('document_id', documentId)
-                .eq('module_key', 'RE_13_RECOMMENDATIONS')
-                .maybeSingle();
-
-              const params = new URLSearchParams({
-                openAddRec: 'true',
-                sourceModuleInstanceId: moduleInstanceId,
-                sourceModuleKey: sourceModuleKey || 'OTHER',
-                openRecSource: 'module-actions',
-              });
-
-              if (registerModule?.id) {
-                params.set('m', registerModule.id);
-              }
-
-              console.info('[RE04 Add Recommendation] navigate', {
-                registerModuleId: registerModule?.id || null,
-                query: params.toString(),
-              });
-
-              window.location.assign(`/documents/${documentId}/workspace?${params.toString()}`);
-            };
-
-            void openRecommendationComposer();
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          {isReModule ? 'Add Recommendation' : buttonLabel}
-        </button>
+                setShowAddModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              {buttonLabel}
+            </button>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
@@ -460,163 +717,55 @@ export default function ModuleActions({
       ) : actions.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
-          <p className="text-neutral-500 text-sm">No actions added yet</p>
+          <p className="text-neutral-500 text-sm">
+            No recommendations added yet
+          </p>
           <p className="text-neutral-400 text-xs">
-            Click "{isReModule ? 'Add Recommendation' : buttonLabel}" to create a recommended action for this module
+            Click "{buttonLabel}" to create a recommendation for this section
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-           <table className="min-w-full divide-y divide-neutral-200">
-            <thead className="bg-neutral-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Ref
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Priority
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Action
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Due Date
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-neutral-700 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-neutral-200">
-              {actions.map((action) => (
-                <tr
-                  key={action.id}
-                  className="hover:bg-neutral-50 transition-colors"
-                >
-                  <td
-                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <span className="text-sm font-mono text-neutral-900">
-                      {action.reference_number ?? '—'}
-                    </span>
-                  </td>
-                  <td
-                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-bold rounded border ${getPriorityColor(
-                        action.priority_band
-                      )}`}
-                    >
-                      {action.priority_band || '—'}
-                    </span>
-                  </td>
-                  <td
-                    className="px-4 py-3 whitespace-nowrap cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(
-                        action.status
-                      )}`}
-                    >
-                      {formatStatus(action.status)}
-                    </span>
-                  </td>
-                  <td
-                    className="px-4 py-3 cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    <div className="text-sm text-neutral-900 max-w-lg hover:text-neutral-600 transition-colors">
-                      {action.recommended_action}
-                    </div>
-                    {(action.carried_from_document_id || action.origin_action_id) && (
-                      <span className="inline-flex px-1.5 py-0.5 mt-1 text-xs font-medium rounded bg-purple-100 text-purple-700">
-                        Carried forward
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className="px-4 py-3 whitespace-nowrap text-sm text-neutral-600 cursor-pointer"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedAction(action)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedAction(action);
-                      }
-                    }}
-                  >
-                    {formatDate(action.target_date)}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedAction(action);
-                        }}
-                        className="p-1.5 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded transition-colors"
-                        title="View details"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                      {isDeletable && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActionToDelete(action.id);
-                          }}
-                          className="p-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
-                          title="Delete action"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {actions.map((action) => (
+            <RecommendationCard
+              key={action.id}
+              item={{
+                id: action.id,
+                findingSummary:
+                  (action.recommendation_detail?.observation as string) ||
+                  action.trigger_text ||
+                  action.recommended_action,
+                recommendationText: action.recommended_action,
+                priority: action.priority_band,
+                status: formatStatus(action.status),
+                dueDate: formatDate(action.target_date),
+                evidenceCount: action.attachment_count,
+                sourceLabel:
+                  getActionSourceLabel(action, recommendationContext?.sourceLabel) ||
+                  getModuleDisplayLabel(sourceModuleKey || action.module_instance?.module_key) ||
+                  "Linked assessment area",
+                referenceNumber: action.reference_number,
+              }}
+              onOpen={() => {
+                if (action.source === "re_recommendations") {
+                  window.location.hash =
+                    recommendationContext?.returnAnchor ||
+                    `recommendation-${action.id}`;
+                  return;
+                }
+                // Editing is blocked for issued/superseded documents
+                if (!isLocked) {
+                  setSelectedAction(action);
+                }
+              }}
+              onDelete={
+                isDeletable && action.source !== "re_recommendations"
+                  ? () => setActionToDelete(action.id)
+                  : undefined
+              }
+              deleteLabel="Delete"
+            />
+          ))}
         </div>
       )}
 
@@ -629,10 +778,16 @@ export default function ModuleActions({
             setShowAddModal(false);
             fetchActions();
           }}
+          sectionKey={recommendationContext?.sectionKey}
+          sectionLabel={recommendationContext?.sectionLabel}
+          sourceKey={recommendationContext?.sourceKey}
+          sourceLabel={recommendationContext?.sourceLabel}
+          sourceModuleKey={sourceModuleKey || undefined}
+          defaultCategory={recommendationContext?.defaultCategory}
         />
       )}
 
-      {isReModule && (useInPlaceReRecommendationModal || sourceModuleKey === 'RE_06_FIRE_PROTECTION') && showReRecommendationModal && sourceModuleKey && (
+      {isReModule && showReRecommendationModal && sourceModuleKey && (
         <CanonicalReRecommendationModal
           isOpen={showReRecommendationModal}
           onClose={() => setShowReRecommendationModal(false)}
@@ -643,12 +798,19 @@ export default function ModuleActions({
           documentId={documentId}
           moduleInstanceId={moduleInstanceId}
           sourceModuleKey={sourceModuleKey}
+          sectionKey={recommendationContext?.sectionKey}
+          sectionLabel={recommendationContext?.sectionLabel}
+          sourceKey={recommendationContext?.sourceKey}
+          sourceLabel={recommendationContext?.sourceLabel}
+          defaultCategory={recommendationContext?.defaultCategory || defaultCategory}
+          metadata={recommendationContext?.metadata}
           createdBy={user?.id || null}
         />
       )}
 
-      {!isReModule && selectedAction && (
+      {!isLocked && selectedAction && selectedAction.source !== "re_recommendations" && (
         <ActionDetailModal
+          returnTo={`/documents/${documentId}/workspace?m=${moduleInstanceId}`}
           action={selectedAction}
           onClose={() => setSelectedAction(null)}
           onActionUpdated={() => {
@@ -660,9 +822,12 @@ export default function ModuleActions({
       {!isReModule && actionToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-neutral-900 mb-3">Delete Action?</h3>
+            <h3 className="text-lg font-bold text-neutral-900 mb-3">
+              Delete recommendation?
+            </h3>
             <p className="text-neutral-700 mb-6">
-              This will permanently delete this action and all its attachments. This cannot be undone.
+              This will permanently delete this recommendation and all its attachments.
+              This cannot be undone.
             </p>
             <div className="flex items-center gap-3 justify-end">
               <button
@@ -682,9 +847,9 @@ export default function ModuleActions({
         </div>
       )}
 
-      {!isDeletable && actions.length > 0 && (
+      {isLocked && actions.length > 0 && (
         <p className="text-xs text-neutral-500 mt-3 italic">
-          Document is issued — actions cannot be deleted. You can close them instead.
+          Document is issued — actions are read-only and cannot be edited or deleted.
         </p>
       )}
 

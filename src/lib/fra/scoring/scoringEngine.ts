@@ -37,6 +37,8 @@ const GOVERNANCE_MODULES = [
   'A2_BUILDING_PROFILE',
   'A3_PERSONS_AT_RISK',
   'A4_MANAGEMENT',
+  'A4_MANAGEMENT_CONTROLS',
+  'FRA_6_MANAGEMENT_SYSTEMS',
   'A7_REVIEW_ASSURANCE',
 ];
 
@@ -110,6 +112,35 @@ function hasEicrIssues(moduleInstance: ModuleInstance): boolean {
     electrical.eicr_outstanding_c1_c2 === 'yes' ||
     electrical.eicr_satisfactory === 'unsatisfactory'
   );
+}
+
+function hasSignificantPassiveProtectionFindings(moduleInstance: ModuleInstance): boolean {
+  const source = moduleInstance.data.passive_fire_protection_assessments || moduleInstance.data.passiveFireProtectionAssessments;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return false;
+
+  return Object.values(source as Record<string, any>).some((assessment) => {
+    if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment)) return false;
+    return assessment.status === 'inadequate' ||
+      assessment.risk_significance === 'high' ||
+      assessment.riskSignificance === 'high' ||
+      assessment.risk_significance === 'critical' ||
+      assessment.riskSignificance === 'critical';
+  });
+}
+
+
+function hasSignificantManagementFindings(moduleInstance: ModuleInstance): boolean {
+  const source = moduleInstance.data.fire_safety_management_assessments || moduleInstance.data.fireSafetyManagementAssessments;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return false;
+
+  return Object.values(source as Record<string, any>).some((assessment) => {
+    if (!assessment || typeof assessment !== 'object' || Array.isArray(assessment)) return false;
+    return assessment.status === 'inadequate' ||
+      assessment.risk_significance === 'high' ||
+      assessment.riskSignificance === 'high' ||
+      assessment.risk_significance === 'critical' ||
+      assessment.riskSignificance === 'critical';
+  });
 }
 
 function hasFixedFirefightingIssues(moduleInstance: ModuleInstance, profile: BuildingProfile): boolean {
@@ -210,6 +241,18 @@ export function scoreFraDocument(args: ScoringArgs): ScoringResult {
     if (instance.module_key === 'FRA_1_HAZARDS' && hasEicrIssues(instance)) {
       if (likelihood === 'Low') likelihood = 'Medium';
       ruleTriggers.push('Electrical safety concerns (EICR)');
+    }
+
+    if (instance.module_key === 'FRA_4_PASSIVE_PROTECTION' && hasSignificantPassiveProtectionFindings(instance)) {
+      if (likelihood === 'Low') likelihood = 'Medium';
+      if (consequence === 'Slight') consequence = 'Moderate';
+      ruleTriggers.push('Significant detailed passive fire protection findings');
+    }
+
+    if ((instance.module_key === 'A4_MANAGEMENT_CONTROLS' || instance.module_key === 'FRA_6_MANAGEMENT_SYSTEMS') && hasSignificantManagementFindings(instance)) {
+      if (likelihood === 'Low') likelihood = 'Medium';
+      governanceImprovements += 1;
+      ruleTriggers.push('Significant detailed fire safety management findings');
     }
 
     if (instance.module_key === 'FRA_8_FIREFIGHTING_EQUIPMENT' && hasFixedFirefightingIssues(instance, buildingProfile)) {

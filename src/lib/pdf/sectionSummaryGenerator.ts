@@ -8,6 +8,82 @@
 import type { ModuleInstance } from '../supabase/attachments';
 import type { Document } from './fra/fraTypes';
 
+
+const FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS: Record<string, string> = {
+  fire_safety_policy_arrangements: 'Fire safety policy and arrangements',
+  responsible_person_duty_holder: 'Responsible person / duty holder arrangements',
+  staff_training_awareness: 'Staff training and fire awareness',
+  fire_drills_evacuation_testing: 'Fire drills and evacuation testing',
+  emergency_procedures: 'Emergency procedures',
+  maintenance_inspection_regimes: 'Maintenance and inspection regimes',
+  contractor_control_ptw: 'Contractor control / permit-to-work systems',
+  hot_work_management: 'Hot work management',
+  housekeeping_waste_management: 'Housekeeping and waste management',
+  testing_record_keeping: 'Testing and record keeping',
+  peeps_vulnerable_persons: 'PEEPs / vulnerable persons management',
+  communication_coordination: 'Communication and coordination',
+  management_review_continuous_improvement: 'Management review / continuous improvement',
+  occupancy_control_supervision: 'Occupancy control and supervision',
+  other_management_concerns: 'Other fire safety management concerns',
+};
+
+function getPopulatedFireSafetyManagementAssessments(data: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+  const assessments = data.fire_safety_management_assessments || data.fireSafetyManagementAssessments;
+  if (!assessments || typeof assessments !== 'object' || Array.isArray(assessments)) return [];
+
+  return Object.entries(assessments).filter(([, value]) => {
+    const assessment = value as Record<string, unknown>;
+    return Boolean(
+      (assessment.status && assessment.status !== 'unknown') ||
+      String(assessment.observations || '').trim() ||
+      String(assessment.deficiencies || '').trim() ||
+      String(assessment.existing_controls || assessment.existingControls || '').trim() ||
+      String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim() ||
+      ((assessment.risk_significance || assessment.riskSignificance) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+      String(assessment.evidence_references || assessment.evidenceReferences || '').trim() ||
+      assessment.action_trigger ||
+      assessment.actionTrigger ||
+      String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim()
+    );
+  }) as Array<[string, Record<string, unknown>]>;
+}
+
+const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
+  escape_route_adequacy: 'Escape route adequacy',
+  travel_distances: 'Travel distances',
+  dead_ends_inner_rooms: 'Dead ends / inner rooms',
+  final_exits: 'Final exits',
+  staircases_vertical_escape: 'Staircases and vertical escape',
+  doors_fastenings_security: 'Doors / fastenings / security',
+  exit_signage: 'Exit signage',
+  emergency_lighting_interface: 'Emergency lighting interface',
+  occupant_capacity_vulnerable_occupants: 'Occupant capacity / vulnerable occupants',
+  housekeeping_obstruction: 'Housekeeping / obstruction',
+  management_escape_routes: 'Management of escape routes',
+  assembly_external_routes: 'Assembly / external escape routes',
+};
+
+function getPopulatedMeansOfEscapeAssessments(data: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
+  const assessments = data.means_of_escape_assessments || data.meansOfEscapeAssessments;
+  if (!assessments || typeof assessments !== 'object' || Array.isArray(assessments)) return [];
+
+  return Object.entries(assessments).filter(([, value]) => {
+    const assessment = value as Record<string, unknown>;
+    return Boolean(
+      (assessment.status && assessment.status !== 'unknown') ||
+      String(assessment.observations || '').trim() ||
+      String(assessment.deficiencies || '').trim() ||
+      String(assessment.existing_controls || assessment.existingControls || '').trim() ||
+      String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim() ||
+      ((assessment.risk_significance || assessment.riskSignificance) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+      String(assessment.evidence_references || assessment.evidenceReferences || '').trim() ||
+      assessment.action_trigger ||
+      assessment.actionTrigger ||
+      String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim()
+    );
+  }) as Array<[string, Record<string, unknown>]>;
+}
+
 interface Action {
   id: string;
   priority: number;
@@ -185,6 +261,21 @@ export function extractSectionDrivers(sectionId: number, moduleInstances: Module
 function extractSection5Drivers(data: Record<string, any>): string[] {
   const drivers: string[] = [];
 
+  const detailedIgnitionAssessments = Object.entries(
+    data.ignition_source_assessments || data.ignitionSourceAssessments || {}
+  ).filter(([, value]) => value && typeof value === 'object') as Array<[string, Record<string, unknown>]>;
+
+  detailedIgnitionAssessments.forEach(([sourceKey, assessment]) => {
+    const risk = String(assessment.risk_significance || '').toLowerCase();
+    const trigger = String(assessment.recommended_action_trigger || '').toLowerCase();
+    const deficiencies = String(assessment.deficiencies || '').trim();
+    if (risk === 'high' || trigger === 'urgent' || trigger === 'action_required') {
+      drivers.push(`${sourceKey.replace(/_/g, ' ')} ignition source assessment indicates ${risk === 'high' ? 'high risk significance' : 'action is required'}`);
+    } else if (deficiencies) {
+      drivers.push(`${sourceKey.replace(/_/g, ' ')} ignition source deficiencies recorded`);
+    }
+  });
+
   // EICR status - C1/C2 takes absolute precedence
   const electrical = data.electrical_safety || {};
   const hasC1C2 = electrical.eicr_outstanding_c1_c2 === 'yes' ||
@@ -259,6 +350,18 @@ function extractSection6Drivers(data: Record<string, any>): string[] {
     drivers.push('Physical provisions for assisted evacuation are inadequate (refuges, equipment, communications)');
   }
 
+  const deficientAssessments = getPopulatedMeansOfEscapeAssessments(data)
+    .filter(([, assessment]) => assessment.status === 'inadequate')
+    .map(([key, assessment]) => {
+      const label = MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+      const riskValue = assessment.risk_significance || assessment.riskSignificance;
+      const risk = riskValue && riskValue !== 'unknown'
+        ? ` (${String(riskValue).replace(/_/g, ' ')} significance)`
+        : '';
+      return `${label} recorded as inadequate${risk}`;
+    });
+  drivers.push(...deficientAssessments);
+
   if (drivers.length === 0) {
     return ['No specific issues were recorded in this section.'];
   }
@@ -316,6 +419,25 @@ function extractSection7Drivers(data: Record<string, any>): string[] {
   return drivers.slice(0, 4); // Increased limit to accommodate merged content
 }
 
+
+function getDetailedPassiveProtectionFindings(data: Record<string, any>): Array<{ key: string; assessment: Record<string, any> }> {
+  const source = data.passive_fire_protection_assessments || data.passiveFireProtectionAssessments;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return [];
+
+  return Object.entries(source as Record<string, any>)
+    .filter(([, assessment]) => assessment && typeof assessment === 'object' && !Array.isArray(assessment))
+    .map(([key, assessment]) => ({ key, assessment: assessment as Record<string, any> }));
+}
+
+function getPassiveAssessmentText(assessment: Record<string, any>): string {
+  return String(
+    assessment.deficiencies ||
+    assessment.assessor_commentary ||
+    assessment.assessorCommentary ||
+    assessment.observations ||
+    ''
+  ).trim();
+}
 function extractSection9Drivers(data: Record<string, any>): string[] {
   const drivers: string[] = [];
 
@@ -342,6 +464,21 @@ function extractSection9Drivers(data: Record<string, any>): string[] {
   // Cavity barriers
   if (data.cavity_barriers_adequate === 'no') {
     drivers.push('Cavity barriers are inadequate or missing in concealed spaces');
+  }
+
+
+  const detailedFindings = getDetailedPassiveProtectionFindings(data);
+  const significantFinding = detailedFindings.find(({ assessment }) =>
+    assessment.risk_significance === 'critical' ||
+    assessment.riskSignificance === 'critical' ||
+    assessment.risk_significance === 'high' ||
+    assessment.riskSignificance === 'high'
+  );
+  if (significantFinding) {
+    drivers.push('Detailed passive fire protection assessment includes high-significance findings');
+  }
+  if (detailedFindings.some(({ assessment }) => assessment.status === 'inadequate')) {
+    drivers.push('Detailed passive fire protection deficiencies have been identified');
   }
 
   if (drivers.length === 0) {
@@ -486,11 +623,23 @@ function extractSection11Drivers(data: Record<string, any>): string[] {
     drivers.push('Fire safety inspection records are not available or not maintained');
   }
 
+  const detailedAssessments = getPopulatedFireSafetyManagementAssessments(data);
+  for (const [key, assessment] of detailedAssessments) {
+    const isSignificant = assessment.status === 'inadequate' ||
+      assessment.risk_significance === 'high' ||
+      assessment.riskSignificance === 'high' ||
+      assessment.risk_significance === 'critical' ||
+      assessment.riskSignificance === 'critical';
+    if (!isSignificant) continue;
+    drivers.push(`${FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' ')} requires management attention`);
+    if (drivers.length >= 4) break;
+  }
+
   if (drivers.length === 0) {
     return ['No specific issues were recorded in this section.'];
   }
 
-  return drivers.slice(0, 3);
+  return drivers.slice(0, 4);
 }
 
 function extractSection12Drivers(data: Record<string, any>): string[] {
@@ -610,6 +759,19 @@ function generateSection5Summary(module: ModuleInstance, document: Document): st
   const data = module.data;
   const parts: string[] = [];
 
+  const detailedIgnitionAssessments = Object.entries(
+    data.ignition_source_assessments || data.ignitionSourceAssessments || {}
+  ).filter(([, value]) => value && typeof value === 'object') as Array<[string, Record<string, unknown>]>;
+
+  const significantSource = detailedIgnitionAssessments.find(([, assessment]) =>
+    ['high', 'medium'].includes(String(assessment.risk_significance || '').toLowerCase()) ||
+    ['urgent', 'action_required'].includes(String(assessment.recommended_action_trigger || '').toLowerCase()) ||
+    Boolean(String(assessment.deficiencies || '').trim())
+  );
+  if (significantSource) {
+    parts.push(`Source-specific ignition assessment recorded for ${significantSource[0].replace(/_/g, ' ')}`);
+  }
+
   // Electrical safety
   const eicr = data.electrical_safety || {};
   if (eicr.eicr_evidence_seen === 'yes') {
@@ -676,10 +838,21 @@ function generateSection6Summary(module: ModuleInstance, document: Document): st
   }
 
   // Signage
-  if (data.signage_adequacy === 'adequate' || data.signage === 'adequate') {
+  if (data.signage_adequacy === 'adequate' || data.exit_signage_adequacy === 'adequate' || data.signage === 'adequate') {
     parts.push('Exit signage provision adequate');
-  } else if (data.signage_adequacy === 'inadequate' || data.signage === 'inadequate') {
+  } else if (data.signage_adequacy === 'inadequate' || data.exit_signage_adequacy === 'inadequate' || data.signage === 'inadequate') {
     parts.push('Exit signage requires enhancement');
+  }
+
+  const populatedAssessments = getPopulatedMeansOfEscapeAssessments(data);
+  const deficientAssessments = populatedAssessments.filter(([, assessment]) => assessment.status === 'inadequate');
+  if (deficientAssessments.length > 0) {
+    const labels = deficientAssessments
+      .slice(0, 2)
+      .map(([key]) => MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ').toLowerCase());
+    parts.push(`Detailed means-of-escape assessment identifies deficiencies in ${labels.join(' and ')}`);
+  } else if (populatedAssessments.length > 0) {
+    parts.push(`${populatedAssessments.length} detailed means-of-escape assessment area${populatedAssessments.length === 1 ? '' : 's'} recorded`);
   }
 
   if (parts.length === 0) return null;
@@ -766,6 +939,21 @@ function generateSection9Summary(module: ModuleInstance, document: Document): st
     parts.push('Fire stopping deficiencies noted');
   }
 
+
+  const detailedFindings = getDetailedPassiveProtectionFindings(data);
+  const highFinding = detailedFindings.find(({ assessment }) =>
+    assessment.risk_significance === 'critical' ||
+    assessment.riskSignificance === 'critical' ||
+    assessment.risk_significance === 'high' ||
+    assessment.riskSignificance === 'high'
+  );
+  if (highFinding) {
+    const detail = getPassiveAssessmentText(highFinding.assessment);
+    parts.push(detail ? `High-significance passive fire protection finding: ${detail}` : 'High-significance passive fire protection finding recorded');
+  } else if (detailedFindings.some(({ assessment }) => assessment.status === 'inadequate')) {
+    parts.push('Detailed passive fire protection deficiencies recorded');
+  }
+
   if (parts.length === 0) return null;
 
   return parts.slice(0, 3).join('. ') + '.';
@@ -849,6 +1037,7 @@ function generateSection10Summary(module: ModuleInstance, document: Document): s
 function generateSection11Summary(module: ModuleInstance, document: Document): string | null {
   const data = module.data;
   const parts: string[] = [];
+  const detailedAssessments = getPopulatedFireSafetyManagementAssessments(data);
 
   // PTW Hot Work (provides authority)
   const ptwHotWork = data.ptw_hot_work;
@@ -892,10 +1081,22 @@ function generateSection11Summary(module: ModuleInstance, document: Document): s
   }
 
   // Housekeeping
-  if (data.housekeeping_rating === 'poor' || data.housekeeping_rating === 'inadequate') {
+  if (data.housekeeping_combustible_accumulation_risk === 'yes' || data.housekeeping_rating === 'poor' || data.housekeeping_rating === 'inadequate') {
     parts.push('Housekeeping standards require improvement');
-  } else if (data.housekeeping_rating === 'good' || data.housekeeping_rating === 'excellent') {
+  } else if (data.housekeeping_combustible_accumulation_risk === 'no' || data.housekeeping_rating === 'good' || data.housekeeping_rating === 'excellent') {
     parts.push('Housekeeping standards satisfactory');
+  }
+
+  const significantDetails = detailedAssessments.filter(([, assessment]) =>
+    assessment.status === 'inadequate' ||
+    assessment.risk_significance === 'high' ||
+    assessment.riskSignificance === 'high' ||
+    assessment.risk_significance === 'critical' ||
+    assessment.riskSignificance === 'critical'
+  );
+  if (significantDetails.length > 0) {
+    const labels = significantDetails.slice(0, 2).map(([key]) => FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' '));
+    parts.push(`Detailed management findings require attention: ${labels.join(', ')}`);
   }
 
   if (parts.length === 0) return null;

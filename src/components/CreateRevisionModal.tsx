@@ -165,7 +165,7 @@ export default function CreateRevisionModal({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary-600 font-bold">•</span>
-                <span>Open actions will be carried forward to the new revision</span>
+                <span>Open recommendations will be carried forward to the new revision</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary-600 font-bold">•</span>

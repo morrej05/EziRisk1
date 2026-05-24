@@ -13,8 +13,6 @@ import {
   sanitizePdfText,
   wrapText,
   formatDate,
-  getOutcomeColor,
-  getOutcomeLabel,
   getPriorityColor,
   addNewPage,
   ensurePageSpace,
@@ -40,10 +38,35 @@ import { CRITICAL_FIELDS } from './fraConstants';
 import { safeArray, mapModuleKeyToSectionName } from './fraUtils';
 import type { Cursor, Document, ModuleInstance, Action, ActionRating, Organisation } from './fraTypes';
 import type { Attachment } from '../../supabase/attachments';
-import { fetchAttachmentBytes } from '../../supabase/attachments';
+import { fetchAttachmentBytes, isRenderableImageAttachment } from '../../supabase/attachments';
 import { getJurisdictionConfig, getJurisdictionLabel } from '../../jurisdictions';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
+import { getFraReportOutcomeLabel, resolveFraOutcomeValue } from './fraOutcome';
 import { type ScoringResult } from '../../fra/scoring/scoringEngine';
+
+
+function getLinkedActionText(data: Record<string, unknown>, sourceAssessmentType: string, sourceAssessmentKey: string): string | null {
+  const links = Array.isArray(data.__action_source_links) ? data.__action_source_links as Array<Record<string, unknown>> : [];
+  const matchingLinks = links.filter((item) =>
+    item.source_assessment_type === sourceAssessmentType &&
+    item.source_assessment_key === sourceAssessmentKey &&
+    !item.deleted_at
+  );
+  if (matchingLinks.length === 0) return null;
+
+  const references = matchingLinks
+    .map((link) => {
+      const action = (link.action || link.actions || {}) as Record<string, unknown>;
+      return String(action.reference_number || '').trim();
+    })
+    .filter(Boolean);
+
+  if (references.length > 0) {
+    return `Linked recommendation${references.length > 1 ? 's' : ''}: ${references.join(', ')}`;
+  }
+
+  return matchingLinks.length > 1 ? 'Linked recommendations recorded' : 'Linked recommendation recorded';
+}
 
 /**
  * In-memory cache for embedded PDF images
@@ -52,6 +75,242 @@ import { type ScoringResult } from '../../fra/scoring/scoringEngine';
  */
 const imageCache = new Map<string, PDFImage>();
 const REPORT_LAYOUT_SPACING = getReportLayoutSpacing();
+
+const FRA_OUTCOME_TAG_WIDTH = 140;
+const FRA_OUTCOME_TAG_HEIGHT = 14;
+
+
+const FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS: Record<string, string> = {
+  fire_safety_policy_arrangements: 'Fire safety policy and arrangements',
+  responsible_person_duty_holder: 'Responsible person / duty holder arrangements',
+  staff_training_awareness: 'Staff training and fire awareness',
+  fire_drills_evacuation_testing: 'Fire drills and evacuation testing',
+  emergency_procedures: 'Emergency procedures',
+  maintenance_inspection_regimes: 'Maintenance and inspection regimes',
+  contractor_control_ptw: 'Contractor control / permit-to-work systems',
+  hot_work_management: 'Hot work management',
+  housekeeping_waste_management: 'Housekeeping and waste management',
+  testing_record_keeping: 'Testing and record keeping',
+  peeps_vulnerable_persons: 'PEEPs / vulnerable persons management',
+  communication_coordination: 'Communication and coordination',
+  management_review_continuous_improvement: 'Management review / continuous improvement',
+  occupancy_control_supervision: 'Occupancy control and supervision',
+  other_management_concerns: 'Other fire safety management concerns',
+};
+
+function getFireSafetyManagementAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
+  const assessments = data.fire_safety_management_assessments || data.fireSafetyManagementAssessments;
+  return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
+}
+
+function hasFireSafetyManagementDetailContent(assessment: Record<string, unknown>): boolean {
+  if (!assessment || typeof assessment !== 'object') return false;
+
+  return (assessment.status !== undefined && assessment.status !== 'unknown') ||
+    Boolean(String(assessment.observations || '').trim()) ||
+    Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
+    Boolean(String(assessment.deficiencies || '').trim()) ||
+    Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
+    (((assessment.risk_significance || assessment.riskSignificance) !== undefined) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+    Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
+    Boolean(assessment.action_trigger || assessment.actionTrigger) ||
+    Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
+}
+
+function formatFireSafetyManagementDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const text = normalizeDisplayValueForControlJudgement(value);
+    if (!text || text === 'Unknown') return;
+    parts.push(`${label}: ${text}`);
+  };
+
+  add('Adequacy', assessment.status);
+  add('Observations', assessment.observations);
+  add('Controls', assessment.existing_controls || assessment.existingControls);
+  add('Deficiencies', assessment.deficiencies);
+  add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
+  add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
+  add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
+  if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
+  if (linkedActionText) parts.push(linkedActionText);
+  else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+
+  return parts.join('; ');
+}
+
+const MEANS_OF_ESCAPE_DETAIL_LABELS: Record<string, string> = {
+  escape_route_adequacy: 'Escape route adequacy',
+  travel_distances: 'Travel distances',
+  dead_ends_inner_rooms: 'Dead ends / inner rooms',
+  final_exits: 'Final exits',
+  staircases_vertical_escape: 'Staircases and vertical escape',
+  doors_fastenings_security: 'Doors / fastenings / security',
+  exit_signage: 'Exit signage',
+  emergency_lighting_interface: 'Emergency lighting interface',
+  occupant_capacity_vulnerable_occupants: 'Occupant capacity / vulnerable occupants',
+  housekeeping_obstruction: 'Housekeeping / obstruction',
+  management_escape_routes: 'Management of escape routes',
+  assembly_external_routes: 'Assembly / external escape routes',
+};
+
+
+const PASSIVE_PROTECTION_DETAIL_LABELS: Record<string, string> = {
+  compartmentation_lines: 'Compartmentation lines / fire-resisting construction',
+  fire_doors: 'Fire doors',
+  service_penetrations_fire_stopping: 'Service penetrations and fire stopping',
+  cavity_barriers_concealed_spaces: 'Cavity barriers / concealed spaces',
+  fire_dampers_ductwork: 'Fire dampers / ductwork penetrations',
+  protected_routes_shafts: 'Protected routes / protected shafts',
+  structural_fire_protection: 'Structural fire protection',
+  cladding_external_walls: 'Cladding / external wall considerations',
+  fire_resisting_glazing: 'Fire-resisting glazing',
+  voids_risers_service_cupboards: 'Voids, risers and service cupboards',
+  maintenance_inspection_records: 'Maintenance / inspection records',
+  other_passive_concerns: 'Other passive fire protection concerns',
+};
+
+function getPassiveProtectionAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
+  const assessments = data.passive_fire_protection_assessments || data.passiveFireProtectionAssessments;
+  return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
+}
+
+function hasPassiveProtectionDetailContent(assessment: Record<string, unknown>): boolean {
+  if (!assessment || typeof assessment !== 'object') return false;
+
+  return (assessment.status !== undefined && assessment.status !== 'unknown') ||
+    Boolean(String(assessment.observations || '').trim()) ||
+    Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
+    Boolean(String(assessment.deficiencies || '').trim()) ||
+    Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
+    (((assessment.risk_significance || assessment.riskSignificance) !== undefined) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+    Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
+    Boolean(assessment.action_trigger || assessment.actionTrigger) ||
+    Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
+}
+
+function formatPassiveProtectionDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const text = normalizeDisplayValueForControlJudgement(value);
+    if (!text || text === 'Unknown') return;
+    parts.push(`${label}: ${text}`);
+  };
+
+  add('Adequacy', assessment.status);
+  add('Observations', assessment.observations);
+  add('Controls', assessment.existing_controls || assessment.existingControls);
+  add('Deficiencies', assessment.deficiencies);
+  add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
+  add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
+  add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
+  if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
+  if (linkedActionText) parts.push(linkedActionText);
+  else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+
+  return parts.join('; ');
+}
+
+function getMeansOfEscapeAssessments(data: Record<string, unknown>): Record<string, unknown> | null {
+  const assessments = data.means_of_escape_assessments || data.meansOfEscapeAssessments;
+  return assessments && typeof assessments === 'object' && !Array.isArray(assessments) ? assessments as Record<string, unknown> : null;
+}
+
+function hasMeansOfEscapeDetailContent(assessment: Record<string, unknown>): boolean {
+  if (!assessment || typeof assessment !== 'object') return false;
+
+  return (assessment.status !== undefined && assessment.status !== 'unknown') ||
+    Boolean(String(assessment.observations || '').trim()) ||
+    Boolean(String(assessment.deficiencies || '').trim()) ||
+    Boolean(String(assessment.existing_controls || assessment.existingControls || '').trim()) ||
+    Boolean(String(assessment.assessor_commentary || assessment.assessorCommentary || '').trim()) ||
+    (((assessment.risk_significance || assessment.riskSignificance) !== undefined) && (assessment.risk_significance || assessment.riskSignificance) !== 'unknown') ||
+    Boolean(String(assessment.evidence_references || assessment.evidenceReferences || '').trim()) ||
+    Boolean(assessment.action_trigger || assessment.actionTrigger) ||
+    Boolean(String(assessment.linked_action_reference || assessment.linkedActionReference || '').trim());
+}
+
+function formatMeansOfEscapeDetail(assessment: Record<string, unknown>, linkedActionText?: string | null): string {
+  const parts: string[] = [];
+  const add = (label: string, value: unknown) => {
+    const text = normalizeDisplayValueForControlJudgement(value);
+    if (!text || text === 'Unknown') return;
+    parts.push(`${label}: ${text}`);
+  };
+
+  add('Status', assessment.status);
+  add('Risk significance', assessment.risk_significance || assessment.riskSignificance);
+  add('Observations', assessment.observations);
+  add('Deficiencies', assessment.deficiencies);
+  add('Existing controls', assessment.existing_controls || assessment.existingControls);
+  add('Assessor commentary', assessment.assessor_commentary || assessment.assessorCommentary);
+  add('Evidence/photo references', assessment.evidence_references || assessment.evidenceReferences);
+  if (assessment.action_trigger || assessment.actionTrigger) parts.push('Action trigger: Yes');
+  if (linkedActionText) parts.push(linkedActionText);
+  else add('Legacy linked action reference', assessment.linked_action_reference || assessment.linkedActionReference);
+
+  return parts.join('; ');
+}
+
+function formatControlJudgement(value: unknown): string {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (!raw) return 'Not Assessed';
+  if (raw === 'adequate') return 'Acceptable';
+  if (raw === 'inadequate') return 'Unsatisfactory';
+  if (raw === 'partial' || raw === 'some_gaps') return 'Improvement Required';
+  if (raw === 'n/a' || raw === 'na' || raw === 'not_applicable' || raw === 'not applicable') return 'Not Applicable';
+  if (raw === 'unknown') return 'Unknown';
+  return normalizeDisplayValue(value);
+}
+
+function normalizeDisplayValueForControlJudgement(value: unknown): string {
+  return formatControlJudgement(value);
+}
+
+
+export function drawFraOutcomeTag(args: {
+  page: PDFPage;
+  yPosition: number;
+  outcomeLabel: string;
+  fontBold: any;
+  labelX?: number;
+  tagX?: number;
+}): void {
+  const {
+    page,
+    yPosition,
+    outcomeLabel,
+    fontBold,
+    labelX = MARGIN,
+    tagX = MARGIN + 70,
+  } = args;
+
+  page.drawText('Outcome:', {
+    x: labelX,
+    y: yPosition,
+    size: 11,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+
+  page.drawRectangle({
+    x: tagX,
+    y: yPosition - 4,
+    width: FRA_OUTCOME_TAG_WIDTH,
+    height: FRA_OUTCOME_TAG_HEIGHT,
+    color: rgb(0.93, 0.93, 0.93),
+    borderColor: rgb(0.80, 0.80, 0.80),
+    borderWidth: 0.5,
+  });
+
+  page.drawText(outcomeLabel, {
+    x: tagX + 6,
+    y: yPosition - 1,
+    size: 10,
+    font: fontBold,
+    color: rgb(0.25, 0.25, 0.25),
+  });
+}
 
 /**
  * Build stable evidence reference map for consistent E-00X numbering
@@ -127,9 +386,9 @@ function drawTwoColumnRows(args: {
 
   // MATCH SECTION 5 GRID EXACTLY
   const labelX = MARGIN;
-  const valueX = MARGIN + 150; // <-- EXACT match to Section 5's VALUE_X
-  const valueWidth = CONTENT_WIDTH - 150;
-  const rowGap = 12;
+  const valueX = MARGIN + 170;
+  const valueWidth = CONTENT_WIDTH - 170;
+  const rowGap = 14;
 
   for (const [label, value] of rows) {
     if (!value || !String(value).trim()) continue;
@@ -139,12 +398,12 @@ function drawTwoColumnRows(args: {
       normalizeDisplayValue(label)
     ).trim();
     const safeValue = sanitizePdfText(
-      normalizeDisplayValue(value)
+      normalizeDisplayValueForControlJudgement(value)
     ).trim();
     const valueLinesForEstimate = wrapText(safeValue, valueWidth, 10, font);
 
     // label line + value lines + small padding
-    const estimatedHeight = 14 + (valueLinesForEstimate.length * 14) + 10;
+    const estimatedHeight = 14 + (valueLinesForEstimate.length * 14) + 12;
 
     if (yPosition - estimatedHeight < MARGIN + 40) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
@@ -210,18 +469,8 @@ export function drawModuleKeyDetails(
       if (document.assessor_role) keyDetails.push(['Assessor Role', document.assessor_role]);
       if (document.assessment_date) keyDetails.push(['Assessment Date', formatDate(document.assessment_date)]);
       if (document.review_date) keyDetails.push(['Review Date', formatDate(document.review_date)]);
-      if (document.scope_description) {
-        const truncated = document.scope_description.length > 200
-          ? document.scope_description.substring(0, 200) + '...'
-          : document.scope_description;
-        keyDetails.push(['Scope', truncated]);
-      }
-      if (document.limitations_assumptions) {
-        const truncated = document.limitations_assumptions.length > 200
-          ? document.limitations_assumptions.substring(0, 200) + '...'
-          : document.limitations_assumptions;
-        keyDetails.push(['Limitations', truncated]);
-      }
+      if (document.scope_description) keyDetails.push(['Scope', document.scope_description]);
+      if (document.limitations_assumptions) keyDetails.push(['Limitations', document.limitations_assumptions]);
       if (document.standards_selected && document.standards_selected.length > 0) {
         keyDetails.push(['Standards Selected', document.standards_selected.join(', ')]);
       }
@@ -230,13 +479,41 @@ export function drawModuleKeyDetails(
     case 'A4_MANAGEMENT_CONTROLS':
     case 'FRA_6_MANAGEMENT_SYSTEMS':
       if (data.responsibilities_defined) keyDetails.push(['Responsibilities Defined', data.responsibilities_defined]);
-      if (data.fire_safety_policy) keyDetails.push(['Fire Policy Exists', data.fire_safety_policy]);
-      if (data.training_induction) keyDetails.push(['Induction Training', data.training_induction]);
-      if (data.training_refresher) keyDetails.push(['Refresher Training', data.training_refresher]);
+      if (data.fire_safety_policy_exists) keyDetails.push(['Fire Policy Exists', data.fire_safety_policy_exists]);
+      else if (data.fire_safety_policy) keyDetails.push(['Fire Policy Exists', data.fire_safety_policy]);
+      if (data.training_induction_provided) keyDetails.push(['Induction Training', data.training_induction_provided]);
+      else if (data.training_induction) keyDetails.push(['Induction Training', data.training_induction]);
+      if (data.training_refresher_frequency) keyDetails.push(['Refresher Training', data.training_refresher_frequency]);
+      else if (data.training_refresher) keyDetails.push(['Refresher Training', data.training_refresher]);
+      if (data.fire_warden_marshal_provision) keyDetails.push(['Fire Wardens / Marshals', data.fire_warden_marshal_provision]);
+      if (data.contractor_induction) keyDetails.push(['Contractor Induction', data.contractor_induction]);
+      if (data.contractor_supervision) keyDetails.push(['Contractor Supervision', data.contractor_supervision]);
       if (data.ptw_hot_work) keyDetails.push(['PTW Hot Work', data.ptw_hot_work]);
-      if (data.testing_records) keyDetails.push(['Testing Records Available', data.testing_records]);
-      if (data.housekeeping_rating) keyDetails.push(['Housekeeping Rating', data.housekeeping_rating]);
-      if (data.change_management_exists) keyDetails.push(['Change Management Exists', data.change_management_exists]);
+      if (data.ptw_electrical_isolation_loto) keyDetails.push(['Electrical Isolation / LOTO', data.ptw_electrical_isolation_loto]);
+      if (data.ptw_confined_space) keyDetails.push(['Confined Space PTW', data.ptw_confined_space]);
+      if (data.inspection_records_available) keyDetails.push(['Testing Records Available', data.inspection_records_available]);
+      else if (data.testing_records) keyDetails.push(['Testing Records Available', data.testing_records]);
+      if (data.housekeeping_waste_control) keyDetails.push(['Waste Control', data.housekeeping_waste_control]);
+      if (data.housekeeping_storage_control) keyDetails.push(['Storage Control', data.housekeeping_storage_control]);
+      if (data.housekeeping_combustible_accumulation_risk) keyDetails.push(['Combustible Accumulation Risk', data.housekeeping_combustible_accumulation_risk]);
+      else if (data.housekeeping_rating) keyDetails.push(['Housekeeping Rating', data.housekeeping_rating]);
+      if (data.change_management_process_exists) keyDetails.push(['Change Management Exists', data.change_management_process_exists]);
+      else if (data.change_management_exists) keyDetails.push(['Change Management Exists', data.change_management_exists]);
+      if (data.change_management_review_triggers_defined) keyDetails.push(['Review Triggers Defined', data.change_management_review_triggers_defined]);
+      {
+        const assessments = getFireSafetyManagementAssessments(data);
+        if (assessments) {
+          Object.entries(assessments).forEach(([key, value]) => {
+            const assessment = value as Record<string, unknown>;
+            if (!hasFireSafetyManagementDetailContent(assessment)) return;
+
+            const label = FIRE_SAFETY_MANAGEMENT_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+            const detailText = formatFireSafetyManagementDetail(assessment, getLinkedActionText(data, 'fire_safety_management_assessments', key));
+            if (detailText) keyDetails.push([label, detailText]);
+          });
+        }
+      }
+      if (data.management_notes) keyDetails.push(['Management Notes', data.management_notes]);
       break;
 
     case 'A5_EMERGENCY_ARRANGEMENTS':
@@ -269,7 +546,7 @@ export function drawModuleKeyDetails(
 
     case 'FRA_1_HAZARDS':
       if (data.ignition_sources && safeArray(data.ignition_sources).length > 0) {
-        const ignitionFiltered = safeArray(data.ignition_sources).filter((x: string) => x !== 'hot_work');
+        const ignitionFiltered = safeArray(data.ignition_sources);
         if (ignitionFiltered.length > 0) {
           keyDetails.push(['Ignition Sources', ignitionFiltered.join(', ')]);
         }
@@ -279,7 +556,7 @@ export function drawModuleKeyDetails(
       }
       if (data.oxygen_enrichment) keyDetails.push(['Oxygen Enrichment', data.oxygen_enrichment]);
       if (data.high_risk_activities && safeArray(data.high_risk_activities).length > 0) {
-        const activitiesFiltered = safeArray(data.high_risk_activities).filter((x: string) => x !== 'hot_work');
+        const activitiesFiltered = safeArray(data.high_risk_activities);
         if (activitiesFiltered.length > 0) {
           keyDetails.push(['High-Risk Activities', activitiesFiltered.join(', ')]);
         }
@@ -305,8 +582,9 @@ export function drawModuleKeyDetails(
 
     case 'FRA_2_ESCAPE_ASIS':
       if (data.escape_strategy_current) keyDetails.push(['Escape Strategy', data.escape_strategy_current]);
-      if (data.escape_strategy) keyDetails.push(['Escape Strategy', data.escape_strategy]);
-      if (data.routes_description) keyDetails.push(['Routes Description', data.routes_description]);
+      else if (data.escape_strategy) keyDetails.push(['Escape Strategy', data.escape_strategy]);
+      if (data.escape_routes_description) keyDetails.push(['Routes Description', data.escape_routes_description]);
+      else if (data.routes_description) keyDetails.push(['Routes Description', data.routes_description]);
       if (data.travel_distances_compliant) keyDetails.push(['Travel Distances Compliant', data.travel_distances_compliant]);
       if (data.travel_distances) keyDetails.push(['Travel Distances', data.travel_distances]);
       if (data.final_exits_adequate) keyDetails.push(['Final Exits Adequate', data.final_exits_adequate]);
@@ -314,14 +592,29 @@ export function drawModuleKeyDetails(
       if (data.escape_route_obstructions) keyDetails.push(['Escape Route Obstructions', data.escape_route_obstructions]);
       if (data.stair_protection_status) keyDetails.push(['Stair Protection Status', data.stair_protection_status]);
       if (data.stair_protection) keyDetails.push(['Stair Protection', data.stair_protection]);
-      if (data.signage_adequacy) keyDetails.push(['Signage Adequacy', data.signage_adequacy]);
+      if (data.exit_signage_adequacy) keyDetails.push(['Exit Signage Adequacy', data.exit_signage_adequacy]);
+      else if (data.signage_adequacy) keyDetails.push(['Signage Adequacy', data.signage_adequacy]);
       if (data.signage) keyDetails.push(['Signage', data.signage]);
-      if (data.disabled_egress_adequacy) keyDetails.push(['Disabled Egress Adequacy', data.disabled_egress_adequacy]);
+      if (data.disabled_egress_arrangements) keyDetails.push(['Assisted Evacuation Provisions', data.disabled_egress_arrangements]);
+      else if (data.disabled_egress_adequacy) keyDetails.push(['Disabled Egress Adequacy', data.disabled_egress_adequacy]);
       if (data.disabled_egress) keyDetails.push(['Disabled Egress', data.disabled_egress]);
       if (data.inner_rooms_present) keyDetails.push(['Inner Rooms Present', data.inner_rooms_present]);
       if (data.inner_rooms) keyDetails.push(['Inner Rooms', data.inner_rooms]);
       if (data.basement_present) keyDetails.push(['Basement Present', data.basement_present]);
       if (data.basement) keyDetails.push(['Basement', data.basement]);
+      {
+        const assessments = getMeansOfEscapeAssessments(data);
+        if (!assessments) break;
+
+        Object.entries(assessments).forEach(([key, value]) => {
+          const assessment = value as Record<string, unknown>;
+          if (!hasMeansOfEscapeDetailContent(assessment)) return;
+
+          const label = MEANS_OF_ESCAPE_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+          const detailText = formatMeansOfEscapeDetail(assessment, getLinkedActionText(data, 'means_of_escape_assessments', key));
+          if (detailText) keyDetails.push([label, detailText]);
+        });
+      }
       break;
 
     case 'FRA_3_PROTECTION_ASIS':
@@ -372,6 +665,19 @@ export function drawModuleKeyDetails(
         if (data.compartmentation_condition) keyDetails.push(['Compartmentation', data.compartmentation_condition]);
         if (data.fire_stopping_confidence) keyDetails.push(['Fire Stopping Confidence', data.fire_stopping_confidence]);
         if (data.penetrations_sealing) keyDetails.push(['Service Penetrations Sealing', data.penetrations_sealing]);
+        {
+          const assessments = getPassiveProtectionAssessments(data);
+          if (assessments) {
+            Object.entries(assessments).forEach(([key, value]) => {
+              const assessment = value as Record<string, unknown>;
+              if (!hasPassiveProtectionDetailContent(assessment)) return;
+
+              const label = PASSIVE_PROTECTION_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+              const detailText = formatPassiveProtectionDetail(assessment, getLinkedActionText(data, 'passive_fire_protection_assessments', key));
+              if (detailText) keyDetails.push([label, detailText]);
+            });
+          }
+        }
         if (data.notes) keyDetails.push(['Notes', data.notes]);
       } else {
         // Legacy/fallback rendering for other sections (should not occur)
@@ -379,6 +685,19 @@ export function drawModuleKeyDetails(
         if (data.compartmentation_condition) keyDetails.push(['Compartmentation', data.compartmentation_condition]);
         if (data.penetrations_sealing) keyDetails.push(['Service Penetrations Sealing', data.penetrations_sealing]);
         if (data.fire_stopping_confidence) keyDetails.push(['Fire Stopping Confidence', data.fire_stopping_confidence]);
+        {
+          const assessments = getPassiveProtectionAssessments(data);
+          if (assessments) {
+            Object.entries(assessments).forEach(([key, value]) => {
+              const assessment = value as Record<string, unknown>;
+              if (!hasPassiveProtectionDetailContent(assessment)) return;
+
+              const label = PASSIVE_PROTECTION_DETAIL_LABELS[key] || key.replace(/_/g, ' ');
+              const detailText = formatPassiveProtectionDetail(assessment, getLinkedActionText(data, 'passive_fire_protection_assessments', key));
+              if (detailText) keyDetails.push([label, detailText]);
+            });
+          }
+        }
         if (data.notes) keyDetails.push(['Notes', data.notes]);
       }
       break;
@@ -460,35 +779,15 @@ export function drawModuleKeyDetails(
       if (data.insulation_combustibility_known) keyDetails.push(['Insulation Combustibility Known', data.insulation_combustibility_known]);
       if (data.cavity_barriers_status) keyDetails.push(['Cavity Barriers Status', data.cavity_barriers_status]);
       if (data.pas9980_or_equivalent_appraisal) keyDetails.push(['PAS9980 Appraisal Status', data.pas9980_or_equivalent_appraisal]);
-      if (data.interim_measures) {
-        const truncated = data.interim_measures.length > 150
-          ? data.interim_measures.substring(0, 150) + '...'
-          : data.interim_measures;
-        keyDetails.push(['Interim Measures', truncated]);
-      }
+      if (data.interim_measures) keyDetails.push(['Interim Measures', data.interim_measures]);
       break;
 
     case 'FRA_4_SIGNIFICANT_FINDINGS':
     case 'FRA_90_SIGNIFICANT_FINDINGS':
       if (data.overall_risk_rating) keyDetails.push(['Overall Risk Rating', data.overall_risk_rating.toUpperCase()]);
-      if (data.executive_summary) {
-        const truncated = data.executive_summary.length > 200
-          ? data.executive_summary.substring(0, 200) + '...'
-          : data.executive_summary;
-        keyDetails.push(['Executive Summary', truncated]);
-      }
-      if (data.key_assumptions) {
-        const truncated = data.key_assumptions.length > 200
-          ? data.key_assumptions.substring(0, 200) + '...'
-          : data.key_assumptions;
-        keyDetails.push(['Key Assumptions', truncated]);
-      }
-      if (data.review_recommendation) {
-        const truncated = data.review_recommendation.length > 200
-          ? data.review_recommendation.substring(0, 200) + '...'
-          : data.review_recommendation;
-        keyDetails.push(['Review Recommendation', truncated]);
-      }
+      if (data.executive_summary) keyDetails.push(['Executive Summary', data.executive_summary]);
+      if (data.key_assumptions) keyDetails.push(['Key Assumptions', data.key_assumptions]);
+      if (data.review_recommendation) keyDetails.push(['Review Recommendation', data.review_recommendation]);
       if (data.override_justification) keyDetails.push(['Override Justification', data.override_justification]);
       break;
   }
@@ -559,7 +858,7 @@ const normalizedValue = String(value ?? '').trim().toLowerCase();
     font: fontBold,
     color: rgb(0, 0, 0),
   });
-  yPosition -= 18;
+  yPosition -= 24;
 
   // Draw using Section 5 grid alignment
   const result = drawTwoColumnRows({
@@ -576,7 +875,7 @@ const normalizedValue = String(value ?? '').trim().toLowerCase();
   yPosition = result.yPosition;
 
   // Small gap before next block
-  yPosition -= 8;
+  yPosition -= 12;
 
   return { page, yPosition };
 }
@@ -609,7 +908,7 @@ export function drawInfoGapQuickActions(input: {
   // DEFENSIVE GUARD: Skip if module doesn't belong to expected section
   // This prevents cross-section info gap bleed
   if (expectedModuleKeys && !expectedModuleKeys.includes(module.module_key)) {
-    console.warn(`[PDF] Skipping info gap for ${module.module_key} - not in expected section keys:`, expectedModuleKeys);
+    if (import.meta.env.DEV) console.warn(`[PDF] Skipping info gap for ${module.module_key} - not in expected section keys:`, expectedModuleKeys);
     return { page, yPosition };
   }
 
@@ -875,18 +1174,18 @@ export function drawSectionHeader(
     throw new Error(`[PDF] drawSectionHeader received missing page (section=${sectionId} ${sectionTitle})`);
   }
 
-  yPosition -= 20;
+  yPosition -= 28;
 
   const headerText = `${sectionId}. ${sectionTitle}`;
   page.drawText(headerText, {
     x: MARGIN,
     y: yPosition,
-    size: 16,
+    size: 13,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.1),
   });
 
-  yPosition -= 30;
+  yPosition -= 24;
   return { page, yPosition };
 }
 
@@ -937,7 +1236,7 @@ export function drawAssessorSummary(
   const boxTop = yPosition;
   const boxBottom = boxTop - boxHeight;
 
-  page.drawRectangle({
+    page.drawRectangle({
     x: MARGIN,
     y: boxBottom,
     width: CONTENT_WIDTH,
@@ -986,19 +1285,14 @@ cursorY -= (GAP_AFTER_LABEL + LINE_H);
  * Helper: Determine if attachment is an image type we can embed
  */
 function isImageAttachment(attachment: Attachment): boolean {
-  const fileType = attachment.file_type.toLowerCase();
-  const fileName = attachment.file_name.toLowerCase();
+  const fileName = String(attachment.file_name || '').toLowerCase();
 
   // Exclude logos
   if (fileName.includes('logo')) {
     return false;
   }
 
-  // Check for supported image types
-  return fileType === 'image/png' ||
-         fileType === 'image/jpg' ||
-         fileType === 'image/jpeg' ||
-         fileType === 'image/webp';
+  return isRenderableImageAttachment(attachment);
 }
 
 /**
@@ -1017,12 +1311,35 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
     }
 
     let image: PDFImage;
-    const fileType = attachment.file_type.toLowerCase();
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
 
-    if (fileType === 'image/png' || fileType === 'image/webp') {
+    if (fileType === 'image/png' || fileName.endsWith('.png')) {
       image = await pdfDoc.embedPng(bytes);
-    } else if (fileType === 'image/jpg' || fileType === 'image/jpeg') {
+    } else if (fileType === 'image/jpg' || fileType === 'image/jpeg' || fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
       image = await pdfDoc.embedJpg(bytes);
+    } else if (fileType === 'image/webp' || fileName.endsWith('.webp')) {
+      const blob = new Blob([bytes], { type: 'image/webp' });
+      const objectUrl = URL.createObjectURL(blob);
+      try {
+        const htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, htmlImage.naturalWidth || htmlImage.width);
+        canvas.height = Math.max(1, htmlImage.naturalHeight || htmlImage.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(htmlImage, 0, 0);
+        const pngDataUrl = canvas.toDataURL('image/png');
+        const pngBase64 = pngDataUrl.split(',')[1];
+        image = await pdfDoc.embedPng(Uint8Array.from(atob(pngBase64), c => c.charCodeAt(0)));
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
     } else {
       return null;
     }
@@ -1031,7 +1348,7 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
     imageCache.set(attachment.id, image);
     return image;
   } catch (error) {
-    console.warn('[embedImage] Failed to embed:', attachment.file_name, error);
+    if (import.meta.env.DEV) console.warn('[embedImage] Failed to embed:', attachment.file_name, error);
     return null;
   }
 }
@@ -1042,7 +1359,7 @@ async function embedImage(pdfDoc: PDFDocument, attachment: Attachment): Promise<
 async function drawImageGrid(
   page: PDFPage,
   yPosition: number,
-  images: Array<{ image: PDFImage; refNum: string; fileName: string }>,
+  images: Array<{ image: PDFImage; refNum: string; label?: string }>,
   font: any,
   pdfDoc: PDFDocument,
   isDraft: boolean,
@@ -1064,7 +1381,7 @@ async function drawImageGrid(
   let currentRow = 0;
   let currentCol = 0;
 
-  for (const { image, refNum, fileName } of imagesToShow) {
+  for (const { image, refNum, label } of imagesToShow) {
     // Check if we need a new page
     if (yPosition < MARGIN + rowHeight + 50) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
@@ -1106,7 +1423,7 @@ async function drawImageGrid(
 
     // Draw caption below image
     const captionY = y - 10;
-    const caption = sanitizePdfText(refNum);
+    const caption = sanitizePdfText(label ? `${refNum} – ${label}` : refNum);
     page.drawText(caption, {
       x: x + thumbWidth / 2 - (caption.length * 2.5),
       y: captionY,
@@ -1252,7 +1569,7 @@ export async function drawInlineEvidenceBlock(
   const imageAttachments = sectionAttachments.filter(sa => isImageAttachment(sa.attachment));
 
   // Try to embed images (up to 6 for sections)
-  const embeddedImages: Array<{ image: PDFImage; refNum: string; fileName: string }> = [];
+  const embeddedImages: Array<{ image: PDFImage; refNum: string; label?: string }> = [];
   for (const { attachment, refNum } of imageAttachments.slice(0, 6)) {
     if (!refNum) continue;
 
@@ -1261,7 +1578,7 @@ export async function drawInlineEvidenceBlock(
       embeddedImages.push({
         image,
         refNum,
-        fileName: attachment.file_name,
+        label: attachment.caption || attachment.file_name,
       });
     }
   }
@@ -1361,38 +1678,13 @@ export async function drawModuleContent(
   
   let { page, yPosition } = cursor;
   
- // Outcome badge
-if (module.outcome) {
-  const outcomeLabel = getOutcomeLabel(module.outcome);
-
-  page.drawText('Outcome:', {
-    x: MARGIN,
-    y: yPosition,
-    size: 11,
-    font: fontBold,
-    color: rgb(0, 0, 0),
-  });
-
-  page.drawRectangle({
-    x: MARGIN + 70,
-    y: yPosition - 4,
-    width: 140,
-    height: 14,
-    color: rgb(0.93, 0.93, 0.93),
-    borderColor: rgb(0.80, 0.80, 0.80),
-    borderWidth: 0.5,
-  });
-
-  page.drawText(outcomeLabel, {
-    x: MARGIN + 76,
-    y: yPosition - 1,
-    size: 10,
-    font: fontBold,
-    color: rgb(0.25, 0.25, 0.25),
-  });
-
-  yPosition -= 24;
-}
+  // Outcome badge
+  const resolvedOutcome = resolveFraOutcomeValue(module);
+  const outcomeLabel = resolvedOutcome ? getFraReportOutcomeLabel(resolvedOutcome) : '';
+  if (outcomeLabel) {
+    drawFraOutcomeTag({ page, yPosition, outcomeLabel, fontBold });
+    yPosition -= 24;
+  }
   // Assessor notes
   if (module.assessor_notes && module.assessor_notes.trim()) {
     page.drawText('Assessor Notes:', {
@@ -1517,10 +1809,10 @@ export async function drawActionRegister(
   options?: { showIntroBox?: boolean }
 ): Promise<{ page: PDFPage; yPosition: number }> {
   let { page, yPosition } = cursor;
-  yPosition -= 20;
+  yPosition -= 28;
 
   // Use Arup-style page title
-  yPosition = drawPageTitle(page, MARGIN, yPosition, 'Action Register', { regular: font, bold: fontBold });
+  yPosition = drawPageTitle(page, MARGIN, yPosition, 'Recommendations', { regular: font, bold: fontBold });
 
   // Action Register intro box with preflight
   const INTRO_BOX_GAP_AFTER = 12;
@@ -1590,7 +1882,7 @@ export async function drawActionRegister(
 
   for (const action of actions) {
     if (!action.recommended_action || typeof action.recommended_action !== 'string') {
-      console.warn('[PDF] Action missing recommended_action:', {
+      if (import.meta.env.DEV) console.warn('[PDF] Action missing recommended_action:', {
         id: action.id,
         recommended_action: action.recommended_action,
         priority_band: action.priority_band,
@@ -1607,10 +1899,7 @@ export async function drawActionRegister(
     // Use priority band directly (P1/P2/P3/P4)
     const priorityBand = action.priority_band || 'P4';
     // Derive short title for system actions, full text for manual actions
-    const actionText = deriveSystemActionTitle({
-      recommended_action: action.recommended_action,
-      source: action.source,
-    }) || '(No action text provided)';
+    const actionText = sanitizePdfText((action.recommended_action || '').trim()) || '(No recommendation text provided)';
     const owner = action.owner_display_name || undefined;
     const target = action.target_date ? formatDate(action.target_date) : undefined;
     const status = action.status || 'open';
@@ -1632,6 +1921,37 @@ export async function drawActionRegister(
       fonts: { regular: font, bold: fontBold },
     });
 
+    const sourceLinks = Array.isArray(action.source_links) ? action.source_links : [];
+    if (sourceLinks.length > 0) {
+      const sourceTypeLabels: Record<string, string> = {
+        ignition_source_assessments: 'Fire hazards',
+        means_of_escape_assessments: 'Means of Escape',
+        passive_fire_protection_assessments: 'Passive Fire Protection',
+        fire_safety_management_assessments: 'Fire Safety Management',
+      };
+      const sourceText = sourceLinks
+        .map((link) => {
+          const typeLabel = sourceTypeLabels[String(link.source_assessment_type || '')] || String(link.source_assessment_type || 'Source');
+          const findingLabel = String(link.source_assessment_label || link.source_assessment_key || '').trim();
+          return findingLabel ? `${typeLabel} — ${findingLabel}` : typeLabel;
+        })
+        .filter(Boolean)
+        .join('; ');
+      if (sourceText) {
+        const sourceLines = wrapText(`Source: ${sourceText}`, 105);
+        sourceLines.slice(0, 2).forEach((line) => {
+          page.drawText(sanitizePdfText(line), {
+            x: MARGIN + 28,
+            y: yPosition,
+            size: 8,
+            font,
+            color: rgb(0.35, 0.35, 0.35),
+          });
+          yPosition -= 10;
+        });
+      }
+    }
+
     // Add inline evidence for this action
     if (attachments && evidenceRefMap) {
       const actionAttachments = attachments.filter(att => att.action_id === action.id);
@@ -1647,7 +1967,7 @@ export async function drawActionRegister(
         const imageAttachments = actionAttachments.filter(att => isImageAttachment(att));
 
         // Try to embed images (up to 3 for actions - 1 row)
-        const embeddedImages: Array<{ image: PDFImage; refNum: string; fileName: string }> = [];
+        const embeddedImages: Array<{ image: PDFImage; refNum: string; label?: string }> = [];
         for (const att of imageAttachments.slice(0, 3)) {
           const refNum = evidenceRefMap.get(att.id);
           if (!refNum) continue;
@@ -1725,7 +2045,7 @@ export function drawAssumptionsAndLimitations(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('ASSUMPTIONS & LIMITATIONS', {
+  page.drawText('Assumptions & Limitations', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1865,7 +2185,7 @@ export function drawRegulatoryFramework(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('REGULATORY FRAMEWORK', {
+  page.drawText('Regulatory Framework', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2021,7 +2341,7 @@ export function drawResponsiblePersonDuties(
 /**
  * Draw Attachments Index
  */
-export function drawAttachmentsIndex(
+export async function drawAttachmentsIndex(
   cursor: Cursor,
   attachments: Attachment[],
   moduleInstances: ModuleInstance[],
@@ -2031,10 +2351,10 @@ export function drawAttachmentsIndex(
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[]
-): { page: PDFPage; yPosition: number } {
+): Promise<{ page: PDFPage; yPosition: number }> {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('ATTACHMENTS & EVIDENCE INDEX', {
+  page.drawText('Evidence Index', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2078,7 +2398,7 @@ export function drawAttachmentsIndex(
   for (let i = 0; i < filteredAttachments.length; i++) {
     const attachment = filteredAttachments[i];
 
-    if (yPosition < MARGIN + 100) {
+    if (yPosition < MARGIN + 120) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
       page = result.page;
       yPosition = PAGE_TOP_Y;
@@ -2086,8 +2406,36 @@ export function drawAttachmentsIndex(
 
     const refNum = `E-${String(i + 1).padStart(3, '0')}`;
 
+    const rowTopY = yPosition;
+    const thumbnailSize = 72;
+    const thumbnailX = MARGIN;
+    const contentX = MARGIN + thumbnailSize + 14;
+
+    const embeddedThumb = isImageAttachment(attachment)
+      ? await embedImage(pdfDoc, attachment)
+      : null;
+
+    if (embeddedThumb) {
+      try {
+        const thumbScale = Math.min(
+          thumbnailSize / embeddedThumb.width,
+          thumbnailSize / embeddedThumb.height
+        );
+        const drawWidth = embeddedThumb.width * thumbScale;
+        const drawHeight = embeddedThumb.height * thumbScale;
+        page.drawImage(embeddedThumb, {
+          x: thumbnailX + (thumbnailSize - drawWidth) / 2,
+          y: rowTopY - drawHeight - 2,
+          width: drawWidth,
+          height: drawHeight,
+        });
+      } catch {
+        // Graceful fallback to text-only row if image rendering fails
+      }
+    }
+
     page.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
-      x: MARGIN,
+      x: contentX,
       y: yPosition,
       size: 10,
       font: fontBold,
@@ -2104,7 +2452,7 @@ export function drawAttachmentsIndex(
           yPosition = PAGE_TOP_Y;
         }
         page.drawText(line, {
-          x: MARGIN + 10,
+          x: contentX,
           y: yPosition,
           size: 9,
           font,
@@ -2126,13 +2474,13 @@ export function drawAttachmentsIndex(
     if (attachment.action_id) {
       const action = actions.find((a) => a.id === attachment.action_id);
       if (action) {
-        linkedTo.push(`Action: [${action.priority_band}] ${action.recommended_action.substring(0, 40)}...`);
+        linkedTo.push(`Recommendation: [${action.priority_band}]`);
       }
     }
 
     if (linkedTo.length > 0) {
       page.drawText(`Linked to: ${sanitizePdfText(linkedTo.join(', '))}`, {
-        x: MARGIN + 10,
+        x: contentX,
         y: yPosition,
         size: 8,
         font,
@@ -2147,14 +2495,15 @@ export function drawAttachmentsIndex(
       : '';
 
     page.drawText(`Uploaded: ${uploadDate}${fileSize ? ` | Size: ${fileSize}` : ''}`, {
-      x: MARGIN + 10,
+      x: contentX,
       y: yPosition,
       size: 8,
       font,
       color: rgb(0.6, 0.6, 0.6),
     });
-
-    yPosition -= 20;
+    const textBottomY = yPosition - 20;
+    const thumbBottomY = rowTopY - thumbnailSize - 6;
+    yPosition = Math.min(textBottomY, thumbBottomY);
 
     page.drawLine({
       start: { x: MARGIN, y: yPosition },
@@ -2183,7 +2532,7 @@ export function drawScope(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'SCOPE', { regular: font, bold: fontBold });
+  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'Scope', { regular: font, bold: fontBold });
 
   const sanitized = sanitizePdfText(scopeText);
   const lines = wrapText(sanitized, CONTENT_WIDTH, 11, font);
@@ -2221,7 +2570,7 @@ export function drawLimitations(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-   yPosition = drawSectionTitle(page, MARGIN, yPosition, 'LIMITATIONS AND ASSUMPTIONS', { regular: font, bold: fontBold });
+   yPosition = drawSectionTitle(page, MARGIN, yPosition, 'Limitations and Assumptions', { regular: font, bold: fontBold });
 
   const sanitized = sanitizePdfText(limitationsText);
   const lines = wrapText(sanitized, CONTENT_WIDTH, 11, font);
@@ -2285,7 +2634,6 @@ export function drawTableOfContents(
 export function drawCleanAuditPage1(
   page: PDFPage,
   scoringResult: ScoringResult,
-  priorityActions: Action[],
   font: any,
   fontBold: any,
   document: Document,
@@ -2383,7 +2731,7 @@ export function drawCleanAuditPage1(
   const fonts = { regular: font, bold: fontBold };
 
   // Use Arup-style section title
-  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'OVERALL RISK TO LIFE', fonts);
+  yPosition = drawSectionTitle(page, MARGIN, yPosition, 'Overall Risk to Life', fonts);
 
   // Add rule line for consistency
   const ruleY = yPosition;
@@ -2462,7 +2810,7 @@ export function drawCleanAuditPage1(
       color: PDF_THEME.colours.risk.medium.bg,
     });
 
-    page.drawText('PROVISIONAL ASSESSMENT', {
+    page.drawText('Provisional Assessment', {
       x: MARGIN + 35,
       y: yPosition - 25,
       size: 11,
@@ -2481,66 +2829,4 @@ export function drawCleanAuditPage1(
     yPosition -= 75;
   }
 
-  yPosition -= 30;
-
-  // Priority Summary Strip (minimal, clean)
-  const p1Count = priorityActions.filter(a => a.priority_band === 'P1').length;
-  const p2Count = priorityActions.filter(a => a.priority_band === 'P2').length;
-  const p3Count = priorityActions.filter(a => a.priority_band === 'P3').length;
-  const p4Count = priorityActions.filter(a => a.priority_band === 'P4').length;
-
-  if (p1Count + p2Count + p3Count + p4Count > 0) {
-    page.drawText('Priority Actions Summary', {
-      x: MARGIN + 20,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-
-    yPosition -= 25;
-
-    const boxWidth = 80;
-    const boxHeight = 50;
-    const boxSpacing = 15;
-    const startX = MARGIN + 20;
-
-    // Use PDF_THEME token-based colors for priority bands
-    const priorities = [
-      { label: 'P1', count: p1Count, color: PDF_THEME.colours.risk.high.fg },
-      { label: 'P2', count: p2Count, color: PDF_THEME.colours.risk.medium.fg },
-      { label: 'P3', count: p3Count, color: PDF_THEME.colours.risk.info.fg },
-      { label: 'P4', count: p4Count, color: PDF_THEME.colours.risk.info.fg }
-    ];
-
-    priorities.forEach((p, idx) => {
-      const x = startX + (idx * (boxWidth + boxSpacing));
-
-      page.drawRectangle({
-        x,
-        y: yPosition - boxHeight + 10,
-        width: boxWidth,
-        height: boxHeight,
-        borderColor: p.color,
-        borderWidth: 1,
-        color: rgb(1, 1, 1),
-      });
-
-      page.drawText(p.label, {
-        x: x + 10,
-        y: yPosition - 15,
-        size: 12,
-        font: fontBold,
-        color: p.color,
-      });
-
-      page.drawText(p.count.toString(), {
-        x: x + 10,
-        y: yPosition - 35,
-        size: 20,
-        font: fontBold,
-        color: rgb(0.2, 0.2, 0.2),
-      });
-    });
-  }
 }

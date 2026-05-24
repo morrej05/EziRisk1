@@ -263,18 +263,18 @@ export default function EvidencePanel({ actionId, onClose }: EvidencePanelProps)
                           type="button"
                           onClick={() => handlePreview(attachment)}
                           disabled={!isValidAttachment(attachment)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Eye className="w-3.5 h-3.5" />
+                          <Eye className="w-4 h-4" />
                           Preview
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDownload(attachment)}
                           disabled={!isValidAttachment(attachment)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Download className="w-3.5 h-3.5" />
+                          <Download className="w-4 h-4" />
                           Download
                         </button>
                         {documentStatus === 'draft' && (
@@ -284,9 +284,9 @@ export default function EvidencePanel({ actionId, onClose }: EvidencePanelProps)
                               setAttachmentToDelete(attachment);
                               setDeleteConfirmOpen(true);
                             }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-md hover:bg-red-100 transition-colors"
+                            className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                             Delete
                           </button>
                         )}

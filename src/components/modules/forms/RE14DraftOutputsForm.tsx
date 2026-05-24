@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { AlertCircle, TrendingUp, FileText, Save, Sparkles, Copy } from 'lucide-react';
 import FloatingSaveBar from './FloatingSaveBar';
 import { buildRiskEngineeringScoreBreakdown, getMissingRequiredRatings, type ScoreFactor } from '../../../lib/re/scoring/riskEngineeringHelpers';
@@ -11,6 +12,7 @@ interface Document {
   title: string;
   assessment_date?: string | null;
   assessor_name?: string | null;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -18,7 +20,7 @@ interface ModuleInstance {
   document_id: string;
   outcome: string | null;
   assessor_notes: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 interface RE14DraftOutputsFormProps {
@@ -46,6 +48,8 @@ interface SiteMetadata {
   site_name_source: 're01' | 'document_title' | 'missing';
 }
 
+const SHOW_AI_ASSISTED_SUMMARY = false;
+
 const toNonEmptyString = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -57,6 +61,7 @@ export default function RE14DraftOutputsForm({
   document,
   onSaved,
 }: RE14DraftOutputsFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -64,12 +69,10 @@ export default function RE14DraftOutputsForm({
   const [executiveSummary, setExecutiveSummary] = useState('');
   const [executiveSummaryAi, setExecutiveSummaryAi] = useState('');
   const [industryKey, setIndustryKey] = useState<string | null>(null);
-  const [industryLabel, setIndustryLabel] = useState('No Industry Selected');
   const [siteMetadata, setSiteMetadata] = useState<SiteMetadata | null>(null);
   const [globalPillars, setGlobalPillars] = useState<ScoreFactor[]>([]);
   const [occupancyDrivers, setOccupancyDrivers] = useState<ScoreFactor[]>([]);
   const [totalScore, setTotalScore] = useState(0);
-  const [maxScore, setMaxScore] = useState(0);
   const [topContributors, setTopContributors] = useState<ScoreFactor[]>([]);
   const [recSummary, setRecSummary] = useState<RecommendationSummary>({
     total: 0,
@@ -131,12 +134,10 @@ export default function RE14DraftOutputsForm({
             riskEng.data
           );
           setIndustryKey(breakdown.industryKey);
-          setIndustryLabel(breakdown.industryLabel);
           setOccupancyMissing(!breakdown.industryKey);
           setGlobalPillars(breakdown.globalPillars);
           setOccupancyDrivers(breakdown.occupancyDrivers);
           setTotalScore(breakdown.totalScore);
-          setMaxScore(breakdown.maxScore);
           setTopContributors(breakdown.topContributors);
 
           const missing = getMissingRequiredRatings(
@@ -205,6 +206,7 @@ export default function RE14DraftOutputsForm({
   }, [moduleInstance.document_id]);
 
   const handleSaveExecutiveSummary = async () => {
+    if (isLocked) return;
     setSaving(true);
     const updatedData = {
       ...moduleInstance.data,
@@ -281,8 +283,8 @@ export default function RE14DraftOutputsForm({
       setExecutiveSummaryAi(aiSummary);
       onSaved();
     } catch (error) {
-      console.error('Error generating AI summary:', error);
-      alert('Failed to generate AI summary');
+      console.error('Error generating draft summary:', error);
+      alert('Failed to generate draft summary');
     } finally {
       setGenerating(false);
     }
@@ -290,7 +292,7 @@ export default function RE14DraftOutputsForm({
 
   const handleUseAiDraft = () => {
     if (!executiveSummaryAi) {
-      alert('Please generate an AI draft first.');
+      alert('Please prepare a draft summary first.');
       return;
     }
     setExecutiveSummary(executiveSummaryAi);
@@ -353,64 +355,66 @@ export default function RE14DraftOutputsForm({
         />
       </div>
 
+      {SHOW_AI_ASSISTED_SUMMARY && (
       <div className="bg-gradient-to-br from-violet-50 to-blue-50 border border-violet-200 rounded-lg p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-violet-600" />
-            AI Summary (Draft)
-          </h3>
-          <div className="flex gap-2">
-            <button
-              onClick={handleGenerateAiDraft}
-              disabled={
-                generating
-                || !siteMetadata?.site_name
-                || !siteMetadata?.assessment_date
-                || !industryKey
-                || missingRequiredRatings.length > 0
-              }
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-            >
-              <Sparkles className="w-4 h-4" />
-              {generating ? 'Generating...' : 'Generate auto draft'}
-            </button>
-            {executiveSummaryAi && (
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-violet-600" />
+              Draft Summary
+            </h3>
+            <div className="flex gap-2">
               <button
-                onClick={handleUseAiDraft}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={handleGenerateAiDraft}
+                disabled={
+                  generating
+                  || !siteMetadata?.site_name
+                  || !siteMetadata?.assessment_date
+                  || !industryKey
+                  || missingRequiredRatings.length > 0
+                }
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
               >
-                <Copy className="w-4 h-4" />
-                Use auto draft
+                <Sparkles className="w-4 h-4" />
+                {generating ? 'Generating...' : 'Generate auto draft'}
               </button>
-            )}
+              {executiveSummaryAi && (
+                <button
+                  onClick={handleUseAiDraft}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                  Use auto draft
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="text-sm text-slate-700">
-          <p className="mb-2">
-            Generate an AI-assisted draft summary based on assessment data. This summary is deterministic
-            and uses only the data entered in other modules (150-250 words, UK English, professional tone).
-          </p>
-          {!siteMetadata?.site_name || !siteMetadata?.assessment_date || !industryKey ? (
-            <p className="text-amber-700 font-medium">
-              Complete required data before generating: Site Name, Assessment Date, Industry (RE-03), and risk ratings.
+          <div className="text-sm text-slate-700">
+            <p className="mb-2">
+              Generate a draft summary based on assessment data. This summary is deterministic
+              and uses only the data entered in other modules (150-250 words, UK English, professional tone).
             </p>
-          ) : null}
-          {missingRequiredRatings.length > 0 ? (
-            <p className="text-amber-700 font-medium mt-2">
-              Complete all required unrated factors before generating reportable summary content.
-            </p>
-          ) : null}
+            {!siteMetadata?.site_name || !siteMetadata?.assessment_date || !industryKey ? (
+              <p className="text-amber-700 font-medium">
+                Complete required data before generating: Site Name, Assessment Date, Industry (RE-03), and risk ratings.
+              </p>
+            ) : null}
+            {missingRequiredRatings.length > 0 ? (
+              <p className="text-amber-700 font-medium mt-2">
+                Complete all required unrated factors before generating reportable summary content.
+              </p>
+            ) : null}
+          </div>
+          {executiveSummaryAi ? (
+            <div className="bg-white border border-violet-200 rounded-lg p-4">
+              <p className="text-sm text-slate-800 whitespace-pre-wrap">{executiveSummaryAi}</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-dashed border-violet-300 rounded-lg p-4 text-center">
+              <p className="text-sm text-slate-500 italic">No auto draft generated yet. Click "Generate auto draft" to create one.</p>
+            </div>
+          )}
         </div>
-        {executiveSummaryAi ? (
-          <div className="bg-white border border-violet-200 rounded-lg p-4">
-            <p className="text-sm text-slate-800 whitespace-pre-wrap">{executiveSummaryAi}</p>
-          </div>
-        ) : (
-          <div className="bg-white border border-dashed border-violet-300 rounded-lg p-4 text-center">
-            <p className="text-sm text-slate-500 italic">No auto draft generated yet. Click "Generate auto draft" to create one.</p>
-          </div>
-        )}
-      </div>
+      )}
 
       <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
         <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
@@ -493,7 +497,7 @@ export default function RE14DraftOutputsForm({
                       Global Pillars (Always Included)
                     </td>
                   </tr>
-                  {globalPillars.map((factor, idx) => (
+                  {globalPillars.map((factor) => (
                     <tr key={factor.key} className="bg-blue-50/50">
                       <td className="px-4 py-2 text-slate-900 font-medium">
                         {factor.label}

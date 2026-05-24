@@ -20,6 +20,8 @@ import type { FraContext } from '../../lib/modules/fra/severityEngine';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { normalizeJurisdiction } from '../../lib/jurisdictions';
 import { buildPdfIdentityOptions } from '../../utils/pdfIdentity';
+import { needsDisplayName } from '../../utils/displayNameGuard';
+import DisplayNameModal from '../../components/profile/DisplayNameModal';
 
 type OutputMode = 'FRA' | 'FSD' | 'DSEAR' | 'COMBINED' | 'FIRE_EXPLOSION_COMBINED';
 type ReReportTab = 're_survey' | 're_lp';
@@ -39,6 +41,7 @@ export default function DocumentPreviewPage() {
   const [outputMode, setOutputMode] = useState<OutputMode>('FRA');
   const [availableModes, setAvailableModes] = useState<OutputMode[]>(['FRA']);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
 
   // RE-specific state
   const [reActiveTab, setReActiveTab] = useState<ReReportTab>('re_survey');
@@ -150,7 +153,9 @@ export default function DocumentPreviewPage() {
 
           modules = modulesData || [];
 
-          console.log('[PDF Preview] generating for document id:', id);
+          if (import.meta.env.DEV) {
+            console.log('[PDF Preview] generating for document id:', id);
+          }
           const { data: actionsData } = await supabase
             .from('actions')
             .select(`*`)
@@ -158,7 +163,9 @@ export default function DocumentPreviewPage() {
             .eq('organisation_id', organisation.id)
             .is('deleted_at', null);
 
-          console.log('[PDF Preview] actions loaded:', actionsData?.length ?? 0);
+          if (import.meta.env.DEV) {
+            console.log('[PDF Preview] actions loaded:', actionsData?.length ?? 0);
+          }
           actions = actionsData || [];
         } else {
           // Draft document: load live data
@@ -171,7 +178,9 @@ export default function DocumentPreviewPage() {
           if (moduleError) throw moduleError;
           modules = modulesData || [];
 
-          console.log('[PDF Preview] generating for document id:', id);
+          if (import.meta.env.DEV) {
+            console.log('[PDF Preview] generating for document id:', id);
+          }
           const { data: actionsData, error: actionsError } = await supabase
             .from('actions')
             .select(`
@@ -179,6 +188,8 @@ export default function DocumentPreviewPage() {
               reference_number,
               source,
               recommended_action,
+              recommendation_detail,
+              trigger_text,
               priority_band,
               status,
               owner_user_id,
@@ -192,7 +203,9 @@ export default function DocumentPreviewPage() {
             .order('created_at', { ascending: true });
 
           if (actionsError) throw actionsError;
-          console.log('[PDF Preview] actions loaded:', actionsData?.length ?? 0);
+          if (import.meta.env.DEV) {
+            console.log('[PDF Preview] actions loaded:', actionsData?.length ?? 0);
+          }
 
           const actionIds = (actionsData || []).map((a: any) => a.id);
           if (actionIds.length > 0) {
@@ -254,7 +267,9 @@ export default function DocumentPreviewPage() {
 
         setIsLoading(false);
       } catch (e: any) {
-        console.error(e);
+        if (import.meta.env.DEV) {
+          console.error('[PDF Preview] Load failed:', e);
+        }
         setErrorMsg(e?.message || 'Failed to load preview.');
         setIsLoading(false);
       }
@@ -265,6 +280,12 @@ export default function DocumentPreviewPage() {
 
   const handleGeneratePdf = async () => {
     if (!document || !organisation?.id) return;
+
+    // Guard: reports must show a real name, not a raw email address.
+    if (needsDisplayName(user)) {
+      setShowNamePrompt(true);
+      return;
+    }
 
     setIsGenerating(true);
     setErrorMsg(null);
@@ -278,28 +299,38 @@ export default function DocumentPreviewPage() {
         .maybeSingle();
 
       if (orgError) {
-        console.error('[PDF Preview] Failed to fetch organisation:', orgError);
+        if (import.meta.env.DEV) {
+          console.error('[PDF Preview] Failed to fetch organisation:', orgError);
+        }
         throw new Error('Failed to fetch organisation data');
       }
 
       if (!freshOrg) {
-        console.error('[PDF Preview] Organisation not found');
+        if (import.meta.env.DEV) {
+          console.error('[PDF Preview] Organisation not found');
+        }
         throw new Error('Organisation not found');
       }
 
-      console.log('[PDF Preview] Fresh organisation data:', {
-        id: freshOrg.id,
-        name: freshOrg.name,
-        branding_logo_path: freshOrg.branding_logo_path
-      });
+      if (import.meta.env.DEV) {
+        console.log('[PDF Preview] Fresh organisation data:', {
+          id: freshOrg.id,
+          name: freshOrg.name,
+          has_branding_logo: Boolean(freshOrg.branding_logo_path)
+        });
+      }
 
       // Ensure action reference numbers are assigned before generating PDFs (Policy B)
       if (!isReDocument) {
         try {
           await assignActionReferenceNumbers(document.id, document.base_document_id ?? document.id);
-          console.log('[PDF Preview] Action reference numbers assigned');
+          if (import.meta.env.DEV) {
+            console.log('[PDF Preview] Action reference numbers assigned');
+          }
         } catch (refError) {
-          console.error('[PDF Preview] Failed to assign reference numbers:', refError);
+          if (import.meta.env.DEV) {
+            console.error('[PDF Preview] Failed to assign reference numbers:', refError);
+          }
           // Continue anyway - references may already exist
         }
       }
@@ -314,6 +345,8 @@ export default function DocumentPreviewPage() {
               id,
               source,
               recommended_action,
+              recommendation_detail,
+              trigger_text,
               priority_band,
               status,
               owner_user_id,
@@ -349,20 +382,28 @@ export default function DocumentPreviewPage() {
               owner_display_name: a.owner_user_id ? userNameMap.get(a.owner_user_id) : null,
             }));
 
-            console.log('[PDF Preview] Refetched actions with references:', {
-              count: actions.length,
-              withRefs: actions.filter((a: any) => a.reference_number).length,
-            });
+            if (import.meta.env.DEV) {
+              console.log('[PDF Preview] Refetched actions with references:', {
+                count: actions.length,
+                withRefs: actions.filter((a: any) => a.reference_number).length,
+              });
+            }
           }
         } catch (refetchError) {
-          console.error('[PDF Preview] Failed to refetch actions:', refetchError);
+          if (import.meta.env.DEV) {
+            console.error('[PDF Preview] Failed to refetch actions:', refetchError);
+          }
           // Use original enrichedActions if refetch fails
         }
       }
 
-      console.log('[PDF Preview] actions sources summary:',
-        (actions || []).reduce((acc:any,a:any)=>{ const k=a.source||'null'; acc[k]=(acc[k]||0)+1; return acc; }, {})
-      );
+      if (import.meta.env.DEV) {
+        console.log('[PDF Preview] actions sources summary:',
+          (actions || []).reduce((acc:any,a:any)=>{ const k=a.source||'Not recorded'; acc[k]=(acc[k]||0)+1; return acc; }, {})
+        );
+      }
+
+      const identityOptions = buildPdfIdentityOptions(organisation, user);
 
       const pdfOptions = {
         document,
@@ -375,7 +416,7 @@ export default function DocumentPreviewPage() {
           branding_logo_path: freshOrg.branding_logo_path,
         },
         renderMode: (document.issue_status === 'issued' || document.issue_status === 'superseded') ? 'issued' as const : 'preview' as const,
-        ...buildPdfIdentityOptions(organisation, user),
+        ...identityOptions,
       };
 
       let pdfBytes: Uint8Array;
@@ -394,6 +435,10 @@ export default function DocumentPreviewPage() {
               document_id,
               title,
               action_required_text,
+              observation_text,
+              hazard_text,
+              photos,
+              source_module_key,
               priority,
               status,
               owner,
@@ -421,6 +466,10 @@ export default function DocumentPreviewPage() {
             id: rec.id,
             document_id: rec.document_id,
             recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
+            description: rec.observation_text || null,
+            hazard_text: rec.hazard_text || null,
+            photos: Array.isArray(rec.photos) ? rec.photos : [],
+            source_module_key: rec.source_module_key || null,
             priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
             status: rec.status || 'Open',
             owner_user_id: null,
@@ -497,7 +546,9 @@ export default function DocumentPreviewPage() {
               });
             }
           } catch (reEnrichmentError) {
-            console.warn('[PDF Preview] RE construction enrichment failed; continuing with module snapshot only:', reEnrichmentError);
+            if (import.meta.env.DEV) {
+              console.warn('[PDF Preview] RE construction enrichment failed; continuing with module snapshot only:', reEnrichmentError);
+            }
           }
 
           pdfBytes = await buildReSurveyPdf({
@@ -514,11 +565,14 @@ export default function DocumentPreviewPage() {
               id,
               title,
               action_required_text,
+              observation_text,
+              hazard_text,
+              photos,
+              source_module_key,
               priority,
               status,
               target_date,
               module_instance_id,
-              source_module_key,
               rec_number,
               created_at
             `)
@@ -546,25 +600,30 @@ export default function DocumentPreviewPage() {
           const lpActions = (reRecommendations || []).map((rec: any, index: number) => ({
             id: rec.id,
             recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
+            description: rec.observation_text || null,
+            hazard_text: rec.hazard_text || null,
+            photos: Array.isArray(rec.photos) ? rec.photos : [],
+            source_module_key: rec.source_module_key || null,
             priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
             status: statusMap[rec.status] || 'open',
             owner_user_id: null,
-            owner_display_name: null,
+            owner_display_name: undefined,
             target_date: rec.target_date || null,
             module_instance_id: rec.module_instance_id,
             created_at: rec.created_at,
             reference_number: rec.rec_number || null,
-            source_module_key: rec.source_module_key || null,
           }));
 
-          console.log('[PDF Preview] RE LP recommendations loaded:', {
-            count: lpActions.length,
-            byPriorityBand: lpActions.reduce((acc: Record<string, number>, item: any) => {
-              const key = item.priority_band || 'P3';
-              acc[key] = (acc[key] || 0) + 1;
-              return acc;
-            }, {}),
-          });
+          if (import.meta.env.DEV) {
+            console.log('[PDF Preview] RE LP recommendations loaded:', {
+              count: lpActions.length,
+              byPriorityBand: lpActions.reduce((acc: Record<string, number>, item: any) => {
+                const key = item.priority_band || 'P3';
+                acc[key] = (acc[key] || 0) + 1;
+                return acc;
+              }, {}),
+            });
+          }
 
           pdfBytes = await buildReLpPdf({
             ...pdfOptions,
@@ -618,7 +677,9 @@ export default function DocumentPreviewPage() {
         setFilename(formatFilename(document, outputMode));
       }
     } catch (e: any) {
-      console.error('[PDF Generation Error]', e);
+      if (import.meta.env.DEV) {
+        console.error('[PDF Generation Error]', e);
+      }
       setErrorMsg(e?.message || 'Failed to generate PDF');
     } finally {
       setIsGenerating(false);
@@ -862,6 +923,15 @@ export default function DocumentPreviewPage() {
           )}
         </div>
       </div>
+
+      {/* Display-name prompt — shown when user tries to generate a PDF without a valid name */}
+      {showNamePrompt && (
+        <DisplayNameModal
+          mode="prompt"
+          onSaved={() => setShowNamePrompt(false)}
+          onDismiss={() => setShowNamePrompt(false)}
+        />
+      )}
     </div>
   );
 }

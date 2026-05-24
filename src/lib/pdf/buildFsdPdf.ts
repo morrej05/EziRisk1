@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { getModuleName } from '../modules/moduleCatalog';
 import { detectInfoGaps } from '../../utils/infoGapQuickActions';
-import { fetchAttachmentBytes, listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment, listAttachments, type Attachment } from '../supabase/attachments';
 import {
   fsdPurposeAndScopeText,
   fsdLimitationsText,
@@ -22,6 +22,7 @@ import {
   drawFooter,
   drawPlanWatermark,
   addExecutiveSummaryPages,
+  resolveExecutiveSummaryMode,
   addSupersededWatermark,
   ensurePageSpace,
   getReportFooterTitle,
@@ -168,8 +169,7 @@ function stripModuleCodePrefix(moduleName: string): string {
 }
 
 function isEmbeddableImageAttachment(attachment: Attachment): boolean {
-  const fileType = attachment.file_type.toLowerCase();
-  return fileType === 'image/png' || fileType === 'image/jpg' || fileType === 'image/jpeg';
+  return isRenderableImageAttachment(attachment);
 }
 function drawTableOfContents(
   pdfDoc: PDFDocument,
@@ -265,7 +265,7 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   try {
     attachments = await listAttachments(document.id);
   } catch (error) {
-    console.warn('[FSD PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[FSD PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -309,10 +309,23 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   const tocEntries: Array<{ title: string; pageNo: number }> = [];
   const recordToc = (title: string, pageNo = totalPages.length) => tocEntries.push({ title, pageNo });
 
-  const executiveSummaryMode = (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none';
+  const executiveSummaryMode = resolveExecutiveSummaryMode(
+    document.executive_summary_mode,
+    document.executive_summary_ai,
+    document.executive_summary_author
+  );
   const hasExecutiveSummary =
-    (executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!document.executive_summary_ai ||
-    (executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!document.executive_summary_author;
+    ((executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!String(document.executive_summary_ai || '').trim()) ||
+    ((executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!String(document.executive_summary_author || '').trim());
+
+  if (import.meta.env.DEV) console.info('[FSD PDF] Executive summary diagnostics:', {
+    documentId: document.id,
+    requestedMode: document.executive_summary_mode,
+    resolvedMode: executiveSummaryMode,
+    aiLength: String(document.executive_summary_ai || '').trim().length,
+    authorLength: String(document.executive_summary_author || '').trim().length,
+    addedToRenderTree: hasExecutiveSummary,
+  });
 
   if (hasExecutiveSummary) {
     const executiveSummaryStartPage = totalPages.length + 1;
@@ -1171,7 +1184,7 @@ function drawAttachmentsIndex(
 ): { page: PDFPage; yPosition: number } {
   let yPosition = startY;
 
-  page.drawText('ATTACHMENTS & EVIDENCE INDEX', {
+  page.drawText('Attachments & Evidence Index', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1197,7 +1210,7 @@ function drawAttachmentsIndex(
 
     ({ page, yPosition } = ensurePageSpace(110, page, yPosition, pdfDoc, isDraft, totalPages));
 
-    const refNum = `E-${String(i + 1).padStart(3, '0')}`;
+    const refNum = `E-${String(attachments.indexOf(attachment) + 1).padStart(3, '0')}`;
 
     page.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
       x: MARGIN,
@@ -1226,8 +1239,8 @@ function drawAttachmentsIndex(
       }
     }
 
-    if (attachment.linked_module_instance_id) {
-      const linkedModule = moduleInstances.find((m) => m.id === attachment.linked_module_instance_id);
+    if (attachment.module_instance_id) {
+      const linkedModule = moduleInstances.find((m) => m.id === attachment.module_instance_id);
       if (linkedModule) {
         const moduleName = getModuleName(linkedModule.module_key);
         page.drawText(`Linked to: ${sanitizePdfText(moduleName)}`, {
@@ -1241,8 +1254,8 @@ function drawAttachmentsIndex(
       }
     }
 
-    if (attachment.linked_action_id) {
-      const linkedAction = actions.find((a) => a.id === attachment.linked_action_id);
+    if (attachment.action_id) {
+      const linkedAction = actions.find((a) => a.id === attachment.action_id);
       if (linkedAction) {
         const actionRef = linkedAction.reference_number || 'Action';
         page.drawText(`Linked to: ${sanitizePdfText(actionRef)}`, {
@@ -1297,9 +1310,9 @@ async function drawAttachmentPages(
     ({ page: currentPage } = addNewPage(pdfDoc, isDraft, totalPages));
     yPosition = PAGE_TOP_Y;
 
-    const refNum = `E-${String(i + 1).padStart(3, '0')}`;
+    const refNum = `E-${String(attachments.indexOf(attachment) + 1).padStart(3, '0')}`;
 
-    currentPage.drawText('ATTACHMENT EVIDENCE', {
+    currentPage.drawText('Attachment Evidence', {
       x: MARGIN,
       y: yPosition,
       size: 14,
@@ -1317,8 +1330,9 @@ async function drawAttachmentPages(
     });
     yPosition -= 18;
 
-    if (attachment.caption) {
-      const captionLines = wrapText(attachment.caption, CONTENT_WIDTH, 9, font);
+    const caption = attachment.caption || (isDocumentLevelAttachment(attachment) ? attachment.file_name : null);
+    if (caption) {
+      const captionLines = wrapText(caption, CONTENT_WIDTH, 9, font);
       for (const line of captionLines) {
         currentPage.drawText(line, {
           x: MARGIN,
@@ -1331,8 +1345,8 @@ async function drawAttachmentPages(
       }
     }
 
-    if (attachment.linked_module_instance_id) {
-      const linkedModule = moduleInstances.find((m) => m.id === attachment.linked_module_instance_id);
+    if (attachment.module_instance_id) {
+      const linkedModule = moduleInstances.find((m) => m.id === attachment.module_instance_id);
       if (linkedModule) {
         const moduleName = stripModuleCodePrefix(getModuleName(linkedModule.module_key));
         currentPage.drawText(`Module: ${sanitizePdfText(moduleName)}`, {
@@ -1346,8 +1360,8 @@ async function drawAttachmentPages(
       }
     }
 
-    if (attachment.linked_action_id) {
-      const linkedAction = actions.find((a) => a.id === attachment.linked_action_id);
+    if (attachment.action_id) {
+      const linkedAction = actions.find((a) => a.id === attachment.action_id);
       if (linkedAction?.reference_number) {
         currentPage.drawText(`Action: ${sanitizePdfText(linkedAction.reference_number)}`, {
           x: MARGIN,
@@ -1375,8 +1389,9 @@ async function drawAttachmentPages(
     }
 
     let embeddedImage;
-    const fileType = attachment.file_type.toLowerCase();
-    if (fileType === 'image/png') {
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
+    if (fileType === 'image/png' || fileName.endsWith('.png')) {
       embeddedImage = await pdfDoc.embedPng(bytes);
     } else {
       embeddedImage = await pdfDoc.embedJpg(bytes);
@@ -1413,7 +1428,7 @@ function drawPurposeAndScope(
   let yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = ensurePageSpace(70, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('PURPOSE AND SCOPE', {
+  page.drawText('Purpose and Scope', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1459,7 +1474,7 @@ function drawFsdLimitations(
   let yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = ensurePageSpace(70, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('LIMITATIONS AND ASSUMPTIONS', {
+  page.drawText('Limitations and Assumptions', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1543,7 +1558,7 @@ function drawDocumentScope(
   let yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = ensurePageSpace(70, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('SCOPE', {
+  page.drawText('Scope', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1590,7 +1605,7 @@ function drawDocumentLimitations(
   }
 
   ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('PROJECT-SPECIFIC LIMITATIONS', {
+  page.drawText('Project-Specific Limitations', {
     x: MARGIN,
     y: yPosition,
     size: 14,
@@ -1645,12 +1660,12 @@ function drawComputedAssuranceSummary(
                       undefined;
 
   const overallLevel = safeString(summary?.overallLevel, mappedLevel || 'Unknown').toLowerCase();
-  const overallLevelLabel = safeString(overallLevel, 'unknown').toUpperCase();
+  const overallLevelLabel = safeString(overallLevel, 'unknown').charAt(0).toUpperCase() + safeString(overallLevel, 'unknown').slice(1);
   const levelReason = safeString(summary?.levelReason);
   const deviations = Array.isArray(summary?.deviations) ? summary.deviations : [];
   const infoGaps = Array.isArray(summary?.infoGaps) ? summary.infoGaps : [];
 
-  page.drawText('COMPUTED ASSURANCE SUMMARY', {
+  page.drawText('Computed Assurance Summary', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1830,7 +1845,7 @@ function drawDeviationRegister(
 ): PDFPage {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('DEVIATION REGISTER', {
+  page.drawText('Deviation Register', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1981,7 +1996,7 @@ function drawAssuranceChecks(
 ): PDFPage {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('ASSURANCE CHECKS', {
+  page.drawText('Assurance Checks', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -2116,7 +2131,7 @@ function drawDesignAssuranceCommentary(
 
   const paragraphs = [levelSentence, strengthsSentence, riskSentence, acceptabilitySentence];
 
-  page.drawText('DESIGN ASSURANCE COMMENTARY', {
+  page.drawText('Design Assurance Commentary', {
     x: MARGIN,
     y: yPosition,
     size: 16,

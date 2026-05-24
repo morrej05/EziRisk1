@@ -1,14 +1,74 @@
 import { supabase } from '../lib/supabase';
 import { canIssueDocument } from './approvalWorkflow';
-import { generateChangeSummary, createInitialIssueSummary } from './changeSummary';
+import { generateChangeSummary, createInitialIssueSummary, findPreviousIssuedRevision, ISSUED_REVISION_STATUSES } from './changeSummary';
 import { carryForwardEvidence } from './evidenceManagement';
 import { getMissingRequiredRatings } from '../lib/re/scoring/riskEngineeringHelpers';
+import { ensureDocumentIdentitySnapshot, mergeIdentityIntoMeta, resolveDocumentIdentity } from '../lib/documents/documentIdentity';
+
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function logExecutiveSummarySnapshot(
+  label: string,
+  document: ({
+    id?: string | null;
+    version_number?: number | null;
+    executive_summary_ai?: string | null;
+    executive_summary_author?: string | null;
+    executive_summary_mode?: string | null;
+  }) | null | undefined
+) {
+  console.info(label, {
+    documentId: document?.id ?? null,
+    version: document?.version_number ?? null,
+    executiveSummaryMode: document?.executive_summary_mode ?? null,
+    aiLength: String(document?.executive_summary_ai || '').trim().length,
+    authorLength: String(document?.executive_summary_author || '').trim().length,
+  });
+}
+
+export type DocumentIssueStatus =
+  | 'draft'
+  | 'in_progress_draft'
+  | 'pending_review_draft'
+  | 'issued'
+  | 'superseded'
+  | 'archived'
+  | 'deleted';
+
+export const ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES = [
+  'draft',
+] as const;
+
+const INACTIVE_DOCUMENT_LIFECYCLE_STATUSES = [
+  'archived',
+  'deleted',
+] as const;
+
+const ACTIVE_DRAFT_LIFECYCLE_STATUS_OR_FILTER = `status.is.null,status.not.in.(${INACTIVE_DOCUMENT_LIFECYCLE_STATUSES.join(',')})`;
+
+export function isActiveEditableDraftVersion(document: {
+  issue_status?: string | null;
+  status?: string | null;
+  deleted_at?: string | null;
+}): boolean {
+  const issueStatus = (document.issue_status || '').trim().toLowerCase();
+  const lifecycleStatus = (document.status || '').trim().toLowerCase();
+
+  return (
+    !document.deleted_at &&
+    ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES.includes(issueStatus as (typeof ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES)[number]) &&
+    !INACTIVE_DOCUMENT_LIFECYCLE_STATUSES.includes(lifecycleStatus as (typeof INACTIVE_DOCUMENT_LIFECYCLE_STATUSES)[number])
+  );
+}
 
 export interface DocumentVersion {
   id: string;
   base_document_id: string;
   version_number: number;
-  issue_status: 'draft' | 'issued' | 'superseded';
+  issue_status: DocumentIssueStatus;
   issue_date: string | null;
   issued_by: string | null;
   superseded_by_document_id: string | null;
@@ -21,7 +81,11 @@ export interface DocumentVersion {
 export interface IssueDocumentResult {
   success: boolean;
   error?: string;
+  warning?: string;
+  postIssueWarning?: string;
   documentId?: string;
+  alreadyIssued?: boolean;
+  partialSuccess?: boolean;
 }
 
 export interface CreateNewVersionResult {
@@ -29,6 +93,283 @@ export interface CreateNewVersionResult {
   error?: string;
   newDocumentId?: string;
   newVersionNumber?: number;
+  existingDraftDocumentId?: string;
+}
+
+const EXISTING_DRAFT_VERSION_MESSAGE =
+  'A draft version already exists and must be issued or deleted before creating another version.';
+
+type ModuleValidationRow = {
+  module_key: string;
+  data: Record<string, unknown> | null;
+  assessor_notes: string | null;
+  completed_at: string | null;
+};
+
+type DocumentSectionGrades = {
+  section_grades?: Record<string, unknown> | null;
+};
+
+type MaybeErrorWithMessage = {
+  message?: string;
+};
+
+type JsonRecord = Record<string, unknown>;
+type AnyRow = Record<string, unknown>;
+type ExecutiveSummarySnapshot = {
+  executive_summary_ai: string | null;
+  executive_summary_author: string | null;
+  executive_summary_mode: string | null;
+};
+type CountQueryResult = { count: number | null; error: { message?: string } | null };
+type CountQuery = PromiseLike<CountQueryResult> & {
+  eq?: (column: string, value: unknown) => CountQuery;
+  in?: (column: string, values: readonly unknown[]) => CountQuery;
+  is?: (column: string, value: unknown) => CountQuery;
+  or?: (filters: string) => CountQuery;
+};
+type CountTableQuery = {
+  select?: (columns: string, options: { count: 'exact'; head: true }) => CountQuery;
+};
+
+const LOCKED_ISSUE_DOCUMENT_FIELDS = new Set([
+  'issue_status',
+  'issue_date',
+  'issued_by',
+  'issued_author_name_snapshot',
+  'issued_author_role_snapshot',
+  'issued_display_author_name',
+  'issued_display_author_role',
+  'issued_display_author_organisation',
+  'locked_pdf_path',
+  'locked_pdf_checksum',
+  'locked_pdf_generated_at',
+  'locked_pdf_size_bytes',
+  'pdf_generation_error',
+]);
+
+const DOCUMENT_INSERT_EXCLUDE_FIELDS = new Set([
+  'id',
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'deleted_by',
+  'superseded_by_document_id',
+  'superseded_date',
+  'is_immutable',
+  'client_visible',
+  'draft_pdf_path',
+  'draft_re_survey_pdf_path',
+  'draft_re_lp_pdf_path',
+  ...LOCKED_ISSUE_DOCUMENT_FIELDS,
+]);
+
+const ROW_INSERT_EXCLUDE_FIELDS = new Set([
+  'id',
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'deleted_by',
+]);
+
+
+const DRAFT_APPROVAL_RESET_FIELDS = {
+  approval_status: 'not_required',
+  approved_by: null,
+  approval_date: null,
+  approval_notes: null,
+} as const;
+
+const MODULE_APPROVAL_STATUS_KEYS = new Set(['approval_status', 'approvalStatus']);
+const MODULE_APPROVAL_METADATA_KEYS = new Set([
+  'approved_at',
+  'approvedAt',
+  'approved_by',
+  'approvedBy',
+  'approval_date',
+  'approvalDate',
+  'approval_notes',
+  'approvalNotes',
+  'reviewer',
+  'reviewer_name',
+  'reviewerName',
+  'reviewer_email',
+  'reviewerEmail',
+  'reviewed_by',
+  'reviewedBy',
+  'reviewed_at',
+  'reviewedAt',
+  'approver',
+  'approver_name',
+  'approverName',
+  'approver_email',
+  'approverEmail',
+  'approvedByName',
+]);
+
+function resetModuleApprovalMetadata(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value as JsonRecord).map(([key, nestedValue]) => {
+      if (MODULE_APPROVAL_STATUS_KEYS.has(key)) return [key, 'draft'];
+      if (MODULE_APPROVAL_METADATA_KEYS.has(key)) return [key, null];
+      if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+        return [key, resetModuleApprovalMetadata(nestedValue)];
+      }
+      return [key, nestedValue];
+    })
+  );
+}
+
+const CARRY_FORWARD_ACTION_STATUSES = ['open', 'in_progress', 'deferred'];
+const CARRY_FORWARD_RECOMMENDATION_STATUSES = ['Open', 'In Progress'];
+
+function cloneRowForInsert<T extends AnyRow>(row: T, excludedFields: Set<string>): AnyRow {
+  return Object.fromEntries(
+    Object.entries(row).filter(([, value]) => value !== undefined).filter(([key]) => !excludedFields.has(key))
+  );
+}
+
+function countMetaKeys(meta: unknown): number {
+  return meta && typeof meta === 'object' && !Array.isArray(meta) ? Object.keys(meta).length : 0;
+}
+
+function hasExecutiveSummary(row: AnyRow | null | undefined): boolean {
+  if (!row) return false;
+  const mode = row.executive_summary_mode || 'ai';
+  if (mode === 'none') return false;
+  return Boolean(
+    ((mode === 'ai' || mode === 'both') && String(row.executive_summary_ai || '').trim()) ||
+    ((mode === 'author' || mode === 'both') && String(row.executive_summary_author || '').trim())
+  );
+}
+
+function countPhotoReferences(value: unknown): number {
+  if (!value) return 0;
+  if (typeof value === 'string') {
+    return /\.(png|jpe?g|webp|heic)(\?|$)/i.test(value) || /storage_path|file_path|photo|image/i.test(value) ? 1 : 0;
+  }
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + countPhotoReferences(item), 0);
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as JsonRecord).reduce((total, [key, item]) => {
+      const keyHint = /photo|image|evidence|attachment|storage_path|file_path/i.test(key) ? 1 : 0;
+      if (typeof item === 'string' && keyHint && item.trim()) return total + 1;
+      return total + countPhotoReferences(item);
+    }, 0);
+  }
+  return 0;
+}
+
+function countModulePhotoReferences(modules: AnyRow[] | null | undefined): number {
+  return (modules || []).reduce((total, module) => total + countPhotoReferences(module.data), 0);
+}
+
+async function countRows(table: string, documentId: string, extra?: (query: CountQuery) => CountQuery | undefined): Promise<number | null> {
+  try {
+    const tableQuery = supabase.from(table) as unknown as CountTableQuery;
+    if (!tableQuery?.select) {
+      console.warn('[createNewVersion carry-forward audit] Count query unavailable:', { table, documentId });
+      return null;
+    }
+
+    let query = tableQuery.select('*', { count: 'exact', head: true });
+    if (!query?.eq) {
+      console.warn('[createNewVersion carry-forward audit] Count query missing eq filter:', { table, documentId });
+      return null;
+    }
+
+    query = query.eq('document_id', documentId);
+    if (extra) {
+      const filteredQuery = extra(query);
+      if (!filteredQuery) {
+        console.warn('[createNewVersion carry-forward audit] Count query filter returned no query:', { table, documentId });
+        return null;
+      }
+      query = filteredQuery;
+    }
+
+    const result = await query;
+    if (!result) {
+      console.warn('[createNewVersion carry-forward audit] Count query returned no result:', { table, documentId });
+      return null;
+    }
+
+    const { count, error } = result;
+    if (error) {
+      console.warn('[createNewVersion carry-forward audit] Count query failed:', { table, documentId, error });
+      return null;
+    }
+    return count || 0;
+  } catch (countError) {
+    console.warn('[createNewVersion carry-forward audit] Count query threw (continuing):', { table, documentId, error: countError });
+    return null;
+  }
+}
+
+async function logCreateNewVersionCarryForwardAudit(params: {
+  sourceDocument: AnyRow;
+  newDocument: AnyRow;
+  sourceModules: AnyRow[];
+  newModules: AnyRow[];
+}): Promise<void> {
+  const { sourceDocument, newDocument, sourceModules, newModules } = params;
+  try {
+    const [sourceActionCount, newActionCount, sourceAttachmentCount, newAttachmentCount, sourceRecommendationCount, newRecommendationCount] = await Promise.all([
+      countRows('actions', String(sourceDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_ACTION_STATUSES);
+        return byStatus?.is?.('deleted_at', null);
+      }),
+      countRows('actions', String(newDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_ACTION_STATUSES);
+        return byStatus?.is?.('deleted_at', null);
+      }),
+      countRows('attachments', String(sourceDocument.id), (q) => q.is?.('deleted_at', null)),
+      countRows('attachments', String(newDocument.id), (q) => q.is?.('deleted_at', null)),
+      countRows('re_recommendations', String(sourceDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_RECOMMENDATION_STATUSES);
+        return byStatus?.or?.('is_suppressed.is.false,is_suppressed.is.null');
+      }),
+      countRows('re_recommendations', String(newDocument.id), (q) => {
+        const byStatus = q.in?.('status', CARRY_FORWARD_RECOMMENDATION_STATUSES);
+        return byStatus?.or?.('is_suppressed.is.false,is_suppressed.is.null');
+      }),
+    ]);
+
+    console.info('[createNewVersion carry-forward audit]', {
+      sourceDocumentId: sourceDocument.id,
+      newDocumentId: newDocument.id,
+      moduleInstances: { source: sourceModules.length, new: newModules.length },
+      actions: { sourceCarriedEligible: sourceActionCount, newCarried: newActionCount },
+      recommendations: { sourceCarriedEligible: sourceRecommendationCount, newCarried: newRecommendationCount },
+      evidenceAttachments: { source: sourceAttachmentCount, new: newAttachmentCount },
+      executiveSummaryPresent: { source: hasExecutiveSummary(sourceDocument), new: hasExecutiveSummary(newDocument) },
+      imagePhotoReferences: { source: countModulePhotoReferences(sourceModules), new: countModulePhotoReferences(newModules) },
+      metaKeys: { source: countMetaKeys(sourceDocument.meta), new: countMetaKeys(newDocument.meta) },
+      lockedIssueFieldsCleared: Array.from(LOCKED_ISSUE_DOCUMENT_FIELDS).every((field) => !newDocument[field]),
+      approvalGovernanceReset: Object.entries(DRAFT_APPROVAL_RESET_FIELDS).every(
+        ([field, expectedValue]) => newDocument[field] === expectedValue
+      ),
+      approvalFieldsReset: Object.keys(DRAFT_APPROVAL_RESET_FIELDS),
+    });
+  } catch (auditError) {
+    console.warn('[createNewVersion carry-forward audit] Failed to collect diagnostic counts:', auditError);
+  }
+}
+
+function isDuplicateDraftVersionError(error: unknown): boolean {
+  const maybeError = error as { code?: string; message?: string; details?: string };
+  const message = String(maybeError.message || maybeError.details || '').toLowerCase();
+  return (
+    maybeError.code === '23505' ||
+    maybeError.code === 'P0001' ||
+    message.includes('one active draft version') ||
+    message.includes('draft version already exists') ||
+    message.includes('idx_documents_one_active_draft_per_base') ||
+    message.includes('idx_documents_one_draft_per_base')
+  );
 }
 
 export async function validateDocumentForIssue(
@@ -90,10 +431,10 @@ export async function validateDocumentForIssue(
         'FRA_90_SIGNIFICANT_FINDINGS'
       ];
 
-      const isEmptyObject = (v: any) =>
+      const isEmptyObject = (v: unknown) =>
         !v || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
 
-      const moduleHasData = (m: any) => {
+      const moduleHasData = (m: ModuleValidationRow) => {
         const hasJson = !isEmptyObject(m.data);
         const hasNotes =
           typeof m.assessor_notes === 'string' &&
@@ -145,7 +486,7 @@ export async function validateDocumentForIssue(
         } else {
           const missing = getMissingRequiredRatings(
             riskEngineeringModule.data || {},
-            (document as any).section_grades || {}
+            (document as DocumentSectionGrades).section_grades || {}
           );
 
           if (missing.hasMissing) {
@@ -180,9 +521,10 @@ export async function validateDocumentForIssue(
     }
 
     return { valid: errors.length === 0, errors, warnings: warnings.length > 0 ? warnings : undefined };
-  } catch (e: any) {
+  } catch (e: unknown) {
+    const maybeError = e as MaybeErrorWithMessage;
     const msg =
-      e?.message ||
+      maybeError.message ||
       (typeof e === 'string' ? e : 'Unknown error');
     console.error('Error validating document:', e);
     return { valid: false, errors: [`VALIDATION THREW: ${msg}`] };
@@ -192,38 +534,79 @@ export async function validateDocumentForIssue(
 
 export async function issueDocument(documentId: string, userId: string, organisationId: string): Promise<IssueDocumentResult> {
   try {
-    console.log('[issueDocument] Validating document:', documentId);
     const validation = await validateDocumentForIssue(documentId, organisationId);
     if (!validation.valid) {
-      console.log('[issueDocument] Validation failed:', validation.errors);
+      const { data: currentDocument } = await supabase
+        .from('documents')
+        .select('id, status, issue_status, locked_pdf_path, pdf_generation_error')
+        .eq('id', documentId)
+        .eq('organisation_id', organisationId)
+        .maybeSingle();
+
+      if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+        if (!currentDocument.locked_pdf_path) {
+          return { success: false, error: 'Document is issued but has no locked PDF. Contact support before continuing.' };
+        }
+
+        return {
+          success: true,
+          documentId,
+          alreadyIssued: true,
+          partialSuccess: false,
+          warning: 'Document was already issued. Reloaded the issued document state.',
+          postIssueWarning: currentDocument.pdf_generation_error || undefined,
+        };
+      }
+
       return { success: false, error: validation.errors.join(', ') };
     }
 
-    console.log('[issueDocument] Validation passed, fetching document');
+    await ensureDocumentIdentitySnapshot(documentId, organisationId);
+
     const { data: document, error: docError } = await supabase
       .from('documents')
-      .select('base_document_id')
+      .select('id, base_document_id, version_number, locked_pdf_path, executive_summary_ai, executive_summary_author, executive_summary_mode')
       .eq('id', documentId)
+      .eq('organisation_id', organisationId)
       .single();
 
     if (docError) throw docError;
 
-    console.log('[issueDocument] Finding previously issued document in chain');
-    const { data: previousIssued, error: prevErr } = await supabase
+    logExecutiveSummarySnapshot('[issueDocument] Before issue executive summary snapshot:', document);
+
+    if (!document.locked_pdf_path) {
+      return {
+        success: false,
+        error: 'Cannot issue document until the locked issued PDF has been generated and stored.',
+      };
+    }
+
+    console.info('[issueDocument] Current version audit.', {
+      currentDocumentId: documentId,
+      baseDocumentId: document.base_document_id,
+      currentVersion: document.version_number,
+    });
+
+    const previousIssued = await findPreviousIssuedRevision(
+      { id: documentId, base_document_id: document.base_document_id, version_number: document.version_number },
+      'issueDocument'
+    );
+
+    const { data: previousIssuedVersions, error: prevErr } = await supabase
       .from('documents')
-      .select('id')
+      .select('id, version_number, issue_status')
       .eq('base_document_id', document.base_document_id)
-      .eq('issue_status', 'issued')
+      .in('issue_status', [...ISSUED_REVISION_STATUSES])
       .neq('id', documentId)
-      .order('version_number', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .lt('version_number', document.version_number || 0)
+      .is('deleted_at', null)
+      .not('status', 'in', '(archived,deleted)')
+      .order('version_number', { ascending: false });
 
     if (prevErr) throw prevErr;
 
-    // Supersede previous issued document FIRST (DB requires this)
-    if (previousIssued?.id) {
-      console.log('[issueDocument] Superseding previous issued document:', previousIssued.id);
+    // Supersede every previously issued document in the chain before issuing the new latest version.
+    if (previousIssuedVersions && previousIssuedVersions.length > 0) {
       const { error: supersedePrevError } = await supabase
         .from('documents')
         .update({
@@ -233,12 +616,14 @@ export async function issueDocument(documentId: string, userId: string, organisa
           superseded_date: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', previousIssued.id);
+        .eq('base_document_id', document.base_document_id)
+        .eq('issue_status', 'issued')
+        .neq('id', documentId)
+        .lt('version_number', document.version_number || 0);
 
       if (supersedePrevError) throw supersedePrevError;
     }
 
-    console.log('[issueDocument] Marking document as issued');
     const { error } = await supabase
       .from('documents')
       .update({
@@ -251,24 +636,86 @@ export async function issueDocument(documentId: string, userId: string, organisa
         issued_display_author_name: null,
         issued_display_author_role: null,
         issued_display_author_organisation: null,
+        executive_summary_ai: (document as ExecutiveSummarySnapshot).executive_summary_ai,
+        executive_summary_author: (document as ExecutiveSummarySnapshot).executive_summary_author,
+        executive_summary_mode: (document as ExecutiveSummarySnapshot).executive_summary_mode,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', documentId);
+      .eq('id', documentId)
+      .eq('organisation_id', organisationId);
 
     if (error) throw error;
 
-    console.log('[issueDocument] Generating change summary');
-    if (previousIssued) {
-      await generateChangeSummary(documentId, previousIssued.id, userId);
-    } else {
-      await createInitialIssueSummary(documentId, userId);
+    const { data: issuedDocument, error: issuedReloadError } = await supabase
+      .from('documents')
+      .select('id, version_number, executive_summary_ai, executive_summary_author, executive_summary_mode')
+      .eq('id', documentId)
+      .eq('organisation_id', organisationId)
+      .single();
+
+    if (issuedReloadError) throw issuedReloadError;
+
+    logExecutiveSummarySnapshot('[issueDocument] After issue executive summary snapshot:', issuedDocument);
+
+    let postIssueWarning: string | undefined;
+    try {
+      console.info('[issueDocument] Summary generation mode.', {
+        currentDocumentId: documentId,
+        currentVersion: document.version_number,
+        mode: previousIssued ? 'changes_since_last_issue' : 'initial_issue',
+        previousDocumentId: previousIssued?.id ?? null,
+        previousVersion: previousIssued?.version_number ?? null,
+        fallbackInitialIssueReason: previousIssued ? null : 'no_prior_issued_or_superseded_revision_in_chain',
+      });
+
+      const summaryResult = previousIssued
+        ? await generateChangeSummary(documentId, previousIssued.id, userId)
+        : await createInitialIssueSummary(documentId, userId);
+
+      if (summaryResult && summaryResult.success === false) {
+        postIssueWarning = summaryResult.error || 'Issue succeeded, but change summary generation failed.';
+      }
+    } catch (summaryError: unknown) {
+      postIssueWarning = getErrorMessage(summaryError, 'Issue succeeded, but change summary generation failed.');
+      console.warn('[issueDocument] Change summary failed after document was issued:', summaryError);
     }
 
-    console.log('[issueDocument] Document issued successfully');
-    return { success: true, documentId };
-  } catch (error) {
+    return {
+      success: true,
+      documentId,
+      partialSuccess: Boolean(postIssueWarning),
+      postIssueWarning,
+      warning: postIssueWarning ? `Document issued with locked PDF, but post-issue processing failed: ${postIssueWarning}` : undefined,
+    };
+  } catch (error: unknown) {
     console.error('[issueDocument] Error issuing document:', error);
-    return { success: false, error: 'Failed to issue document' };
+
+    const { data: currentDocument } = await supabase
+      .from('documents')
+      .select('id, status, issue_status, locked_pdf_path, pdf_generation_error')
+      .eq('id', documentId)
+      .eq('organisation_id', organisationId)
+      .maybeSingle();
+
+    if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+      if (!currentDocument.locked_pdf_path) {
+        return {
+          success: false,
+          error: 'Issue failed after status changed and no locked PDF is available. Contact support before continuing.',
+        };
+      }
+
+      return {
+        success: true,
+        documentId,
+        alreadyIssued: true,
+        partialSuccess: true,
+        warning: 'Document was issued with a locked PDF, but post-issue processing reported an error. Reloading the issued document state.',
+        postIssueWarning: currentDocument.pdf_generation_error || getErrorMessage(error, 'Post-issue processing failed'),
+      };
+    }
+
+    return { success: false, error: getErrorMessage(error, 'Failed to issue document') };
   }
 }
 
@@ -281,29 +728,7 @@ export async function createNewVersion(
   try {
     const { data: currentIssued, error: currentError } = await supabase
       .from('documents')
-      .select(`
-        id,
-        organisation_id,
-        base_document_id,
-        version_number,
-        title,
-        document_type,
-        assessor_name,
-        assessor_role,
-        display_author_name,
-        display_author_role,
-        display_author_organisation,
-        author_name_snapshot,
-        author_role_snapshot,
-        assessment_date,
-        issue_date,
-        review_date,
-        scope_description,
-        limitations_assumptions,
-        standards_selected,
-        enabled_modules,
-        jurisdiction
-      `)
+      .select('*')
       .eq('base_document_id', baseDocumentId)
       .eq('issue_status', 'issued')
       .order('version_number', { ascending: false })
@@ -318,9 +743,11 @@ export async function createNewVersion(
 
     const { data: existingDraft, error: draftError } = await supabase
       .from('documents')
-      .select('id')
+      .select('id, version_number, issue_status, status, deleted_at')
       .eq('base_document_id', baseDocumentId)
-      .eq('issue_status', 'draft')
+      .in('issue_status', [...ACTIVE_EDITABLE_DRAFT_ISSUE_STATUSES])
+      .is('deleted_at', null)
+      .or(ACTIVE_DRAFT_LIFECYCLE_STATUS_OR_FILTER)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -329,50 +756,52 @@ export async function createNewVersion(
 
     if (existingDraft?.id) {
       return {
-        success: true,
-        newDocumentId: existingDraft.id,
+        success: false,
+        error: EXISTING_DRAFT_VERSION_MESSAGE,
+        existingDraftDocumentId: existingDraft.id,
         newVersionNumber: existingDraft.version_number ?? (currentIssued.version_number + 1),
       };
     }
 
-    const newVersionNumber = currentIssued.version_number + 1;
-
+    const newVersionNumber = (currentIssued.version_number || 1) + 1;
     const currentDate = new Date().toISOString().slice(0, 10);
-
+    const sourceIdentity = resolveDocumentIdentity(currentIssued);
+    const carriedMeta = mergeIdentityIntoMeta(currentIssued.meta as Record<string, unknown> | null, sourceIdentity);
     const newDocData = {
-      organisation_id: organisationId,
+      ...cloneRowForInsert(currentIssued, DOCUMENT_INSERT_EXCLUDE_FIELDS),
+      organisation_id: currentIssued.organisation_id || organisationId,
       base_document_id: baseDocumentId,
       version_number: newVersionNumber,
-      title: currentIssued.title,
-      document_type: currentIssued.document_type,
-      assessor_name: currentIssued.assessor_name,
-      assessor_role: currentIssued.assessor_role,
+      site_id: currentIssued.site_id ?? sourceIdentity.siteId,
+      building_id: currentIssued.building_id ?? sourceIdentity.buildingId,
+      responsible_person: currentIssued.responsible_person ?? sourceIdentity.clientName,
+      meta: carriedMeta,
       display_author_name: currentIssued.display_author_name ?? currentIssued.assessor_name,
       display_author_role: currentIssued.display_author_role ?? currentIssued.assessor_role,
       display_author_organisation: currentIssued.display_author_organisation ?? null,
       author_name_snapshot: currentIssued.author_name_snapshot ?? currentIssued.assessor_name,
       author_role_snapshot: currentIssued.author_role_snapshot ?? currentIssued.assessor_role,
+      created_by_user_id: userId,
+      author_profile_id: userId,
       assessment_date: currentIssued.assessment_date || currentIssued.issue_date || currentDate,
-      review_date: currentIssued.review_date,
-      scope_description: currentIssued.scope_description,
-      limitations_assumptions: currentIssued.limitations_assumptions,
-      standards_selected: currentIssued.standards_selected,
-      enabled_modules: currentIssued.enabled_modules,
-      jurisdiction: currentIssued.jurisdiction,
       issue_status: 'draft' as const,
       issue_date: null,
       issued_by: null,
       status: 'draft' as const,
-      executive_summary_ai: null,
-      executive_summary_author: null,
+      is_immutable: false,
+      client_visible: false,
+      superseded_by_document_id: null,
+      superseded_date: null,
+      executive_summary_ai: currentIssued.executive_summary_ai ?? null,
+      executive_summary_author: currentIssued.executive_summary_author ?? null,
       executive_summary_mode: currentIssued.executive_summary_mode || 'ai',
-      approval_status: currentIssued.approval_status ?? 'approved',
+      ...DRAFT_APPROVAL_RESET_FIELDS,
       locked_pdf_path: null,
+      locked_pdf_checksum: null,
       locked_pdf_generated_at: null,
-      locked_pdf_size_bytes: null,      
+      locked_pdf_size_bytes: null,
+      pdf_generation_error: null,
     };
-
-    console.log('[createNewVersion] insert keys', Object.keys(newDocData), 'assessment_date=', newDocData.assessment_date, newDocData);
 
     const { data: newDocument, error: newDocError } = await supabase
       .from('documents')
@@ -384,104 +813,137 @@ export async function createNewVersion(
 
     const { data: modules, error: moduleError } = await supabase
       .from('module_instances')
-      .select('id, module_key, module_scope, data, outcome, assessor_notes, completed_at')
+      .select('*')
       .eq('document_id', currentIssued.id)
       .eq('organisation_id', organisationId);
 
     if (moduleError) throw moduleError;
 
-    if (modules && modules.length > 0) {
-      const newModules = modules.map((m) => ({
+    const moduleIdMap: Record<string, string> = {};
+    const insertedModules: AnyRow[] = [];
+
+    for (const module of modules || []) {
+      const newModuleData = {
+        ...cloneRowForInsert(module, ROW_INSERT_EXCLUDE_FIELDS),
         organisation_id: organisationId,
         document_id: newDocument.id,
-        module_key: m.module_key,
-        module_scope: m.module_scope,
-        data: m.data,
-        outcome: m.outcome,
-        assessor_notes: m.assessor_notes,
-        completed_at: m.completed_at,
-      }));
+        site_id: module.site_id ?? newDocument.site_id ?? null,
+        building_id: module.building_id ?? newDocument.building_id ?? null,
+        data: resetModuleApprovalMetadata(module.data),
+      };
 
-      const { error: moduleInsertError } = await supabase
+      const { data: insertedModule, error: moduleInsertError } = await supabase
         .from('module_instances')
-        .insert(newModules);
+        .insert([newModuleData])
+        .select('*')
+        .single();
 
       if (moduleInsertError) throw moduleInsertError;
+      if (insertedModule?.id) {
+        moduleIdMap[module.id] = insertedModule.id;
+        insertedModules.push(insertedModule);
+      }
     }
 
     const { data: actions, error: actionsError } = await supabase
       .from('actions')
-      .select(`
-        id,
-        organisation_id,
-        document_id,
-        source_document_id,
-        module_instance_id,
-        recommended_action,
-        status,
-        priority_band,
-        timescale,
-        target_date,
-        override_justification,
-        source,
-        owner_user_id,
-        origin_action_id
-      `)
+      .select('*')
       .eq('document_id', currentIssued.id)
-      .in('status', ['open', 'in_progress', 'deferred'])
+      .in('status', CARRY_FORWARD_ACTION_STATUSES)
       .is('deleted_at', null);
 
     if (actionsError) throw actionsError;
 
-    if (actions && actions.length > 0) {
-      const { data: newModuleInstances } = await supabase
-        .from('module_instances')
-        .select('id, module_key')
-        .eq('document_id', newDocument.id);
+    const actionIdMap: Record<string, string> = {};
+    for (const action of actions || []) {
+      const carriedAction = {
+        ...cloneRowForInsert(action, ROW_INSERT_EXCLUDE_FIELDS),
+        organisation_id: organisationId,
+        document_id: newDocument.id,
+        source_document_id: action.source_document_id || currentIssued.id,
+        module_instance_id: action.module_instance_id ? (moduleIdMap[action.module_instance_id] || null) : null,
+        origin_action_id: action.origin_action_id || action.id,
+        carried_from_document_id: currentIssued.id,
+        superseded_by_action_id: null,
+        superseded_at: null,
+      };
 
-      const moduleKeyToNewId: Record<string, string> = {};
-      newModuleInstances?.forEach((m) => {
-        moduleKeyToNewId[m.module_key] = m.id;
-      });
-
-      const { data: oldModuleInstances } = await supabase
-        .from('module_instances')
-        .select('id, module_key')
-        .eq('document_id', currentIssued.id);
-
-      const oldModuleIdToKey: Record<string, string> = {};
-      oldModuleInstances?.forEach((m) => {
-        oldModuleIdToKey[m.id] = m.module_key;
-      });
-
-      const carriedActions = actions.map((action) => {
-        const oldModuleKey = oldModuleIdToKey[action.module_instance_id];
-        const newModuleInstanceId = oldModuleKey ? moduleKeyToNewId[oldModuleKey] : action.module_instance_id;
-
-        return {
-          organisation_id: organisationId,
-          document_id: newDocument.id,
-          source_document_id: action.source_document_id || currentIssued.id,
-          module_instance_id: newModuleInstanceId,
-          recommended_action: action.recommended_action,
-          status: action.status,
-          priority_band: action.priority_band,
-          timescale: action.timescale,
-          target_date: action.target_date,
-          override_justification: action.override_justification,
-          source: action.source,
-          owner_user_id: action.owner_user_id,
-          origin_action_id: action.origin_action_id || action.id,
-          carried_from_document_id: currentIssued.id,
-        };
-      });
-
-      const { error: actionsInsertError } = await supabase
+      const { data: insertedAction, error: actionsInsertError } = await supabase
         .from('actions')
-        .insert(carriedActions);
+        .insert([carriedAction])
+        .select('id')
+        .single();
 
       if (actionsInsertError) {
-        console.error('Error carrying forward actions:', actionsInsertError);
+        console.error('Error carrying forward action:', actionsInsertError);
+        continue;
+      }
+      if (insertedAction?.id) actionIdMap[action.id] = insertedAction.id;
+    }
+
+    const { data: actionSourceLinks, error: actionSourceLinksError } = await supabase
+      .from('action_source_links')
+      .select('*')
+      .eq('document_id', currentIssued.id)
+      .is('deleted_at', null);
+
+    if (actionSourceLinksError) throw actionSourceLinksError;
+
+    for (const link of actionSourceLinks || []) {
+      const remappedActionId = actionIdMap[link.action_id];
+      const remappedModuleInstanceId = moduleIdMap[link.module_instance_id];
+
+      if (!remappedActionId || !remappedModuleInstanceId) {
+        console.warn('[createNewVersion] Skipping action source link carry-forward due to missing remap', {
+          linkId: link.id,
+          actionId: link.action_id,
+          moduleInstanceId: link.module_instance_id,
+        });
+        continue;
+      }
+
+      const carriedLink = {
+        ...cloneRowForInsert(link, ROW_INSERT_EXCLUDE_FIELDS),
+        organisation_id: organisationId,
+        document_id: newDocument.id,
+        module_instance_id: remappedModuleInstanceId,
+        action_id: remappedActionId,
+        carried_from_link_id: link.id,
+        deleted_at: null,
+      };
+
+      const { error: sourceLinkInsertError } = await supabase
+        .from('action_source_links')
+        .insert([carriedLink]);
+
+      if (sourceLinkInsertError) {
+        console.error('Error carrying forward action source link:', sourceLinkInsertError);
+      }
+    }
+
+    const { data: recommendations, error: recommendationsError } = await supabase
+      .from('re_recommendations')
+      .select('*')
+      .eq('document_id', currentIssued.id)
+      .in('status', CARRY_FORWARD_RECOMMENDATION_STATUSES)
+      .or('is_suppressed.is.false,is_suppressed.is.null');
+
+    if (recommendationsError) throw recommendationsError;
+
+    for (const recommendation of recommendations || []) {
+      const carriedRecommendation = {
+        ...cloneRowForInsert(recommendation, ROW_INSERT_EXCLUDE_FIELDS),
+        document_id: newDocument.id,
+        module_instance_id: recommendation.module_instance_id ? (moduleIdMap[recommendation.module_instance_id] || null) : null,
+        created_by: userId,
+      };
+
+      const { error: recommendationInsertError } = await supabase
+        .from('re_recommendations')
+        .insert([carriedRecommendation]);
+
+      if (recommendationInsertError) {
+        console.error('Error carrying forward RE recommendation:', recommendationInsertError);
       }
     }
 
@@ -491,7 +953,9 @@ export async function createNewVersion(
           currentIssued.id,
           newDocument.id,
           baseDocumentId,
-          organisationId
+          organisationId,
+          moduleIdMap,
+          actionIdMap
         );
 
         if (!evidenceResult.success) {
@@ -502,20 +966,31 @@ export async function createNewVersion(
       }
     }
 
-    try {
-      await createInitialIssueSummary(newDocument.id, userId);
-    } catch (summaryError) {
-      console.error('Error creating initial summary (non-blocking):', summaryError);
-    }
+    await logCreateNewVersionCarryForwardAudit({
+      sourceDocument: currentIssued,
+      newDocument,
+      sourceModules: modules || [],
+      newModules: insertedModules,
+    });
+
+    console.info('[createNewVersion] Summary generation deferred until issue.', {
+      newDocumentId: newDocument.id,
+      baseDocumentId,
+      newVersionNumber,
+      reason: 'draft_rows_must_not_create_initial_issue_or_change_summary_records',
+    });
 
     return {
       success: true,
       newDocumentId: newDocument.id,
       newVersionNumber: newVersionNumber,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating new version:', error);
-    const errorMessage = error?.message || 'Failed to create new version';
+    if (isDuplicateDraftVersionError(error)) {
+      return { success: false, error: EXISTING_DRAFT_VERSION_MESSAGE };
+    }
+    const errorMessage = (error as MaybeErrorWithMessage)?.message || 'Failed to create new version';
     return { success: false, error: errorMessage };
   }
 }
@@ -554,6 +1029,9 @@ export async function getDocumentVersionHistory(baseDocumentId: string): Promise
       .from('documents')
       .select('*')
       .eq('base_document_id', baseDocumentId)
+      .in('issue_status', [...ISSUED_REVISION_STATUSES])
+      .is('deleted_at', null)
+      .not('status', 'in', '(archived,deleted)')
       .order('version_number', { ascending: false });
 
     if (error) throw error;
@@ -568,12 +1046,12 @@ export async function canEditDocument(documentId: string): Promise<boolean> {
   try {
     const { data, error } = await supabase
       .from('documents')
-      .select('issue_status')
+      .select('issue_status, status, deleted_at')
       .eq('id', documentId)
       .single();
 
     if (error) throw error;
-    return data.issue_status === 'draft';
+    return isActiveEditableDraftVersion(data);
   } catch (error) {
     console.error('Error checking document edit permission:', error);
     return false;

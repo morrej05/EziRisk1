@@ -157,7 +157,7 @@ export default function VersionHistoryModal({
                           )}
                           <p>
                             <span className="font-medium">Type:</span>{' '}
-                            {version.document_type.replace('_', ' ').toUpperCase()}
+                            {version.document_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </p>
                         </div>
                       </div>

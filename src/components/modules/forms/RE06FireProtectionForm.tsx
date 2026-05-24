@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, Info, Building as BuildingIcon, TrendingUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import {
   generateFireProtectionRecommendations,
   getBuildingRecommendations,
@@ -27,6 +28,7 @@ interface Document {
   id: string;
   title: string;
   document_type: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -465,6 +467,7 @@ export default function RE06FireProtectionForm({
   document,
   onSaved,
 }: RE06FireProtectionFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -658,7 +661,7 @@ export default function RE06FireProtectionForm({
 
 
   const saveData = useCallback(async () => {
-    if (saving) return;
+    if (isLocked || saving) return;
 
     setSaving(true);
     setSaveError(null);
@@ -1040,7 +1043,7 @@ export default function RE06FireProtectionForm({
           </div>
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-slate-900">Engineering Assessment (Primary)</h3>
-            <p className="text-sm text-slate-600">This is the only scoring layer that drives RE-04 overall score. Scores of 4 are intended to be realistically achievable for well-managed normal risks, while 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
+            <p className="text-sm text-slate-600">This is the only scoring layer that drives RE-05 overall score. Scores of 4 are intended to be realistically achievable for well-managed normal risks, while 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
           </div>
         </div>
 
@@ -1832,7 +1835,7 @@ export default function RE06FireProtectionForm({
 
       <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
         <h3 className="text-base font-semibold text-slate-900">Site Water Supply Inputs</h3>
-        <p className="text-xs text-slate-600">Site-level inputs apply across all buildings in this RE-04 assessment.</p>
+        <p className="text-xs text-slate-600">Site-level inputs apply across all buildings in this RE-05 assessment.</p>
 
         <div>
           <h4 className="text-sm font-medium text-slate-700 mb-2">Water supply details</h4>
@@ -2061,7 +2064,7 @@ export default function RE06FireProtectionForm({
             ? 'Saving fire protection assessment…'
             : lastSavedAt
             ? `Last saved at ${lastSavedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
-            : 'Save to persist RE-04 fire protection updates and recommendation lifecycle changes.'
+            : 'Save to persist RE-05 fire protection updates and recommendation lifecycle changes.'
         }
       />
     </>

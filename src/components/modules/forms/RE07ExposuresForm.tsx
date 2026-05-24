@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import ModuleActions from '../ModuleActions';
 import FloatingSaveBar from './FloatingSaveBar';
@@ -14,6 +15,7 @@ interface Document {
   id: string;
   title: string;
   document_type: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -59,6 +61,7 @@ function slugifyKey(input: string): string {
 }
 
 export default function RE07ExposuresForm({ moduleInstance, document, onSaved }: RE07ExposuresFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
 
@@ -287,6 +290,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const exposuresData = {

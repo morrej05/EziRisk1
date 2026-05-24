@@ -33,6 +33,9 @@ export interface BuildingInput {
   smoke_venting_coverage: string;
 
   roof_area_m2?: number | null;
+  /** Total floor area / Gross Internal Area (GIA) in m². Entered directly — do not infer from roof × storeys. */
+  total_floor_area_m2?: number | null;
+  /** Mezzanine / upper floor area in m². Used for combustible material scoring, not as a proxy for GIA. */
   mezzanine_area_m2?: number | null;
 
   sprinklers_present: boolean;
@@ -69,6 +72,7 @@ export function createEmptyBuilding(documentId: string, ref = 'B1'): BuildingInp
     compartmentation_minutes: null,
 
     roof_area_m2: null,
+    total_floor_area_m2: null,
     mezzanine_area_m2: null,
 
     roof_type: 'unknown',

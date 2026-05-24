@@ -7,6 +7,7 @@ import { updateDocumentMeta } from '../../../lib/documents/updateDocumentMeta';
 import { useAuth } from '../../../contexts/AuthContext';
 import { normalizeJurisdiction, getStandardsOptions } from '../../../lib/jurisdictions';
 import { resolveSectionAssessmentOutcome, resolveSectionAssessmentNotes } from '../../../utils/moduleAssessment';
+import { resolveDisplayName } from '../../../utils/pdfIdentity';
 
 interface Document {
   id: string;
@@ -260,7 +261,7 @@ export default function A1DocumentControlForm({
                 </label>
                 <input
                   type="text"
-                  value={user?.name || user?.email || 'Authenticated User'}
+                  value={resolveDisplayName(user) || 'Authenticated User'}
                   disabled
                   className="w-full px-3 py-2 border border-neutral-300 rounded-lg bg-neutral-100 text-neutral-700"
                 />

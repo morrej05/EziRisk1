@@ -107,17 +107,21 @@ Deno.serve(async (req: Request) => {
       return respond(404, { error: "Organisation not found" });
     }
 
-    if (!org.branding_logo_path) {
+    const normalizedPath = org.branding_logo_path?.startsWith("org-assets/")
+      ? org.branding_logo_path.slice("org-assets/".length)
+      : org.branding_logo_path;
+
+    if (!normalizedPath) {
       console.info("[delete-org-logo] no branding_logo_path", { organisation_id, userId: user.id });
     } else {
       const { error: deleteError } = await serviceClient.storage
         .from("org-assets")
-        .remove([org.branding_logo_path]);
+        .remove([normalizedPath]);
 
       if (deleteError) {
         console.error("[delete-org-logo] storage remove failed", {
           organisation_id,
-          path: org.branding_logo_path,
+          path: normalizedPath,
           message: deleteError.message,
         });
         return respond(500, { error: `Failed to delete logo from storage: ${deleteError.message}` });

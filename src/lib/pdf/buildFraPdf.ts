@@ -1,8 +1,9 @@
-import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
-import { getModuleName } from '../modules/moduleCatalog';
+import { PDFDocument, rgb, StandardFonts, PDFPage, PDFFont } from 'pdf-lib';
+import { getFraOutcomeLabel, getModuleName } from '../modules/moduleCatalog';
 import { listAttachments, type Attachment } from '../supabase/attachments';
 import { type Jurisdiction, getJurisdictionConfig, getJurisdictionLabel } from '../jurisdictions';
 import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
+import { getRecommendationFindingText } from '../actions/recommendationDetail';
 import {
   deriveExecutiveOutcome,
   checkMaterialDeficiency,
@@ -31,8 +32,6 @@ import {
   wrapText,
   formatDate,
   getRatingColor,
-  getOutcomeColor,
-  getOutcomeLabel,
   getPriorityColor,
   drawDraftWatermark,
   drawPlanWatermark,
@@ -89,14 +88,13 @@ import {
   drawModuleContent,
   renderFilteredModuleData,
   drawActionRegister,
-  drawAssumptionsAndLimitations,
   drawRegulatoryFramework,
   drawResponsiblePersonDuties,
   drawAttachmentsIndex,
   drawScope,
-  drawLimitations,
   drawTableOfContents,
   drawCleanAuditPage1,
+  drawFraOutcomeTag,
 } from './fra/fraCoreDraw';
 
 import {
@@ -117,6 +115,158 @@ import {
 function getDisplaySectionNumber(sectionId: number): number {
   const section = FRA_REPORT_STRUCTURE.find(s => s.id === sectionId);
   return section?.displayNumber ?? section?.id ?? sectionId;
+}
+
+function getTextValue(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return sanitizePdfText(value.trim());
+  }
+  return null;
+}
+
+function drawFrontMatterHeading(page: PDFPage, fontBold: PDFFont, title: string, yPosition: number): number {
+  page.drawText(title, {
+    x: MARGIN,
+    y: yPosition,
+    size: 22,
+    font: fontBold,
+    color: rgb(0.12, 0.16, 0.22),
+  });
+  page.drawLine({
+    start: { x: MARGIN, y: yPosition - 8 },
+    end: { x: MARGIN + CONTENT_WIDTH, y: yPosition - 8 },
+    thickness: 1,
+    color: rgb(0.8, 0.82, 0.85),
+  });
+  return yPosition - 32;
+}
+
+function drawFrontMatterBlock(
+  page: PDFPage,
+  font: PDFFont,
+  fontBold: PDFFont,
+  heading: string,
+  body: string | string[],
+  yPosition: number
+): number {
+  const bodyItems = Array.isArray(body) ? body : [body];
+  page.drawText(heading, {
+    x: MARGIN,
+    y: yPosition,
+    size: 12,
+    font: fontBold,
+    color: rgb(0.12, 0.16, 0.22),
+  });
+  yPosition -= 18;
+
+  for (const item of bodyItems) {
+    const lines = wrapText(sanitizePdfText(item), CONTENT_WIDTH, 10, font);
+    for (const line of lines) {
+      page.drawText(line, {
+        x: MARGIN,
+        y: yPosition,
+        size: 10,
+        font,
+        color: rgb(0.18, 0.22, 0.28),
+      });
+      yPosition -= 14;
+    }
+    yPosition -= 5;
+  }
+
+  return yPosition - 8;
+}
+
+type FrontMatterDocument = Document & Record<string, unknown>;
+
+type FrontMatterData = Record<string, unknown>;
+
+function fieldText(source: FrontMatterData | FrontMatterDocument, key: string): string | null {
+  const value = source[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function drawFraConsultancyFrontMatter(
+  pdfDoc: PDFDocument,
+  document: Document,
+  moduleInstances: ModuleInstance[],
+  organisation: Organisation,
+  fonts: { bold: PDFFont; regular: PDFFont },
+  isDraft: boolean,
+  totalPages: PDFPage[]
+): void {
+  const { page } = addNewPage(pdfDoc, isDraft, totalPages);
+  let yPosition = PAGE_TOP_Y;
+  const a1Data: FrontMatterData = moduleInstances.find((m) => m.module_key === 'A1_DOC_CONTROL')?.data || {};
+  const fra4Data: FrontMatterData = moduleInstances.find((m) => m.module_key === 'FRA_4_PASSIVE_PROTECTION')?.data || {};
+  const jurisdictionConfig = getJurisdictionConfig(document.jurisdiction || 'england_wales');
+  const jurisdictionLabel = getJurisdictionLabel(jurisdictionConfig.code);
+  const frontMatterDocument = document as FrontMatterDocument;
+  const version = frontMatterDocument.version_number || document.version || 1;
+  const issueDate = fieldText(frontMatterDocument, 'issue_date') || document.assessment_date || new Date().toISOString();
+  const assessorName = getTextValue(document.assessor_name, fieldText(frontMatterDocument, 'display_author_name')) || '-';
+  const assessorRole = getTextValue(document.assessor_role, fieldText(frontMatterDocument, 'display_author_role'));
+  const assessorOrganisation = getTextValue(fieldText(frontMatterDocument, 'display_author_organisation'), organisation.name);
+  const scopeDescription = getTextValue(
+    document.scope_description,
+    fieldText(a1Data, 'scope_description'),
+    fieldText(a1Data, 'scopeDescription'),
+    fieldText(a1Data, 'scope')
+  ) || 'The assessment scope is as described in the document control information and detailed assessment sections.';
+  const limitations = getTextValue(
+    document.limitations_assumptions,
+    fieldText(a1Data, 'limitations_assumptions'),
+    fieldText(a1Data, 'limitationsAssumptions'),
+    fieldText(a1Data, 'limitations')
+  ) || 'No additional limitations were recorded in the document fields. The assessment remains limited to the information available at the time of inspection/report issue.';
+  const assumptions = getTextValue(
+    fieldText(a1Data, 'assumptions'),
+    fieldText(a1Data, 'key_assumptions'),
+    fieldText(fra4Data, 'key_assumptions'),
+    document.limitations_assumptions
+  ) || 'No separate assumptions were recorded in the document fields.';
+  const selectedStandards = Array.isArray(document.standards_selected) && document.standards_selected.length > 0
+    ? document.standards_selected.filter(Boolean).join('; ')
+    : null;
+
+  yPosition = drawFrontMatterHeading(page, fonts.bold, 'Assessment Basis and Scope', yPosition);
+  yPosition = drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Scope of Assessment', [
+    scopeDescription,
+    `Jurisdiction: ${jurisdictionLabel}. Client/responsible person: ${getTextValue(document.responsible_person) || 'Not recorded'}.`,
+  ], yPosition);
+  yPosition = drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Methodology', [
+    'The fire risk assessment has been structured with reference to recognised fire risk assessment methodologies and applicable jurisdictional guidance. The assessment records observed fire hazards, persons at risk, existing controls, significant findings and prioritised recommendations based on information available during the assessment process.',
+    'The report should be read together with the action plan, supporting evidence and any stated limitations before decisions are made on remedial works or operational controls.',
+  ], yPosition);
+  yPosition = drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Standards / Guidance Basis', [
+    `Applicable jurisdictional basis: ${jurisdictionConfig.primaryLegislation.join('; ')}.`,
+    selectedStandards ? `Document-selected guidance/standards: ${selectedStandards}.` : 'No additional document-selected standards were recorded.',
+    'References to standards or guidance are used as assessment context only and should not be read as a certification of compliance with any specific standard.',
+  ], yPosition);
+  drawFrontMatterBlock(page, fonts.regular, fonts.bold, 'Assumptions & Limitations', [
+    `Assumptions: ${assumptions}`,
+    `Limitations: ${limitations}`,
+  ], yPosition);
+
+  const declarationPage = addNewPage(pdfDoc, isDraft, totalPages).page;
+  yPosition = PAGE_TOP_Y;
+  yPosition = drawFrontMatterHeading(declarationPage, fonts.bold, 'Assessor Declaration', yPosition);
+  const declarationItems = [
+    `Assessor: ${assessorName}`,
+    assessorRole ? `Role: ${assessorRole}` : null,
+    assessorOrganisation ? `Organisation: ${assessorOrganisation}` : null,
+    `Issue date: ${formatDate(issueDate)}`,
+    `Report version: ${version}.0`,
+    'Declaration: This assessment reflects the information available at the time of inspection/report issue and the conditions recorded within the stated scope of assessment.',
+    'Limitations acknowledgement: The findings and recommendations should be interpreted subject to the assumptions, limitations, exclusions and evidence availability recorded in this report.',
+  ].filter(Boolean) as string[];
+
+  const reviewerName = getTextValue(fieldText(frontMatterDocument, 'reviewer_name'), fieldText(a1Data, 'reviewerName'), fieldText(a1Data, 'reviewer_name'));
+  const approverName = getTextValue(fieldText(frontMatterDocument, 'approver_name'), fieldText(a1Data, 'approverName'), fieldText(a1Data, 'approver_name'), fieldText(frontMatterDocument, 'approved_by_name'));
+  if (reviewerName) declarationItems.push(`Reviewer: ${reviewerName}`);
+  if (approverName) declarationItems.push(`Approver: ${approverName}`);
+
+  drawFrontMatterBlock(declarationPage, fonts.regular, fonts.bold, 'Professional Declaration', declarationItems, yPosition);
 }
 
 /**
@@ -179,7 +329,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
   try {
     attachments = await listAttachments(document.id);
     } catch (error) {
-    console.warn('[PDF FRA] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[PDF FRA] Failed to fetch attachments:', error);
   }
 
   // Build evidence reference map for consistent E-00X numbering
@@ -243,7 +393,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
     };
   });
 
-  console.log('[PDF FRA] Creating PDF document and embedding fonts');
+  if (import.meta.env.DEV) console.log('[PDF FRA] Creating PDF document and embedding fonts');
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -285,6 +435,8 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
   const buildingProfileModule = moduleInstances.find((m) => m.module_key === 'A2_BUILDING_PROFILE');
   const documentControlModule = moduleInstances.find((m) => m.module_key === 'A1_DOC_CONTROL');
 
+  drawFraConsultancyFrontMatter(pdfDoc, document, moduleInstances, organisation, { bold: fontBold, regular: font }, isDraft, totalPages);
+
   // B) INITIALISE CURSOR ONCE, BEFORE ANY USE
   // ✅ Ensure we have a working cursor before any rendering logic
   if (!page || typeof yPosition !== 'number') {
@@ -309,17 +461,12 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
         moduleInstances,
       });
 
-      const priorityActions = actions
-        .filter((a) => ['P1', 'P2', 'P3'].includes(a.priority_band) && (a.status === 'open' || a.status === 'in_progress'))
-        .sort(compareActionsByDisplayReference);
-
       const riskSummaryResult = addNewPage(pdfDoc, isDraft, totalPages);
       page = riskSummaryResult.page;
       yPosition = PAGE_TOP_Y;
       drawCleanAuditPage1(
         page,
         scoringResult,
-        priorityActions,
         font,
         fontBold,
         document,
@@ -328,7 +475,7 @@ export async function buildFraPdf(options: BuildPdfOptions): Promise<Uint8Array>
       );
 
     } catch (error) {
-      console.warn('[PDF FRA] Failed to generate risk summary page:', error);
+      if (import.meta.env.DEV) console.warn('[PDF FRA] Failed to generate risk summary page:', error);
     }
   }
 
@@ -338,18 +485,18 @@ page = r.page;
 yPosition = PAGE_TOP_Y;
 drawTableOfContents(page, font, fontBold);
 
-  // Add "Using This Report" guide section (after TOC, before exec summary)
-  drawUsingThisReportSection(pdfDoc, font, fontBold, isDraft, totalPages);
-
   addExecutiveSummaryPages(
     pdfDoc,
     isDraft,
     totalPages,
-    (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none',
+    document.executive_summary_mode,
     document.executive_summary_ai,
     document.executive_summary_author,
     { bold: fontBold, regular: font }
   );
+
+  // Add "Using This Report" guide section (after exec summary, before action plan)
+  drawUsingThisReportSection(pdfDoc, font, fontBold, isDraft, totalPages);
 
   // Add Assurance Gaps block if quality issues detected (after exec summary)
   if (qualityResult.assuranceGaps.length > 0) {
@@ -405,6 +552,12 @@ drawTableOfContents(page, font, fontBold);
     id: a.id,
     reference_number: a.reference_number, // Deterministic display ref (FRA-YYYY-001, FRA-YYYY-002...) from DB
     recommended_action: a.recommended_action,
+    title: a.title || null,
+    summary: a.summary || null,
+    short_description: a.short_description || null,
+    recommendation_detail: a.recommendation_detail || null,
+    trigger_text: a.trigger_text || null,
+    target_date: a.target_date || null,
     priority_band: a.priority_band,
     status: a.status,
     section_reference: a.section_reference, // Derived from FRA_REPORT_STRUCTURE
@@ -441,13 +594,6 @@ drawTableOfContents(page, font, fontBold);
   //   yPosition = PAGE_TOP_Y;
   //   ({ page, yPosition } = drawScope({ page, yPosition }, document.scope_description, font, fontBold, pdfDoc, isDraft, totalPages));
   // }
-
-  if (document.limitations_assumptions) {
-    const limResult = addNewPage(pdfDoc, isDraft, totalPages);
-    page = limResult.page;
-    yPosition = PAGE_TOP_Y;
-    ({ page, yPosition } = drawLimitations({ page, yPosition }, document.limitations_assumptions, font, fontBold, pdfDoc, isDraft, totalPages));
-  }
 
   // Section-based rendering using fixed PAS-79 skeleton
   const fra4Module = moduleInstances.find((m) =>
@@ -702,10 +848,9 @@ if (section.id === 5) {
     // Special case: Section 13 (Significant Findings)
     if (section.id === 13) {
       if (fra4Module) {
-        // Filter actions to only those belonging to FRA modules (in moduleToSectionMap)
-        // This excludes actions from FSD, DSEAR, or other non-FRA modules
-        const fraModuleIds = Array.from(moduleToSectionMap.keys());
-        const section13Actions = actionsWithRefs.filter(a => fraModuleIds.includes(a.module_instance_id));
+        // Use the same document-scoped, non-deleted action set that powers the All actions register.
+        // This also preserves draft/current actions that are linked only at document level.
+        const section13Actions = actionsWithRefs;
 
         const section13Result = drawCleanAuditSection13({
           page: cursor.page,
@@ -804,7 +949,7 @@ if (section.id === 5) {
       // Outcome badge if available
       const outcome = modules[0]?.outcome;
       if (outcome) {
-        const outcomeLabel = getOutcomeLabel(outcome);
+        const outcomeLabel = getFraOutcomeLabel(modules[0]?.data?.section_assessment_outcome || outcome);
         page.drawText(`  • Outcome: ${outcomeLabel}`, {
           x: MARGIN + 20,
           y: yPosition,
@@ -845,6 +990,12 @@ if (section.id === 5) {
       id: action.id,
       reference_number: action.reference_number || null,
       recommended_action: action.recommended_action,
+      title: action.title || null,
+      summary: action.summary || null,
+      short_description: action.short_description || null,
+      recommendation_detail: action.recommendation_detail || null,
+      trigger_text: action.trigger_text || null,
+      target_date: action.target_date || null,
       priority_band: action.priority_band,
       status: action.status,
       source: action.source, // Needed for deriveSystemActionTitle
@@ -862,12 +1013,12 @@ if (section.id === 5) {
       totalPages
     );
   } else {
+    // Start action register on a fresh page (mirrors the issued-mode path above)
     const resultLI = addNewPage(pdfDoc, isDraft, totalPages);
     page = resultLI.page;
     yPosition = PAGE_TOP_Y;
-    yPosition = drawLikelihoodConsequenceExplanation(page, font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
 
-    console.log('[PDF] actions sample (before register)', (actionsWithRefs || []).slice(0,3).map(a => ({
+    if (import.meta.env.DEV) console.log('[PDF] actions sample (before register)', (actionsWithRefs || []).slice(0,3).map(a => ({
       id: a.id,
       source: a.source,
       ref: a.reference_number,
@@ -878,13 +1029,9 @@ if (section.id === 5) {
   }
 
 // --- APPENDICES ---
-// Goal:
-// 1) Action Register stands alone (no forced blank pre-page).
-// 2) Attachments & Evidence Index ALWAYS starts on a fresh page.
-// 3) Assumptions & Limitations follows on the SAME page as Attachments if there is space,
-//    otherwise it starts a new page.
-
-const ASSUMPTIONS_MIN = 160; // header + a few lines (tune if needed)
+// Attachments & Evidence Index ALWAYS starts on a fresh page.
+// Assumptions & Limitations are rendered once only in the Assessment Basis and Scope
+// front-matter section (drawFraConsultancyFrontMatter) — not repeated here.
 
 if (attachments.length > 0) {
   // Start attachments on a fresh page (appendix-style)
@@ -892,39 +1039,11 @@ if (attachments.length > 0) {
   page = attStart.page;
   yPosition = PAGE_TOP_Y;
 
-  ({ page, yPosition } = drawAttachmentsIndex(
+  ({ page, yPosition } = await drawAttachmentsIndex(
     { page, yPosition },
     attachments,
     moduleInstances,
     actions,
-    font,
-    fontBold,
-    pdfDoc,
-    isDraft,
-    totalPages
-  ));
-
-  // Try to keep Assumptions & Limitations on the same page as the attachments index
-  ({ page, yPosition } = ensureSpace(ASSUMPTIONS_MIN, page, yPosition, pdfDoc, isDraft, totalPages));
-
-  ({ page, yPosition } = drawAssumptionsAndLimitations(
-    { page, yPosition },
-    document,
-    fra4Module,
-    font,
-    fontBold,
-    pdfDoc,
-    isDraft,
-    totalPages
-  ));
-} else {
-  // No attachments: render Assumptions & Limitations as normal (no attempt to share)
-  ({ page, yPosition } = ensureSpace(ASSUMPTIONS_MIN, page, yPosition, pdfDoc, isDraft, totalPages));
-
-  ({ page, yPosition } = drawAssumptionsAndLimitations(
-    { page, yPosition },
-    document,
-    fra4Module,
     font,
     fontBold,
     pdfDoc,
@@ -941,7 +1060,7 @@ if (attachments.length > 0) {
   });
   const versionNum = (document as any).version_number ?? document.version ?? 1;
   const footerReportTitle = getReportFooterTitle(document.document_type, document.title);
-  const footerText = `FRA Report — ${footerReportTitle} —     v${versionNum}.0 — Generated ${today}`;
+  const footerText = `FRA Report — ${footerReportTitle} — v${versionNum}.0 — Generated ${today}`;
 
   const startPageForFooters = isIssuedMode ? 2 : 1;
   for (let i = startPageForFooters; i < totalPages.length; i++) {
@@ -1031,7 +1150,7 @@ function drawRiskSummaryPage(
       color: PDF_THEME.colours.risk.medium.bg,
     });
 
-    page.drawText('PROVISIONAL ASSESSMENT', {
+    page.drawText('Provisional Assessment', {
       x: MARGIN + 10,
       y: yPosition - 15,
       size: 12,
@@ -1224,14 +1343,14 @@ function drawCoverPage(
 
   const leftColumn = [
     ['Assessment Date:', formatDate(document.assessment_date)],
-    ['Assessor:', document.assessor_name || '—'],
+    ['Assessor:', document.assessor_name || 'Not yet recorded'],
     ['Version:', `v${document.version}`],
   ];
 
   const rightColumn = [
     ['Jurisdiction:', jurisdictionName],
-    ['Responsible Person:', document.responsible_person || '—'],
-    ['Review Date:', document.review_date ? formatDate(document.review_date) : '—'],
+    ['Responsible Person:', document.responsible_person || 'Not yet recorded'],
+    ['Review Date:', document.review_date ? formatDate(document.review_date) : 'No review date set'],
   ];
 
   // Draw left column
@@ -1301,7 +1420,7 @@ function drawExecutiveSummary(
 ): { page: PDFPage; yPosition: number } {
   let { page, yPosition } = cursor;
   yPosition -= 20;
-  page.drawText('EXECUTIVE SUMMARY', {
+  page.drawText('Executive Summary', {
     x: MARGIN,
     y: yPosition,
     size: 18,
@@ -1383,7 +1502,7 @@ page.drawText(outcomeLabel, {
       yPosition = PAGE_TOP_Y;
     }
 
-    page.drawText('ASSESSOR OVERRIDE APPLIED', {
+    page.drawText('Assessor Override Applied', {
       x: MARGIN,
       y: yPosition,
       size: 10,
@@ -1420,7 +1539,7 @@ page.drawText(outcomeLabel, {
       yPosition = PAGE_TOP_Y;
     }
 
-    const warningText = 'Material fire safety deficiencies have been identified which require urgent attention.';
+    const warningText = 'Significant fire safety deficiencies have been identified which require urgent attention.';
     page.drawText(warningText, {
       x: MARGIN,
       y: yPosition,
@@ -1432,45 +1551,50 @@ page.drawText(outcomeLabel, {
     yPosition -= 25;
   }
 
-  const p1OpenCount = openActions.filter((a) => a.priority_band === 'P1').length;
-  const p2Actions = openActions.filter((a) => a.priority_band === 'P2').length;
+  const priorityActionCounts = {
+    P1: openActions.filter((a) => a.priority_band === 'P1').length,
+    P2: openActions.filter((a) => a.priority_band === 'P2').length,
+    P3: openActions.filter((a) => a.priority_band === 'P3').length,
+    P4: openActions.filter((a) => a.priority_band === 'P4').length,
+  };
+  const hasPriorityActions = Object.values(priorityActionCounts).some((count) => count > 0);
 
-  page.drawText('Priority Actions Summary:', {
-    x: MARGIN,
-    y: yPosition,
-    size: 12,
-    font: fontBold,
-    color: rgb(0, 0, 0),
-  });
+  if (hasPriorityActions) {
+    if (yPosition < MARGIN + 120) {
+      const result = addNewPage(pdfDoc, isDraft, totalPages);
+      page = result.page;
+      yPosition = PAGE_TOP_Y;
+    }
 
-  yPosition -= 22;
-  page.drawText(`P1 (Immediate): ${p1OpenCount}`, {
-    x: MARGIN + 10,
-    y: yPosition,
-    size: 11,
-    font,
-    color: PDF_THEME.colours.risk.high.fg,
-  });
+    page.drawText('Priority Actions Summary', {
+      x: MARGIN,
+      y: yPosition,
+      size: 12,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
 
-  yPosition -= 18;
-  page.drawText(`P2 (Urgent): ${p2Actions}`, {
-    x: MARGIN + 10,
-    y: yPosition,
-    size: 11,
-    font,
-    color: PDF_THEME.colours.risk.medium.fg,
-  });
+    const prioritySummaryRows = [
+      { label: 'P1 Immediate', count: priorityActionCounts.P1, color: PDF_THEME.colours.risk.high.fg },
+      { label: 'P2 Urgent', count: priorityActionCounts.P2, color: PDF_THEME.colours.risk.medium.fg },
+      { label: 'P3 Planned', count: priorityActionCounts.P3, color: PDF_THEME.colours.risk.medium.fg },
+      { label: 'P4 Improvement', count: priorityActionCounts.P4, color: rgb(0.2, 0.5, 0.8) },
+    ];
 
-  yPosition -= 18;
-  page.drawText(`Total Open Actions: ${openActions.length}`, {
-    x: MARGIN + 10,
-    y: yPosition,
-    size: 11,
-    font,
-    color: rgb(0, 0, 0),
-  });
+    yPosition -= 22;
+    for (const row of prioritySummaryRows) {
+      page.drawText(`${row.label}: ${row.count}`, {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 11,
+        font,
+        color: row.color,
+      });
+      yPosition -= 18;
+    }
 
-  yPosition -= 30;
+    yPosition -= 12;
+  }
 
   // Derive emergency lighting presence from Section 7 owner module (via helper)
   // Single source of truth for EL system existence across all SCS/reliance calculations
@@ -1527,7 +1651,7 @@ page.drawText(outcomeLabel, {
 
     for (let i = 0; i < topActions.length; i++) {
       const action = topActions[i];
-      const actionText = action.recommended_action || '(No action text)';
+      const actionText = getRecommendationFindingText(action) || '(No action text)';
       const truncatedText = actionText.length > 100 ? actionText.substring(0, 100) + '...' : actionText;
 
       if (yPosition < MARGIN + 80) {
@@ -2007,36 +2131,10 @@ function drawModuleSummary(
   yPosition -= 25;
 
   if (module.outcome) {
-    const outcomeLabel = getOutcomeLabel(module.outcome);
-    const outcomeColor = getOutcomeColor(module.outcome);
+    const outcomeLabel = getFraOutcomeLabel(module.data?.section_assessment_outcome || module.outcome);
 
-    page.drawText('Outcome:', {
-      x: MARGIN,
-      y: yPosition,
-      size: 11,
-      font: fontBold,
-      color: rgb(0, 0, 0),
-    });
-    
-    // Light tag (not a slab)
-    page.drawRectangle({
-      x: MARGIN + 70,
-      y: yPosition - 4,
-      width: 140,
-      height: 14,
-      color: rgb(0.93, 0.93, 0.93),
-      borderColor: rgb(0.80, 0.80, 0.80),
-      borderWidth: 0.5,
-    });
-    
-    page.drawText(outcomeLabel, {
-      x: MARGIN + 76,
-      y: yPosition - 1,
-      size: 10,
-      font: fontBold,
-      color: rgb(0.25, 0.25, 0.25),
-    });
-    
+    drawFraOutcomeTag({ page, yPosition, outcomeLabel, fontBold });
+
     // Tighter spacing after outcome
     yPosition -= 18;
   }

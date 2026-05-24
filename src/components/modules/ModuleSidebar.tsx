@@ -7,7 +7,7 @@ import {
   isDerivedModule,
   type ModuleInstance,
 } from '../../lib/modules/moduleDisplay';
-import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
+import { getDsearSpecificModuleKeys, getFireRiskModuleKeys, getUnifiedOutcomeLabel } from '../../lib/modules/moduleCatalog';
 import { getModuleCompletionDetails } from '../../utils/moduleCompletion';
 
 interface ModuleSidebarProps {
@@ -19,6 +19,7 @@ interface ModuleSidebarProps {
   onCloseMobileMenu: () => void;
   documentId?: string;
   documentAssessmentDate?: string | null;
+  reModuleKeysWithActiveRecs?: Set<string>;
 }
 
 export default function ModuleSidebar({
@@ -30,6 +31,7 @@ export default function ModuleSidebar({
   onCloseMobileMenu,
   documentId,
   documentAssessmentDate,
+  reModuleKeysWithActiveRecs,
 }: ModuleSidebarProps) {
   // Load/save expand/collapse state from localStorage
   const storageKey = documentId ? `moduleNavGroups:${documentId}` : null;
@@ -107,24 +109,14 @@ export default function ModuleSidebar({
     return false;
   };
 
-  const getOutcomeLabel = (outcome: string, moduleKey: string): string => {
-    const category = getModuleOutcomeCategory(moduleKey);
 
-    if (category === 'governance') {
-      if (outcome === 'compliant') return 'Adequate';
-      if (outcome === 'minor_def') return 'Improvement Recommended';
-      if (outcome === 'material_def') return 'Significant Improvement Required';
-      if (outcome === 'info_gap') return 'Information Incomplete';
-      if (outcome === 'na') return 'Not Applicable';
-    } else {
-      if (outcome === 'compliant') return 'Compliant';
-      if (outcome === 'minor_def') return 'Minor Deficiency';
-      if (outcome === 'material_def') return 'Material Deficiency';
-      if (outcome === 'info_gap') return 'Information Gap';
-      if (outcome === 'na') return 'Not Applicable';
+  const hasOpenRecommendations = (module: ModuleInstance): boolean => {
+    if (module.module_key?.startsWith('RE_') && reModuleKeysWithActiveRecs !== undefined) {
+      return reModuleKeysWithActiveRecs.has(module.module_key);
     }
-
-    return outcome;
+    const data = module.data || {};
+    const buckets = [data.recommendations, data.actions, data.open_recommendations];
+    return buckets.some((v) => Array.isArray(v) && v.length > 0);
   };
 
   const ModuleNavItem = ({ module, productTag }: { module: ModuleInstance; productTag?: 'fire' | 'explosion' | null }) => {
@@ -169,7 +161,7 @@ export default function ModuleSidebar({
                 <AlertCircle className="w-4 h-4 text-amber-600" />
               </button>
               {openIncompleteHelpForModuleId === module.id && (
-                <div className="absolute left-6 top-0 z-20 w-64 rounded-lg border border-amber-200 bg-white p-3 shadow-lg">
+                <div className="absolute left-6 top-0 z-20 w-64 rounded-lg border border-amber-200 bg-white p-3 shadow-lg max-h-64 overflow-y-auto overscroll-contain">
                   <p className="text-xs font-semibold text-amber-900">This module is incomplete</p>
                   {completion.missingRequirements.length > 0 && (
                     <ul className="mt-2 list-disc pl-4 text-xs text-slate-700 space-y-1">
@@ -188,7 +180,7 @@ export default function ModuleSidebar({
             <div className="w-4 h-4" />
           )}
         </div>
-        <div className="flex-1 min-w-0 md:hidden lg:block">
+        <div className="flex-1 min-w-0">
           <div className="flex items-start gap-2">
             <p className="text-sm font-medium text-neutral-900 leading-5 flex-1 min-w-0">
               {getModuleDisplayName(module.module_key)}
@@ -229,25 +221,8 @@ export default function ModuleSidebar({
                 storedOutcome
               )}`}
             >
-              {getOutcomeLabel(storedOutcome, module.module_key)}
+              {getUnifiedOutcomeLabel(storedOutcome, { hasRecommendations: hasOpenRecommendations(module) })}
             </span>
-          )}
-        </div>
-        {/* Compact label for collapsed tablet nav */}
-        <div className="hidden md:flex lg:hidden flex-col items-center gap-1">
-          <span className="text-[10px] font-semibold text-neutral-600">{getModuleCode(module.module_key)}</span>
-          {isModuleActive(module) && <span className="w-1 h-1 rounded-full bg-neutral-900" />}
-        </div>
-        {/* Icon-only badge for tablet view */}
-        <div className="hidden md:block lg:hidden">
-          {!isDerived && storedOutcome && (
-            <div className={`w-2 h-2 rounded-full ${
-              storedOutcome === 'compliant' ? 'bg-green-600' :
-              storedOutcome === 'minor_def' ? 'bg-amber-600' :
-              storedOutcome === 'material_def' ? 'bg-red-600' :
-              storedOutcome === 'info_gap' ? 'bg-blue-600' :
-              'bg-neutral-400'
-            }`} />
           )}
         </div>
       </div>
@@ -281,15 +256,15 @@ export default function ModuleSidebar({
           className="w-full flex items-center justify-between px-2 py-2 hover:bg-neutral-100 rounded-lg transition-colors group md:px-1 lg:px-2"
         >
           <div className="flex items-center gap-2 min-w-0">
-            {icon && <span className="flex-shrink-0 md:hidden lg:inline-flex">{icon}</span>}
-            <span className="text-xs font-bold text-neutral-700 uppercase tracking-wide truncate md:hidden lg:block">
+            {icon && <span className="flex-shrink-0 inline-flex">{icon}</span>}
+            <span className="text-xs font-bold text-neutral-700 uppercase tracking-wide truncate">
               {title}
             </span>
             <span className="text-xs font-semibold text-neutral-500 flex-shrink-0">
               ({count})
             </span>
           </div>
-          <div className="flex-shrink-0 md:hidden lg:block">
+          <div className="flex-shrink-0">
             {isExpanded ? (
               <ChevronDown className="w-4 h-4 text-neutral-500 group-hover:text-neutral-700" />
             ) : (
@@ -322,12 +297,12 @@ export default function ModuleSidebar({
       <div className={`
         bg-white border-r border-neutral-200 overflow-y-auto transition-all duration-300
         ${isMobileMenuOpen ? 'fixed inset-y-0 left-0 z-50 w-80' : 'hidden'}
-        md:block md:sticky md:top-0 md:h-screen md:w-16
+        md:block md:sticky md:top-0 md:h-screen md:w-48
         lg:w-64
       `}>
-        <div className="p-4 border-b border-neutral-200 bg-neutral-50 md:p-2 lg:p-4">
+        <div className="p-4 border-b border-neutral-200 bg-neutral-50">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-neutral-900 uppercase tracking-wide md:hidden lg:block">
+            <h2 className="text-sm font-bold text-neutral-900 uppercase tracking-wide">
               Modules
             </h2>
             <button
@@ -337,9 +312,6 @@ export default function ModuleSidebar({
             >
               <X className="w-5 h-5 text-neutral-600" />
             </button>
-          </div>
-          <div className="hidden md:block lg:hidden text-center">
-            <FileText className="w-5 h-5 text-neutral-600 mx-auto" />
           </div>
         </div>
         <div className="space-y-1 p-2 lg:p-3">
@@ -381,7 +353,7 @@ export default function ModuleSidebar({
               {/* Traditional UI for single-product documents */}
               {sections.map((section) => (
                 <div key={section.key} className="space-y-1">
-                  <div className="px-1.5 py-1 md:hidden lg:block">
+                  <div className="px-1.5 py-1">
                     <h3 className="text-[11px] font-semibold text-neutral-500 uppercase tracking-[0.08em]">{section.label}</h3>
                   </div>
                   {section.modules.map((module) => (

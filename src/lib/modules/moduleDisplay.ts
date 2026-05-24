@@ -1,11 +1,11 @@
-import { getModuleName, MODULE_CATALOG } from './moduleCatalog';
+import { getModuleDisplayLabel, getModuleName, MODULE_CATALOG } from './moduleCatalog';
 
 export interface ModuleInstance {
   id: string;
   module_key: string;
   outcome: string | null;
   completed_at: string | null;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface ModuleSection {
@@ -14,7 +14,7 @@ export interface ModuleSection {
   modules: ModuleInstance[];
 }
 
-const CORE_MODULE_KEYS = new Set(['A1_DOC_CONTROL', 'A2_BUILDING_PROFILE', 'A3_PERSONS_AT_RISK', 'A7_REVIEW_ASSURANCE']);
+const CORE_MODULE_KEYS = new Set(['A1_DOC_CONTROL', 'A2_BUILDING_PROFILE', 'A3_PERSONS_AT_RISK']);
 const FRA_ADDITIONAL_A_KEYS = new Set(['A4_MANAGEMENT_CONTROLS', 'A5_EMERGENCY_ARRANGEMENTS']);
 
 const FRA_PREMIUM_ORDER = [
@@ -30,8 +30,8 @@ const FRA_PREMIUM_ORDER = [
 ];
 
 const RE_BADGE_OVERRIDE: Record<string, string> = {
-  'RE_06_FIRE_PROTECTION': 'RE-04',
-  'RE_07_NATURAL_HAZARDS': 'RE-05',
+  'RE_07_NATURAL_HAZARDS': 'RE-04',
+  'RE_06_FIRE_PROTECTION': 'RE-05',
   'RE_08_UTILITIES': 'RE-06',
   'RE_09_MANAGEMENT': 'RE-07',
   'RE_12_LOSS_VALUES': 'RE-08',
@@ -51,13 +51,7 @@ export function getModuleCode(moduleKey: string): string {
 }
 
 export function getModuleDisplayName(moduleKey: string): string {
-  const fullName = getModuleName(moduleKey)
-    .replace(/^([A-Z]+-\d+|A\d+|RE-\d+)\s*[–-]\s*/u, '')
-    .replace(/\(As-Is\)/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
-  return fullName.charAt(0).toUpperCase() + fullName.slice(1);
+  return getModuleDisplayLabel(moduleKey);
 }
 
 export function isDerivedModule(moduleKey: string): boolean {
@@ -97,35 +91,45 @@ function filterFraModules(fraModules: ModuleInstance[]): ModuleInstance[] {
 }
 
 export function buildModuleSections(modules: ModuleInstance[]): ModuleSection[] {
-  const fraModulesRaw = modules.filter((m) => m.module_key.startsWith('FRA_') || FRA_ADDITIONAL_A_KEYS.has(m.module_key));
+  const fraModulesRaw = modules.filter((m) =>
+    (m.module_key.startsWith('FRA_') || FRA_ADDITIONAL_A_KEYS.has(m.module_key))
+    && m.module_key !== 'A7_REVIEW_ASSURANCE'
+  );
   const fraModulesFiltered = filterFraModules(fraModulesRaw);
   const fraModulesSorted = sortFraModules(fraModulesFiltered);
 
   const sections: ModuleSection[] = [
     {
-      key: 'core',
-      label: 'Core',
+      key: 'site_setup',
+      label: 'Site setup',
       modules: sortByOrder(modules.filter((m) => CORE_MODULE_KEYS.has(m.module_key))),
     },
     {
-      key: 'fra',
-      label: 'Fire Risk Assessment',
-      modules: fraModulesSorted,
+      key: 'site_walk_hazards',
+      label: 'Site walk & hazards',
+      modules: sortByOrder(modules.filter((m) =>
+        ['FRA_1_HAZARDS', 'DSEAR_1_DANGEROUS_SUBSTANCES', 'DSEAR_2_PROCESS_RELEASES', 'DSEAR_4_IGNITION_SOURCES', 'RE_10_SITE_PHOTOS'].includes(m.module_key)
+      )),
     },
     {
-      key: 'fsd',
-      label: 'Fire Strategy Design',
-      modules: sortByOrder(modules.filter((m) => m.module_key.startsWith('FSD_'))),
+      key: 'technical_assessment',
+      label: 'Technical assessment',
+      modules: sortByOrder([
+        ...fraModulesSorted.filter((m) => !['FRA_1_HAZARDS', 'FRA_90_SIGNIFICANT_FINDINGS'].includes(m.module_key)),
+        ...modules.filter((m) => m.module_key.startsWith('FSD_')),
+        ...modules.filter((m) => m.module_key.startsWith('DSEAR_') && !['DSEAR_1_DANGEROUS_SUBSTANCES', 'DSEAR_2_PROCESS_RELEASES', 'DSEAR_4_IGNITION_SOURCES'].includes(m.module_key)),
+        ...modules.filter((m) => (m.module_key.startsWith('RE_') || m.module_key === 'RISK_ENGINEERING') && !['RE_10_SITE_PHOTOS', 'RE_13_RECOMMENDATIONS'].includes(m.module_key)),
+      ]),
     },
     {
-      key: 'dsear',
-      label: 'Explosive Atmospheres',
-      modules: sortByOrder(modules.filter((m) => m.module_key.startsWith('DSEAR_'))),
+      key: 'findings_actions',
+      label: 'Findings & actions',
+      modules: sortByOrder(modules.filter((m) => ['FRA_90_SIGNIFICANT_FINDINGS', 'RE_13_RECOMMENDATIONS'].includes(m.module_key))),
     },
     {
-      key: 're',
-      label: 'Risk Engineering',
-      modules: sortByOrder(modules.filter((m) => m.module_key.startsWith('RE_') || m.module_key === 'RISK_ENGINEERING')),
+      key: 'review_issue',
+      label: 'Review & issue',
+      modules: sortByOrder(modules.filter((m) => m.module_key === 'A7_REVIEW_ASSURANCE')),
     },
     {
       key: 'other',
@@ -138,6 +142,7 @@ export function buildModuleSections(modules: ModuleInstance[]): ModuleSection[] 
           && !key.startsWith('FSD_')
           && !key.startsWith('DSEAR_')
           && !key.startsWith('RE_')
+          && key !== 'A7_REVIEW_ASSURANCE'
           && key !== 'RISK_ENGINEERING';
       })),
     },

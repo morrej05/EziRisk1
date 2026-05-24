@@ -736,7 +736,7 @@ export function generateReport(
   };
   const reportTitle = frameworkTitles[formData.frameworkType || 'fire_property'];
 
-  let fullText = `DRAFT SURVEY REPORT (AI GENERATED)
+  let fullText = `DRAFT SURVEY REPORT
 
 ${reportTitle}${isAbridged ? ' (ABRIDGED)' : ''}
 

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 
 export interface ActionRegisterEntry {
   id: string;
@@ -22,6 +23,15 @@ export interface ActionRegisterEntry {
   owner_user_id: string | null;
   owner_name: string | null;
   source: string;
+  source_context?: string | null;
+  source_links?: Array<{
+    id: string;
+    module_key?: string | null;
+    source_assessment_type: string;
+    source_assessment_key: string;
+    source_assessment_label?: string | null;
+    source_finding_hash?: string | null;
+  }> | null;
   created_at: string;
   closed_at: string | null;
   carried_from_document_id: string | null;
@@ -150,15 +160,16 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     'Recommended Action',
     'Owner',
     'Target Date',
-    'Module Key',
+    'Assessment Section',
     'Document Title',
-    'Document Type',
+    'Assessment Type',
     'Version Number',
     'Issue Status',
     'Issue Date',
     'Tracking Status',
     'Timescale',
     'Source',
+    'Source Context',
     'Age (Days)',
     'Created Date',
     'Closed Date',
@@ -170,7 +181,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     action.recommended_action,
     action.owner_name || 'Unassigned',
     action.target_date || 'Not set',
-    action.module_key || 'N/A',
+    getModuleKeyLabel(action.module_key),
     action.document_title,
     action.document_type,
     action.version_number.toString(),
@@ -179,6 +190,7 @@ export function exportActionRegisterToCSV(actions: ActionRegisterEntry[]): strin
     action.tracking_status,
     action.timescale || '',
     action.source,
+    formatActionSourceContext(action),
     action.age_days.toString(),
     new Date(action.created_at).toLocaleDateString(),
     action.closed_at ? new Date(action.closed_at).toLocaleDateString() : '',
@@ -264,35 +276,31 @@ export function getUniqueDocumentTypes(actions: ActionRegisterEntry[]): string[]
   return Array.from(new Set(types)).sort();
 }
 
-export function getModuleKeyLabel(key: string): string {
-  const labels: Record<string, string> = {
-    'A1': 'A1 - Document Control',
-    'A2': 'A2 - Building Profile',
-    'A3': 'A3 - Persons at Risk',
-    'A4': 'A4 - Management Controls',
-    'A5': 'A5 - Emergency Arrangements',
-    'FRA1': 'FRA1 - Fire Hazards',
-    'FRA2': 'FRA2 - Means of Escape',
-    'FRA3': 'FRA3 - Fire Protection',
-    'FRA4': 'FRA4 - Significant Findings',
-    'FRA5': 'FRA5 - External Fire Spread',
-    'FSD1': 'FSD1 - Regulatory Basis',
-    'FSD2': 'FSD2 - Evacuation Strategy',
-    'FSD3': 'FSD3 - Means of Escape Design',
-    'FSD4': 'FSD4 - Passive Fire Protection',
-    'FSD5': 'FSD5 - Active Fire Systems',
-    'FSD6': 'FSD6 - Fire Service Access',
-    'FSD7': 'FSD7 - Drawings Index',
-    'FSD8': 'FSD8 - Smoke Control',
-    'FSD9': 'FSD9 - Construction Phase',
-    'DSEAR1': 'DSEAR1 - Dangerous Substances',
-    'DSEAR2': 'DSEAR2 - Process Releases',
-    'DSEAR3': 'DSEAR3 - Hazardous Area Classification',
-    'DSEAR4': 'DSEAR4 - Ignition Sources',
-    'DSEAR5': 'DSEAR5 - Explosion Protection',
-    'DSEAR6': 'DSEAR6 - Risk Assessment Table',
-    'DSEAR10': 'DSEAR10 - Hierarchy Control',
-    'DSEAR11': 'DSEAR11 - Emergency Response',
-  };
-  return labels[key] || key;
+export function getModuleKeyLabel(key: string | null | undefined): string {
+  return getModuleDisplayLabel(key);
+}
+
+function looksLikeTechnicalIdentifier(value: string): boolean {
+  return /^[A-Z]{2,}(_[A-Z0-9]+)+$/.test(value.trim()) || /^[0-9a-f-]{32,}$/i.test(value.trim());
+}
+
+function containsTechnicalIdentifier(value: string): boolean {
+  return looksLikeTechnicalIdentifier(value) || /\b[A-Z]{2,}_[A-Z0-9_]+\b/.test(value) || /\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i.test(value);
+}
+
+export function formatActionSourceContext(action: Pick<ActionRegisterEntry, 'source_context' | 'source_links'>): string {
+  if (action.source_links?.length) {
+    return action.source_links
+      .map((link) => {
+        const moduleLabel = getModuleKeyLabel(link.module_key);
+        const sourceLabel = link.source_assessment_label?.trim() || 'Assessment section';
+        return `${moduleLabel} — ${containsTechnicalIdentifier(sourceLabel) ? 'Assessment section' : sourceLabel}`;
+      })
+      .join('; ');
+  }
+
+  const sourceContext = action.source_context?.trim();
+  if (!sourceContext) return '';
+
+  return containsTechnicalIdentifier(sourceContext) ? 'Linked assessment area' : sourceContext;
 }

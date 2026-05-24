@@ -53,6 +53,7 @@ interface ModuleInstance {
 interface Action {
   id: string;
   recommended_action: string;
+  description?: string | null;
   priority_band: string;
   status: string;
   owner_user_id: string | null;
@@ -62,6 +63,8 @@ interface Action {
   created_at: string;
   reference_number?: string | null;
   source_module_key?: string | null;
+  hazard_text?: string | null;
+  photos?: Array<unknown> | null;
 }
 
 interface Organisation {
@@ -91,6 +94,8 @@ interface LpRecommendation {
   effort: 'Low' | 'Medium' | 'High';
   benefit: 'Low' | 'Medium' | 'High';
   timescale: string;
+  riskImplication: string;
+  evidenceSummary: string;
   roadmapBand: RoadmapBand;
 }
 
@@ -148,11 +153,14 @@ function toLpRecommendations(actions: Action[], moduleInstances: ModuleInstance[
       const moduleKey = action.source_module_key || linkedModule?.module_key || '';
       const riskArea = RISK_AREA_BY_MODULE[moduleKey] || getModuleDisplayName(moduleKey || 'General') || 'General';
       const ref = sanitizePdfText(action.reference_number || `LP-${String(index + 1).padStart(3, '0')}`);
+      const evidenceCount = Array.isArray(action.photos) ? action.photos.length : 0;
       return {
         ref,
         recommendation: sanitizePdfText(deriveAutoActionTitle(action)),
         riskArea,
         priority,
+        riskImplication: sanitizePdfText(action.hazard_text || 'Not recorded'),
+        evidenceSummary: evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached',
         effort: deriveEffortFromPriority(priority),
         benefit: deriveBenefitFromPriority(priority),
         timescale: deriveTimescale(priority),
@@ -239,7 +247,7 @@ function getTopPriorityRows(recommendations: LpRecommendation[]): string[][] {
 }
 
 export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  console.log('[PDF RE LP] Starting RE Loss Prevention PDF build');
+  if (import.meta.env.DEV) console.log('[PDF RE LP] Starting RE Loss Prevention PDF build');
   const { moduleInstances, actions, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
     ...options.document,
@@ -342,8 +350,8 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   yPosition = drawTable(
     page,
     yPosition,
-    ['Ref', 'Recommendation', 'Risk Area', 'Priority', 'Effort', 'Benefit', 'Timescale'],
-    recommendations.map((rec) => [rec.ref, rec.recommendation, rec.riskArea, rec.priority, rec.effort, rec.benefit, rec.timescale]),
+    ['Ref', 'Section', 'Recommendation', 'Risk implication', 'Priority', 'Evidence', 'Timescale'],
+    recommendations.map((rec) => [rec.ref, rec.riskArea, rec.recommendation, rec.riskImplication, rec.priority, rec.evidenceSummary, rec.timescale]),
     { bold: fontBold, regular: font }
   );
 
@@ -375,7 +383,7 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
     }
 
     recs.forEach((rec) => {
-      const bullet = `${rec.ref} [${rec.priority}] ${rec.recommendation}`;
+      const bullet = `${rec.ref} [${rec.priority}] ${rec.recommendation} Evidence: ${rec.evidenceSummary}`;
       const lines = wrapText(bullet, CONTENT_WIDTH - 10, 9, font);
       lines.forEach((line) => {
         page.drawText(line, { x: MARGIN + 10, y: yPosition, size: 9, font, color: rgb(0.2, 0.2, 0.2) });
@@ -403,7 +411,7 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
       yPosition,
       ['Ref', 'Recommendation', 'Priority', 'Timescale'],
       bandRows.length > 0
-        ? bandRows.map((rec) => [rec.ref, rec.recommendation, rec.priority, rec.timescale])
+        ? bandRows.map((rec) => [rec.ref, `${rec.riskArea}: ${rec.recommendation}`, rec.priority, rec.timescale])
         : [['-', 'No actions in this horizon.', '-', '-']],
       { bold: fontBold, regular: font }
     );
@@ -441,6 +449,6 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   }
 
   const pdfBytes = await pdfDoc.save();
-  console.log('[PDF RE LP] PDF build complete');
+  if (import.meta.env.DEV) console.log('[PDF RE LP] PDF build complete');
   return pdfBytes;
 }

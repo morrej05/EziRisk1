@@ -259,7 +259,7 @@ export default function AssessmentsPage() {
   }
 
   function handleContinue(assessmentId: string) {
-    navigate(`/documents/${assessmentId}/workspace`, { state: { returnTo: '/assessments' } });
+    navigate(`/documents/${assessmentId}`, { state: { returnTo: '/assessments' } });
   }
 
   function handleDeleteClick(assessment: AssessmentViewModel) {

@@ -1,11 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, TrendingUp, Flame, Zap, ClipboardList, Shield, Palette, Building2, Lock } from 'lucide-react';
+import { LogOut, TrendingUp, Flame, Zap, ClipboardList, Shield, Building2, Lock } from 'lucide-react';
 import { useClientBranding } from '../contexts/ClientBrandingContext';
 import { getRolePermissions } from '../utils/permissions';
 import { canAccessExplosionSafety, shouldShowUpgradePrompts, getPlan, getSubscriptionStatusDisplayName } from '../utils/entitlements';
-import { useState } from 'react';
-import ClientBrandingModal from '../components/ClientBrandingModal';
 import BillingStatusBanner from '../components/BillingStatusBanner';
 
 interface DashboardTileProps {
@@ -77,9 +75,8 @@ function DashboardTile({ title, description, icon, onClick, disabled, badge, sta
 export default function CommonDashboard() {
   const navigate = useNavigate();
   const { signOut, user, userRole, userPlan, isPlatformAdmin, organisation } = useAuth();
-  const { branding: clientBranding, refreshBranding } = useClientBranding();
+  const { branding: clientBranding } = useClientBranding();
   const permissions = getRolePermissions(userRole);
-  const [showBrandingModal, setShowBrandingModal] = useState(false);
 
   const userObj = user && organisation ? {
     id: user.id,
@@ -104,10 +101,6 @@ export default function CommonDashboard() {
 
   const getCompanyName = () => {
     return clientBranding.companyName;
-  };
-
-  const handleBrandingUpdated = () => {
-    refreshBranding();
   };
 
   return (
@@ -170,16 +163,6 @@ export default function CommonDashboard() {
                 >
                   <Shield className="w-4 h-4" />
                   Admin
-                </button>
-              )}
-              {permissions.canManageBranding && (
-                <button
-                  onClick={() => setShowBrandingModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-neutral-700 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                  title="Client Branding"
-                >
-                  <Palette className="w-4 h-4" />
-                  Branding
                 </button>
               )}
               <button
@@ -259,11 +242,6 @@ export default function CommonDashboard() {
         )}
       </div>
 
-      <ClientBrandingModal
-        isOpen={showBrandingModal}
-        onClose={() => setShowBrandingModal(false)}
-        onBrandingUpdated={handleBrandingUpdated}
-      />
     </div>
   );
 }

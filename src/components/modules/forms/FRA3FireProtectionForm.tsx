@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { Shield, CheckCircle, Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Shield, CheckCircle, Plus } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import OutcomePanel from '../OutcomePanel';
-import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
+import DetailedFindingActionLink from '../../actions/DetailedFindingActionLink';
 import InfoGapQuickActions from '../InfoGapQuickActions';
 import { detectInfoGaps } from '../../../utils/infoGapQuickActions';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
+import { getUnifiedOutcomeLabel } from '../../../lib/modules/moduleCatalog';
 
 interface Document {
   id: string;
@@ -32,7 +32,119 @@ interface QuickActionTemplate {
   action: string;
   likelihood: number;
   impact: number;
+  source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
+  sectionKey?: string;
+  sectionLabel?: string;
+  sourceKey?: string;
+  sourceLabel?: string;
+  defaultCategory?: string;
 }
+
+type AssessmentStatus = 'adequate' | 'inadequate' | 'unknown' | 'not_applicable';
+type RiskSignificance = 'low' | 'medium' | 'high' | 'critical' | 'unknown';
+
+interface PassiveProtectionAssessmentDetail {
+  status: AssessmentStatus;
+  observations: string;
+  existing_controls: string;
+  deficiencies: string;
+  assessor_commentary: string;
+  risk_significance: RiskSignificance;
+  evidence_references: string;
+  action_trigger: boolean;
+  linked_action_reference: string;
+}
+
+interface PassiveProtectionAreaConfig {
+  key: string;
+  title: string;
+  guidance: string;
+}
+
+const passiveProtectionAssessmentAreas: PassiveProtectionAreaConfig[] = [
+  { key: 'compartmentation_lines', title: 'Compartmentation lines / fire-resisting construction', guidance: 'Walls, floors, ceilings, protected lobbies and other fire-resisting construction forming compartment boundaries.' },
+  { key: 'fire_doors', title: 'Fire doors', guidance: 'Door condition, self-closers, seals, gaps, glazing, hold-open devices, inspection evidence and suitability for location.' },
+  { key: 'service_penetrations_fire_stopping', title: 'Service penetrations and fire stopping', guidance: 'Penetrations through fire-resisting elements, above-ceiling services, risers and evidence of suitable fire-stopping systems.' },
+  { key: 'cavity_barriers_concealed_spaces', title: 'Cavity barriers / concealed spaces', guidance: 'Cavity barrier presence, integrity and limitations where access to concealed spaces was restricted.' },
+  { key: 'fire_dampers_ductwork', title: 'Fire dampers / ductwork penetrations', guidance: 'Ductwork passing through compartment lines, damper access, maintenance evidence and compatibility with fire strategy.' },
+  { key: 'protected_routes_shafts', title: 'Protected routes / protected shafts', guidance: 'Protected corridors, stairs, lobbies, riser shafts, firefighting shafts and smoke/fire separation relied on for escape.' },
+  { key: 'structural_fire_protection', title: 'Structural fire protection', guidance: 'Protection to structural steel, concrete or timber elements where visible or evidenced by records.' },
+  { key: 'cladding_external_walls', title: 'Cladding / external wall considerations', guidance: 'External wall systems, interfaces with compartment floors, cavity barriers, relevant appraisal status and observed concerns.' },
+  { key: 'fire_resisting_glazing', title: 'Fire-resisting glazing', guidance: 'Integrity, identification, framing, seals and suitability of glazing forming part of fire-resisting construction.' },
+  { key: 'voids_risers_service_cupboards', title: 'Voids, risers and service cupboards', guidance: 'Enclosure, housekeeping, locking, fire stopping and inspection access to voids, risers and service cupboards.' },
+  { key: 'maintenance_inspection_records', title: 'Maintenance / inspection records', guidance: 'Records for fire doors, dampers, fire stopping registers, compartmentation surveys and remedial closure evidence.' },
+  { key: 'other_passive_concerns', title: 'Other passive fire protection concerns', guidance: 'Any other passive fire protection issue, uncertainty, limitation or building-specific dependency.' },
+];
+
+const normaliseAssessmentStatus = (value: unknown): AssessmentStatus => {
+  if (value === 'adequate' || value === 'inadequate' || value === 'unknown' || value === 'not_applicable') return value;
+  if (value === 'na' || value === 'n/a' || value === 'not applicable') return 'not_applicable';
+  return 'unknown';
+};
+
+const normaliseRiskSignificance = (value: unknown): RiskSignificance => {
+  if (value === 'low' || value === 'medium' || value === 'high' || value === 'critical' || value === 'unknown') return value;
+  return 'unknown';
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const asString = (value: unknown): string => typeof value === 'string' ? value : '';
+
+const toCamelPassiveAssessment = (assessment: PassiveProtectionAssessmentDetail) => ({
+  status: assessment.status,
+  observations: assessment.observations,
+  existingControls: assessment.existing_controls,
+  deficiencies: assessment.deficiencies,
+  assessorCommentary: assessment.assessor_commentary,
+  riskSignificance: assessment.risk_significance,
+  evidenceReferences: assessment.evidence_references,
+  actionTrigger: assessment.action_trigger,
+  linkedActionReference: assessment.linked_action_reference,
+});
+
+const buildInitialPassiveProtectionAssessments = (data: Record<string, any>): Record<string, PassiveProtectionAssessmentDetail> => {
+  const rawSource = data.passive_fire_protection_assessments || data.passiveFireProtectionAssessments;
+  const source = isRecord(rawSource) ? rawSource : {};
+
+  return passiveProtectionAssessmentAreas.reduce<Record<string, PassiveProtectionAssessmentDetail>>((acc, area) => {
+    const rawExisting = source[area.key];
+    const existing = isRecord(rawExisting) ? rawExisting : {};
+    acc[area.key] = {
+      status: normaliseAssessmentStatus(existing.status),
+      observations: asString(existing.observations),
+      existing_controls: asString(existing.existing_controls || existing.existingControls),
+      deficiencies: asString(existing.deficiencies),
+      assessor_commentary: asString(existing.assessor_commentary || existing.assessorCommentary),
+      risk_significance: normaliseRiskSignificance(existing.risk_significance || existing.riskSignificance),
+      evidence_references: asString(existing.evidence_references || existing.evidenceReferences),
+      action_trigger: Boolean(existing.action_trigger || existing.actionTrigger),
+      linked_action_reference: asString(existing.linked_action_reference || existing.linkedActionReference),
+    };
+    return acc;
+  }, {});
+};
+
+const hasPassiveAssessmentContent = (assessment: PassiveProtectionAssessmentDetail): boolean =>
+  assessment.status !== 'unknown' ||
+  assessment.observations.trim() !== '' ||
+  assessment.existing_controls.trim() !== '' ||
+  assessment.deficiencies.trim() !== '' ||
+  assessment.assessor_commentary.trim() !== '' ||
+  assessment.risk_significance !== 'unknown' ||
+  assessment.evidence_references.trim() !== '' ||
+  assessment.action_trigger ||
+  assessment.linked_action_reference.trim() !== '';
+
+const buildSaveData = (existingData: Record<string, any>, formData: Record<string, any>): Record<string, any> => ({
+  ...existingData,
+  ...formData,
+  passiveFireProtectionAssessments: Object.fromEntries(
+    Object.entries(formData.passive_fire_protection_assessments || {}).map(([key, assessment]) => [
+      key,
+      toCamelPassiveAssessment(assessment as PassiveProtectionAssessmentDetail),
+    ])
+  ),
+});
 
 export default function FRA3FireProtectionForm({
   moduleInstance,
@@ -43,7 +155,6 @@ export default function FRA3FireProtectionForm({
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
   const [quickActionTemplate, setQuickActionTemplate] = useState<QuickActionTemplate | null>(null);
-  const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const key = moduleInstance.module_key;
   const showActive = key === 'FRA_3_ACTIVE_SYSTEMS' || key === 'FRA_3_PROTECTION_ASIS';
@@ -80,6 +191,7 @@ export default function FRA3FireProtectionForm({
     fire_doors_inspection_regime: moduleInstance.data.fire_doors_inspection_regime || 'unknown',
     compartmentation_condition: moduleInstance.data.compartmentation_condition || 'unknown',
     fire_stopping_confidence: moduleInstance.data.fire_stopping_confidence || 'unknown',
+    passive_fire_protection_assessments: buildInitialPassiveProtectionAssessments(moduleInstance.data),
     extinguishers_present: moduleInstance.data.extinguishers_present || 'unknown',
     extinguisher_servicing_evidence: moduleInstance.data.extinguisher_servicing_evidence || 'unknown',
     sprinkler_present: moduleInstance.data.sprinkler_present || 'unknown',
@@ -129,6 +241,71 @@ export default function FRA3FireProtectionForm({
 
   const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
   const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
+  const [scoringData, setScoringData] = useState<{ extent?: string; gapType?: string }>(
+    (moduleInstance.data.scoring as { extent?: string; gapType?: string }) || {}
+  );
+
+  const updatePassiveAssessment = (areaKey: string, patch: Partial<PassiveProtectionAssessmentDetail>) => {
+    setFormData((current) => ({
+      ...current,
+      passive_fire_protection_assessments: {
+        ...current.passive_fire_protection_assessments,
+        [areaKey]: {
+          ...current.passive_fire_protection_assessments[areaKey],
+          ...patch,
+        },
+      },
+    }));
+  };
+
+  const detailedPassiveAssessments = Object.values(formData.passive_fire_protection_assessments).filter(hasPassiveAssessmentContent);
+  const hasDetailedPassiveSource = detailedPassiveAssessments.length > 0;
+
+  const qualityWarnings = useMemo(() => {
+    const assessments = formData.passive_fire_protection_assessments;
+    const commentaryMissing = (key: string) => !(assessments[key]?.assessor_commentary || '').trim();
+    const evidenceMissing = (key: string) => !(assessments[key]?.evidence_references || '').trim();
+    const actionMissing = (key: string) =>
+      !(assessments[key]?.linked_action_reference || '').trim() && !assessments[key]?.action_trigger;
+    const actionOrExplanationMissing = (key: string) =>
+      actionMissing(key) &&
+      !(assessments[key]?.assessor_commentary || '').trim() &&
+      !(assessments[key]?.deficiencies || '').trim();
+    const highConcern = (key: string) =>
+      assessments[key]?.status === 'inadequate' ||
+      assessments[key]?.risk_significance === 'high' ||
+      assessments[key]?.risk_significance === 'critical' ||
+      Boolean((assessments[key]?.deficiencies || '').trim());
+    const unknownWithoutRationale = (key: string) =>
+      assessments[key]?.status === 'unknown' && hasPassiveAssessmentContent(assessments[key]) && commentaryMissing(key);
+    const warnings: string[] = [];
+
+    if ((formData.compartmentation_condition === 'inadequate' || highConcern('compartmentation_lines')) && commentaryMissing('compartmentation_lines')) {
+      warnings.push('Compartmentation concerns are recorded without assessor commentary.');
+    }
+    if ((formData.fire_doors_condition === 'inadequate' || highConcern('fire_doors')) && actionOrExplanationMissing('fire_doors')) {
+      warnings.push('Fire door deficiencies are recorded without linked action or explanation.');
+    }
+    if ((formData.fire_stopping_confidence === 'unknown' || highConcern('service_penetrations_fire_stopping')) && evidenceMissing('service_penetrations_fire_stopping') && commentaryMissing('service_penetrations_fire_stopping')) {
+      warnings.push('Service penetrations or fire-stopping concerns are recorded without evidence references or commentary.');
+    }
+    if (highConcern('cavity_barriers_concealed_spaces') && commentaryMissing('cavity_barriers_concealed_spaces')) {
+      warnings.push('Cavity barrier or void concerns are recorded without a limitation statement or rationale.');
+    }
+    passiveProtectionAssessmentAreas.forEach((area) => {
+      if (unknownWithoutRationale(area.key)) {
+        warnings.push(`${area.title} condition is unknown without assessor rationale.`);
+      }
+    });
+    if (highConcern('protected_routes_shafts') && assessments.protected_routes_shafts?.risk_significance === 'unknown') {
+      warnings.push('Protected route or protected shaft concerns are recorded without risk significance.');
+    }
+    if (highConcern('cladding_external_walls') && commentaryMissing('cladding_external_walls')) {
+      warnings.push('External wall or cladding concerns are recorded without appropriate commentary.');
+    }
+
+    return Array.from(new Set(warnings));
+  }, [formData]);
 
   const getSuggestedOutcome = (): { outcome: string; reason: string } | null => {
     const unknowns = Object.entries(formData).filter(
@@ -156,6 +333,9 @@ export default function FRA3FireProtectionForm({
     if (formData.fire_doors_condition === 'inadequate') {
       criticalIssues.push('Fire doors in poor condition');
     }
+    if (detailedPassiveAssessments.some((assessment) => assessment.risk_significance === 'critical' || assessment.risk_significance === 'high')) {
+      criticalIssues.push('High-significance detailed passive fire protection finding');
+    }
 
     if (criticalIssues.length > 0) {
       return {
@@ -167,6 +347,7 @@ export default function FRA3FireProtectionForm({
     const minorIssues = [
       formData.alarm_testing_evidence === 'no' && 'No alarm testing evidence',
       formData.fire_stopping_confidence === 'unknown' && 'Fire stopping not verified',
+      detailedPassiveAssessments.some((assessment) => assessment.status === 'inadequate') && 'Detailed passive fire protection deficiency',
       formData.extinguishers_present === 'no' && 'No extinguishers',
     ].filter(Boolean);
 
@@ -183,13 +364,16 @@ export default function FRA3FireProtectionForm({
   const suggestedOutcome = getSuggestedOutcome();
 
   const handleSave = async () => {
+    window.dispatchEvent(new CustomEvent('module:save-start'));
     setIsSaving(true);
 
     try {
+      const completedAt = outcome ? new Date().toISOString() : null;
       const payload = sanitizeModuleInstancePayload({
-        data: formData,
+        data: { ...buildSaveData(moduleInstance.data, formData), scoring: scoringData },
         outcome,
         assessor_notes: assessorNotes,
+        completed_at: completedAt,
         updated_at: new Date().toISOString(),
       }, moduleInstance.module_key);
 
@@ -222,7 +406,7 @@ export default function FRA3FireProtectionForm({
   };
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
           <Shield className="w-6 h-6 text-neutral-700" />
@@ -245,15 +429,55 @@ export default function FRA3FireProtectionForm({
         <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
           <h3 className="text-sm font-bold text-amber-900 mb-1">Suggested Outcome</h3>
           <p className="text-sm text-amber-800">
-            Based on your responses: <strong>{suggestedOutcome.outcome.replace('_', ' ')}</strong>
+            Based on your responses: <strong>{getUnifiedOutcomeLabel(suggestedOutcome.outcome)}</strong>
           </p>
           <p className="text-xs text-amber-700 mt-1">{suggestedOutcome.reason}</p>
         </div>
       )}
 
+
+      {qualityWarnings.length > 0 && (
+        <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2 text-orange-900">
+            <AlertTriangle className="w-4 h-4" />
+            <h3 className="text-sm font-bold">Advisory quality prompts</h3>
+          </div>
+          <ul className="list-disc pl-5 space-y-1 text-sm text-orange-800">
+            {qualityWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+          <p className="mt-2 text-xs text-orange-700">These prompts do not block saving or issue.</p>
+        </div>
+      )}
+
+      <nav aria-label="Module sections" className="sticky top-0 z-10 -mx-4 sm:-mx-6 mb-4 border-b border-neutral-100 bg-neutral-50/95 backdrop-blur-sm px-4 py-2">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-1 shrink-0 text-xs font-medium text-neutral-400">Jump:</span>
+          {showActive && (
+            <>
+              <button type="button" onClick={() => document.getElementById('fra3-alarm')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Alarm</button>
+              <button type="button" onClick={() => document.getElementById('fra3-lighting')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Em. lighting</button>
+            </>
+          )}
+          {showPassive && (
+            <>
+              <button type="button" onClick={() => document.getElementById('fra3-doors')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Fire doors</button>
+              <button type="button" onClick={() => document.getElementById('fra3-compartmentation')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Compartmentation</button>
+              <button type="button" onClick={() => document.getElementById('fra3-passive')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Passive areas</button>
+            </>
+          )}
+          {showFirefighting && (
+            <>
+              <button type="button" onClick={() => document.getElementById('fra3-extinguishers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Extinguishers</button>
+              <button type="button" onClick={() => document.getElementById('fra3-hose')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Hose reels</button>
+              <button type="button" onClick={() => document.getElementById('fra3-fixed')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="rounded border border-transparent px-2 py-1 text-xs text-neutral-600 transition-colors hover:border-neutral-200 hover:bg-white hover:text-neutral-900">Fixed systems</button>
+            </>
+          )}
+        </div>
+      </nav>
+
       <div className="space-y-6">
         {showActive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-alarm" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Fire Alarm System
             </h3>
@@ -282,6 +506,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Install or verify suitable fire detection and alarm system to appropriate category (BS 5839-1). System should provide adequate warning time for safe evacuation based on building use and occupancy.',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-alarm',
+                    sectionLabel: 'Fire Alarm System',
+                    sourceKey: 'fire_alarm_system',
+                    sourceLabel: 'Fire Alarm System',
+                    defaultCategory: 'Active fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -310,8 +540,8 @@ export default function FRA3FireProtectionForm({
                     <option value="L3">L3 - Escape routes only</option>
                     <option value="L4">L4 - Manual call points only</option>
                     <option value="L5">L5 - As designed (custom)</option>
-                    <option value="P1">P1 - Property protection (full)</option>
-                    <option value="P2">P2 - Property protection (defined areas)</option>
+                    <option value="P1">P1 (BS 5839-1) — Property protection, full coverage</option>
+                    <option value="P2">P2 (BS 5839-1) — Property protection, defined areas</option>
                   </select>
                   <p className="text-xs text-neutral-500 mt-1">
                     Category determines extent of detection coverage
@@ -344,6 +574,12 @@ export default function FRA3FireProtectionForm({
                         action: 'Implement documented weekly fire alarm testing regime (BS 5839-1 Clause 45): test different call point each week, maintain logbook, arrange quarterly inspection by competent person',
                         likelihood: 4,
                         impact: 4,
+                        source: 'recommendation',
+                        sectionKey: 'fra3-alarm',
+                        sectionLabel: 'Fire Alarm System',
+                        sourceKey: 'fire_alarm_system',
+                        sourceLabel: 'Fire Alarm System',
+                        defaultCategory: 'Active fire protection',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -359,7 +595,7 @@ export default function FRA3FireProtectionForm({
         )}
 
         {showActive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-lighting" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Emergency Lighting
             </h3>
@@ -392,6 +628,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Install or verify emergency lighting to BS 5266 standard on all escape routes, stairways, changes in level, final exits, and fire safety equipment locations. Ensure 3-hour duration where required.',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-lighting',
+                    sectionLabel: 'Emergency Lighting',
+                    sourceKey: 'emergency_lighting',
+                    sourceLabel: 'Emergency Lighting',
+                    defaultCategory: 'Active fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -432,6 +674,12 @@ export default function FRA3FireProtectionForm({
                         action: 'Implement documented emergency lighting testing regime (BS 5266): monthly function tests, annual 3-hour duration test, maintain logbook, arrange periodic inspection by competent person',
                         likelihood: 4,
                         impact: 4,
+                        source: 'recommendation',
+                        sectionKey: 'fra3-lighting',
+                        sectionLabel: 'Emergency Lighting',
+                        sourceKey: 'emergency_lighting',
+                        sourceLabel: 'Emergency Lighting',
+                        defaultCategory: 'Active fire protection',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -447,7 +695,7 @@ export default function FRA3FireProtectionForm({
         )}
 
         {showPassive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-doors" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Fire Doors
             </h3>
@@ -472,7 +720,7 @@ export default function FRA3FireProtectionForm({
               </p>
             </div>
 
-            {(formData.fire_doors_condition === 'inadequate' ||
+            {!hasDetailedPassiveSource && (formData.fire_doors_condition === 'inadequate' ||
               formData.fire_doors_condition === 'unknown') && (
               <button
                 onClick={() =>
@@ -480,6 +728,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Inspect all fire doors and remediate defects: repair/replace damaged leaves, seals, and glazing; install/repair self-closers; replace inadequate ironmongery; install appropriate signage; implement 6-monthly inspection programme',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-doors',
+                    sectionLabel: 'Fire Doors',
+                    sourceKey: 'fire_doors',
+                    sourceLabel: 'Fire Doors',
+                    defaultCategory: 'Passive fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -512,7 +766,7 @@ export default function FRA3FireProtectionForm({
         )}
 
         {showPassive && (
-          <div className="bg-white rounded-lg border border-neutral-200 p-6">
+          <div id="fra3-compartmentation" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
               Compartmentation & Fire Stopping
             </h3>
@@ -537,7 +791,11 @@ export default function FRA3FireProtectionForm({
               </p>
             </div>
 
-            {(formData.compartmentation_condition === 'inadequate' ||
+            {hasDetailedPassiveSource ? (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                Detailed passive protection findings are present, so use the per-finding recommendation controls below instead of these broad Quick Add shortcuts.
+              </div>
+            ) : (formData.compartmentation_condition === 'inadequate' ||
               formData.compartmentation_condition === 'unknown') && (
               <button
                 onClick={() =>
@@ -545,6 +803,12 @@ export default function FRA3FireProtectionForm({
                     action: 'Commission comprehensive compartmentation survey to identify all breaches in fire-resisting construction. Remediate all identified breaches using appropriate fire-rated materials and third-party certified products.',
                     likelihood: 4,
                     impact: 5,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-compartmentation',
+                    sectionLabel: 'Compartmentation & Fire Stopping',
+                    sourceKey: 'compartmentation',
+                    sourceLabel: 'Compartmentation',
+                    defaultCategory: 'Passive fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -574,13 +838,19 @@ export default function FRA3FireProtectionForm({
               </p>
             </div>
 
-            {formData.fire_stopping_confidence === 'unknown' && (
+            {!hasDetailedPassiveSource && formData.fire_stopping_confidence === 'unknown' && (
               <button
                 onClick={() =>
                   handleQuickAction({
                     action: 'Commission intrusive fire stopping survey to verify integrity of concealed penetrations, service routes through compartment boundaries, and above ceiling voids. Establish fire stopping register.',
                     likelihood: 4,
                     impact: 4,
+                    source: 'recommendation',
+                    sectionKey: 'fra3-compartmentation',
+                    sectionLabel: 'Compartmentation & Fire Stopping',
+                    sourceKey: 'fire_stopping',
+                    sourceLabel: 'Fire Stopping',
+                    defaultCategory: 'Passive fire protection',
                   })
                 }
                 className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -593,10 +863,83 @@ export default function FRA3FireProtectionForm({
           </div>
         )}
 
+
+        {showPassive && (
+          <div id="fra3-passive" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
+            <h3 className="text-lg font-bold text-neutral-900 mb-2">Optional Detailed Passive Fire Protection Assessment Areas</h3>
+            <p className="text-sm text-neutral-600 mb-4">
+              Open only the areas needed for the assessment. Saving retains the broad legacy fields and stores detailed area findings under <code>passive_fire_protection_assessments</code> with a camelCase compatibility alias.
+            </p>
+            <div className="space-y-3">
+              {passiveProtectionAssessmentAreas.map((area) => {
+                const assessment = formData.passive_fire_protection_assessments[area.key];
+                return (
+                  <details key={area.key} className="rounded-lg border border-neutral-200 bg-neutral-50">
+                    <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-neutral-900 flex justify-between">
+                      <span>{area.title}</span>
+                      {hasPassiveAssessmentContent(assessment) && <span className="text-xs font-medium text-blue-700">populated</span>}
+                    </summary>
+                    <div className="border-t border-neutral-200 bg-white p-4 space-y-4">
+                      <p className="text-xs text-neutral-500">{area.guidance}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-2">Adequacy</label>
+                          <select value={assessment.status} onChange={(e) => updatePassiveAssessment(area.key, { status: e.target.value as AssessmentStatus })} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent">
+                            <option value="unknown">Unknown</option>
+                            <option value="adequate">Adequate</option>
+                            <option value="inadequate">Inadequate</option>
+                            <option value="not_applicable">Not applicable</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700 mb-2">Risk significance</label>
+                          <select value={assessment.risk_significance} onChange={(e) => updatePassiveAssessment(area.key, { risk_significance: e.target.value as RiskSignificance })} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent">
+                            <option value="unknown">Unknown / not assessed</option>
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <textarea value={assessment.observations} onChange={(e) => updatePassiveAssessment(area.key, { observations: e.target.value })} placeholder="Observations" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />
+                        <textarea value={assessment.existing_controls} onChange={(e) => updatePassiveAssessment(area.key, { existing_controls: e.target.value })} placeholder="Existing controls" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />
+                        <textarea value={assessment.deficiencies} onChange={(e) => updatePassiveAssessment(area.key, { deficiencies: e.target.value })} placeholder="Deficiencies identified" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />
+                        <textarea value={assessment.assessor_commentary} onChange={(e) => updatePassiveAssessment(area.key, { assessor_commentary: e.target.value })} placeholder="Assessor commentary / rationale" rows={3} className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none" />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <input value={assessment.evidence_references} onChange={(e) => updatePassiveAssessment(area.key, { evidence_references: e.target.value })} placeholder="Evidence/photo references (e.g. E-003, photo 12)" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
+                        <input value={assessment.linked_action_reference} onChange={(e) => updatePassiveAssessment(area.key, { linked_action_reference: e.target.value })} placeholder="Legacy linked action reference (fallback only)" className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent" />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm text-neutral-700">
+                        <input type="checkbox" checked={assessment.action_trigger} onChange={(e) => updatePassiveAssessment(area.key, { action_trigger: e.target.checked })} className="rounded border-neutral-300" />
+                        Action trigger / consider adding this to the action register
+                      </label>
+                      <DetailedFindingActionLink
+                        documentId={document.id}
+                        moduleInstanceId={moduleInstance.id}
+                        moduleKey={moduleInstance.module_key}
+                        sourceAssessmentType="passive_fire_protection_assessments"
+                        sourceAssessmentKey={area.key}
+                        sourceAssessmentLabel={area.title}
+                        sectionKey={area.key}
+                        sectionLabel={area.title}
+                        assessment={assessment}
+                        legacyLinkedActionReference={assessment.linked_action_reference}
+                      />
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {showFirefighting && (
           <div className="space-y-6">
             {/* Portable Extinguishers */}
-            <div className="bg-white rounded-lg border border-neutral-200 p-6">
+            <div id="fra3-extinguishers" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
               <h3 className="text-lg font-bold text-neutral-900 mb-2">
                 Portable Fire Extinguishers
               </h3>
@@ -717,6 +1060,12 @@ export default function FRA3FireProtectionForm({
                         action: 'Provide suitable and sufficient portable fire extinguishers (BS EN 3) at appropriate locations: final exits, high-risk areas, and within travel distance limits. Arrange annual servicing by competent engineer.',
                         likelihood: 3,
                         impact: 3,
+                        source: 'recommendation',
+                        sectionKey: 'fra3-extinguishers',
+                        sectionLabel: 'Portable Fire Extinguishers',
+                        sourceKey: 'portable_extinguishers',
+                        sourceLabel: 'Portable Fire Extinguishers',
+                        defaultCategory: 'Firefighting equipment',
                       })
                     }
                     className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
@@ -729,7 +1078,7 @@ export default function FRA3FireProtectionForm({
             </div>
 
             {/* Hose Reels */}
-            <div className="bg-white rounded-lg border border-neutral-200 p-6">
+            <div id="fra3-hose" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
               <h3 className="text-lg font-bold text-neutral-900 mb-2">
                 Hose Reels
               </h3>
@@ -845,7 +1194,7 @@ export default function FRA3FireProtectionForm({
             </div>
 
             {/* Fixed Firefighting Facilities */}
-            <div className="bg-white rounded-lg border border-neutral-200 p-6">
+            <div id="fra3-fixed" className="bg-white rounded-lg border border-neutral-200 p-6 scroll-mt-4">
               <h3 className="text-lg font-bold text-neutral-900 mb-2">
                 Fixed Firefighting Facilities
               </h3>
@@ -1308,6 +1657,8 @@ export default function FRA3FireProtectionForm({
         onSave={handleSave}
         isSaving={isSaving}
         moduleKey={moduleInstance.module_key}
+        scoringData={scoringData}
+        onScoringChange={setScoringData}
       />
 
       {(() => {
@@ -1331,17 +1682,6 @@ export default function FRA3FireProtectionForm({
         ) : null;
       })()}
 
-      {document?.id && moduleInstance?.id && (
-
-
-        <ModuleActions
-        key={actionsRefreshKey}
-        documentId={document.id}
-        moduleInstanceId={moduleInstance.id}
-      />
-
-
-      )}
 
       {showActionModal && (
         <AddActionModal
@@ -1359,6 +1699,12 @@ export default function FRA3FireProtectionForm({
           defaultAction={quickActionTemplate?.action}
           defaultLikelihood={quickActionTemplate?.likelihood}
           defaultImpact={quickActionTemplate?.impact}
+          source={quickActionTemplate?.source}
+          sectionKey={quickActionTemplate?.sectionKey}
+          sectionLabel={quickActionTemplate?.sectionLabel}
+          sourceKey={quickActionTemplate?.sourceKey}
+          sourceLabel={quickActionTemplate?.sourceLabel}
+          defaultCategory={quickActionTemplate?.defaultCategory}
         />
       )}
     </div>

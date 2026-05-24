@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { computeExplosionSummary } from '../dsear/criticalityEngine';
 import { compareActionsByDisplayReference, filterActiveActions } from './actionContracts';
-import { listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment, listAttachments, type Attachment } from '../supabase/attachments';
 import { getModuleName } from '../modules/moduleCatalog';
 import { resolveExplosionRegime } from '../jurisdictions';
 import { detectInfoGapsForModule } from '../../utils/infoGapQuickActions';
@@ -25,6 +25,8 @@ import {
   splitNarrativeParagraphs,
   drawNarrativeParagraphs,
   parseNarrativeBlocks,
+  addExecutiveSummaryPages,
+  resolveExecutiveSummaryMode,
   REPORT_TITLE_TO_BODY_GAP,
   } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
@@ -124,7 +126,7 @@ interface BuildPdfOptions {
   preparedByName?: string | null;
 }
 
-const NOT_ASSESSED_LABEL = 'Not assessed';
+const NOT_ASSESSED_LABEL = 'Not Assessed';
 
 function hasMeaningfulText(value: unknown, minLength = 3): boolean {
   return typeof value === 'string' && value.trim().length >= minLength;
@@ -203,18 +205,34 @@ function drawModuleSection(
   // Outcome badge if present
   if (module.outcome) {
     const outcomeLabels: Record<string, string> = {
-      satisfactory: 'Satisfactory',
-      adequate: 'Adequate',
-      requires_improvement: 'Requires Improvement',
-      unsatisfactory: 'Unsatisfactory',
+      compliant: 'Compliant',
+      satisfactory: 'Compliant',
+      adequate: 'Compliant',
+      minor_def: 'Minor Deficiency',
+      moderate_def: 'Moderate Deficiency',
+      material_def: 'Significant Deficiency',
+      significant_def: 'Significant Deficiency',
+      requires_improvement: 'Minor Deficiency',
+      unsatisfactory: 'Significant Deficiency',
+      info_gap: 'Information Gap',
+      information_incomplete: 'Information Gap',
       not_assessed: 'Not Assessed',
+      na: 'Not Applicable',
     };
     const outcomeColors: Record<string, any> = {
-      satisfactory: rgb(0.2, 0.7, 0.3),
-      adequate: rgb(0.4, 0.6, 0.9),
-      requires_improvement: rgb(0.95, 0.7, 0.2),
-      unsatisfactory: rgb(0.9, 0.3, 0.3),
+      compliant: rgb(0.13, 0.55, 0.13),
+      satisfactory: rgb(0.13, 0.55, 0.13),
+      adequate: rgb(0.13, 0.55, 0.13),
+      minor_def: rgb(0.85, 0.65, 0.13),
+      moderate_def: rgb(0.9, 0.5, 0.13),
+      material_def: rgb(0.8, 0.13, 0.13),
+      significant_def: rgb(0.8, 0.13, 0.13),
+      requires_improvement: rgb(0.85, 0.65, 0.13),
+      unsatisfactory: rgb(0.8, 0.13, 0.13),
+      info_gap: rgb(0.3, 0.5, 0.8),
+      information_incomplete: rgb(0.3, 0.5, 0.8),
       not_assessed: rgb(0.6, 0.6, 0.6),
+      na: rgb(0.7, 0.7, 0.7),
     };
 
     const outcomeLabel = outcomeLabels[module.outcome] || module.outcome;
@@ -439,7 +457,7 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
     attachments = await listAttachments(document.id);
     
   } catch (error) {
-    console.warn('[FRA+DSEAR PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[FRA+DSEAR PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -488,10 +506,41 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
   const tocPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   totalPages.push(tocPage);
 
-  // Add combined executive summary
+  const executiveSummaryMode = resolveExecutiveSummaryMode(
+    document.executive_summary_mode,
+    document.executive_summary_ai,
+    document.executive_summary_author
+  );
+  const hasConfiguredExecutiveSummary =
+    ((executiveSummaryMode === 'ai' || executiveSummaryMode === 'both') && !!String(document.executive_summary_ai || '').trim()) ||
+    ((executiveSummaryMode === 'author' || executiveSummaryMode === 'both') && !!String(document.executive_summary_author || '').trim());
+
+  if (import.meta.env.DEV) console.info('[FRA+DSEAR PDF] Executive summary diagnostics:', {
+    documentId: document.id,
+    requestedMode: document.executive_summary_mode,
+    resolvedMode: executiveSummaryMode,
+    aiLength: String(document.executive_summary_ai || '').trim().length,
+    authorLength: String(document.executive_summary_author || '').trim().length,
+    addedToRenderTree: hasConfiguredExecutiveSummary,
+  });
+
+  if (hasConfiguredExecutiveSummary) {
+    recordToc('Executive Summary');
+    addExecutiveSummaryPages(
+      pdfDoc,
+      isDraft,
+      totalPages,
+      executiveSummaryMode,
+      document.executive_summary_ai,
+      document.executive_summary_author,
+      { bold: fontBold, regular: font }
+    );
+  }
+
+  // Add combined risk snapshot
   page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   totalPages.push(page);
-  recordToc('Executive Summary');
+  recordToc(hasConfiguredExecutiveSummary ? 'Combined Risk Snapshot' : 'Executive Summary');
   yPosition = PAGE_TOP_Y;
 
   ({ page, yPosition } = drawCombinedExecutiveSummary(
@@ -987,6 +1036,31 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
       });
       yPosition -= 20;
     }
+
+    const documentLevelImages = attachments.filter((attachment) =>
+      isDocumentLevelAttachment(attachment) && isRenderableImageAttachment(attachment)
+    );
+
+    for (const attachment of documentLevelImages) {
+      page = addNewPage(pdfDoc, isDraft, totalPages).page;
+      yPosition = PAGE_TOP_Y;
+      page.drawText('Document-level Photo Evidence', { x: MARGIN, y: yPosition, size: 14, font: fontBold, color: rgb(0, 0, 0) });
+      yPosition -= 22;
+      page.drawText(sanitizePdfText(attachment.caption || attachment.file_name), { x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.2, 0.2, 0.2) });
+      yPosition -= 18;
+      const bytes = await fetchAttachmentBytes(attachment);
+      if (!bytes) continue;
+      const fileType = String(attachment.file_type || '').toLowerCase();
+      const fileName = String(attachment.file_name || '').toLowerCase();
+      const image = fileType === 'image/png' || fileName.endsWith('.png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+      const raw = image.scale(1);
+      const maxWidth = CONTENT_WIDTH * 0.75;
+      const maxHeight = yPosition - MARGIN;
+      const scale = Math.min(maxWidth / raw.width, maxHeight / raw.height, 1);
+      const width = raw.width * scale;
+      const height = raw.height * scale;
+      page.drawImage(image, { x: MARGIN + ((CONTENT_WIDTH - width) / 2), y: yPosition - height, width, height });
+    }
   }
 
   // Now render the TOC with collected entries (flowing to extra TOC pages if needed)
@@ -1223,7 +1297,7 @@ function drawCombinedExecutiveSummary(
       }
 
       } catch (error) {
-      console.error('Error computing explosion summary:', error);
+      if (import.meta.env.DEV) console.error('Error computing explosion summary:', error);
     }
   }
 const deduplicatedActions = deduplicateActions(actions, moduleInstances);

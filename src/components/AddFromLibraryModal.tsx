@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 import { X, Search, Library } from 'lucide-react';
 
 interface LibraryItem {
@@ -21,14 +22,14 @@ interface AddFromLibraryModalProps {
 }
 
 const MODULE_OPTIONS = [
-  { key: 'RE_01_DOC_CONTROL', label: 'RE-01 Document Control' },
-  { key: 'RE_02_CONSTRUCTION', label: 'RE-02 Construction' },
-  { key: 'RE_03_OCCUPANCY', label: 'RE-03 Occupancy' },
-  { key: 'RE_06_FIRE_PROTECTION', label: 'RE-04 Fire Protection' },
-  { key: 'RE_07_NATURAL_HAZARDS', label: 'RE-05 Exposures' },
-  { key: 'RE_08_UTILITIES', label: 'RE-06 Utilities' },
-  { key: 'RE_09_MANAGEMENT', label: 'RE-07 Management' },
-  { key: 'RE_12_LOSS_VALUES', label: 'RE-08 Loss & Values' },
+  { key: 'RE_01_DOC_CONTROL', label: 'RE-01 – Document Control' },
+  { key: 'RE_02_CONSTRUCTION', label: 'RE-02 – Construction' },
+  { key: 'RE_03_OCCUPANCY', label: 'RE-03 – Occupancy' },
+  { key: 'RE_07_NATURAL_HAZARDS', label: 'RE-04 – Exposures' },
+  { key: 'RE_06_FIRE_PROTECTION', label: 'RE-05 – Fire Protection' },
+  { key: 'RE_08_UTILITIES', label: 'RE-06 – Utilities & Critical Services' },
+  { key: 'RE_09_MANAGEMENT', label: 'RE-07 – Management Systems' },
+  { key: 'RE_12_LOSS_VALUES', label: 'RE-08 – Loss & Values' },
   { key: 'OTHER', label: 'Other / General' },
 ];
 
@@ -195,7 +196,7 @@ function LibraryItemCard({
   const [expanded, setExpanded] = useState(false);
   const moduleLabel =
     MODULE_OPTIONS.find((m) => m.key === item.related_module_key)?.label ||
-    item.related_module_key ||
+    getModuleDisplayLabel(item.related_module_key) ||
     'General';
 
   const priorityToText = (priority: number): 'High' | 'Medium' | 'Low' => {

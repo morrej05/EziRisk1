@@ -1,3 +1,5 @@
+import { PUBLIC_LEGAL_DETAILS } from '../config/support';
+
 export interface LegalSection {
   heading: string;
   paragraphs?: string[];
@@ -13,11 +15,10 @@ export interface LegalDocumentContent {
 
 export const privacyPolicyContent: LegalDocumentContent = {
   title: 'Privacy Policy',
-  lastUpdated: 'Last updated: 18 March 2026',
+  lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'This Privacy Policy explains how EziRisk (the “platform”) collects, uses, stores, and protects personal data when people use EziRisk.',
-    'EziRisk is operated by the operator of EziRisk. Where this policy refers to “we”, “us”, or “our”, it means EziRisk and the operator of EziRisk.',
-    'EziRisk is currently operated as an unincorporated business.',
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. For data protection purposes, ${PUBLIC_LEGAL_DETAILS.dataController} is the data controller for the personal data processed through this website and platform, unless otherwise stated. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -80,9 +81,16 @@ export const privacyPolicyContent: LegalDocumentContent = {
       ],
     },
     {
-      heading: '9. Contact',
+      heading: '9. Cookies',
       paragraphs: [
-        'For privacy requests and enquiries, contact: privacy@ezirisk.com',
+        'EziRisk uses essential cookies and similar local storage where needed to provide the website and platform, remember cookie choices, support authentication, and maintain security. Optional analytics or experience cookies are used only where enabled and permitted.',
+      ],
+    },
+    {
+      heading: '10. Contact',
+      paragraphs: [
+        `For privacy requests and enquiries, contact: ${PUBLIC_LEGAL_DETAILS.contactEmail}`,
+        `Website: ${PUBLIC_LEGAL_DETAILS.website}`,
       ],
     },
   ],
@@ -90,10 +98,10 @@ export const privacyPolicyContent: LegalDocumentContent = {
 
 export const termsOfUseContent: LegalDocumentContent = {
   title: 'Terms of Use',
-  lastUpdated: 'Last updated: 18 March 2026',
+  lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'These Terms of Use govern access to and use of EziRisk.',
-    'EziRisk is currently operated as an unincorporated business.',
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}. Contact: ${PUBLIC_LEGAL_DETAILS.contactEmail}.`,
     'By accessing or using EziRisk, you agree to these terms on behalf of yourself and, where applicable, your organisation.',
   ],
   sections: [
@@ -133,7 +141,7 @@ export const termsOfUseContent: LegalDocumentContent = {
     {
       heading: '6. Intellectual property',
       paragraphs: [
-        'EziRisk branding, software, and platform materials are owned by or licensed to the operator of EziRisk. Your organisation retains rights in content you upload, subject to the permissions needed for service operation.',
+        `EziRisk branding, software, and platform materials are owned by or licensed to ${PUBLIC_LEGAL_DETAILS.operator}. Your organisation retains rights in content you upload, subject to the permissions needed for service operation.`,
       ],
     },
     {
@@ -153,9 +161,10 @@ export const termsOfUseContent: LegalDocumentContent = {
 
 export const professionalLiabilityDisclaimerContent: LegalDocumentContent = {
   title: 'Professional Liability Disclaimer',
-  lastUpdated: 'Last updated: 18 March 2026',
+  lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk provides report generation support tools. It does not replace professional expertise, legal duties, or site-specific judgement.',
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -178,9 +187,10 @@ export const professionalLiabilityDisclaimerContent: LegalDocumentContent = {
 
 export const securityTrustContent: LegalDocumentContent = {
   title: 'Security & Trust',
-  lastUpdated: 'Last updated: 18 March 2026',
+  lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk is designed with practical safeguards to help organisations and consultants use the platform with confidence.',
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -216,7 +226,7 @@ export const securityTrustContent: LegalDocumentContent = {
     {
       heading: '5. Contact',
       paragraphs: [
-        'For security enquiries and responsible disclosure, contact: security@ezirisk.com',
+        'For security enquiries and responsible disclosure, contact: support@ezirisk.co.uk',
       ],
     },
   ],
@@ -224,9 +234,10 @@ export const securityTrustContent: LegalDocumentContent = {
 
 export const acceptableUsePolicyContent: LegalDocumentContent = {
   title: 'Acceptable Use Policy',
-  lastUpdated: 'Last updated: 18 March 2026',
+  lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk Acceptable Use Policy',
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -301,7 +312,7 @@ export const acceptableUsePolicyContent: LegalDocumentContent = {
     {
       heading: '7. Enforcement',
       paragraphs: [
-        'The operator of EziRisk may suspend, restrict, or terminate access to the platform where this policy is breached or where misuse is suspected.',
+        `${PUBLIC_LEGAL_DETAILS.operator} may suspend, restrict, or terminate access to the platform where this policy is breached or where misuse is suspected.`,
         'Serious cases may be reported to relevant authorities where appropriate.',
       ],
     },
@@ -317,9 +328,10 @@ export const acceptableUsePolicyContent: LegalDocumentContent = {
 
 export const subProcessorsInfrastructureContent: LegalDocumentContent = {
   title: 'Sub-processors / Infrastructure',
-  lastUpdated: 'Last updated: 18 March 2026',
+  lastUpdated: 'Last updated: 12 May 2026',
   intro: [
     'EziRisk Sub-processors / Infrastructure',
+    `EziRisk is operated by ${PUBLIC_LEGAL_DETAILS.operator}. ICO registration number: ${PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}.`,
   ],
   sections: [
     {
@@ -387,7 +399,7 @@ export const subProcessorsInfrastructureContent: LegalDocumentContent = {
       heading: '7. Contact',
       paragraphs: [
         'If you have questions about EziRisk infrastructure or data processing providers, please contact:',
-        'privacy@ezirisk.com',
+        'support@ezirisk.co.uk',
       ],
     },
   ],

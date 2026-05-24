@@ -9,6 +9,8 @@ import AiInsightPanel from '../../components/ai/AiInsightPanel';
 import { getPlanDisplayName, getSubscriptionStatusDisplayName } from '../../utils/entitlements';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
+const SHOW_AI_CONTROLS = import.meta.env.DEV;
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { organisation } = useAuth();
@@ -91,7 +93,7 @@ export default function DashboardPage() {
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600">Track assessments, reports, and pilot workspace activity.</p>
+          <p className="mt-1 text-sm text-slate-600">Track assessments, reports, and workspace activity.</p>
         </div>
         <a
           href={getSupportMailto()}
@@ -136,7 +138,7 @@ export default function DashboardPage() {
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
           <p className="text-sm text-slate-500">Last Updated Assessment</p>
-          <p className="text-base font-semibold text-slate-900 mt-1">{assessments[0]?.siteName || '—'}</p>
+          <p className="text-base font-semibold text-slate-900 mt-1">{assessments[0]?.siteName || 'No assessment updated yet'}</p>
         </div>
       </div>
 
@@ -157,21 +159,23 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleAnalyseSelected}
-                  disabled={selectedRows.length === 0}
-                  className="px-3 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
-                >
-                  Analyse Selected
-                </button>
-                <button
-                  onClick={handleSummariseVisible}
-                  className="px-3 py-2 bg-white text-slate-900 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
-                >
-                  Summarise Visible
-                </button>
-              </div>
+              {SHOW_AI_CONTROLS && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleAnalyseSelected}
+                    disabled={selectedRows.length === 0}
+                    className="px-3 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+                  >
+                    Analyse Selected
+                  </button>
+                  <button
+                    onClick={handleSummariseVisible}
+                    className="px-3 py-2 bg-white text-slate-900 text-sm font-medium rounded-md border border-slate-300 hover:bg-slate-50 transition-colors"
+                  >
+                    Summarise Visible
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -238,7 +242,7 @@ export default function DashboardPage() {
                           <div className="text-sm text-slate-500">{assessment.siteName}</div>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-900">{assessment.type}</td>
-                        <td className="px-6 py-4 text-sm text-slate-900">{assessment.surveyor || '—'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-900">{assessment.surveyor || 'Not assigned'}</td>
                         <td className="px-6 py-4">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -310,12 +314,14 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <AiInsightPanel
-          isOpen={isAiPanelOpen}
-          mode={aiMode}
-          records={aiRecords}
-          onClose={() => setIsAiPanelOpen(false)}
-        />
+        {SHOW_AI_CONTROLS && (
+          <AiInsightPanel
+            isOpen={isAiPanelOpen}
+            mode={aiMode}
+            records={aiRecords}
+            onClose={() => setIsAiPanelOpen(false)}
+          />
+        )}
       </div>
 
       {/* TODO: pass selected/visible records to a backend AI workflow once service contracts are finalised. */}

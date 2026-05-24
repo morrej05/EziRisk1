@@ -15,6 +15,7 @@ export interface Attachment {
   uploaded_by: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export interface CreateAttachmentData {
@@ -43,6 +44,7 @@ export async function listAttachments(documentId: string): Promise<Attachment[]>
     .from('attachments')
     .select('*')
     .eq('document_id', documentId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -66,6 +68,7 @@ export async function listAttachmentsWithLinks(documentId: string): Promise<Atta
       )
     `)
     .eq('document_id', documentId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -349,12 +352,15 @@ export async function uploadEvidenceFile(
   };
 }
 
-export function getPublicUrl(filePath: string): string {
-  const { data } = supabase.storage
+// evidence is a private bucket — signed URLs are required.
+// getPublicUrl returns a non-functional URL for private buckets; use getSignedUrl instead.
+export async function getPublicUrl(filePath: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
     .from('evidence')
-    .getPublicUrl(filePath);
+    .createSignedUrl(filePath, 3600);
 
-  return data.publicUrl;
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
 }
 
 export async function getSignedUrl(input: string | any, expiresIn: number = 3600): Promise<string> {
@@ -470,6 +476,28 @@ export async function countAttachmentsByModule(moduleInstanceId: string): Promis
   return count || 0;
 }
 
+export function isDocumentLevelAttachment(attachment: Pick<Attachment, 'module_instance_id' | 'action_id'>): boolean {
+  return !attachment.module_instance_id && !attachment.action_id;
+}
+
+export function isPdfAttachment(attachment: Pick<Attachment, 'file_type' | 'file_name'>): boolean {
+  const fileType = String(attachment.file_type || '').toLowerCase();
+  const fileName = String(attachment.file_name || '').toLowerCase();
+  return fileType === 'application/pdf' || fileName.endsWith('.pdf');
+}
+
+export function isRenderableImageAttachment(attachment: Pick<Attachment, 'file_type' | 'file_name'>): boolean {
+  const fileType = String(attachment.file_type || '').toLowerCase();
+  const fileName = String(attachment.file_name || '').toLowerCase();
+
+  return fileType === 'image/png' ||
+    fileType === 'image/jpg' ||
+    fileType === 'image/jpeg' ||
+    fileName.endsWith('.png') ||
+    fileName.endsWith('.jpg') ||
+    fileName.endsWith('.jpeg');
+}
+
 export async function fetchAttachmentBytes(attachment: Attachment): Promise<Uint8Array | null> {
   try {
     const filePath = extractFilePath(attachment);
@@ -478,21 +506,15 @@ export async function fetchAttachmentBytes(attachment: Attachment): Promise<Uint
       return null;
     }
 
-    const { data, error } = await supabase.storage
-      .from('evidence')
-      .download(filePath);
+    const signedUrl = await getSignedUrl(filePath, 300);
+    const response = await fetch(signedUrl);
 
-    if (error) {
-      console.warn('[fetchAttachmentBytes] Error downloading:', error, 'Path:', filePath);
+    if (!response.ok) {
+      console.warn('[fetchAttachmentBytes] Error fetching signed URL:', response.status, response.statusText, 'Path:', filePath);
       return null;
     }
 
-    if (!data) {
-      console.warn('[fetchAttachmentBytes] No data returned for:', filePath);
-      return null;
-    }
-
-    const arrayBuffer = await data.arrayBuffer();
+    const arrayBuffer = await response.arrayBuffer();
     return new Uint8Array(arrayBuffer);
   } catch (error) {
     console.warn('[fetchAttachmentBytes] Exception:', error, 'Attachment:', attachment.id);

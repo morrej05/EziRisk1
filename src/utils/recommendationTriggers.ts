@@ -68,7 +68,7 @@ export async function evaluateTriggers(
       .eq('is_active', true);
 
     if (triggerError) {
-      console.error('Error fetching triggers:', triggerError);
+      if (import.meta.env.DEV) console.error('Error fetching triggers:', triggerError);
       errorMsg = triggerError.message;
 
       // Log evaluation attempt
@@ -145,7 +145,7 @@ export async function evaluateTriggers(
         );
 
       if (upsertError) {
-        console.error('Error upserting recommendation:', upsertError);
+        if (import.meta.env.DEV) console.error('Error upserting recommendation:', upsertError);
         continue;
       }
 
@@ -169,7 +169,7 @@ export async function evaluateTriggers(
 
     return { success: true, recommendationsAdded: addedCount };
   } catch (err: any) {
-    console.error('Error evaluating triggers:', err);
+    if (import.meta.env.DEV) console.error('Error evaluating triggers:', err);
     errorMsg = err.message;
 
     // Log failed evaluation
@@ -216,13 +216,13 @@ export async function removeTriggers(
       .like('trigger_key', triggerKeyPattern);
 
     if (error) {
-      console.error('Error removing triggers:', error);
+      if (import.meta.env.DEV) console.error('Error removing triggers:', error);
       return { success: false, error: error.message };
     }
 
     return { success: true };
   } catch (err: any) {
-    console.error('Error in removeTriggers:', err);
+    if (import.meta.env.DEV) console.error('Error in removeTriggers:', err);
     return { success: false, error: err.message };
   }
 }
@@ -257,7 +257,7 @@ export async function reevaluateAllTriggers(
 
     return { success: true, totalAdded };
   } catch (err: any) {
-    console.error('Error in reevaluateAllTriggers:', err);
+    if (import.meta.env.DEV) console.error('Error in reevaluateAllTriggers:', err);
     return { success: false, totalAdded, error: err.message };
   }
 }

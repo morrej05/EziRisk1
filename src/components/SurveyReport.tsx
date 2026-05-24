@@ -190,15 +190,15 @@ export default function SurveyReport({ surveyId, surveyType, embedded = false, a
                   </p>
                 </div>
                 <div className="text-xs text-slate-500 border-t border-violet-200 pt-3 mt-4">
-                  AI-generated summary based on structured survey data.
+                  Generated summary based on structured survey data.
                 </div>
               </>
             ) : (
               <div className="bg-white rounded-lg border-2 border-dashed border-violet-300 p-6 text-center">
                 <Sparkles className="w-8 h-8 text-violet-400 mx-auto mb-3" />
-                <p className="text-slate-600 mb-2">No AI summary generated yet</p>
+                <p className="text-slate-600 mb-2">No executive summary has been prepared yet</p>
                 <p className="text-sm text-slate-500">
-                  Click "Generate AI Summary" in the toolbar above to create an executive summary of this survey.
+                  Prepare the executive summary before issuing this survey.
                 </p>
               </div>
             )}

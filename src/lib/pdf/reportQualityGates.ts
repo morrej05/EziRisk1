@@ -2,7 +2,7 @@
  * Report Quality Gates & Validation
  *
  * Validates report completeness and data quality before PDF generation.
- * Detects placeholders, missing IDs, empty commentary, and other issues.
+ * Detects placeholders, missing IDs, missing outcomes, advisory recommendation depth issues, and other issues.
  */
 
 interface ModuleInstance {
@@ -10,13 +10,29 @@ interface ModuleInstance {
   module_key: string;
   outcome: string | null;
   assessor_notes: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   completed_at: string | null;
   updated_at: string;
 }
 
+
+interface ActionQualityInput {
+  id?: string | null;
+  module_instance_id?: string | null;
+  reference_number?: string | null;
+  recommended_action?: string | null;
+  priority?: string | null;
+  priority_band?: string | null;
+  status?: string | null;
+  target_date?: string | null;
+  trigger_text?: string | null;
+  escalation_justification?: string | null;
+  closure_notes?: string | null;
+  recommendation_detail?: unknown;
+}
+
 export interface QualityIssue {
-  type: 'placeholder' | 'missing_action_id' | 'empty_commentary' | 'missing_outcome';
+  type: 'placeholder' | 'missing_action_id' | 'missing_action_text' | 'empty_commentary' | 'missing_outcome' | 'missing_recommendation_rationale' | 'missing_recommendation_observation' | 'missing_recommendation_timeframe' | 'standards_reference_detail' | 'closure_notes_advisory' | 'major_deficiency_without_recommendation';
   severity: 'blocking' | 'warning';
   message: string;
   moduleKey?: string;
@@ -28,6 +44,7 @@ export interface QualityGateResult {
   blockingIssues: QualityIssue[];
   warnings: QualityIssue[];
   assuranceGaps: string[]; // Compact 2-item max list for PDF
+  advisoryNotes: string[]; // Optional non-blocking quality notes; not used for completeness
 }
 
 /**
@@ -91,10 +108,25 @@ function isEmptyCommentary(text: string | null | undefined): boolean {
   return false;
 }
 
+
+function getRecommendationDetail(action: ActionQualityInput): Record<string, string> {
+  const raw = action?.recommendation_detail;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const detail: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && value.trim()) detail[key] = value.trim();
+  }
+  return detail;
+}
+
+function hasMeaningfulText(value: unknown, minLength = 8): boolean {
+  return typeof value === 'string' && value.trim().length >= minLength;
+}
+
 /**
  * Validate actions for quality issues
  */
-function validateActions(actions: any[]): QualityIssue[] {
+function validateActions(actions: ActionQualityInput[]): QualityIssue[] {
   const issues: QualityIssue[] = [];
 
   for (const action of actions) {
@@ -119,9 +151,53 @@ function validateActions(actions: any[]): QualityIssue[] {
     // Check for empty/minimal action text
     if (!action.recommended_action || action.recommended_action.trim().length < 15) {
       issues.push({
-        type: 'empty_commentary',
+        type: 'missing_action_text',
         severity: 'blocking',
         message: 'Action description is too short or missing',
+      });
+    }
+
+    const detail = getRecommendationDetail(action);
+    const priority = String(action.priority_band || action.priority || '').toUpperCase();
+    const hasAnyDetail = Object.keys(detail).length > 0;
+
+    if ((priority === 'P1' || priority === 'P2') && !hasMeaningfulText(detail.rationale) && !hasMeaningfulText(action.escalation_justification)) {
+      issues.push({
+        type: 'missing_recommendation_rationale',
+        severity: 'warning',
+        message: `High-priority action lacks recorded rationale: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (hasAnyDetail && !hasMeaningfulText(detail.observation) && !hasMeaningfulText(action.trigger_text)) {
+      issues.push({
+        type: 'missing_recommendation_observation',
+        severity: 'warning',
+        message: `Structured recommendation lacks an observation/finding: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (!action.target_date && !hasMeaningfulText(detail.timeframe_guidance) && (priority === 'P1' || priority === 'P2' || priority === 'P3')) {
+      issues.push({
+        type: 'missing_recommendation_timeframe',
+        severity: 'warning',
+        message: `Recommendation has no target date or timeframe guidance: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (/\b(bs|pas|en|approved document|regulation|order|guidance|standard)\b/i.test(action.recommended_action || '') && !hasMeaningfulText(detail.standards_reference)) {
+      issues.push({
+        type: 'standards_reference_detail',
+        severity: 'warning',
+        message: `Recommendation references standards/guidance but has no structured standards detail: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
+      });
+    }
+
+    if (String(action.status || '').toLowerCase() === 'closed' && 'closure_notes' in action && !hasMeaningfulText(action.closure_notes)) {
+      issues.push({
+        type: 'closure_notes_advisory',
+        severity: 'warning',
+        message: `Closed action has no closure notes: "${action.recommended_action?.substring(0, 50) || 'Unknown'}"`,
       });
     }
   }
@@ -157,17 +233,6 @@ function validateModules(modules: ModuleInstance[]): QualityIssue[] {
       });
     }
 
-    // Check for empty commentary in completed modules
-    if (module.completed_at && isEmptyCommentary(module.assessor_notes)) {
-      issues.push({
-        type: 'empty_commentary',
-        severity: 'warning',
-        message: `Module "${module.module_key}" is complete but has minimal/no assessor commentary`,
-        moduleKey: module.module_key,
-        field: 'assessor_notes',
-      });
-    }
-
     // Check data fields for common placeholders
     if (module.data) {
       for (const [key, value] of Object.entries(module.data)) {
@@ -195,16 +260,16 @@ function generateAssuranceGaps(issues: QualityIssue[]): string[] {
 
   // Count issues by type
   const placeholderCount = issues.filter(i => i.type === 'placeholder').length;
-  const emptyCommentaryCount = issues.filter(i => i.type === 'empty_commentary').length;
   const missingOutcomeCount = issues.filter(i => i.type === 'missing_outcome').length;
+  const missingActionTextCount = issues.filter(i => i.type === 'missing_action_text').length;
 
   // Generate summary statements (max 2)
   if (placeholderCount > 0) {
     gaps.push(`${placeholderCount} field${placeholderCount > 1 ? 's' : ''} contain placeholder text requiring completion`);
   }
 
-  if (emptyCommentaryCount > 0 && gaps.length < 2) {
-    gaps.push(`${emptyCommentaryCount} module${emptyCommentaryCount > 1 ? 's' : ''} lack assessor commentary`);
+  if (missingActionTextCount > 0 && gaps.length < 2) {
+    gaps.push(`${missingActionTextCount} action${missingActionTextCount > 1 ? 's' : ''} missing required description text`);
   }
 
   if (missingOutcomeCount > 0 && gaps.length < 2) {
@@ -219,7 +284,7 @@ function generateAssuranceGaps(issues: QualityIssue[]): string[] {
  */
 export function validateReportQuality(
   modules: ModuleInstance[],
-  actions: any[]
+  actions: ActionQualityInput[]
 ): QualityGateResult {
   const allIssues: QualityIssue[] = [];
 
@@ -229,18 +294,34 @@ export function validateReportQuality(
   // Validate actions
   allIssues.push(...validateActions(actions));
 
+  const actionModuleIds = new Set(actions.map((action) => action.module_instance_id).filter(Boolean));
+  for (const module of modules) {
+    if (module.outcome === 'material_def' && !actionModuleIds.has(module.id)) {
+      allIssues.push({
+        type: 'major_deficiency_without_recommendation',
+        severity: 'warning',
+        message: `Material deficiency module "${module.module_key}" has no linked recommendation/action`,
+        moduleKey: module.module_key,
+      });
+    }
+  }
+
   // Separate blocking vs warnings
   const blockingIssues = allIssues.filter(i => i.severity === 'blocking');
   const warnings = allIssues.filter(i => i.severity === 'warning');
 
-  // Generate assurance gaps for PDF
+  // Generate assurance gaps for PDF from genuinely required/completion-blocking checks only.
   const assuranceGaps = generateAssuranceGaps([...blockingIssues, ...warnings]);
+  const advisoryNotes = modules
+    .filter(module => module.completed_at && isEmptyCommentary(module.assessor_notes))
+    .map(module => `Module "${module.module_key}" is complete but has minimal/no assessor commentary`);
 
   return {
     passed: blockingIssues.length === 0,
     blockingIssues,
     warnings,
     assuranceGaps,
+    advisoryNotes,
   };
 }
 
@@ -252,34 +333,27 @@ export function validateReportQuality(
 export function standardizeOutcomeLabel(outcome: string | null | undefined): string {
   if (!outcome) return 'Not Assessed';
 
-  const normalized = outcome.toLowerCase().trim();
+  const n = outcome.toLowerCase().trim();
 
-  // Critical deficiency outcomes
-  if (normalized.includes('critical') || normalized.includes('immediate')) {
-    return 'Critical Deficiency';
-  }
+  if (n === 'na' || n === 'n/a' || n === 'not_applicable' || n === 'not applicable') return 'Not Applicable';
+  if (n === 'info_gap' || n === 'information_gap' || n === 'information gap' || n === 'information_incomplete' || n === 'information incomplete') return 'Information Gap';
+  if (n === 'not_assessed' || n === 'not assessed') return 'Not Assessed';
+  if (n === 'moderate_def' || n === 'moderate deficiency' || n === 'moderate_deficiency') return 'Moderate Deficiency';
+  if (
+    n === 'material_def' || n === 'significant_def' ||
+    n === 'material deficiency' || n === 'significant deficiency' ||
+    n === 'material_deficiency' || n === 'significant_deficiency' ||
+    n.includes('critical') || n.includes('immediate')
+  ) return 'Significant Deficiency';
+  if (
+    n === 'minor_def' || n === 'minor deficiency' || n === 'minor_deficiency' ||
+    n.includes('minor') || n.includes('governance') || n.includes('observation')
+  ) return 'Minor Deficiency';
+  if (
+    n === 'compliant' || n === 'satisfactory' || n === 'adequate' ||
+    n.includes('compliant') || n.includes('satisfactory') || n.includes('adequate') || n.includes('partial')
+  ) return 'Compliant';
 
-  // Material deficiency outcomes
-  if (normalized.includes('material') || normalized.includes('significant')) {
-    return 'Material Deficiency';
-  }
-
-  // Governance/minor outcomes
-  if (normalized.includes('governance') || normalized.includes('observation') || normalized.includes('minor')) {
-    return 'Governance Issue';
-  }
-
-  // Compliant outcomes
-  if (normalized.includes('compliant') || normalized.includes('satisfactory') || normalized.includes('adequate')) {
-    return 'Compliant';
-  }
-
-  // Partial compliance
-  if (normalized.includes('partial')) {
-    return 'Partially Compliant';
-  }
-
-  // Default: capitalize first letter of each word
   return outcome
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())

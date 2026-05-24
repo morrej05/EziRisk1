@@ -3,6 +3,10 @@
   - Normalize survey-era authorization to organisation_members-first checks
   - Align role checks to owner/admin/consultant/viewer
   - Remove profile organisation fallback in active survey paths
+
+  Note (2026-05-22): survey_recommendations is a legacy table that may not exist
+  in all environments. The section B block below is wrapped in a DO … IF EXISTS
+  guard so the migration remains idempotent regardless of table presence.
 */
 
 -- =========================
@@ -20,6 +24,10 @@ DROP POLICY IF EXISTS "Users can delete own reports" ON public.survey_reports;
 DROP POLICY IF EXISTS "Editors and admins can create surveys" ON public.survey_reports;
 DROP POLICY IF EXISTS "Editors and admins can update own surveys" ON public.survey_reports;
 DROP POLICY IF EXISTS "Editors and admins can delete own surveys" ON public.survey_reports;
+DROP POLICY IF EXISTS "Users can view org surveys" ON public.survey_reports;
+DROP POLICY IF EXISTS "Editors can create org surveys" ON public.survey_reports;
+DROP POLICY IF EXISTS "Editors can update org draft surveys" ON public.survey_reports;
+DROP POLICY IF EXISTS "Owners admins can delete org draft surveys" ON public.survey_reports;
 
 CREATE POLICY "Users can view org surveys"
 ON public.survey_reports FOR SELECT TO authenticated
@@ -82,74 +90,96 @@ USING (
 
 -- =========================
 -- B) survey_recommendations membership-first policies
+--    Guarded: table may not exist in environments where the survey module
+--    was superseded before this migration ran.
 -- =========================
-DROP POLICY IF EXISTS "Users can view recommendations for own surveys" ON public.survey_recommendations;
-DROP POLICY IF EXISTS "Users can insert recommendations for own surveys" ON public.survey_recommendations;
-DROP POLICY IF EXISTS "Users can update recommendations for own surveys" ON public.survey_recommendations;
-DROP POLICY IF EXISTS "Users can delete recommendations for own surveys" ON public.survey_recommendations;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'survey_recommendations'
+  ) THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Users can view recommendations for own surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Users can insert recommendations for own surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Users can update recommendations for own surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Users can delete recommendations for own surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Users can view recommendations for org surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Editors can insert recommendations for org surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Editors can update recommendations for org surveys" ON public.survey_recommendations';
+    EXECUTE 'DROP POLICY IF EXISTS "Owners admins can delete recommendations for org surveys" ON public.survey_recommendations';
 
-CREATE POLICY "Users can view recommendations for org surveys"
-ON public.survey_recommendations FOR SELECT TO authenticated
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.survey_reports sr
-    JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
-    WHERE sr.id = survey_recommendations.survey_id
-      AND om.user_id = auth.uid()
-      AND om.status = 'active'
-  )
-);
+    EXECUTE $pol$
+      CREATE POLICY "Users can view recommendations for org surveys"
+      ON public.survey_recommendations FOR SELECT TO authenticated
+      USING (
+        EXISTS (
+          SELECT 1
+          FROM public.survey_reports sr
+          JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
+          WHERE sr.id = survey_recommendations.survey_id
+            AND om.user_id = auth.uid()
+            AND om.status = 'active'
+        )
+      )
+    $pol$;
 
-CREATE POLICY "Editors can insert recommendations for org surveys"
-ON public.survey_recommendations FOR INSERT TO authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1
-    FROM public.survey_reports sr
-    JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
-    WHERE sr.id = survey_recommendations.survey_id
-      AND om.user_id = auth.uid()
-      AND om.status = 'active'
-      AND om.role IN ('owner', 'admin', 'consultant')
-  )
-);
+    EXECUTE $pol$
+      CREATE POLICY "Editors can insert recommendations for org surveys"
+      ON public.survey_recommendations FOR INSERT TO authenticated
+      WITH CHECK (
+        EXISTS (
+          SELECT 1
+          FROM public.survey_reports sr
+          JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
+          WHERE sr.id = survey_recommendations.survey_id
+            AND om.user_id = auth.uid()
+            AND om.status = 'active'
+            AND om.role IN ('owner', 'admin', 'consultant')
+        )
+      )
+    $pol$;
 
-CREATE POLICY "Editors can update recommendations for org surveys"
-ON public.survey_recommendations FOR UPDATE TO authenticated
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.survey_reports sr
-    JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
-    WHERE sr.id = survey_recommendations.survey_id
-      AND om.user_id = auth.uid()
-      AND om.status = 'active'
-      AND om.role IN ('owner', 'admin', 'consultant')
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1
-    FROM public.survey_reports sr
-    JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
-    WHERE sr.id = survey_recommendations.survey_id
-      AND om.user_id = auth.uid()
-      AND om.status = 'active'
-      AND om.role IN ('owner', 'admin', 'consultant')
-  )
-);
+    EXECUTE $pol$
+      CREATE POLICY "Editors can update recommendations for org surveys"
+      ON public.survey_recommendations FOR UPDATE TO authenticated
+      USING (
+        EXISTS (
+          SELECT 1
+          FROM public.survey_reports sr
+          JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
+          WHERE sr.id = survey_recommendations.survey_id
+            AND om.user_id = auth.uid()
+            AND om.status = 'active'
+            AND om.role IN ('owner', 'admin', 'consultant')
+        )
+      )
+      WITH CHECK (
+        EXISTS (
+          SELECT 1
+          FROM public.survey_reports sr
+          JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
+          WHERE sr.id = survey_recommendations.survey_id
+            AND om.user_id = auth.uid()
+            AND om.status = 'active'
+            AND om.role IN ('owner', 'admin', 'consultant')
+        )
+      )
+    $pol$;
 
-CREATE POLICY "Owners admins can delete recommendations for org surveys"
-ON public.survey_recommendations FOR DELETE TO authenticated
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.survey_reports sr
-    JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
-    WHERE sr.id = survey_recommendations.survey_id
-      AND om.user_id = auth.uid()
-      AND om.status = 'active'
-      AND om.role IN ('owner', 'admin')
-  )
-);
+    EXECUTE $pol$
+      CREATE POLICY "Owners admins can delete recommendations for org surveys"
+      ON public.survey_recommendations FOR DELETE TO authenticated
+      USING (
+        EXISTS (
+          SELECT 1
+          FROM public.survey_reports sr
+          JOIN public.organisation_members om ON om.organisation_id = sr.organisation_id
+          WHERE sr.id = survey_recommendations.survey_id
+            AND om.user_id = auth.uid()
+            AND om.status = 'active'
+            AND om.role IN ('owner', 'admin')
+        )
+      )
+    $pol$;
+  END IF;
+END $$;

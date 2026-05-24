@@ -1,5 +1,11 @@
 import { PDFDocument, PDFPage, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { compareActionsByDisplayReference, filterActiveActions } from './actionContracts';
+import {
+  getRecommendationActionText,
+  hasRecommendationDetail,
+  normalizeRecommendationDetail,
+  type RecommendationDetail,
+} from '../actions/recommendationDetail';
 
 export const PAGE_WIDTH = 595.28;
 export const PAGE_HEIGHT = 841.89;
@@ -49,6 +55,8 @@ export function sanitizePdfText(input: unknown): string {
   // Preserve line breaks/tabs for narrative rendering while still stripping
   // unsupported control characters for PDF font output.
   sanitized = sanitized
+    .replace(/\bNone\.\s*/g, '')
+    .replace(/\s{2,}/g, ' ')
     .replace(/\r\n?/g, '\n')
     .replace(/[^\n\t\x20-\x7E\xA0-\xFF]/g, '');
 
@@ -215,7 +223,7 @@ export function deriveSystemActionTitle(action: { recommended_action?: string; s
 
   // Keep first clause (imperative), strip rationale tails, remove urgency prefix
   let title = text.split(/\n|;|\.(\s|$)/)[0].trim();
-  title = title.replace(/^(urgent|immediate)\s*[:\-]\s*/i, '').trim();
+  title = title.replace(/^(urgent|immediate)\s*[:-]\s*/i, '').trim();
   title = title.replace(/\s+\b(to|in order to|so that)\b.*$/i, '').trim();
 
   const max = 95;
@@ -238,7 +246,7 @@ export function deriveSystemSnapshotTitle(action: { recommended_action?: string;
 
   // Remove common filler starts (optional but helps)
   let t = text
-    .replace(/^(urgent|immediate)\s*[:\-]\s*/i, '')
+    .replace(/^(urgent|immediate)\s*[:-]\s*/i, '')
     .replace(/^confirm (requirement )?for\s+/i, '')
     .replace(/^provide\s+/i, '')
     .trim();
@@ -247,6 +255,101 @@ export function deriveSystemSnapshotTitle(action: { recommended_action?: string;
   const max = 70;
   if (t.length > max) t = t.slice(0, max - 1).trimEnd() + '…';
   return t;
+}
+
+const ACTION_SNAPSHOT_MAX_LENGTH = 140;
+
+function shortenAtWordBoundary(text: string, maxLength: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+
+  const truncated = normalized.slice(0, maxLength + 1);
+  const boundary = Math.max(
+    truncated.lastIndexOf(' '),
+    truncated.lastIndexOf(','),
+    truncated.lastIndexOf(';'),
+    truncated.lastIndexOf(':'),
+    truncated.lastIndexOf(')')
+  );
+
+  const shortened = (boundary >= Math.floor(maxLength * 0.6)
+    ? truncated.slice(0, boundary)
+    : normalized.slice(0, maxLength)
+  ).replace(/[\s,;:.-]+$/g, '').trim();
+
+  // Snapshot text is intentionally concise; do not append ellipses because the
+  // full recommendation remains available later in the report.
+  return shortened || normalized.slice(0, maxLength).trim();
+}
+
+function firstNonEmptyActionField(action: {
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
+  recommended_action?: string | null;
+}): { value: string; source: 'short' | 'recommended_action' | 'empty' } {
+  const shortField = [action.title, action.summary, action.short_description]
+    .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
+    .find((value) => value.length > 0);
+
+  if (shortField) {
+    return { value: shortField, source: 'short' };
+  }
+
+  const recommendation = String(action.recommended_action || '').replace(/\s+/g, ' ').trim();
+  if (recommendation) {
+    return { value: recommendation, source: 'recommended_action' };
+  }
+
+  return { value: '', source: 'empty' };
+}
+
+/**
+ * Build the short, readable action text used in the Action Plan Snapshot.
+ * Prefers explicit short fields and otherwise condenses recommended_action.
+ */
+export function getActionSnapshotText(action: {
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
+  recommended_action?: string | null;
+}): string {
+  const selected = firstNonEmptyActionField(action);
+
+  let cleaned = selected.value
+    .replace(/^(urgent|immediate)\s*[:-]\s*/i, '')
+    .replace(/^(recommended action|required action|action required)\s*[:-]\s*/i, '')
+    .replace(/^it is recommended that\s+/i, '')
+    .replace(/^the (responsible person|duty holder|client) should\s+/i, '')
+    .replace(/^the (responsible person|duty holder|client)\s+/i, '')
+    .replace(/^ensure that\s+/i, '')
+    .replace(/^confirm (the )?(requirement )?for\s+/i, '')
+    .trim();
+
+  if (selected.source === 'recommended_action') {
+    const clauseParts = cleaned.split(/(?:;|\.\s+|\s+-\s+|\s+to ensure\b|\s+in order to\b|\s+so that\b)/i);
+    const firstMeaningfulClause = clauseParts.find(part => part.trim().length >= 12)?.trim();
+    if (firstMeaningfulClause) {
+      cleaned = firstMeaningfulClause;
+    }
+  }
+
+  cleaned = cleaned.replace(/[\s,;:.-]+$/g, '').trim();
+  if (!cleaned) return '(No action text provided)';
+
+  cleaned = cleaned
+    .replace(/^resolves\b/i, 'Resolve')
+    .replace(/^commissions\b/i, 'Commission')
+    .replace(/^surveys\b/i, 'Survey')
+    .replace(/^verifies\b/i, 'Verify')
+    .replace(/^removes\b/i, 'Remove')
+    .replace(/^inspects\b/i, 'Inspect')
+    .replace(/^updates\b/i, 'Update')
+    .replace(/^provides\b/i, 'Provide');
+
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  return shortenAtWordBoundary(cleaned, ACTION_SNAPSHOT_MAX_LENGTH);
 }
 
 export function formatAddress(addr?: any): string {
@@ -307,6 +410,11 @@ export function normalizeDisplayValue(value: unknown): string {
   if (!raw) return '';
 
   const s = raw.toLowerCase();
+  const normalizedRaw = raw
+    .replace(/(\d{3,4})'s\b/g, '$1s')
+    .replace(/:([A-Za-z])/g, ': $1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 
   if (['yes', 'y', 'true', '1'].includes(s)) return 'Yes';
   if (['no', 'n', 'false', '0'].includes(s)) return 'No';
@@ -314,14 +422,14 @@ export function normalizeDisplayValue(value: unknown): string {
   if (['unknown', 'not known', 'not_known'].includes(s)) return 'Unknown';
 
   // Auto Title Case for fully lowercase words/phrases
-  if (/^[a-z\s]+$/.test(raw)) {
-    return raw
+  if (/^[a-z\s]+$/.test(normalizedRaw)) {
+    return normalizedRaw
       .split(' ')
       .map(w => w.charAt(0).toUpperCase() + w.slice(1))
       .join(' ');
   }
 
-  return raw;
+  return normalizedRaw;
 }
 
 /**
@@ -379,16 +487,21 @@ export function getOutcomeLabel(outcome: string): string {
       return 'Compliant';
     case 'minor_def':
       return 'Minor Deficiency';
+    case 'moderate_def':
+      return 'Moderate Deficiency';
     case 'material_def':
-      return 'Material Deficiency';
+    case 'significant_def':
+      return 'Significant Deficiency';
     case 'info_gap':
     case 'information_incomplete':
       return 'Information Gap';
     case 'na':
     case 'not_applicable':
       return 'Not Applicable';
+    case 'not_assessed':
+      return 'Not Assessed';
     default:
-      return 'Pending';
+      return 'Not Assessed';
   }
 }
 
@@ -587,7 +700,7 @@ export function drawDebugLabel(page: PDFPage, x: number, y: number, text: string
 export function addNewPage(pdfDoc: PDFDocument, isDraft: boolean, totalPages: PDFPage[]): { page: PDFPage; yPosition: number } {
   // Defensive initialization - prevent crashes if totalPages is undefined
   if (!totalPages) {
-    console.warn('[PDF] addNewPage: totalPages was undefined, using fallback empty array');
+    if (import.meta.env.DEV) console.warn('[PDF] addNewPage: totalPages was undefined, using fallback empty array');
     totalPages = [];
   }
 
@@ -685,28 +798,85 @@ export async function addSupersededWatermark(pdfDoc: PDFDocument): Promise<void>
   }
 }
 
+export function resolveExecutiveSummaryMode(
+  mode: 'ai' | 'author' | 'both' | 'none' | string | null | undefined,
+  aiSummary?: string | null,
+  authorSummary?: string | null
+): 'ai' | 'author' | 'both' | 'none' {
+  if (mode === 'ai' || mode === 'author' || mode === 'both' || mode === 'none') {
+    return mode;
+  }
+
+  const hasAiSummary = Boolean(String(aiSummary || '').trim());
+  const hasAuthorSummary = Boolean(String(authorSummary || '').trim());
+
+  if (hasAiSummary && hasAuthorSummary) return 'both';
+  if (hasAuthorSummary) return 'author';
+  return 'ai';
+}
+
+export function getSelectedExecutiveSummaryText(
+  mode: 'ai' | 'author' | 'both' | 'none' | string | null | undefined,
+  aiSummary?: string | null,
+  authorSummary?: string | null
+): { mode: 'ai' | 'author' | 'both' | 'none'; text: string } {
+  const resolvedMode = resolveExecutiveSummaryMode(mode, aiSummary, authorSummary);
+  const normalizedAiSummary = String(aiSummary || '').trim();
+  const normalizedAuthorSummary = String(authorSummary || '').trim();
+
+  if (resolvedMode === 'none') {
+    return { mode: resolvedMode, text: '' };
+  }
+
+  if (resolvedMode === 'both') {
+    return {
+      mode: resolvedMode,
+      text: [normalizedAiSummary, normalizedAuthorSummary].filter(Boolean).join('\n\n'),
+    };
+  }
+
+  if (resolvedMode === 'author') {
+    return { mode: resolvedMode, text: normalizedAuthorSummary };
+  }
+
+  return { mode: resolvedMode, text: normalizedAiSummary };
+}
+
 export function addExecutiveSummaryPages(
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[],
-  mode: 'ai' | 'author' | 'both' | 'none',
-  aiSummary: string | null,
-  authorSummary: string | null,
+  mode: 'ai' | 'author' | 'both' | 'none' | string | null | undefined,
+  aiSummary: string | null | undefined,
+  authorSummary: string | null | undefined,
   fonts: { bold: any; regular: any }
 ): number {
   // Defensive check - ensure totalPages is defined
   if (!totalPages) {
-    console.warn('[PDF] addExecutiveSummaryPages: totalPages was undefined, cannot render');
+    if (import.meta.env.DEV) console.warn('[PDF] addExecutiveSummaryPages: totalPages was undefined, cannot render');
     return 0;
   }
 
-  if (mode === 'none') {
+  const resolvedMode = resolveExecutiveSummaryMode(mode, aiSummary, authorSummary);
+  const normalizedAiSummary = String(aiSummary || '').trim();
+  const normalizedAuthorSummary = String(authorSummary || '').trim();
+  const summaryDiagnostics = {
+    requestedMode: mode,
+    resolvedMode,
+    aiLength: normalizedAiSummary.length,
+    authorLength: normalizedAuthorSummary.length,
+    hasAiSummary: normalizedAiSummary.length > 0,
+    hasAuthorSummary: normalizedAuthorSummary.length > 0,
+  };
+
+  if (resolvedMode === 'none') {
+    if (import.meta.env.DEV) console.info('[PDF Executive Summary] Section skipped by mode:', summaryDiagnostics);
     return 0;
   }
 
   let pagesAdded = 0;
 
-  if ((mode === 'ai' || mode === 'both') && aiSummary) {
+  if ((resolvedMode === 'ai' || resolvedMode === 'both') && normalizedAiSummary) {
     const { page } = addNewPage(pdfDoc, isDraft, totalPages);
     let currentPage = page;
     let yPosition = PAGE_TOP_Y;
@@ -721,7 +891,7 @@ export function addExecutiveSummaryPages(
 
     yPosition -= 30;
 
-    const paragraphs = aiSummary.split('\n\n');
+    const paragraphs = normalizedAiSummary.split('\n\n');
     for (const paragraph of paragraphs) {
       if (!paragraph.trim()) continue;
 
@@ -751,7 +921,7 @@ export function addExecutiveSummaryPages(
     pagesAdded++;
   }
 
-  if ((mode === 'author' || mode === 'both') && authorSummary) {
+  if ((resolvedMode === 'author' || resolvedMode === 'both') && normalizedAuthorSummary) {
     const { page } = addNewPage(pdfDoc, isDraft, totalPages);
     let currentPage = page;
     let yPosition = PAGE_TOP_Y;
@@ -768,7 +938,7 @@ export function addExecutiveSummaryPages(
 
     yPosition -= 30;
 
-    const paragraphs = authorSummary.split('\n\n');
+    const paragraphs = normalizedAuthorSummary.split('\n\n');
     for (const paragraph of paragraphs) {
       if (!paragraph.trim()) continue;
 
@@ -797,6 +967,12 @@ export function addExecutiveSummaryPages(
 
     pagesAdded++;
   }
+
+  if (import.meta.env.DEV) console.info('[PDF Executive Summary] Section render result:', {
+    ...summaryDiagnostics,
+    addedToRenderTree: pagesAdded > 0,
+    pagesAdded,
+  });
 
   return pagesAdded;
 }
@@ -818,7 +994,7 @@ export async function fetchAndEmbedLogo(
     ]);
 
     if (!response.ok) {
-      console.warn('[PDF Logo] Failed to fetch logo:', response.statusText);
+      if (import.meta.env.DEV) console.warn('[PDF Logo] Failed to fetch logo:', response.statusText);
       return null;
     }
 
@@ -879,7 +1055,7 @@ export async function fetchAndEmbedLogo(
         )
       ]);
     } else {
-      console.warn('[PDF Logo] Unsupported logo format:', logoPath);
+      if (import.meta.env.DEV) console.warn('[PDF Logo] Unsupported logo format:', logoPath);
       return null;
     }
 
@@ -887,7 +1063,7 @@ export async function fetchAndEmbedLogo(
     return { image, width: dims.width, height: dims.height };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[PDF Logo] Error embedding logo:', errorMsg);
+    if (import.meta.env.DEV) console.error('[PDF Logo] Error embedding logo:', errorMsg);
     return null;
   }
 }
@@ -917,7 +1093,7 @@ export async function loadPdfLogoWithFallback(
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.warn('[PDF Logo] Failed to load default EziRisk logo:', errorMsg);
+    if (import.meta.env.DEV) console.warn('[PDF Logo] Failed to load default EziRisk logo:', errorMsg);
   }
 
   return null;
@@ -1158,7 +1334,7 @@ export async function drawDocumentControlPage(
 ): Promise<void> {
   let yPosition = PAGE_TOP_Y;
 
-  page.drawText('DOCUMENT CONTROL & REVISION HISTORY', {
+  page.drawText('Document Control & Revision History', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1307,6 +1483,13 @@ export interface ActionForPdf {
   closed_at: string | null;
   superseded_by_action_id: string | null;
   superseded_at: string | null;
+  source?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
+  target_date?: string | null;
+  trigger_text?: string | null;
+  recommendation_detail?: RecommendationDetail | null;
 }
 
 /**
@@ -1323,7 +1506,7 @@ export function drawActionPlanSnapshot(
 ): number {
   // Defensive check - ensure totalPages is defined
   if (!totalPages) {
-    console.warn('[PDF] drawActionPlanSnapshot: totalPages was undefined, cannot render');
+    if (import.meta.env.DEV) console.warn('[PDF] drawActionPlanSnapshot: totalPages was undefined, cannot render');
     return 0;
   }
 
@@ -1348,7 +1531,7 @@ export function drawActionPlanSnapshot(
   };
 
   // Section title
-  context.page.drawText('ACTION PLAN SNAPSHOT', {
+  context.page.drawText('Action Plan Snapshot', {
     x: MARGIN,
     y: context.yPosition,
     size: 16,
@@ -1411,12 +1594,7 @@ export function drawActionPlanSnapshot(
         context.yPosition = PAGE_TOP_Y;
       }
 
-      // Derive ultra-short title for snapshot (70 char max for system actions)
-      const actionTitle = deriveSystemSnapshotTitle(action);
-      let actionText = sanitizePdfText(actionTitle);
-      if (actionText.length > 100) {
-        actionText = actionText.substring(0, 97) + '...';
-      }
+      const actionText = sanitizePdfText(getActionSnapshotText({ ...action, recommended_action: getRecommendationActionText(action) }));
 
       // Reference and section - reference_number from DB or undefined
       const ref = action.reference_number;
@@ -1433,20 +1611,33 @@ export function drawActionPlanSnapshot(
       }
       displayText += actionText;
 
-      context.page.drawText(displayText, {
-        x: MARGIN + 10,
-        y: context.yPosition,
-        size: 9,
-        font: fonts.regular,
-        color: rgb(0.2, 0.2, 0.2),
-      });
+      const textX = MARGIN + 10;
+      const maxTextWidth = CONTENT_WIDTH - 10;
+      const lines = wrapText(displayText, maxTextWidth, 9, fonts.regular);
+      const requiredHeight = Math.max(16, lines.length * 12 + 4);
 
-      context.yPosition -= 16;
+      if (context.yPosition < MARGIN + requiredHeight) {
+        context.page = addNewPage(pdfDoc, isDraft, totalPages).page;
+        context.yPosition = PAGE_TOP_Y;
+      }
+
+      for (const line of lines) {
+        context.page.drawText(line, {
+          x: textX,
+          y: context.yPosition,
+          size: 9,
+          font: fonts.regular,
+          color: rgb(0.2, 0.2, 0.2),
+        });
+        context.yPosition -= 12;
+      }
+
+      context.yPosition -= 4;
     }
 
     // If more actions than displayed, show count
     if (priorityActions.length > 5) {
-      context.page.drawText(`  ... and ${priorityActions.length - 5} more ${priorityLabel} action(s)`, {
+      context.page.drawText(`  Plus ${priorityActions.length - 5} more ${priorityLabel} action(s)`, {
         x: MARGIN + 10,
         y: context.yPosition,
         size: 9,
@@ -1477,7 +1668,7 @@ export function drawRecommendationsSection(
 ): number {
   // Defensive check - ensure totalPages is defined
   if (!totalPages) {
-    console.warn('[PDF] drawRecommendationsSection: totalPages was undefined, cannot render');
+    if (import.meta.env.DEV) console.warn('[PDF] drawRecommendationsSection: totalPages was undefined, cannot render');
     return 0;
   }
 
@@ -1485,7 +1676,7 @@ export function drawRecommendationsSection(
     const { page } = addNewPage(pdfDoc, isDraft, totalPages);
     let yPosition = PAGE_TOP_Y;
 
-    page.drawText('RECOMMENDATIONS', {
+    page.drawText('Recommendations', {
       x: MARGIN,
       y: yPosition,
       size: 16,
@@ -1540,7 +1731,7 @@ export function drawRecommendationsSection(
   let yPosition = PAGE_TOP_Y;
   pagesAdded++;
 
-  page.drawText('RECOMMENDATIONS', {
+  page.drawText('Recommendations', {
     x: MARGIN,
     y: yPosition,
     size: 16,
@@ -1572,25 +1763,84 @@ export function drawRecommendationsSection(
       yPosition -= 20;
     }
 
-    // Derive short title for auto actions, full text for manual actions
-    const actionTitle = deriveAutoActionTitle(action);
-    const descLines = wrapText(actionTitle, CONTENT_WIDTH - 20, 10, fonts.regular);
-    for (const line of descLines) {
-      if (yPosition < MARGIN + 40) {
-        const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
-        page = newPage;
-        yPosition = PAGE_TOP_Y;
-        pagesAdded++;
-      }
+    const drawLabelledText = (label: string, value: string | null | undefined, options: { boldValue?: boolean } = {}) => {
+      const clean = sanitizePdfText(value || '').trim();
+      if (!clean) return;
 
-      page.drawText(line, {
-        x: MARGIN + 10,
-        y: yPosition,
-        size: 10,
-        font: fonts.regular,
-        color: rgb(0, 0, 0),
-      });
-      yPosition -= 13;
+      const labelPrefix = `${label}: `;
+      const lines = wrapText(`${labelPrefix}${clean}`, CONTENT_WIDTH - 20, 9, fonts.regular);
+      for (const line of lines) {
+        if (yPosition < MARGIN + 40) {
+          const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
+          page = newPage;
+          yPosition = PAGE_TOP_Y;
+          pagesAdded++;
+        }
+
+        const isFirst = line.startsWith(labelPrefix);
+        if (isFirst) {
+          page.drawText(labelPrefix, {
+            x: MARGIN + 10,
+            y: yPosition,
+            size: 9,
+            font: fonts.bold,
+            color: rgb(0.15, 0.15, 0.15),
+          });
+          page.drawText(line.slice(labelPrefix.length), {
+            x: MARGIN + 10 + fonts.bold.widthOfTextAtSize(labelPrefix, 9),
+            y: yPosition,
+            size: 9,
+            font: options.boldValue ? fonts.bold : fonts.regular,
+            color: rgb(0, 0, 0),
+          });
+        } else {
+          page.drawText(line, {
+            x: MARGIN + 10,
+            y: yPosition,
+            size: 9,
+            font: options.boldValue ? fonts.bold : fonts.regular,
+            color: rgb(0, 0, 0),
+          });
+        }
+        yPosition -= 12;
+      }
+      yPosition -= 3;
+    };
+
+    const detail = normalizeRecommendationDetail(action.recommendation_detail);
+    if (hasRecommendationDetail(detail)) {
+      drawLabelledText('Finding / observation', detail.observation || action.trigger_text || null);
+      drawLabelledText('Risk implication', detail.consequence || null);
+      drawLabelledText('Recommendation', detail.recommendation || action.recommended_action || '(No action text provided)', { boldValue: true });
+      drawLabelledText('Rationale', detail.rationale || null);
+      drawLabelledText('Standards / guidance', detail.standards_reference || null);
+      drawLabelledText('Existing controls', detail.existing_controls || null);
+      drawLabelledText('Evidence basis', detail.evidence_notes || null);
+      drawLabelledText('Linked area', detail.linked_module || action.section_reference || null);
+      drawLabelledText('Assessor commentary', detail.assessor_commentary || null);
+      drawLabelledText('Management response / status notes', detail.management_response || detail.status_notes || null);
+    } else {
+      // Keep the full recommendation text in the Recommendations section;
+      // only the Action Plan Snapshot is condensed for quick scanning.
+      const recommendationText = sanitizePdfText(action.recommended_action || '(No action text provided)');
+      const descLines = wrapText(recommendationText, CONTENT_WIDTH - 20, 10, fonts.regular);
+      for (const line of descLines) {
+        if (yPosition < MARGIN + 40) {
+          const { page: newPage } = addNewPage(pdfDoc, isDraft, totalPages);
+          page = newPage;
+          yPosition = PAGE_TOP_Y;
+          pagesAdded++;
+        }
+
+        page.drawText(line, {
+          x: MARGIN + 10,
+          y: yPosition,
+          size: 10,
+          font: fonts.regular,
+          color: rgb(0, 0, 0),
+        });
+        yPosition -= 13;
+      }
     }
 
     yPosition -= 5;
@@ -1602,6 +1852,9 @@ export function drawRecommendationsSection(
     const priorityText = `Priority: ${action.priority_band}`;
     const statusText = `Status: ${safeStatus}`;
     const versionText = action.first_raised_in_version ? `First raised: Version ${action.first_raised_in_version}.0` : '';
+    const detailTimeframe = normalizeRecommendationDetail(action.recommendation_detail).timeframe_guidance;
+    const targetDateText = action.target_date ? `Target date: ${formatDate(action.target_date)}` : '';
+    const timeframeText = [detailTimeframe ? `Timescale: ${detailTimeframe}` : '', targetDateText].filter(Boolean).join(' | ');
 
     page.drawText(priorityText, {
       x: MARGIN + 10,
@@ -1630,6 +1883,17 @@ export function drawRecommendationsSection(
     }
 
     yPosition -= 15;
+
+    if (timeframeText) {
+      page.drawText(sanitizePdfText(timeframeText), {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 8,
+        font: fonts.regular,
+        color: rgb(0.35, 0.35, 0.35),
+      });
+      yPosition -= 12;
+    }
 
     if (action.closed_at) {
       const closedText = `Closed: ${formatDate(action.closed_at)}`;
@@ -1689,7 +1953,7 @@ export function deriveAutoActionTitle(action: { recommended_action?: string; sou
 
   // Shorten: take first clause; remove rationale tails; drop urgency prefix
   let title = text.split(/\n|;|\.(\s|$)/)[0].trim();
-  title = title.replace(/^(urgent|immediate)\s*[:\-]\s*/i, '').trim();
+  title = title.replace(/^(urgent|immediate)\s*[:-]\s*/i, '').trim();
   title = title.replace(/\s+\b(to|in order to|so that)\b.*$/i, '').trim();
 
   // Cap length

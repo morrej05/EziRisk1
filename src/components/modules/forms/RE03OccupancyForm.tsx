@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import ModuleActions from '../ModuleActions';
 import ReRatingPanel from '../../re/ReRatingPanel';
@@ -7,7 +8,6 @@ import FloatingSaveBar from './FloatingSaveBar';
 import FeedbackModal from '../../FeedbackModal';
 import { getHrgConfig, HRG_MASTER_MAP } from '../../../lib/re/reference/hrgMasterMap';
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
-import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import { Plus, X, AlertCircle, BookOpen } from 'lucide-react';
@@ -16,6 +16,7 @@ import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommend
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -64,6 +65,7 @@ export default function RE03OccupancyForm({
   document,
   onSaved,
 }: RE03OccupancyFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance?.data ?? {};
 
@@ -163,15 +165,6 @@ export default function RE03OccupancyForm({
         bumpActionsVersion();
       }
 
-      const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
-      if (updatedFormData !== formData) {
-        setFormData(updatedFormData);
-        const sanitized = sanitizeModuleInstancePayload({ data: { occupancy: updatedFormData } });
-        await supabase
-          .from('module_instances')
-          .update({ data: sanitized.data })
-          .eq('id', moduleInstance.id);
-      }
     } catch (err) {
       console.error('Error updating rating:', err);
       setFeedback({
@@ -221,6 +214,7 @@ export default function RE03OccupancyForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const sanitized = sanitizeModuleInstancePayload({ data: { occupancy: formData } });

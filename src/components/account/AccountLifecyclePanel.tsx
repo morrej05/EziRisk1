@@ -521,7 +521,7 @@ export default function AccountLifecyclePanel() {
               </button>
             </div>
             <p className="text-xs text-slate-600">
-              Organisation cancellation is currently handled by support during pilot. Contact{' '}
+              Organisation cancellation is currently handled by support. Contact{' '}
               <a href={getSupportMailto()} className="underline text-slate-900 hover:text-slate-700">
                 {SUPPORT_CONFIG.email}
               </a>

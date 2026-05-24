@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { requireAuthenticatedUser } from '../_shared/auth.ts';
+import { hasRequiredOrganisationRole } from '../_shared/orgAuth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,32 +51,15 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Fetch the caller's display name for the audit log
     const { data: userProfile } = await supabase
       .from('user_profiles')
-      .select('organisation_id, name')
+      .select('name')
       .eq('id', user.id)
       .maybeSingle();
 
-    const { data: activeMembership } = await supabase
-      .from('organisation_members')
-      .select('organisation_id, role, status')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (!activeMembership || !['owner', 'admin'].includes(activeMembership.role)) {
-      return new Response(
-        JSON.stringify({ error: 'Only organisation owners/admins can approve surveys' }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    // Fetch survey
+    // Fetch the survey first so we know which org it belongs to.
+    // We cannot scope the membership check without knowing the org.
     const { data: survey, error: surveyError } = await supabase
       .from('survey_reports')
       .select('id, user_id, status, organisation_id')
@@ -92,10 +76,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Verify survey is in same org
-    if (survey.organisation_id !== activeMembership.organisation_id) {
+    // Phase 9 fix: verify membership in the survey's specific org rather than
+    // picking any active membership with ORDER BY created_at LIMIT 1.
+    // hasRequiredOrganisationRole checks organisation_members for the caller
+    // scoped to survey.organisation_id with status = 'active'.
+    const canApprove = await hasRequiredOrganisationRole(
+      supabase,
+      user.id,
+      survey.organisation_id,
+      ['owner', 'admin'],
+    );
+
+    if (!canApprove) {
       return new Response(
-        JSON.stringify({ error: 'Access denied' }),
+        JSON.stringify({ error: 'Only organisation owners/admins can approve surveys' }),
         {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -154,7 +148,7 @@ Deno.serve(async (req: Request) => {
           previous_status: 'in_review',
           new_status: 'approved',
           note: note || null,
-          approver_name: userProfile.name,
+          approver_name: userProfile?.name ?? null,
         },
       });
 

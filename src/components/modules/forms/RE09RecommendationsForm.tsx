@@ -6,14 +6,17 @@ import FloatingSaveBar from './FloatingSaveBar';
 import FeedbackModal from '../../FeedbackModal';
 import ConfirmDialog from '../../ConfirmDialog';
 import AddFromLibraryModal from '../../AddFromLibraryModal';
-import { Plus, X, Upload, Image as ImageIcon, AlertTriangle, Filter, Table2, FileText, Library, BookmarkPlus } from 'lucide-react';
+import { Plus, X, Upload, Image as ImageIcon, AlertTriangle, Filter, Table2, FileText, Library, BookmarkPlus, Lock } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
+import { getModuleDisplayLabel } from '../../../lib/modules/moduleCatalog';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 
 interface Document {
   id: string;
   title: string;
   assessment_date?: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -68,14 +71,14 @@ const MAX_PHOTO_SIZE_MB = 15;
 const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_MB * 1024 * 1024;
 
 const MODULE_SECTIONS = [
-  { key: 'RE_01_DOC_CONTROL', label: 'RE-01 Document Control' },
-  { key: 'RE_02_CONSTRUCTION', label: 'RE-02 Construction' },
-  { key: 'RE_03_OCCUPANCY', label: 'RE-03 Occupancy' },
-  { key: 'RE_06_FIRE_PROTECTION', label: 'RE-04 Fire Protection' },
-  { key: 'RE_07_NATURAL_HAZARDS', label: 'RE-05 Exposures' },
-  { key: 'RE_08_UTILITIES', label: 'RE-06 Utilities' },
-  { key: 'RE_09_MANAGEMENT', label: 'RE-07 Management Systems' },
-  { key: 'RE_12_LOSS_VALUES', label: 'RE-08 Loss & Values' },
+  { key: 'RE_01_DOC_CONTROL', label: 'RE-01 – Document Control' },
+  { key: 'RE_02_CONSTRUCTION', label: 'RE-02 – Construction' },
+  { key: 'RE_03_OCCUPANCY', label: 'RE-03 – Occupancy' },
+  { key: 'RE_07_NATURAL_HAZARDS', label: 'RE-04 – Exposures' },
+  { key: 'RE_06_FIRE_PROTECTION', label: 'RE-05 – Fire Protection' },
+  { key: 'RE_08_UTILITIES', label: 'RE-06 – Utilities & Critical Services' },
+  { key: 'RE_09_MANAGEMENT', label: 'RE-07 – Management Systems' },
+  { key: 'RE_12_LOSS_VALUES', label: 'RE-08 – Loss & Values' },
   { key: 'OTHER', label: 'Other' },
 ];
 
@@ -108,6 +111,7 @@ export default function RE09RecommendationsForm({
   onSaved,
 }: RE09RecommendationsFormProps) {
   const { profile } = useAuth();
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [searchParams, setSearchParams] = useSearchParams();
   const hasHandledOpenAddRec = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -139,11 +143,13 @@ export default function RE09RecommendationsForm({
     isOpen: boolean;
     title: string;
     message: string;
+    confirmText?: string;
     onConfirm: () => void;
   }>({
     isOpen: false,
     title: '',
     message: '',
+    confirmText: 'Delete',
     onConfirm: () => {},
   });
 
@@ -201,10 +207,11 @@ export default function RE09RecommendationsForm({
     loadRecommendations();
   }, [document.id]);
 
-  // Load photo URLs when recommendations change
+  // Load photo URLs only when the set of photo paths actually changes (not on every field edit)
+  const photoPathsKey = recommendations.flatMap((r) => r.photos.map((p) => p.path)).join(',');
   useEffect(() => {
     loadPhotoUrls();
-  }, [recommendations]);
+  }, [photoPathsKey]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -273,11 +280,13 @@ export default function RE09RecommendationsForm({
   };
 
   const addRecommendation = () => {
+    if (isLocked) return;
     const newRec = createEmptyRecommendation(document.id);
     setRecommendations([...recommendations, { ...newRec, module_instance_id: moduleInstance.id, source_module_key: moduleInstance.module_key }]);
   };
 
   const addRecommendationFromLibrary = (libraryItem: any) => {
+    if (isLocked) return;
     const priorityToText = (priority: number): 'High' | 'Medium' | 'Low' => {
       if (priority <= 2) return 'High';
       if (priority <= 3) return 'Medium';
@@ -314,6 +323,7 @@ export default function RE09RecommendationsForm({
   };
 
   const saveToLibrary = async (recId: string) => {
+    if (isLocked) return;
     setSavingToLibrary(recId);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -334,8 +344,10 @@ export default function RE09RecommendationsForm({
       if (!response.ok) {
         if (result.isDuplicate) {
           setFeedback({
+            isOpen: true,
             type: 'warning',
-            message: 'This recommendation already exists in the library',
+            title: 'Duplicate recommendation',
+            message: 'This recommendation already exists in the library.',
             autoClose: true,
           });
         } else {
@@ -343,16 +355,20 @@ export default function RE09RecommendationsForm({
         }
       } else {
         setFeedback({
+          isOpen: true,
           type: 'success',
-          message: 'Recommendation saved to library successfully!',
+          title: 'Saved to library',
+          message: 'Recommendation saved to library successfully.',
           autoClose: true,
         });
       }
     } catch (error: any) {
       console.error('Error saving to library:', error);
       setFeedback({
+        isOpen: true,
         type: 'error',
-        message: error.message || 'Failed to save recommendation to library',
+        title: 'Save to library failed',
+        message: error.message || 'Failed to save recommendation to library. Please try again.',
         autoClose: false,
       });
     } finally {
@@ -361,13 +377,18 @@ export default function RE09RecommendationsForm({
   };
 
   const removeRecommendation = (id: string) => {
+    if (isLocked) return;
     const rec = recommendations.find((r) => r.id === id);
     if (!rec) return;
 
+    const isAutoRec = rec.source_type === 'auto';
     setConfirmDialog({
       isOpen: true,
-      title: 'Delete recommendation',
-      message: 'Are you sure you want to delete this recommendation? This action cannot be undone.',
+      title: isAutoRec ? 'Suppress recommendation' : 'Delete recommendation',
+      message: isAutoRec
+        ? 'This will suppress the auto-generated recommendation so it no longer appears in reports. It can be restored by re-scoring the relevant area.'
+        : 'Are you sure you want to permanently delete this recommendation? This action cannot be undone.',
+      confirmText: isAutoRec ? 'Suppress' : 'Delete',
       onConfirm: async () => {
         setConfirmDialog({ ...confirmDialog, isOpen: false });
 
@@ -395,8 +416,11 @@ export default function RE09RecommendationsForm({
           setFeedback({
             isOpen: true,
             type: 'success',
-            title: 'Recommendation deleted',
-            message: 'The recommendation has been successfully removed.',
+            title: rec.source_type === 'auto' ? 'Recommendation suppressed' : 'Recommendation deleted',
+            message:
+              rec.source_type === 'auto'
+                ? 'The recommendation has been suppressed and will no longer appear in reports.'
+                : 'The recommendation has been permanently deleted.',
             autoClose: true,
           });
         } catch (error) {
@@ -420,6 +444,7 @@ export default function RE09RecommendationsForm({
   };
 
   const handlePhotoUpload = async (recId: string, file: File) => {
+    if (isLocked) return;
     const rec = recommendations.find((r) => r.id === recId);
     if (!rec || rec.photos.length >= MAX_PHOTOS_PER_RECOMMENDATION) {
       setFeedback({
@@ -533,6 +558,7 @@ export default function RE09RecommendationsForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     if (isSavingRecommendations) return;
     setIsSavingRecommendations(true);
     setIsSaving(true);
@@ -551,6 +577,7 @@ export default function RE09RecommendationsForm({
         }
       }
 
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
       const seenRecommendationKeys = new Set<string>();
 
       for (const rec of recommendations) {
@@ -586,7 +613,7 @@ export default function RE09RecommendationsForm({
             uploaded_at: photo.uploaded_at,
           })),
           is_suppressed: rec.is_suppressed || false,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
+          created_by: currentUser?.id,
         };
 
         const { error } = await supabase
@@ -638,16 +665,8 @@ export default function RE09RecommendationsForm({
     return true;
   });
 
-  // Generate display numbers (contiguous, UI-only, after filtering)
   const getDisplayNumber = (rec: Recommendation): string => {
-    const index = filteredRecommendations.findIndex(r => r.id === rec.id);
-    if (index === -1) return rec.rec_number || 'New';
-
-    const year = document.assessment_date
-      ? new Date(document.assessment_date).getFullYear()
-      : new Date().getFullYear();
-    const displayNum = String(index + 1).padStart(2, '0');
-    return `${year}-${displayNum}`;
+    return rec.rec_number || 'New';
   };
 
   // Sort for report view
@@ -680,6 +699,7 @@ export default function RE09RecommendationsForm({
   const manualCount = recommendations.filter((r) => r.source_type === 'manual').length;
   const overdueCount = recommendations.filter((r) => r.status !== 'Completed' && r.target_date && new Date(r.target_date) < new Date()).length;
   const highPriorityOpenCount = recommendations.filter((r) => r.status !== 'Completed' && r.priority === 'High').length;
+  const totalPhotoCount = recommendations.reduce((sum, r) => sum + (r.photos?.length ?? 0), 0);
   const byStatus = recommendations.reduce<Record<string, number>>((acc, rec) => {
     acc[rec.status] = (acc[rec.status] || 0) + 1;
     return acc;
@@ -713,19 +733,30 @@ export default function RE09RecommendationsForm({
           <p className="text-slate-600">Risk engineering recommendation register</p>
         </div>
 
+        {/* Locked banner */}
+        {isLocked && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-6">
+            <Lock className="w-5 h-5 text-amber-600 flex-shrink-0" />
+            <p className="text-sm font-medium text-amber-900">
+              Issued document — recommendations are read-only. No changes can be saved.
+            </p>
+          </div>
+        )}
+
         {/* Document-wide Summary */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <div className="flex items-start gap-3">
             <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="font-semibold text-blue-900 mb-1">Document-wide recommendation summary</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 text-sm text-blue-800 mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 text-sm text-blue-800 mb-3">
                 <div><span className="font-semibold">{recommendations.length}</span> Total</div>
                 <div><span className="font-semibold">{activeCount}</span> Open</div>
                 <div><span className="font-semibold">{overdueCount}</span> Overdue</div>
                 <div><span className="font-semibold">{highPriorityOpenCount}</span> High Priority</div>
                 <div><span className="font-semibold">{autoCount}</span> Auto</div>
                 <div><span className="font-semibold">{manualCount}</span> Manual</div>
+                <div><span className="font-semibold">{totalPhotoCount}</span> Photos</div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-900">
                 <div>
@@ -870,7 +901,7 @@ export default function RE09RecommendationsForm({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {profile?.is_platform_admin && (
+                    {profile?.is_platform_admin && !isLocked && (
                       <button
                         type="button"
                         onClick={() => saveToLibrary(rec.id)}
@@ -882,14 +913,16 @@ export default function RE09RecommendationsForm({
                         {savingToLibrary === rec.id ? 'Saving...' : 'Save to Library'}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => removeRecommendation(rec.id)}
-                      className="text-red-600 hover:text-red-700 p-1"
-                      title="Delete recommendation"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+                    {!isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => removeRecommendation(rec.id)}
+                        className="text-red-600 hover:text-red-700 p-1"
+                        title={rec.source_type === 'auto' ? 'Suppress recommendation' : 'Delete recommendation'}
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -901,8 +934,9 @@ export default function RE09RecommendationsForm({
                   <input
                     type="text"
                     value={rec.title}
-                    onChange={(e) => updateRecommendation(rec.id, { title: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                    onChange={(e) => !isLocked && updateRecommendation(rec.id, { title: e.target.value })}
+                    readOnly={isLocked}
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="Brief title for this recommendation"
                   />
                 </div>
@@ -915,10 +949,11 @@ export default function RE09RecommendationsForm({
                   <textarea
                     value={rec.observation_text}
                     onChange={(e) =>
-                      updateRecommendation(rec.id, { observation_text: e.target.value })
+                      !isLocked && updateRecommendation(rec.id, { observation_text: e.target.value })
                     }
+                    readOnly={isLocked}
                     rows={3}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="What was observed during the assessment?"
                   />
                 </div>
@@ -931,10 +966,11 @@ export default function RE09RecommendationsForm({
                   <textarea
                     value={rec.action_required_text}
                     onChange={(e) =>
-                      updateRecommendation(rec.id, { action_required_text: e.target.value })
+                      !isLocked && updateRecommendation(rec.id, { action_required_text: e.target.value })
                     }
+                    readOnly={isLocked}
                     rows={3}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="What action needs to be taken?"
                   />
                 </div>
@@ -950,10 +986,11 @@ export default function RE09RecommendationsForm({
                   <textarea
                     value={rec.hazard_text}
                     onChange={(e) =>
-                      updateRecommendation(rec.id, { hazard_text: e.target.value })
+                      !isLocked && updateRecommendation(rec.id, { hazard_text: e.target.value })
                     }
+                    readOnly={isLocked}
                     rows={2}
-                    className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm bg-white"
+                    className={`w-full px-3 py-2 border border-amber-300 rounded-md text-sm bg-white ${isLocked ? 'cursor-default' : ''}`}
                     placeholder="Describe the hazard or risk associated with this recommendation"
                   />
                 </div>
@@ -966,10 +1003,11 @@ export default function RE09RecommendationsForm({
                   <textarea
                     value={rec.comments_text || ''}
                     onChange={(e) =>
-                      updateRecommendation(rec.id, { comments_text: e.target.value })
+                      !isLocked && updateRecommendation(rec.id, { comments_text: e.target.value })
                     }
+                    readOnly={isLocked}
                     rows={2}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="Internal notes (not included in report)"
                   />
                 </div>
@@ -985,7 +1023,8 @@ export default function RE09RecommendationsForm({
                           priority: e.target.value as Recommendation['priority'],
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                      disabled={isLocked}
+                      className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     >
                       <option value="High">High</option>
                       <option value="Medium">Medium</option>
@@ -1002,7 +1041,8 @@ export default function RE09RecommendationsForm({
                           status: e.target.value as Recommendation['status'],
                         })
                       }
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                      disabled={isLocked}
+                      className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     >
                       <option value="Open">Open</option>
                       <option value="In Progress">In Progress</option>
@@ -1017,8 +1057,9 @@ export default function RE09RecommendationsForm({
                     <input
                       type="date"
                       value={rec.target_date || ''}
-                      onChange={(e) => updateRecommendation(rec.id, { target_date: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                      onChange={(e) => !isLocked && updateRecommendation(rec.id, { target_date: e.target.value })}
+                      readOnly={isLocked}
+                      className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     />
                   </div>
 
@@ -1027,8 +1068,9 @@ export default function RE09RecommendationsForm({
                     <input
                       type="text"
                       value={rec.owner || ''}
-                      onChange={(e) => updateRecommendation(rec.id, { owner: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                      onChange={(e) => !isLocked && updateRecommendation(rec.id, { owner: e.target.value })}
+                      readOnly={isLocked}
+                      className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                       placeholder="Assigned to"
                     />
                   </div>
@@ -1042,7 +1084,8 @@ export default function RE09RecommendationsForm({
                       onChange={(e) =>
                         updateRecommendation(rec.id, { source_module_key: e.target.value })
                       }
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                      disabled={isLocked}
+                      className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     >
                       {MODULE_SECTIONS.map((section) => (
                         <option key={section.key} value={section.key}>
@@ -1059,7 +1102,7 @@ export default function RE09RecommendationsForm({
                     <label className="block text-sm font-medium text-slate-700">
                       Supporting Photos ({rec.photos.length}/{MAX_PHOTOS_PER_RECOMMENDATION})
                     </label>
-                    {rec.photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
+                    {!isLocked && rec.photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
                       <label className="cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
                         <Upload className="w-4 h-4" />
                         Add Photo
@@ -1075,11 +1118,11 @@ export default function RE09RecommendationsForm({
                           }}
                         />
                       </label>
-                    ) : (
+                    ) : !isLocked ? (
                       <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
                         Maximum {MAX_PHOTOS_PER_RECOMMENDATION} photos
                       </span>
-                    )}
+                    ) : null}
                   </div>
 
                   {rec.photos.length > 0 ? (
@@ -1114,13 +1157,15 @@ export default function RE09RecommendationsForm({
                                 <ImageIcon className="w-8 h-8 text-slate-400" />
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => removePhoto(rec.id, photo.path)}
-                              className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-md"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
+                            {!isLocked && (
+                              <button
+                                type="button"
+                                onClick={() => removePhoto(rec.id, photo.path)}
+                                className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-md"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            )}
                             <div className="p-2 text-xs text-slate-600">
                               <p className="truncate" title={photo.file_name}>{photo.file_name}</p>
                               <p className="text-slate-500">{(photo.size_bytes / 1024 / 1024).toFixed(1)} MB</p>
@@ -1142,24 +1187,26 @@ export default function RE09RecommendationsForm({
               </div>
             ))}
 
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setIsLibraryModalOpen(true)}
-                className="py-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:border-blue-500 hover:bg-blue-50 flex items-center justify-center gap-2 font-medium"
-              >
-                <Library className="w-5 h-5" />
-                Add from Library
-              </button>
-              <button
-                type="button"
-                onClick={addRecommendation}
-                className="py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2"
-              >
-                <Plus className="w-5 h-5" />
-                Add Manual Recommendation
-              </button>
-            </div>
+            {!isLocked && (
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsLibraryModalOpen(true)}
+                  className="py-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:border-blue-500 hover:bg-blue-50 flex items-center justify-center gap-2 font-medium"
+                >
+                  <Library className="w-5 h-5" />
+                  Add from Library
+                </button>
+                <button
+                  type="button"
+                  onClick={addRecommendation}
+                  className="py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-slate-500 hover:bg-slate-50 flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-5 h-5" />
+                  Add Manual Recommendation
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1199,6 +1246,9 @@ export default function RE09RecommendationsForm({
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">
                           Owner
                         </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600">
+                          Photos
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1221,7 +1271,19 @@ export default function RE09RecommendationsForm({
                                 {rec.priority}
                               </span>
                             </td>
-                            <td className="px-4 py-3">{rec.status}</td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex px-2 py-1 text-xs rounded-full font-medium ${
+                                  rec.status === 'Open'
+                                    ? 'bg-red-100 text-red-800'
+                                    : rec.status === 'In Progress'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-700'
+                                }`}
+                              >
+                                {rec.status}
+                              </span>
+                            </td>
                             <td className="px-4 py-3">
                               {rec.target_date
                                 ? new Date(rec.target_date).toLocaleDateString()
@@ -1229,9 +1291,18 @@ export default function RE09RecommendationsForm({
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-600">
                               {MODULE_SECTIONS.find((m) => m.key === rec.source_module_key)
-                                ?.label || rec.source_module_key}
+                                ?.label || getModuleDisplayLabel(rec.source_module_key)}
                             </td>
                             <td className="px-4 py-3">{rec.owner || '—'}</td>
+                            <td className="px-4 py-3 text-xs text-slate-600">
+                              {rec.photos.length > 0 ? (
+                                <span className="inline-flex items-center gap-1 text-blue-700 font-medium">
+                                  {rec.photos.length}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                     </tbody>
@@ -1291,7 +1362,7 @@ export default function RE09RecommendationsForm({
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-600">
                               {MODULE_SECTIONS.find((m) => m.key === rec.source_module_key)
-                                ?.label || rec.source_module_key}
+                                ?.label || getModuleDisplayLabel(rec.source_module_key)}
                             </td>
                             <td className="px-4 py-3">{rec.owner || '—'}</td>
                           </tr>
@@ -1305,7 +1376,7 @@ export default function RE09RecommendationsForm({
         )}
       </div>
 
-      <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
+      {!isLocked && <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />}
 
       <FeedbackModal
         isOpen={feedback.isOpen}
@@ -1322,7 +1393,7 @@ export default function RE09RecommendationsForm({
         onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
         title={confirmDialog.title}
         message={confirmDialog.message}
-        confirmText="Delete"
+        confirmText={confirmDialog.confirmText || 'Delete'}
         cancelText="Cancel"
         type="danger"
       />

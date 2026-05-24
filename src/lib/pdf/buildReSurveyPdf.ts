@@ -97,6 +97,9 @@ interface Action {
   action_required_text?: string | null;
   description?: string | null;
   title?: string | null;
+  hazard_text?: string | null;
+  source_module_key?: string | null;
+  photos?: Array<unknown> | null;
   priority_band: string;
   status: string;
   completed_at?: string | null;
@@ -106,6 +109,7 @@ interface Action {
   owner_user_id: string | null;
   owner_display_name?: string;
   target_date: string | null;
+  timescale?: string | null;
   module_instance_id: string;
   created_at: string;
 }
@@ -130,7 +134,7 @@ interface BuildPdfOptions {
 
 type Breakdown = Awaited<ReturnType<typeof buildRiskEngineeringScoreBreakdown>>;
 
-type Row = [string, string, string?];
+type Row = string[];
 type FireQuestionGroup = 'adequacy' | 'reliability' | 'localised' | 'evidence';
 
 interface LossValuesSummary {
@@ -684,11 +688,15 @@ function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: 
     const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
     const combustibleValue = context.explicitCombustiblePct ?? context.derivedCombustiblePct;
     const fireSpreadRisk = combustibleValue === null ? 'uncertain fire spread potential' : combustibleValue >= 40 ? 'elevated fire spread potential' : combustibleValue >= 20 ? 'moderate fire spread potential' : 'more contained fire spread potential';
-    const interruptionSeverity = context.hasMezzanine || context.hasMultipleBuildings || context.totalRoofArea >= 3000
+    const floorAreaForSizing = context.totalFloorArea ?? context.totalRoofArea;
+    const interruptionSeverity = context.hasMezzanine || context.hasMultipleBuildings || floorAreaForSizing >= 3000
       ? 'material interruption severity'
       : 'moderate interruption severity';
     const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
-    const base = `Construction score: ${scoreText} (${scoreBand.label}). The mixed profile means a fire is more likely to spread through combustible envelope/contents even where primary framing is protected steel. With ${context.buildingCount} buildings, roof area ${formatDataValue(context.totalRoofArea)} m² and mezzanine area ${formatDataValue(context.totalMezzArea)} m², a severe event can produce staged shutdown and phased reinstatement rather than a single quick restart. Cladding is identified on ${claddingPresentCount} building(s), supporting ${fireSpreadRisk}. Expected outcome is ${interruptionSeverity}, with longer strip-out, smoke remediation and programme risk than a fully non-combustible site profile.`;
+    const areaDescription = context.totalFloorArea !== null
+      ? `floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
+      : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
+    const base = `Construction score: ${scoreText} (${scoreBand.label}). The mixed profile means a fire is more likely to spread through combustible envelope/contents even where primary framing is protected steel. With ${context.buildingCount} buildings, ${areaDescription}${context.totalMezzArea > 0 ? ` and mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m²` : ''}, a severe event can produce staged shutdown and phased reinstatement rather than a single quick restart. Cladding is identified on ${claddingPresentCount} building(s), supporting ${fireSpreadRisk}. Expected outcome is ${interruptionSeverity}, with longer strip-out, smoke remediation and programme risk than a fully non-combustible site profile.`;
     return notes ? `${base} Additional assessor notes: ${notes}` : base;
   }
 
@@ -760,6 +768,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
   rating: number | null;
   totalRoofArea: number;
   totalMezzArea: number;
+  totalFloorArea: number | null;
   buildingCount: number;
   hasMezzanine: boolean;
   hasMultipleBuildings: boolean;
@@ -774,6 +783,9 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
   const rating = resolveSectionRating(module, breakdown);
   const totalRoofArea = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.roof?.area_sqm ?? b?.roof_area_m2), 0);
   const totalMezzArea = buildings.reduce((sum: number, b: any) => sum + numericOrZero(b?.upper_floors_mezzanine?.area_sqm ?? b?.mezzanine_area_m2), 0);
+  // Explicit GIA — only aggregate where the field is present; null means no GIA data entered
+  const giaValues = buildings.map((b: any) => b?.total_floor_area_m2).filter((v: any) => Number.isFinite(Number(v)));
+  const totalFloorArea = giaValues.length > 0 ? giaValues.reduce((sum: number, v: any) => sum + Number(v), 0) : null;
   const explicitCombustible = Number(
     construction?.site_combustible_percent ??
       construction?.calculated?.site_combustible_percent ??
@@ -798,10 +810,13 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
   const hasMezzanine = buildings.some((building: any) => numericOrZero(building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2) > 0);
   const hasMultipleBuildings = buildingCount > 1;
   const partialData = combustibilitySource === 'none' || buildings.some((building: any) => {
-    const hasRoofArea = Number.isFinite(Number(building?.roof?.area_sqm ?? building?.roof_area_m2));
+    // Prefer explicit GIA; fall back to roof area check for legacy records
+    const hasFloorArea = Number.isFinite(Number(building?.total_floor_area_m2))
+      || Number.isFinite(Number(building?.roof?.area_sqm ?? building?.roof_area_m2));
     const hasStoreys = Number.isFinite(Number(
       building?.geometry?.floors ??
       building?.geometry?.storeys ??
+      building?.geometry?.storeys_above_ground ??
       building?.storeys ??
       building?.floors ??
       building?.number_of_storeys ??
@@ -809,7 +824,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
       building?.floors_above_ground ??
       building?.storeys_above_ground
     ));
-    return !hasRoofArea || !hasStoreys;
+    return !hasFloorArea || !hasStoreys;
   });
 
   return {
@@ -817,6 +832,7 @@ function getConstructionContext(module: ModuleInstance, breakdown: Breakdown): {
     rating,
     totalRoofArea,
     totalMezzArea,
+    totalFloorArea,
     buildingCount,
     hasMezzanine,
     hasMultipleBuildings,
@@ -863,14 +879,11 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
     const refOrName = building.ref || building.building_name || building.name || building.id;
     const roofArea = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzArea = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
-    const hasRoofArea = Number.isFinite(Number(roofArea));
-    const hasMezzArea = Number.isFinite(Number(mezzArea));
-    const totalFloorArea = hasRoofArea || hasMezzArea
-      ? numericOrZero(roofArea) + numericOrZero(mezzArea)
-      : null;
     // Active RE_02 completion snapshot persists these geometry fields directly:
+    //   construction.buildings[].total_floor_area_m2  — explicit GIA entered by assessor
     //   construction.buildings[].storeys
     //   construction.buildings[].basements
+    const totalFloorArea = building?.total_floor_area_m2 ?? null;
     const storeys = building?.storeys;
     const basements = building?.basements;
     return [
@@ -887,26 +900,27 @@ function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
 function getConstructionGeometryTotalsRows(module: ModuleInstance): Row[] {
   const construction = (module.data as any)?.construction || module.data || {};
   const buildings = getConstructionBuildings(construction);
-  const totals = buildings.reduce((acc: { roof: number; mezz: number; floor: number; hasRoof: boolean; hasMezz: boolean; hasFloor: boolean }, building: any) => {
+  const totals = buildings.reduce((acc: { roof: number; mezz: number; gia: number; hasRoof: boolean; hasMezz: boolean; hasGia: boolean }, building: any) => {
     const roofRaw = building?.roof?.area_sqm ?? building?.roof_area_m2;
     const mezzRaw = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
+    // Use explicit GIA only — do not infer from roof × storeys or roof + mezz
+    const giaRaw = building?.total_floor_area_m2 ?? null;
     const hasRoof = Number.isFinite(Number(roofRaw));
     const hasMezz = Number.isFinite(Number(mezzRaw));
-    const roof = hasRoof ? numericOrZero(roofRaw) : 0;
-    const mezz = hasMezz ? numericOrZero(mezzRaw) : 0;
+    const hasGia = Number.isFinite(Number(giaRaw));
     acc.hasRoof = acc.hasRoof || hasRoof;
     acc.hasMezz = acc.hasMezz || hasMezz;
-    acc.hasFloor = acc.hasFloor || hasRoof || hasMezz;
-    if (hasRoof) acc.roof += roof;
-    if (hasMezz) acc.mezz += mezz;
-    if (hasRoof || hasMezz) acc.floor += roof + mezz;
+    acc.hasGia = acc.hasGia || hasGia;
+    if (hasRoof) acc.roof += numericOrZero(roofRaw);
+    if (hasMezz) acc.mezz += numericOrZero(mezzRaw);
+    if (hasGia) acc.gia += numericOrZero(giaRaw);
     return acc;
-  }, { roof: 0, mezz: 0, floor: 0, hasRoof: false, hasMezz: false, hasFloor: false });
+  }, { roof: 0, mezz: 0, gia: 0, hasRoof: false, hasMezz: false, hasGia: false });
 
   return [
     ['Total roof area (m²)', formatDataValue(totals.hasRoof ? totals.roof : null)],
-    ['Total mezz area (m²)', formatDataValue(totals.hasMezz ? totals.mezz : null)],
-    ['Total floor area (m²)', formatDataValue(totals.hasFloor ? totals.floor : null)],
+    ['Total mezzanine / upper floor area (m²)', formatDataValue(totals.hasMezz ? totals.mezz : null)],
+    ['Total floor area / GIA (m²)', formatDataValue(totals.hasGia ? totals.gia : null)],
   ];
 }
 
@@ -1061,8 +1075,14 @@ function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Break
     : context.combustibilityText !== 'Data not provided'
       ? context.combustibilityText
       : null;
+  const siteTotalsLabel = context.totalFloorArea !== null
+    ? 'Site totals (GIA m² / roof m²)'
+    : 'Site totals (roof m²)';
+  const siteTotalsValue = context.totalFloorArea !== null
+    ? `${formatDataValue(context.totalFloorArea)} / ${formatDataValue(context.totalRoofArea)}`
+    : `${formatDataValue(context.totalRoofArea)}`;
   return compactRows([
-    ['Site totals (roof m² / mezz m²)', `${formatDataValue(context.totalRoofArea)} / ${formatDataValue(context.totalMezzArea)}`],
+    [siteTotalsLabel, siteTotalsValue],
     ['Site construction score', `${formatDataValue(siteScore)}`],
     ['Site combustible %', combustibleText ?? 'Data not provided'],
     ['Site-level construction notes', formatDataValue(construction?.site_notes)],
@@ -1830,7 +1850,10 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     : context.buildingCount > 0
       ? 'No combustible cladding is identified in submitted building records.'
       : 'Building-level cladding records are not available.';
-  const geometryText = `Recorded geometry totals are roof ${formatDataValue(context.totalRoofArea)} m² and mezz ${formatDataValue(context.totalMezzArea)} m² across ${context.buildingCount} building(s).`;
+  const giaText = context.totalFloorArea !== null
+    ? `total floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
+    : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
+  const geometryText = `Recorded geometry: ${giaText}${context.totalMezzArea > 0 ? `, mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m²` : ''} across ${context.buildingCount} building(s).`;
   return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText}`;
 }
 
@@ -1933,17 +1956,17 @@ async function fetchEvidenceImageBytes(
         .from('evidence')
         .createSignedUrl(storagePath, 300);
       if (error || !data?.signedUrl) {
-        console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
+        if (import.meta.env.DEV) console.warn('[PDF RE Survey] Failed to sign evidence asset:', storagePath, error);
         return null;
       }
       const response = await fetch(data.signedUrl);
       if (!response.ok) {
-        console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
+        if (import.meta.env.DEV) console.warn('[PDF RE Survey] Failed to fetch evidence asset:', storagePath, response.status);
         return null;
       }
       return new Uint8Array(await response.arrayBuffer());
     } catch (error) {
-      console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
+      if (import.meta.env.DEV) console.warn('[PDF RE Survey] Error loading evidence asset:', storagePath, error);
       return null;
     }
   })();
@@ -1996,7 +2019,7 @@ function isCompletedRecommendationStatus(action: Pick<Action, 'status' | 'comple
 }
 
 export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8Array> {
-  console.log('[PDF RE Survey] Starting RE Survey PDF build');
+  if (import.meta.env.DEV) console.log('[PDF RE Survey] Starting RE Survey PDF build');
   const { moduleInstances, actions, organisation, renderMode, selectedModules, applyTrialWatermark } = options;
   const document = {
     ...options.document,
@@ -2011,7 +2034,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   const isDraft = !isIssuedMode;
   const totalPages: PDFPage[] = [];
 
-  console.log('[PDF RE Survey] Render mode:', isIssuedMode ? 'ISSUED' : 'DRAFT');
+  if (import.meta.env.DEV) console.log('[PDF RE Survey] Render mode:', isIssuedMode ? 'ISSUED' : 'DRAFT');
 
   const modulesToInclude = selectedModules
     ? moduleInstances.filter(m => selectedModules.includes(m.module_key))
@@ -2026,6 +2049,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     return moduleInstanceIdSet.has(action.module_instance_id);
   });
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
+  const modulesById = new Map(moduleInstances.map((m) => [m.id, m]));
   const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
   const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
   const sitePhotos = Array.isArray(re10Data.photos)
@@ -2833,22 +2857,31 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     const drawRecommendationSection = (heading: string, rows: Action[]) => {
       yPosition = drawBlockHeading(page, yPosition, heading, fontBold);
       yPosition = sectionBreak(yPosition, 8);
-      const tableRows = rows.map((action) => [
-        sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
-        sanitizePdfText(getRecommendationBodyText(action)),
-        sanitizePdfText(String(action.priority_band || 'Not provided')),
-        sanitizePdfText(String(action.owner_display_name || 'Unassigned')),
-        sanitizePdfText(formatDate(action.target_date || '')),
-        sanitizePdfText(String(action.status || 'Not provided')),
-      ]);
+      const tableRows = rows.map((action) => {
+        const linkedModule = modulesById.get(action.module_instance_id);
+        const sectionLabel = getModuleDisplayName(action.source_module_key || linkedModule?.module_key || '');
+        const evidenceCount = Array.isArray(action.photos) ? action.photos.length : 0;
+        const riskImplication = action.hazard_text ? `Risk: ${action.hazard_text}` : 'Risk: Not recorded';
+        const evidenceText = evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached';
+        return [
+          sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
+          sanitizePdfText(sectionLabel),
+          sanitizePdfText(getRecommendationBodyText(action)),
+          sanitizePdfText(riskImplication),
+          sanitizePdfText(String(action.priority_band || 'Not provided')),
+          sanitizePdfText(action.target_date ? formatDate(action.target_date) : String(action.timescale || 'Not set')),
+          sanitizePdfText(evidenceText),
+          sanitizePdfText(String(action.status || 'Not provided')),
+        ];
+      });
       ({ page, yPosition } = drawSimpleTable(
         page,
         yPosition,
-        ['Ref / ID', 'Recommendation', 'Pri.', 'Owner', 'Target', 'Status'],
+        ['Ref / ID', 'Section', 'Recommendation', 'Risk implication', 'Pri.', 'Target', 'Evidence', 'Status'],
         tableRows,
         { regular: font, bold: fontBold },
         {
-          colWidths: [52, 208, 36, 70, 54, CONTENT_WIDTH - 420],
+          colWidths: [42, 70, 120, 95, 28, 45, 55, 40],
           fontSize: 8.25,
           minRowHeight: 18,
           wrapHeader: true,
@@ -2912,6 +2945,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   }
 
   const pdfBytes = await pdfDoc.save();
-  console.log('[PDF RE Survey] PDF build complete');
+  if (import.meta.env.DEV) console.log('[PDF RE Survey] PDF build complete');
   return pdfBytes;
 }

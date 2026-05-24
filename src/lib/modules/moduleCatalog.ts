@@ -40,13 +40,13 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     type: 'input',
   },
   RE_07_NATURAL_HAZARDS: {
-    name: 'RE-05 – Exposures',
+    name: 'RE-04 – Exposures',
     docTypes: ['RE'],
     order: 4,
     type: 'input',
   },
   RE_06_FIRE_PROTECTION: {
-    name: 'RE-06 – Fire Protection',
+    name: 'RE-05 – Fire Protection',
     docTypes: ['RE'],
     order: 5,
     type: 'input',
@@ -82,7 +82,7 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     type: 'input',
   },
   RE_14_DRAFT_OUTPUTS: {
-    name: 'RE-11 - Summary & Key Findings',
+    name: 'RE-11 – Summary & Key Findings',
     docTypes: ['RE'],
     order: 999,
     type: 'derived',
@@ -183,7 +183,7 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     outcomeCategory: 'critical', // Life safety - external spread
   },
   FRA_90_SIGNIFICANT_FINDINGS: {
-    name: 'FRA-90 - Significant Findings (Summary)',
+    name: 'FRA-90 - Significant Findings Summary',
     docTypes: ['FRA'],
     order: 16,
     type: 'derived',
@@ -313,8 +313,45 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
 const MODULE_KEY_ALIASES: Record<string, string> = {
   A4_MANAGEMENT_CONTROLS: 'FRA_6_MANAGEMENT_SYSTEMS',
   A5_EMERGENCY_ARRANGEMENTS: 'FRA_7_EMERGENCY_ARRANGEMENTS',
+  FRA_2_ESCAPE: 'FRA_2_ESCAPE_ASIS',
+  FRA_3_ACTIVE_FIRE_PROTECTION: 'FRA_3_ACTIVE_SYSTEMS',
+  FRA_4_PASSIVE_FIRE_PROTECTION: 'FRA_4_PASSIVE_PROTECTION',
+  FRA_6_MANAGEMENT: 'FRA_6_MANAGEMENT_SYSTEMS',
+  FRA_7_EMERGENCY: 'FRA_7_EMERGENCY_ARRANGEMENTS',
+  FRA_8_FIREFIGHTING: 'FRA_8_FIREFIGHTING_EQUIPMENT',
   FRA_4_SIGNIFICANT_FINDINGS: 'FRA_90_SIGNIFICANT_FINDINGS',
 };
+
+
+const PROFESSIONAL_MODULE_FALLBACKS: Record<string, string> = {
+  FRA_1_HAZARDS: 'Hazards & Ignition Sources',
+  FRA_2_ESCAPE: 'Means of Escape',
+  FRA_3_ACTIVE_FIRE_PROTECTION: 'Active Fire Protection',
+  FRA_4_PASSIVE_FIRE_PROTECTION: 'Passive Fire Protection',
+  FRA_5_FIRE_SERVICE: 'Fire Service Access & Facilities',
+  FRA_6_MANAGEMENT: 'Fire Safety Management',
+  FRA_7_EMERGENCY: 'Emergency Arrangements',
+  FRA_8_FIREFIGHTING: 'Firefighting Equipment',
+};
+
+function humaniseModuleKey(moduleKey: string): string {
+  const fallback = PROFESSIONAL_MODULE_FALLBACKS[moduleKey] || PROFESSIONAL_MODULE_FALLBACKS[moduleKey.toUpperCase()];
+  if (fallback) return fallback;
+
+  const cleaned = moduleKey
+    .replace(/^(FRA|FSD|DSEAR|RE|A)[_-]?\d+[A-Z]?[_-]*/i, '')
+    .replace(/_/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (!cleaned || (/^[A-Z0-9_-]+$/.test(cleaned) && !cleaned.includes(' '))) {
+    return 'Assessment section';
+  }
+
+  return cleaned
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Assessment section';
+}
 
 function resolveModuleKey(moduleKey: string): string {
   return MODULE_KEY_ALIASES[moduleKey] ?? moduleKey;
@@ -334,13 +371,37 @@ if (modulesWithoutType.length > 0) {
 
 export function getModuleName(moduleKey: string): string {
   const resolvedKey = resolveModuleKey(moduleKey);
-  return MODULE_CATALOG[resolvedKey]?.name || moduleKey;
+  return MODULE_CATALOG[resolvedKey]?.name || humaniseModuleKey(moduleKey);
+}
+
+export function getModuleDisplayLabel(moduleKey: string | null | undefined): string {
+  if (!moduleKey) return 'Assessment section';
+
+  const resolvedKey = resolveModuleKey(moduleKey);
+  const name = MODULE_CATALOG[resolvedKey]?.name;
+  if (!name) return humaniseModuleKey(moduleKey);
+
+  return name
+    .replace(/^([A-Z]+-\d+|A\d+|RE-\d+)\s*[–-]\s*/u, '')
+    .replace(/\(As-Is\)/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim() || 'Assessment section';
+}
+
+function moveReviewAssuranceToEnd(moduleKeys: string[]): string[] {
+  const withoutReview = moduleKeys.filter((moduleKey) => moduleKey !== 'A7_REVIEW_ASSURANCE');
+  return moduleKeys.includes('A7_REVIEW_ASSURANCE')
+    ? [...withoutReview, 'A7_REVIEW_ASSURANCE']
+    : withoutReview;
 }
 
 export function sortModulesByOrder(
   modules: Array<{ module_key: string }>
 ): Array<{ module_key: string }> {
   return [...modules].sort((a, b) => {
+    if (a.module_key === 'A7_REVIEW_ASSURANCE' && b.module_key !== 'A7_REVIEW_ASSURANCE') return 1;
+    if (b.module_key === 'A7_REVIEW_ASSURANCE' && a.module_key !== 'A7_REVIEW_ASSURANCE') return -1;
+
     const orderA = MODULE_CATALOG[resolveModuleKey(a.module_key)]?.order ?? 999;
     const orderB = MODULE_CATALOG[resolveModuleKey(b.module_key)]?.order ?? 999;
     return orderA - orderB;
@@ -354,7 +415,7 @@ export function getModuleKeysForDocType(
   const includeDeprecated = options?.includeDeprecated ?? false;
   const includeDeprecatedIfPresent = new Set(options?.includeDeprecatedIfPresent ?? []);
 
-  return Object.entries(MODULE_CATALOG)
+  const keys = Object.entries(MODULE_CATALOG)
     .filter(([key, def]) => {
       if (!def.docTypes.includes(docType) || def.hidden) return false;
       if (!def.deprecated) return true;
@@ -363,6 +424,8 @@ export function getModuleKeysForDocType(
     })
     .sort((a, b) => (a[1].order ?? 999) - (b[1].order ?? 999))
     .map(([key]) => key);
+
+  return docType === 'FRA' ? moveReviewAssuranceToEnd(keys) : keys;
 }
 
 export function filterDeprecatedModuleKeysForNavigation(
@@ -409,6 +472,58 @@ export function getModuleOutcomeCategory(moduleKey: string): 'critical' | 'gover
   return category;
 }
 
+
+
+export function getUnifiedOutcomeLabel(outcome: string | null | undefined, options?: { hasRecommendations?: boolean }): string {
+  const normalized = (outcome || '').toLowerCase().trim();
+  if (!normalized) return '';
+
+  if (normalized in {'na':1,'n/a':1,'not_applicable':1,'not applicable':1}) return 'Not Applicable';
+  if (normalized in {'info_gap':1,'information_gap':1,'information gap':1,'information_incomplete':1}) return 'Information Gap';
+  if (normalized in {'material_def':1,'material deficiency':1,'significant_def':1,'significant deficiency':1}) return 'Significant Deficiency';
+  if (normalized in {'moderate_def':1,'moderate deficiency':1}) return 'Moderate Deficiency';
+  if (normalized in {'minor_def':1,'minor deficiency':1}) return 'Minor Deficiency';
+  if (normalized in {'not_assessed':1,'not assessed':1}) return 'Not Assessed';
+  if (normalized in {'adequate':1,'improvement recommended':1,'requires_improvement':1,'compliant':1,'satisfactory':1}) return options?.hasRecommendations ? 'Compliant with Recommendations' : 'Compliant';
+
+  return outcome || '';
+}
+
+/**
+ * FRA display wording keeps fire risk assessment modules on compliance terminology.
+ * This is display-only: stored canonical outcome values remain unchanged.
+ */
+export function getFraOutcomeLabel(outcome: string | null | undefined): string {
+  switch ((outcome || '').toLowerCase().trim()) {
+    case 'compliant':
+    case 'adequate':
+      return 'Compliant';
+    case 'minor_def':
+    case 'minor deficiency':
+      return 'Minor Deficiency';
+    case 'moderate_def':
+    case 'moderate deficiency':
+      return 'Moderate Deficiency';
+    case 'material_def':
+    case 'material deficiency':
+    case 'significant_def':
+    case 'significant deficiency':
+      return 'Significant Deficiency';
+    case 'info_gap':
+    case 'information_gap':
+    case 'information gap':
+    case 'information_incomplete':
+      return 'Information Gap';
+    case 'na':
+    case 'n/a':
+    case 'not_applicable':
+    case 'not applicable':
+      return 'Not Applicable';
+    default:
+      return outcome || '';
+  }
+}
+
 /**
  * Normalized outcome values used for scoring and PDF
  */
@@ -423,22 +538,25 @@ export type NormalizedOutcome =
  * Outcome options for critical modules
  */
 export const CRITICAL_OUTCOME_OPTIONS = [
-  { value: 'Compliant', label: 'Compliant' },
-  { value: 'Minor Deficiency', label: 'Minor Deficiency' },
-  { value: 'Material Deficiency', label: 'Material Deficiency' },
-  { value: 'Information Gap', label: 'Information Gap' },
-  { value: 'Not Applicable', label: 'Not Applicable' },
+  { value: 'compliant', label: 'Compliant' },
+  { value: 'minor_def', label: 'Minor Deficiency' },
+  { value: 'moderate_def', label: 'Moderate Deficiency' },
+  { value: 'material_def', label: 'Significant Deficiency' },
+  { value: 'info_gap', label: 'Information Gap' },
+  { value: 'not_assessed', label: 'Not Assessed' },
+  { value: 'na', label: 'Not Applicable' },
 ] as const;
 
 /**
  * Outcome options for governance modules
  */
 export const GOVERNANCE_OUTCOME_OPTIONS = [
-  { value: 'Adequate', label: 'Adequate' },
-  { value: 'Improvement Recommended', label: 'Improvement Recommended' },
-  { value: 'Significant Improvement Required', label: 'Significant Improvement Required' },
-  { value: 'Information Incomplete', label: 'Information Incomplete' },
-  { value: 'Not Applicable', label: 'Not Applicable' },
+  { value: 'compliant', label: 'Compliant' },
+  { value: 'minor_def', label: 'Minor Deficiency' },
+  { value: 'material_def', label: 'Significant Deficiency' },
+  { value: 'info_gap', label: 'Information Gap' },
+  { value: 'not_assessed', label: 'Not Assessed' },
+  { value: 'na', label: 'Not Applicable' },
 ] as const;
 
 /**
@@ -455,8 +573,10 @@ export function normalizeOutcome(
   // Preserve canonical values
   if (normalized === 'compliant') return 'compliant';
   if (normalized === 'minor_def') return 'minor_def';
-  if (normalized === 'material_def') return 'material_def';
+  if (normalized === 'moderate_def') return 'moderate_def';
+  if (normalized === 'material_def' || normalized === 'significant_def') return 'material_def';
   if (normalized === 'info_gap' || normalized === 'information_incomplete') return 'info_gap';
+  if (normalized === 'not_assessed' || normalized === 'not assessed') return 'not_assessed';
   if (
     normalized === 'na' ||
     normalized === 'n/a' ||
@@ -469,7 +589,8 @@ export function normalizeOutcome(
   // Critical mapping
   if (category === 'critical') {
     if (normalized === 'minor deficiency') return 'minor_def';
-    if (normalized === 'material deficiency') return 'material_def';
+    if (normalized === 'moderate deficiency') return 'moderate_def';
+    if (normalized === 'significant deficiency' || normalized === 'material deficiency') return 'material_def';
     if (normalized === 'information gap') return 'info_gap';
   }
 

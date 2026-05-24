@@ -1,8 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
 import LandingPage from './pages/LandingPage';
 import SignIn from './pages/SignIn';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import ActionsDashboard from './pages/dashboard/ActionsDashboard';
 import DocumentOverview from './pages/documents/DocumentOverview';
 import DocumentWorkspace from './pages/documents/DocumentWorkspace';
@@ -11,7 +13,6 @@ import DocumentPreviewPage from './pages/documents/DocumentPreviewPage';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import UpgradeSubscription from './pages/UpgradeSubscription';
 import ExternalSurvey from './pages/ExternalSurvey';
-import ReportPreviewPage from './pages/ReportPreviewPage';
 import ArchivedAssessments from './pages/ArchivedAssessments';
 import ClientDocumentView from './pages/ClientDocumentView';
 import PublicDocumentViewer from './pages/PublicDocumentViewer';
@@ -23,6 +24,7 @@ import CombinedReportsPage from './pages/ezirisk/CombinedReportsPage';
 import ImpairmentsPage from './pages/ezirisk/ImpairmentsPage';
 import LibraryPage from './pages/ezirisk/LibraryPage';
 import AdminPage from './pages/ezirisk/AdminPage';
+import ProfilePage from './pages/ezirisk/ProfilePage';
 import AdminRoute from './components/AdminRoute';
 import PlatformAdminRoute from './components/SuperAdminRoute';
 import AuthedLayout from './components/AuthedLayout';
@@ -43,15 +45,83 @@ import ProfessionalLiabilityDisclaimerPage from './pages/legal/ProfessionalLiabi
 import SecurityTrustPage from './pages/legal/SecurityTrustPage';
 import AcceptableUsePolicyPage from './pages/legal/AcceptableUsePolicyPage';
 import SubProcessorsInfrastructurePage from './pages/legal/SubProcessorsInfrastructurePage';
+import CookieConsentBanner from './components/CookieConsentBanner';
+import SeoManager from './components/SeoManager';
+import PricingPage from './pages/PricingPage';
+import ContactPage from './pages/ContactPage';
+import { supabase } from './lib/supabase';
+
+
+
+function LegacyActionRegisterRedirect() {
+  const location = useLocation();
+
+  return <Navigate to={`/remediation/actions${location.search}`} replace />;
+}
+
+function LegacyActionRouteRedirect() {
+  const { actionId } = useParams();
+  const target = actionId
+    ? `/remediation/actions?actionId=${encodeURIComponent(actionId)}`
+    : '/remediation/actions';
+
+  return <Navigate to={target} replace />;
+}
+
+
+function LegacyReportRedirect() {
+  const { surveyId } = useParams();
+  const [target, setTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolveDocumentPreview() {
+      if (!surveyId) {
+        setTarget('/reports');
+        return;
+      }
+
+      const { data } = await supabase
+        .from('surveys')
+        .select('document_id')
+        .eq('id', surveyId)
+        .maybeSingle();
+
+      if (!cancelled) {
+        // Legacy /report links are never rendered directly in production; route them into
+        // the current document preview workflow so assessors see one report system.
+        setTarget(data?.document_id ? `/documents/${data.document_id}/preview` : '/reports');
+      }
+    }
+
+    resolveDocumentPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [surveyId]);
+
+  if (!target) {
+    return null;
+  }
+
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   return (
     <BrowserRouter>
       <ClientBrandingProvider>
+          <SeoManager />
           <ErrorBoundary>
             <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/contact" element={<ContactPage />} />
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/login" element={<SignIn />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/external/:token" element={<ExternalSurvey />} />
           <Route path="/client/document/:token" element={<ClientDocumentView />} />
@@ -108,11 +178,19 @@ function App() {
           </Route>
           <Route
             path="/dashboard/action-register"
-            element={<Navigate to="/remediation/actions" replace />}
+            element={<LegacyActionRegisterRedirect />}
           />
           <Route
             path="/dashboard/actions"
-            element={<Navigate to="/remediation/actions" replace />}
+            element={<LegacyActionRegisterRedirect />}
+          />
+          <Route
+            path="/actions/:actionId"
+            element={
+              <AuthedLayout>
+                <LegacyActionRouteRedirect />
+              </AuthedLayout>
+            }
           />
           <Route
             path="/documents/:id"
@@ -225,6 +303,14 @@ function App() {
             }
           />
           <Route
+            path="/profile"
+            element={
+              <AuthedLayout>
+                <ProfilePage />
+              </AuthedLayout>
+            }
+          />
+          <Route
             path="/upgrade"
             element={
               <AuthedLayout>
@@ -236,7 +322,7 @@ function App() {
             path="/report/:surveyId"
             element={
               <AuthedLayout>
-                <ReportPreviewPage />
+                <LegacyReportRedirect />
               </AuthedLayout>
             }
           />
@@ -282,6 +368,7 @@ function App() {
           )}
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          <CookieConsentBanner />
           </ErrorBoundary>
         </ClientBrandingProvider>
       </BrowserRouter>

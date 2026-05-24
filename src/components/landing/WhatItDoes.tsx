@@ -1,52 +1,65 @@
+import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
+
+const workflowFriction = [
+  {
+    image: '/what-create.webp',
+    alt: 'Structured assessment form',
+    title: 'Replace blank-document reporting',
+    description: 'Start from structured assessment sections instead of a blank report file.',
+  },
+  {
+    image: '/what-recommendations.webp',
+    alt: 'Recommendations linked to assessment findings',
+    title: 'Keep recommendations connected',
+    description: 'Link findings, actions and evidence back to the assessment context.',
+  },
+  {
+    image: '/what-export.webp',
+    alt: 'Professional report output',
+    title: 'Issue with more control',
+    description: 'Resolve draft gaps before the assessment is issued.',
+  },
+];
+
 export default function WhatItDoes() {
+  const { ref, isVisible } = useFadeInOnScroll();
+
   return (
-    <section className="py-24 bg-white">
+    <section
+      ref={ref}
+      className={`py-28 bg-white transition-all duration-300 ease-out ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
+        <div className="mx-auto mb-16 max-w-3xl text-center">
+          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
+            Built for fire risk assessors
+          </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            What EziRisk Does
+            Replace disconnected report assembly
           </h2>
-          <p className="text-xl text-neutral-600 max-w-3xl mx-auto">
-            A complete fire risk reporting platform for engineering and assessment consultants
+          <p className="text-xl text-neutral-600">
+            Bring notes, photos and actions into the same reporting path.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <span className="text-2xl font-bold text-primary-700">1</span>
+        <div className="grid gap-8 md:grid-cols-3">
+          {workflowFriction.map((item) => (
+            <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <img
+                src={item.image}
+                alt={item.alt}
+                className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
+              />
+              <h3 className="mb-3 text-xl font-semibold text-neutral-900">
+                {item.title}
+              </h3>
+              <p className="leading-7 text-neutral-600">
+                {item.description}
+              </p>
             </div>
-            <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Create Surveys
-            </h3>
-            <p className="text-neutral-600">
-              Structured forms capture all required data for fire property or risk assessments
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <span className="text-2xl font-bold text-primary-700">2</span>
-            </div>
-            <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Add Recommendations
-            </h3>
-            <p className="text-neutral-600">
-              Use the recommendation library with smart triggers or create custom findings
-            </p>
-          </div>
-
-          <div className="text-center">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mb-4 mx-auto">
-              <span className="text-2xl font-bold text-primary-700">3</span>
-            </div>
-            <h3 className="text-xl font-semibold text-neutral-900 mb-2">
-              Export Reports
-            </h3>
-            <p className="text-neutral-600">
-              Professional reports combining survey findings and recommendations, ready for clients
-            </p>
-          </div>
+          ))}
         </div>
       </div>
     </section>

@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { getUserLimitForOrganisation } from '../utils/planLimits';
 import { getReportCreationEntitlement, type ReportCreationEntitlement } from '../utils/reportCreationEntitlements';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../utils/userSeatEntitlements';
+import { PUBLIC_LEGAL_DETAILS, SUPPORT_CONFIG, getSupportMailto } from '../config/support';
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('en-US', {
@@ -66,6 +67,7 @@ export default function AdminBillingPanel() {
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isChangingPlan, setIsChangingPlan] = useState(false);
   const [isConfirmingDowngrade, setIsConfirmingDowngrade] = useState(false);
+  const [isConfirmingUpgrade, setIsConfirmingUpgrade] = useState(false);
   const [planChangeMessage, setPlanChangeMessage] = useState<string | null>(null);
   const [planChangeError, setPlanChangeError] = useState<string | null>(null);
 
@@ -163,6 +165,36 @@ export default function AdminBillingPanel() {
     } catch (error) {
       console.error('[AdminBillingPanel] Failed to downgrade plan:', error);
       setPlanChangeError('Unable to downgrade to Standard right now. Please try again.');
+    } finally {
+      setIsChangingPlan(false);
+    }
+  };
+
+
+  const confirmUpgradeToProfessional = async () => {
+    if (!organisation?.id || isChangingPlan) return;
+
+    setIsChangingPlan(true);
+    setPlanChangeMessage(null);
+    setPlanChangeError(null);
+
+    try {
+      const { error } = await supabase.functions.invoke('change-subscription-plan', {
+        body: {
+          organisationId: organisation.id,
+          targetPlan: 'professional',
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to change plan');
+      }
+
+      setPlanChangeMessage('Your plan has been upgraded to Professional.');
+      setIsConfirmingUpgrade(false);
+    } catch (error) {
+      console.error('[AdminBillingPanel] Failed to upgrade plan:', error);
+      setPlanChangeError('Unable to upgrade to Professional right now. Please try again.');
     } finally {
       setIsChangingPlan(false);
     }
@@ -348,7 +380,7 @@ export default function AdminBillingPanel() {
         {planId === 'standard' && (
           <>
             <button
-              onClick={() => navigate('/upgrade?plan=professional')}
+              onClick={() => setIsConfirmingUpgrade(true)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
             >
               <CreditCard className="w-4 h-4" />
@@ -402,7 +434,42 @@ export default function AdminBillingPanel() {
       {planChangeMessage && <p className="text-sm text-green-700 mt-3">{planChangeMessage}</p>}
       {planChangeError && <p className="text-sm text-red-700 mt-3">{planChangeError}</p>}
 
-      <p className="text-xs text-slate-500 mt-4">Need a larger deployment? Contact us.</p>
+      <p className="text-xs text-slate-500 mt-4">
+        Need a larger deployment? Contact{' '}
+        <a href={getSupportMailto()} className="underline hover:text-slate-700">
+          {SUPPORT_CONFIG.email}
+        </a>
+        . {PUBLIC_LEGAL_DETAILS.footerStatement}
+      </p>
+
+
+      {isConfirmingUpgrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-xl">
+            <h3 className="text-base font-semibold text-slate-900 mb-2">Confirm upgrade</h3>
+            <p className="text-sm text-slate-700 mb-3">
+              Upgrading to Professional takes effect immediately with Stripe proration for the current billing period.
+            </p>
+            <p className="text-sm text-slate-700">Your billing interval remains the same.</p>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setIsConfirmingUpgrade(false)}
+                disabled={isChangingPlan}
+                className="inline-flex items-center px-4 py-2 border border-slate-300 text-slate-800 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmUpgradeToProfessional}
+                disabled={isChangingPlan}
+                className="inline-flex items-center px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-60"
+              >
+                {isChangingPlan ? 'Confirming…' : 'Confirm upgrade'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isConfirmingDowngrade && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">

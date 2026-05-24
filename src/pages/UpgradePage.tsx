@@ -5,6 +5,7 @@ import { useTenant } from '../hooks/useTenant';
 import { ArrowLeft, Check, Zap, Lock, Users, AlertCircle, CheckCircle } from 'lucide-react';
 import { PLAN_LABELS } from '../utils/permissions';
 import { supabase } from '../lib/supabase';
+import { PUBLIC_LEGAL_DETAILS, SUPPORT_CONFIG, getSupportMailto } from '../config/support';
 
 const STRIPE_PRICE_STANDARD_MONTHLY =
   import.meta.env.VITE_STRIPE_PRICE_STANDARD_MONTHLY;
@@ -156,7 +157,7 @@ export default function UpgradePage() {
 
   const handleUpgrade = async (plan: typeof plans[0]) => {
     if (!plan.showCheckout || !user || !organisation) {
-      window.location.href = 'mailto:sales@ezirisk.com';
+      window.location.href = getSupportMailto();
       return;
     }
 
@@ -393,6 +394,17 @@ export default function UpgradePage() {
               </div>
             );
           })}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4 text-center text-sm text-slate-600">
+          <p>{PUBLIC_LEGAL_DETAILS.footerStatement}</p>
+          <p className="mt-1">
+            Larger deployment or billing questions? Contact{' '}
+            <a href={getSupportMailto()} className="font-medium text-slate-900 underline hover:text-slate-700">
+              {SUPPORT_CONFIG.email}
+            </a>
+            .
+          </p>
         </div>
 
       </main>

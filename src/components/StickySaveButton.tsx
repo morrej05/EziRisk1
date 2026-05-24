@@ -18,7 +18,7 @@ export default function StickySaveButton({
   isReadOnly = false,
 }: StickySaveButtonProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t-2 border-slate-300 z-40">
+    <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t-2 border-slate-300 z-40" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="max-w-7xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1">

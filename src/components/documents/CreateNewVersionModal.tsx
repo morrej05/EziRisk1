@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { X, AlertTriangle, Copy } from 'lucide-react';
 import { createNewVersion } from '../../utils/documentVersioning';
 
@@ -22,21 +22,29 @@ export default function CreateNewVersionModal({
   onSuccess,
 }: CreateNewVersionModalProps) {
   const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [carryForwardEvidence, setCarryForwardEvidence] = useState(true);
+  const createInFlightRef = useRef(false);
 
   const handleCreateNewVersion = async () => {
+    if (createInFlightRef.current) return;
+
+    createInFlightRef.current = true;
+    setCreateError(null);
     setIsCreating(true);
     try {
       const result = await createNewVersion(baseDocumentId, userId, organisationId, carryForwardEvidence);
       if (result.success && result.newDocumentId) {
-        onSuccess(result.newDocumentId, result.newVersionNumber);
+        onClose();
+        onSuccess(result.newDocumentId, result.newVersionNumber ?? newVersionNumber);
       } else {
-        alert(result.error || 'Failed to create new version');
+        setCreateError(result.error || 'Failed to create new version');
       }
     } catch (error) {
       console.error('Error creating new version:', error);
-      alert('Failed to create new version');
+      setCreateError('Failed to create new version');
     } finally {
+      createInFlightRef.current = false;
       setIsCreating(false);
     }
   };
@@ -51,12 +59,24 @@ export default function CreateNewVersionModal({
           <button
             onClick={onClose}
             className="p-2 hover:bg-neutral-100 rounded-lg transition-colors"
+            disabled={isCreating}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {createError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4" role="alert">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-red-900 mb-1">New version was not created</p>
+                  <p className="text-sm text-red-800">{createError}</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="mb-6">
             <h3 className="font-semibold text-neutral-900 mb-2">{documentTitle}</h3>
             <p className="text-sm text-neutral-600">
@@ -86,6 +106,7 @@ export default function CreateNewVersionModal({
                 type="checkbox"
                 checked={carryForwardEvidence}
                 onChange={(e) => setCarryForwardEvidence(e.target.checked)}
+                disabled={isCreating}
                 className="mt-0.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
               />
               <div>

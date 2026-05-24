@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { ArrowUpCircle, CheckCircle2, AlertCircle, Loader2, Search } from 'lucide-react';
+import { getModuleDisplayLabel } from '../lib/modules/moduleCatalog';
 
 interface ReRecommendation {
   id: string;
@@ -322,7 +323,7 @@ export default function PromoteRecommendationsToTemplates() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                        {rec.source_module_key}
+                        {getModuleDisplayLabel(rec.source_module_key)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -371,9 +372,9 @@ export default function PromoteRecommendationsToTemplates() {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h3 className="text-sm font-medium text-blue-900 mb-2">How it works</h3>
         <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-          <li>Preview shows what will be created - missing fields are auto-generated (shown in italic)</li>
+          <li>Preview shows what will be created - missing fields are prepared from defaults (shown in italic)</li>
           <li>Action Required is generated from title/observation if blank</li>
-          <li>Hazard/Risk description is auto-generated using smart rules if missing</li>
+          <li>Hazard/Risk description is prepared using smart rules if missing</li>
           <li>Module keys are normalized to canonical form (e.g., RE_03_OCCUPANCY → RE03)</li>
           <li>Strong deduplication based on title + observation + action (prevents duplicates like "Improve Exposures Flood")</li>
           <li>Templates are tagged as 'derived', scoped as 'derived', and set to active</li>

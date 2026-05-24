@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { getModuleName } from '../../lib/modules/moduleCatalog';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import { sanitizeModuleInstancePayload } from '../../utils/modulePayloadSanitizer';
 import A1DocumentControlForm from './forms/A1DocumentControlForm';
 import A2BuildingProfileForm from './forms/A2BuildingProfileForm';
@@ -59,6 +59,7 @@ interface Document {
   scope_description: string | null;
   limitations_assumptions: string | null;
   standards_selected: string[];
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -651,7 +652,7 @@ function PlaceholderModuleForm({
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-neutral-900 mb-2">
-          {getModuleName(moduleInstance.module_key)}
+          {getModuleDisplayLabel(moduleInstance.module_key)}
         </h2>
         <p className="text-neutral-600">
           Module editor coming soon
@@ -677,14 +678,16 @@ function PlaceholderModuleForm({
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-neutral-200">
-          <p className="text-sm text-neutral-500">
-            <strong>Module Key:</strong> {moduleInstance.module_key}
-          </p>
-          <p className="text-sm text-neutral-500 mt-1">
-            <strong>Document Type:</strong> {document.document_type}
-          </p>
-        </div>
+        {import.meta.env.DEV && (
+          <div className="mt-6 pt-6 border-t border-neutral-200">
+            <p className="text-sm text-neutral-500">
+              <strong>Assessment section:</strong> {getModuleDisplayLabel(moduleInstance.module_key)}
+            </p>
+            <p className="text-sm text-neutral-500 mt-1">
+              <strong>Assessment type:</strong> {document.document_type}
+            </p>
+          </div>
+        )}
       </div>
 
       <OutcomePanel

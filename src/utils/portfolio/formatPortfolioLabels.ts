@@ -27,6 +27,3 @@ export function formatPortfolioGroupLabel(value: string): string {
   return titleCase(normalized);
 }
 
-export function formatPortfolioStatusLabel(value: string): string {
-  return formatPortfolioGroupLabel(value);
-}

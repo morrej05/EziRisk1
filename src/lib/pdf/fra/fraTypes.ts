@@ -36,16 +36,28 @@ export interface Action {
   id: string;
   recommended_action: string;
   priority_band: string;
+  source?: string | null;
+  title?: string | null;
+  summary?: string | null;
+  short_description?: string | null;
   status: string;
   finding_category?: string | null;
   trigger_id?: string | null;
   trigger_text?: string | null;
+  severity_tier?: string | null;
   owner_user_id: string | null;
   owner_display_name?: string;
   target_date: string | null;
   module_instance_id: string;
   created_at: string;
   reference_number?: string | null;
+  trigger_text?: string | null;
+  recommendation_detail?: Record<string, unknown> | null;
+  source_links?: Array<{
+    source_assessment_type: string;
+    source_assessment_key: string;
+    source_assessment_label?: string | null;
+  }>;
 }
 
 export interface ActionRating {

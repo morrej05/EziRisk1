@@ -16,7 +16,6 @@ import {
   Unlink,
   Filter,
   Link as LinkIcon,
-  Info,
 } from 'lucide-react';
 import {
   getDocumentStatus,
@@ -33,6 +32,7 @@ import {
 } from '../../utils/evidenceManagement';
 import { unlinkAttachmentFromAction, unlinkAttachmentFromModule } from '../../lib/supabase/attachments';
 import { supabase } from '../../lib/supabase';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 
 type FilterType = 'all' | 'unlinked' | 'section' | 'action';
 
@@ -96,7 +96,7 @@ export default function DocumentEvidenceV2() {
 
       loadThumbnails(attachs);
     } catch (err) {
-      console.error('Error loading data:', err);
+      if (import.meta.env.DEV) console.error('Error loading data:', err);
       setError('Failed to load evidence data');
     } finally {
       setIsLoading(false);
@@ -115,13 +115,13 @@ export default function DocumentEvidenceV2() {
         .order('module_key', { ascending: true });
 
       if (error) {
-        console.error('Error loading modules:', error);
+        if (import.meta.env.DEV) console.error('Error loading modules:', error);
         return [];
       }
 
       return data || [];
     } catch (err) {
-      console.error('Error loading modules:', err);
+      if (import.meta.env.DEV) console.error('Error loading modules:', err);
       return [];
     }
   };
@@ -138,13 +138,13 @@ export default function DocumentEvidenceV2() {
         .order('reference_number', { ascending: true });
 
       if (error) {
-        console.error('Error loading actions:', error);
+        if (import.meta.env.DEV) console.error('Error loading actions:', error);
         return [];
       }
 
       return data || [];
     } catch (err) {
-      console.error('Error loading actions:', err);
+      if (import.meta.env.DEV) console.error('Error loading actions:', err);
       return [];
     }
   };
@@ -160,7 +160,7 @@ export default function DocumentEvidenceV2() {
           .createSignedUrl(att.file_path, 3600);
 
         if (error) {
-          console.warn(`Failed to load thumbnail for ${att.file_name}:`, error);
+          if (import.meta.env.DEV) console.warn(`Failed to load thumbnail for ${att.file_name}:`, error);
           continue;
         }
 
@@ -168,7 +168,7 @@ export default function DocumentEvidenceV2() {
           thumbs[att.id] = data.signedUrl;
         }
       } catch (err) {
-        console.warn(`Exception loading thumbnail for ${att.file_name}:`, err);
+        if (import.meta.env.DEV) console.warn(`Exception loading thumbnail for ${att.file_name}:`, err);
       }
     }
 
@@ -209,7 +209,7 @@ export default function DocumentEvidenceV2() {
         fileInputRef.current.value = '';
       }
     } catch (err: any) {
-      console.error('Upload error:', err);
+      if (import.meta.env.DEV) console.error('Upload error:', err);
       setError(err.message || 'Failed to upload evidence');
     } finally {
       setIsUploading(false);
@@ -237,7 +237,7 @@ export default function DocumentEvidenceV2() {
 
       await loadData();
     } catch (err: any) {
-      console.error('Delete error:', err);
+      if (import.meta.env.DEV) console.error('Delete error:', err);
       alert(err.message || 'Failed to delete evidence');
     }
   };
@@ -266,7 +266,7 @@ export default function DocumentEvidenceV2() {
       setEditCaption('');
       await loadData();
     } catch (err: any) {
-      console.error('Update error:', err);
+      if (import.meta.env.DEV) console.error('Update error:', err);
       alert(err.message || 'Failed to update caption');
     }
   };
@@ -280,7 +280,7 @@ export default function DocumentEvidenceV2() {
     try {
       await downloadAttachment(attachment.file_path, attachment.file_name);
     } catch (err) {
-      console.error('Download error:', err);
+      if (import.meta.env.DEV) console.error('Download error:', err);
       alert('Failed to download file');
     }
   };
@@ -299,7 +299,7 @@ export default function DocumentEvidenceV2() {
       await unlinkAttachmentFromAction(attachmentId);
       await loadData();
     } catch (err: any) {
-      console.error('Unlink error:', err);
+      if (import.meta.env.DEV) console.error('Unlink error:', err);
       alert(err.message || 'Failed to unlink evidence from action');
     }
   };
@@ -318,7 +318,7 @@ export default function DocumentEvidenceV2() {
       await unlinkAttachmentFromModule(attachmentId);
       await loadData();
     } catch (err: any) {
-      console.error('Unlink error:', err);
+      if (import.meta.env.DEV) console.error('Unlink error:', err);
       alert(err.message || 'Failed to unlink evidence from module');
     }
   };
@@ -340,7 +340,7 @@ export default function DocumentEvidenceV2() {
       setLinkingAttachment(null);
       await loadData();
     } catch (err: any) {
-      console.error('Link error:', err);
+      if (import.meta.env.DEV) console.error('Link error:', err);
       alert(err.message || 'Failed to link evidence to module');
     }
   };
@@ -362,7 +362,7 @@ export default function DocumentEvidenceV2() {
       setLinkingAttachment(null);
       await loadData();
     } catch (err: any) {
-      console.error('Link error:', err);
+      if (import.meta.env.DEV) console.error('Link error:', err);
       alert(err.message || 'Failed to link evidence to action');
     }
   };
@@ -443,21 +443,6 @@ export default function DocumentEvidenceV2() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium text-blue-900 mb-1">DocumentEvidenceV2 Debug Info</p>
-              <div className="text-sm text-blue-800 space-y-1">
-                <p>Total attachments loaded: {attachments.length}</p>
-                <p>Modules loaded: {modules.length}</p>
-                <p>Actions loaded: {actions.length}</p>
-                <p>Thumbnails loaded: {Object.keys(thumbnails).length}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {isLocked && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
@@ -723,7 +708,7 @@ export default function DocumentEvidenceV2() {
                                   <option value="">Select module...</option>
                                   {modules.map(mod => (
                                     <option key={mod.id} value={mod.id}>
-                                      {mod.module_key}
+                                      {getModuleDisplayLabel(mod.module_key)}
                                     </option>
                                   ))}
                                 </select>

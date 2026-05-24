@@ -9,28 +9,84 @@ import {
   type FraActionInput,
   type FraContext,
 } from '../../lib/modules/fra/severityEngine';
-import { deriveExplosionSeverity } from '../../lib/dsear/criticalityEngine';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { compactRecommendationDetail, type RecommendationDetail } from '../../lib/actions/recommendationDetail';
+import { areActionTextsNearDuplicate } from '../../lib/actions/actionSourceLinks';
 import { getModuleOutcomeCategory } from '../../lib/modules/moduleCatalog';
 import { deriveFsdProfessionalActionText } from '../../lib/fsd/fsdActionWording';
+import { getPriorityExplanation } from '../recommendations/RecommendationWorkflow';
+import { buildRecommendationContext } from '../../lib/re/recommendations/sectionRecommendationContext';
 
 interface AddActionModalProps {
   documentId: string;
   moduleInstanceId: string;
   onClose: () => void;
-  onActionCreated: () => void;
+  onActionCreated?: (actionId?: string) => void;
   defaultAction?: string;
+  defaultLikelihood?: number;
+  defaultImpact?: number;
   source?: 'manual' | 'info_gap' | 'recommendation' | 'system';
   sourceModuleKey?: string;
+  sectionKey?: string | null;
+  sectionLabel?: string | null;
+  sourceKey?: string | null;
+  sourceLabel?: string | null;
+  defaultCategory?: string | null;
 }
 
 const TIMESCALE_OPTIONS = [
   { value: 'immediate', label: 'Immediate' },
-  { value: '30d', label: '≤ 30 days' },
-  { value: '90d', label: '≤ 90 days' },
+  { value: '7d', label: 'Within 7 days' },
+  { value: '30d', label: 'Within 30 days' },
+  { value: '90d', label: 'Within 90 days' },
   { value: 'next_review', label: 'Next Review' },
   { value: 'custom', label: 'Custom' },
 ];
+
+
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatSuggestedCompletion(value: string): string {
+  switch (value) {
+    case 'immediate':
+      return 'Suggested completion: Immediately';
+    case '7d':
+      return 'Suggested completion: Within 7 days';
+    case '30d':
+      return 'Suggested completion: Within 30 days';
+    case '90d':
+      return 'Suggested completion: Within 90 days';
+    case 'next_review':
+      return 'Suggested completion: By the next scheduled review';
+    default:
+      return 'Suggested completion: To be agreed';
+  }
+}
+
+function targetDateFromTimescale(timescale: string, baseDate = new Date()): string {
+  const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+
+  switch (timescale) {
+    case 'immediate':
+      return toLocalIsoDate(dueDate);
+    case '7d':
+      dueDate.setDate(dueDate.getDate() + 7);
+      return toLocalIsoDate(dueDate);
+    case '30d':
+      dueDate.setDate(dueDate.getDate() + 30);
+      return toLocalIsoDate(dueDate);
+    case '90d':
+      dueDate.setDate(dueDate.getDate() + 90);
+      return toLocalIsoDate(dueDate);
+    default:
+      return '';
+  }
+}
 
 const DSEAR_TRIGGERS = [
   { id: 'noHac', label: 'Hazardous area classification not completed / not available', category: 'HAC' },
@@ -109,6 +165,75 @@ function getDefaultFsdCategory(sourceModuleKey?: string): FsdFindingCategory {
   }
 }
 
+
+const FRA_CATEGORY_VALUES: FraFindingCategory[] = [
+  'MeansOfEscape',
+  'DetectionAlarm',
+  'EmergencyLighting',
+  'Compartmentation',
+  'FireDoors',
+  'FireFighting',
+  'Management',
+  'Housekeeping',
+  'Other',
+];
+
+function toFraActionCategory(category?: string | null): FraFindingCategory | null {
+  if (!category) return null;
+  const compact = category.trim().replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const direct = FRA_CATEGORY_VALUES.find((value) => value.toLowerCase() === compact);
+  if (direct) return direct;
+  if (compact.includes('meansofescape') || compact.includes('evacuation')) return 'MeansOfEscape';
+  if (compact.includes('detection') || compact.includes('alarm')) return 'DetectionAlarm';
+  if (compact.includes('emergencylighting')) return 'EmergencyLighting';
+  if (compact.includes('compartment')) return 'Compartmentation';
+  if (compact.includes('firedoor')) return 'FireDoors';
+  if (compact.includes('firefighting') || compact.includes('extinguisher')) return 'FireFighting';
+  if (compact.includes('management') || compact.includes('procedure') || compact.includes('permit') || compact.includes('contractor')) return 'Management';
+  if (compact.includes('hotwork') || compact.includes('kitchen') || compact.includes('cooking') || compact.includes('laundry') || compact.includes('charging') || compact.includes('ignition')) return 'Management';
+  if (compact.includes('electricalinstallation') || compact.includes('electricalsafety') || compact.includes('fixedwiring') || compact.includes('eicr')) return 'Management';
+  if (compact.includes('generalfireriskrecommendation')) return 'Management';
+  if (compact.includes('housekeeping')) return 'Housekeeping';
+  return null;
+}
+
+function getDefaultFraCategory(sourceModuleKey?: string): FraFindingCategory {
+  switch (sourceModuleKey) {
+    case 'FRA_2_ESCAPE_ASIS':
+      return 'MeansOfEscape';
+    case 'FRA_3_ACTIVE_SYSTEMS':
+      return 'DetectionAlarm';
+    case 'FRA_4_PASSIVE_PROTECTION':
+      return 'Compartmentation';
+    case 'FRA_8_FIREFIGHTING_EQUIPMENT':
+      return 'FireFighting';
+    case 'FRA_6_MANAGEMENT_SYSTEMS':
+    case 'FRA_7_EMERGENCY_ARRANGEMENTS':
+      return 'Management';
+    case 'FRA_1_HAZARDS':
+      return 'Management';
+    default:
+      return 'Other';
+  }
+}
+
+function categoryLabel(category: ActionCategory): string {
+  const fsd = FSD_CATEGORY_OPTIONS.find((option) => option.value === category);
+  if (fsd) return fsd.label;
+  const labels: Record<string, string> = {
+    MeansOfEscape: 'Means of Escape',
+    DetectionAlarm: 'Detection & Alarm',
+    EmergencyLighting: 'Emergency Lighting',
+    Compartmentation: 'Compartmentation',
+    FireDoors: 'Fire Doors',
+    FireFighting: 'Fire Fighting Equipment',
+    Management: 'Management & Procedures',
+    Housekeeping: 'Housekeeping',
+    Other: 'General fire risk recommendation',
+  };
+  return labels[String(category)] || String(category);
+}
+
 export default function AddActionModal({
   documentId,
   moduleInstanceId,
@@ -117,22 +242,57 @@ export default function AddActionModal({
   defaultAction = '',
   source,
   sourceModuleKey,
+  sectionKey,
+  sectionLabel,
+  sourceKey,
+  sourceLabel,
+  defaultCategory,
 }: AddActionModalProps) {
   const { organisation, user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAttachmentPrompt, setShowAttachmentPrompt] = useState(false);
+  const [showConsultancyDetail, setShowConsultancyDetail] = useState(false);
+  const [showCategoryOverride, setShowCategoryOverride] = useState(false);
+  const [showRuleInputs, setShowRuleInputs] = useState(false);
   const [createdActionId, setCreatedActionId] = useState<string | null>(null);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [uploadedFilesCount, setUploadedFilesCount] = useState(0);
   const [documentType, setDocumentType] = useState<string | null>(null);
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
-  const [moduleInstances, setModuleInstances] = useState<any[]>([]);
   const [isLoadingContext, setIsLoadingContext] = useState(true);
   const [userEditedActionText, setUserEditedActionText] = useState(false);
+  const [userEditedTimescale, setUserEditedTimescale] = useState(false);
+  const [userEditedTargetDate, setUserEditedTargetDate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const recommendationContext = buildRecommendationContext({
+    documentId,
+    moduleInstanceId,
+    moduleKey: sourceModuleKey || 'OTHER',
+    sectionKey,
+    sectionLabel,
+    sourceKey,
+    sourceLabel,
+    defaultCategory,
+    warnOnMissingContext: false,
+  });
 
   const [formData, setFormData] = useState({
     recommendedAction: defaultAction,
+    recommendationDetail: {
+      observation: '',
+      consequence: '',
+      recommendation: defaultAction,
+      rationale: '',
+      standards_reference: '',
+      timeframe_guidance: '',
+      existing_controls: '',
+      evidence_notes: '',
+      linked_module: sourceModuleKey || '',
+      assessor_commentary: '',
+      management_response: '',
+      status_notes: '',
+    } as RecommendationDetail,
     category: 'Other' as ActionCategory,
     // FRA triggers
     finalExitLocked: false,
@@ -155,7 +315,7 @@ export default function AddActionModal({
     dsrIncomplete: false,
     dustHousekeeping: false,
     // Common fields
-    timescale: 'next_review',
+    timescale: '',
     overrideJustification: '',
     targetDate: '',
     escalateToP1: false,
@@ -165,13 +325,35 @@ export default function AddActionModal({
   // Reset edit tracking when modal opens with new props
   useEffect(() => {
     setUserEditedActionText(false);
-  }, [defaultAction, documentId, moduleInstanceId]);
+    setFormData((prev) => ({
+      ...prev,
+      recommendedAction: defaultAction,
+      recommendationDetail: {
+        ...prev.recommendationDetail,
+        recommendation: defaultAction,
+        linked_module: recommendationContext.displayLabel || prev.recommendationDetail.linked_module || '',
+        sectionKey: recommendationContext.sectionKey,
+        sectionLabel: recommendationContext.sectionLabel,
+        sourceKey: recommendationContext.sourceKey,
+        sourceLabel: recommendationContext.sourceLabel,
+        category: recommendationContext.defaultCategory,
+        metadata: recommendationContext.metadata,
+      },
+    }));
+  }, [defaultAction, documentId, moduleInstanceId, sourceModuleKey, recommendationContext.sectionKey, recommendationContext.sourceKey]);
 
   useEffect(() => {
     if (documentType === 'FSD') {
       setFormData((prev) => ({ ...prev, category: getDefaultFsdCategory(sourceModuleKey) }));
+      return;
     }
-  }, [documentType, sourceModuleKey]);
+
+    const contextCategory = toFraActionCategory(recommendationContext.defaultCategory);
+    setFormData((prev) => ({
+      ...prev,
+      category: contextCategory || getDefaultFraCategory(sourceModuleKey),
+    }));
+  }, [documentType, sourceModuleKey, recommendationContext.defaultCategory]);
 
   useEffect(() => {
     const fetchContext = async () => {
@@ -186,13 +368,6 @@ export default function AddActionModal({
         setDocumentType(doc.document_type);
         setEnabledModules(doc.enabled_modules || [doc.document_type]);
 
-        const { data: modules, error: modulesError } = await supabase
-          .from('module_instances')
-          .select('module_key, outcome, assessor_notes, data')
-          .eq('document_id', documentId);
-
-        if (modulesError) throw modulesError;
-        setModuleInstances(modules || []);
       } catch (error) {
         console.error('Error fetching context:', error);
       } finally {
@@ -396,7 +571,24 @@ export default function AddActionModal({
   };
 
   const suggestedTimescale = getSuggestedTimescale(priorityBand);
-  const isTimescaleOverride = formData.timescale !== suggestedTimescale;
+  const effectiveTimescale = formData.timescale || suggestedTimescale;
+  const displayRecommendationCategory = recommendationContext.defaultCategory || categoryLabel(formData.category);
+  const isTimescaleOverride = effectiveTimescale !== suggestedTimescale;
+  const timescaleRank: Record<string, number> = { immediate: 0, '7d': 1, '30d': 2, '90d': 3, next_review: 4, custom: 5 };
+  const isTimescaleRelaxation = isTimescaleOverride && (timescaleRank[effectiveTimescale] ?? 99) > (timescaleRank[suggestedTimescale] ?? 99);
+
+  useEffect(() => {
+    setFormData((prev) => {
+      const nextTimescale = userEditedTimescale ? (prev.timescale || suggestedTimescale) : suggestedTimescale;
+      const nextTargetDate = userEditedTargetDate ? prev.targetDate : targetDateFromTimescale(nextTimescale);
+
+      if (prev.timescale === nextTimescale && prev.targetDate === nextTargetDate) {
+        return prev;
+      }
+
+      return { ...prev, timescale: nextTimescale, targetDate: nextTargetDate };
+    });
+  }, [suggestedTimescale, userEditedTargetDate, userEditedTimescale]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -431,7 +623,7 @@ export default function AddActionModal({
       return;
     }
 
-    if (isTimescaleOverride && !formData.overrideJustification.trim()) {
+    if (isTimescaleRelaxation && !formData.overrideJustification.trim()) {
       alert('Please provide a justification for overriding the suggested timescale.');
       return;
     }
@@ -465,43 +657,45 @@ export default function AddActionModal({
         alert('This action already exists in this module.');
         return;
       }
-      let targetDate = null;
-      if (formData.targetDate) {
-        targetDate = formData.targetDate;
-      } else {
-        const today = new Date();
-        switch (formData.timescale) {
-          case 'immediate':
-            targetDate = today.toISOString().split('T')[0];
-            break;
-          case '30d':
-            targetDate = new Date(today.setDate(today.getDate() + 30))
-              .toISOString()
-              .split('T')[0];
-            break;
-          case '90d':
-            targetDate = new Date(today.setDate(today.getDate() + 90))
-              .toISOString()
-              .split('T')[0];
-            break;
-          case 'next_review':
-          case 'custom':
-          default:
-            targetDate = null;
-        }
+
+      const nearDuplicate = existingActions?.find(
+        (action) => areActionTextsNearDuplicate(normalizedActionText, action.recommended_action)
+      );
+
+      if (nearDuplicate && !window.confirm('A very similar action already exists in this module. Create this additional recommendation anyway?')) {
+        setIsSubmitting(false);
+        return;
       }
 
+      const targetDate = formData.targetDate || targetDateFromTimescale(effectiveTimescale) || null;
+
       // Resolve source based on whether user edited the text
-      const resolvedSource: 'manual' | 'library' | 'system' | 'ai' =
-        source === 'library' || source === 'ai'
-          ? source
-          : source === 'system' || source === 'info_gap' || source === 'recommendation'
-            ? 'system'
-            : userEditedActionText
-              ? 'manual'
-              : defaultAction.trim()
-                ? 'system'
-                : 'manual';
+      const resolvedSource: 'manual' | 'system' =
+        source === 'system' || source === 'info_gap' || source === 'recommendation'
+          ? 'system'
+          : userEditedActionText
+            ? 'manual'
+            : defaultAction.trim()
+              ? 'system'
+              : 'manual';
+
+      const recommendationDetail = compactRecommendationDetail({
+        ...formData.recommendationDetail,
+        recommendation: formData.recommendationDetail.recommendation || normalizedActionText,
+        timeframe_guidance: formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale),
+        linked_module: formData.recommendationDetail.linked_module || recommendationContext.displayLabel || '',
+        sectionKey: recommendationContext.sectionKey,
+        sectionLabel: recommendationContext.sectionLabel,
+        sourceKey: recommendationContext.sourceKey,
+        sourceLabel: recommendationContext.sourceLabel,
+        category: recommendationContext.defaultCategory,
+        metadata: {
+          ...(typeof formData.recommendationDetail.metadata === 'object' && formData.recommendationDetail.metadata !== null
+            ? formData.recommendationDetail.metadata
+            : {}),
+          ...recommendationContext.metadata,
+        },
+      });
 
       const actionData = {
         organisation_id: organisation.id,
@@ -515,7 +709,7 @@ export default function AddActionModal({
         trigger_id: triggerId,
         trigger_text: triggerText,
         finding_category: formData.category,
-        timescale: formData.timescale,
+        timescale: effectiveTimescale,
         target_date: targetDate,
         override_justification: isTimescaleOverride
           ? formData.overrideJustification.trim()
@@ -524,6 +718,7 @@ export default function AddActionModal({
           ? formData.escalationJustification.trim()
           : null,
         source: resolvedSource,
+        recommendation_detail: recommendationDetail,
       };
 
       const { data: action, error: actionError } = await supabase
@@ -601,7 +796,7 @@ export default function AddActionModal({
   };
 
   const handleFinish = () => {
-    onActionCreated();
+    onActionCreated?.(createdActionId || undefined);
     onClose();
   };
 
@@ -612,19 +807,19 @@ export default function AddActionModal({
           <div className="bg-green-50 border-b border-green-200 px-6 py-4">
             <div className="flex items-center gap-3">
               <CheckCircle className="w-6 h-6 text-green-600" />
-              <h2 className="text-xl font-bold text-green-900">Action Created!</h2>
+              <h2 className="text-xl font-bold text-green-900">Recommendation Created!</h2>
             </div>
           </div>
 
           <div className="p-6">
             <p className="text-neutral-700 mb-4">
-              Would you like to attach evidence or photos to this action?
+              No evidence added yet. Add photos, documents or notes to support this recommendation.
             </p>
 
             {uploadedFilesCount > 0 && (
               <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm text-green-800 font-medium">
-                  {uploadedFilesCount} file{uploadedFilesCount !== 1 ? 's' : ''} attached successfully
+                  {uploadedFilesCount} evidence item{uploadedFilesCount !== 1 ? 's' : ''} linked to this recommendation.
                 </p>
               </div>
             )}
@@ -633,6 +828,7 @@ export default function AddActionModal({
               ref={fileInputRef}
               type="file"
               multiple
+              capture="environment"
               accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
               onChange={handleAttachmentUpload}
               className="hidden"
@@ -705,9 +901,9 @@ export default function AddActionModal({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-neutral-900">Add Action</h2>
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex-shrink-0 bg-white border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-neutral-900">Add Recommendation</h2>
           <button
             onClick={onClose}
             className="text-neutral-400 hover:text-neutral-600 transition-colors"
@@ -716,10 +912,10 @@ export default function AddActionModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form id="add-action-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
           <div>
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Recommended Action <span className="text-red-600">*</span>
+              Recommendation / action required <span className="text-red-600">*</span>
             </label>
             <textarea
               value={formData.recommendedAction}
@@ -728,49 +924,175 @@ export default function AddActionModal({
                 setUserEditedActionText(true);
               }}
               placeholder="Describe the recommended action to address the identified deficiency or risk..."
-              rows={4}
+              rows={6}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
               required
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Finding Category <span className="text-red-600">*</span>
-            </label>
-            <select
-              value={formData.category}
-              onChange={(e) =>
-                setFormData({ ...formData, category: e.target.value as ActionCategory })
-              }
-              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
-              required
-            >
-              {documentType === 'FSD' ? (
-                FSD_CATEGORY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))
-              ) : (
-                <>
-                  <option value="MeansOfEscape">Means of Escape</option>
-                  <option value="DetectionAlarm">Detection & Alarm</option>
-                  <option value="EmergencyLighting">Emergency Lighting</option>
-                  <option value="Compartmentation">Compartmentation</option>
-                  <option value="FireDoors">Fire Doors</option>
-                  <option value="FireFighting">Fire Fighting Equipment</option>
-                  <option value="Management">Management & Procedures</option>
-                  <option value="Housekeeping">Housekeeping</option>
-                  <option value="Other">Other</option>
-                </>
-              )}
-            </select>
+          <div className="grid grid-cols-1 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Observation / finding</label>
+              <textarea
+                value={formData.recommendationDetail.observation || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  recommendationDetail: { ...formData.recommendationDetail, observation: e.target.value },
+                })}
+                placeholder="What was found or observed?"
+                rows={3}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-700 mb-2">Risk implication / consequence</label>
+              <textarea
+                value={formData.recommendationDetail.consequence || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  recommendationDetail: { ...formData.recommendationDetail, consequence: e.target.value },
+                })}
+                placeholder="Why does this matter from a fire safety perspective?"
+                rows={3}
+                className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
+              />
+            </div>
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-neutral-700">Evidence</p>
+                  <p className="mt-1 text-sm text-neutral-500">No evidence added yet.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-500 disabled:cursor-not-allowed"
+                  title="Create the recommendation first, then add files in the evidence step."
+                >
+                  <Upload className="h-4 w-4" />
+                  + Add evidence after save
+                </button>
+              </div>
+            </div>
           </div>
 
-          {documentType !== 'FSD' && (
-          <div className="border border-neutral-200 rounded-lg p-4">
-            <label className="block text-sm font-medium text-neutral-700 mb-3">
-              Critical Triggers (check if applicable)
-            </label>
+          <div className="border border-neutral-200 rounded-lg bg-neutral-50">
+            <button
+              type="button"
+              onClick={() => setShowConsultancyDetail(!showConsultancyDetail)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left"
+            >
+              <div>
+                <div className="text-sm font-semibold text-neutral-900">Advanced</div>
+                <div className="text-xs text-neutral-600">Standards, existing controls, assurance commentary, management response and advanced details.</div>
+              </div>
+              <span className="text-sm font-medium text-blue-700">{showConsultancyDetail ? 'Hide' : 'Expand'}</span>
+            </button>
+
+            {showConsultancyDetail && (
+              <div className="px-4 pb-4 grid grid-cols-1 gap-3">
+                {[
+                  ['rationale', 'Recommendation rationale', 'Explain why the recommendation is proportionate and defensible.'],
+                  ['standards_reference', 'Standards / guidance reference', 'e.g. Fire Safety Order, PAS 79, BS 9999, BS 5839, BS 5266, Approved Document B...'],
+                  ['existing_controls', 'Existing controls noted', 'Record relevant existing controls or interim measures.'],
+                  ['assessor_commentary', 'Assessor commentary', 'Professional judgement, limitations or client-specific context.'],
+                  ['management_response', 'Management response / status notes', 'Optional client response, agreed action or deferral note.'],
+                ].map(([key, label, placeholder]) => (
+                  <div key={key}>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                    <textarea
+                      value={String(formData.recommendationDetail[key as keyof RecommendationDetail] || '')}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        recommendationDetail: { ...formData.recommendationDetail, [key]: e.target.value },
+                      })}
+                      placeholder={placeholder}
+                      rows={key === 'rationale' || key === 'consequence' ? 4 : 3}
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                    />
+                  </div>
+                ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Suggested completion</label>
+                    <div className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-800">
+                      {formData.recommendationDetail.timeframe_guidance || formatSuggestedCompletion(effectiveTimescale)}
+                    </div>
+                    <p className="mt-1 text-xs text-neutral-500">Adjust the editable target completion date below if assessor judgement requires a different date.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Linked assessment area</label>
+                    <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800">
+                      {recommendationContext.displayLabel || 'Assessment area'}
+                    </div>
+                    <p className="mt-1 text-xs text-neutral-500">This is set by the section where the recommendation was opened.</p>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryOverride(!showCategoryOverride)}
+                    className="flex w-full items-center justify-between text-left text-sm font-medium text-neutral-800"
+                  >
+                    <span>Change recommendation category</span>
+                    <span className="text-blue-700">{showCategoryOverride ? 'Hide' : 'Show'}</span>
+                  </button>
+                  {showCategoryOverride && (
+                    <select
+                      value={formData.category}
+                      onChange={(e) =>
+                        setFormData({ ...formData, category: e.target.value as ActionCategory })
+                      }
+                      className="mt-3 w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
+                      required
+                    >
+                      {documentType === 'FSD' ? (
+                        FSD_CATEGORY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.value === 'Other' ? 'General fire risk recommendation' : option.label}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="MeansOfEscape">Means of escape</option>
+                          <option value="DetectionAlarm">Detection & alarm</option>
+                          <option value="EmergencyLighting">Emergency lighting</option>
+                          <option value="Compartmentation">Compartmentation</option>
+                          <option value="FireDoors">Fire doors</option>
+                          <option value="FireFighting">Firefighting equipment</option>
+                          <option value="Management">Fire safety management</option>
+                          <option value="Housekeeping">Housekeeping / fire load</option>
+                          <option value="Other">General fire risk recommendation</option>
+                        </>
+                      )}
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 px-4 py-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Recommendation category</span>
+            <span className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-medium text-blue-800">
+              {displayRecommendationCategory || 'General fire risk recommendation'}
+            </span>
+          </div>
+
+          {documentType !== 'FSD' && <div className="border border-neutral-200 rounded-lg p-4">
+            <button
+              type="button"
+              onClick={() => setShowRuleInputs(!showRuleInputs)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div>
+                <span className="block text-sm font-medium text-neutral-700">Advanced priority details</span>
+                <span className="block text-xs text-neutral-500 mt-1">Hidden by default. Use only when observed conditions should change the suggested priority.</span>
+              </div>
+              <span className="text-sm font-medium text-blue-700">{showRuleInputs ? 'Hide' : 'Show'}</span>
+            </button>
+            <div className={showRuleInputs ? 'mt-4' : 'hidden'}>
+                <label className="block text-sm font-medium text-neutral-700 mb-3">
+                  Priority conditions (check if applicable)
+                </label>
             <div className="space-y-2">
               {/* Show FRA triggers if FRA is enabled */}
               {hasFra && (
@@ -901,17 +1223,17 @@ export default function AddActionModal({
                   ))}
                 </>
               )}
+              </div>
             </div>
-          </div>
-          )}
+          </div>}
 
-          <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-neutral-700">Computed Severity:</span>
+              <span className="text-sm font-medium text-neutral-700">Derived severity:</span>
               <span className="text-lg font-bold text-neutral-900">{severityTier}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-neutral-700">Priority Band:</span>
+              <span className="text-sm font-medium text-neutral-700">Suggested priority:</span>
               <span
                 className={`inline-flex px-3 py-1 text-sm font-bold rounded border ${getPriorityColor(
                   priorityBand
@@ -921,7 +1243,7 @@ export default function AddActionModal({
               </span>
             </div>
             <p className="text-xs text-neutral-500 mt-2">
-              T4 → P1 (Material Life Safety Risk) • T3 → P2 (Significant Deficiency) • T2 → P3 (Improvement Required) • T1 → P4 (Minor)
+              Why this priority? {getPriorityExplanation(priorityBand)}
             </p>
           </div>
 
@@ -951,15 +1273,21 @@ export default function AddActionModal({
             </div>
           )}
 
-          <div>
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
             <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Timescale <span className="text-red-600">*</span>
+              Suggested completion <span className="text-red-600">*</span>
             </label>
             <select
-              value={formData.timescale}
-              onChange={(e) =>
-                setFormData({ ...formData, timescale: e.target.value })
-              }
+              value={effectiveTimescale}
+              onChange={(e) => {
+                const nextTimescale = e.target.value;
+                setUserEditedTimescale(true);
+                setFormData({
+                  ...formData,
+                  timescale: nextTimescale,
+                  targetDate: userEditedTargetDate ? formData.targetDate : targetDateFromTimescale(nextTimescale),
+                });
+              }}
               className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
               required
             >
@@ -970,28 +1298,31 @@ export default function AddActionModal({
                 </option>
               ))}
             </select>
-            {isTimescaleOverride && (
+            <p className="text-xs text-neutral-600 mt-2">
+              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 font-medium text-blue-800">{formatSuggestedCompletion(suggestedTimescale)}</span>
+            </p>
+            {isTimescaleRelaxation && (
               <div className="mt-2 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <p className="text-xs text-amber-700">
-                  You've selected a different timescale than suggested for {priorityBand}.
+                  The selected target timeframe is later than the priority-derived suggestion for {priorityBand}.
                   Please provide a justification below.
                 </p>
               </div>
             )}
           </div>
 
-          {isTimescaleOverride && (
+          {isTimescaleRelaxation && (
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">
-                Override Justification <span className="text-red-600">*</span>
+                Later target date justification <span className="text-red-600">*</span>
               </label>
               <textarea
                 value={formData.overrideJustification}
                 onChange={(e) =>
                   setFormData({ ...formData, overrideJustification: e.target.value })
                 }
-                placeholder="Explain why this timescale is more appropriate than the suggested timescale..."
+                placeholder="Explain why a later target completion date is appropriate..."
                 rows={3}
                 className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
                 required
@@ -999,44 +1330,46 @@ export default function AddActionModal({
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-2">
-              Target Date (Optional)
+          <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-4">
+            <label className="block text-sm font-semibold text-neutral-800 mb-2">
+              Target completion date
             </label>
             <input
               type="date"
               value={formData.targetDate}
-              onChange={(e) =>
-                setFormData({ ...formData, targetDate: e.target.value })
-              }
-              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent"
+              onChange={(e) => {
+                setUserEditedTargetDate(true);
+                setFormData({ ...formData, targetDate: e.target.value });
+              }}
+              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent bg-white"
             />
             <p className="text-xs text-neutral-500 mt-1">
-              Leave blank to auto-calculate based on timescale
+              Auto-populated from the selected priority. You can change it manually; a later target requires justification.
             </p>
           </div>
 
-          <div className="flex items-center gap-3 justify-end pt-4 border-t border-neutral-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2.5 text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting || !formData.recommendedAction.trim()}
-              className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
-                isSubmitting || !formData.recommendedAction.trim()
-                  ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                  : 'bg-neutral-900 text-white hover:bg-neutral-800'
-              }`}
-            >
-              {isSubmitting ? 'Creating...' : 'Create Action'}
-            </button>
-          </div>
         </form>
+        <div className="flex-shrink-0 flex items-center gap-3 justify-end px-6 py-4 border-t border-neutral-200 bg-white">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 text-neutral-700 bg-neutral-100 rounded-lg hover:bg-neutral-200 transition-colors font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="add-action-form"
+            disabled={isSubmitting || !formData.recommendedAction.trim()}
+            className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${
+              isSubmitting || !formData.recommendedAction.trim()
+                ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
+                : 'bg-neutral-900 text-white hover:bg-neutral-800'
+            }`}
+          >
+            {isSubmitting ? 'Creating...' : 'Create Recommendation'}
+          </button>
+        </div>
       </div>
     </div>
   );

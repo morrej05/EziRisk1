@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
@@ -12,6 +13,7 @@ interface Document {
   id: string;
   title: string;
   document_type: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -35,6 +37,7 @@ export default function RE07NaturalHazardsForm({
   document,
   onSaved,
 }: RE07NaturalHazardsFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance.data || {};
 
@@ -110,6 +113,7 @@ export default function RE07NaturalHazardsForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const completedAt = outcome ? new Date().toISOString() : null;

@@ -9,6 +9,7 @@ import { getReportCreationEntitlement } from '../../utils/reportCreationEntitlem
 import { inferReportUpgradeReason, inferReportUpgradeReasonFromMessage, type UpgradeBlockReason } from '../../utils/upgradeBlocks';
 import { buildUpgradePath } from '../../utils/upgradeNavigation';
 import { getStandardsOptions } from '../../lib/jurisdictions';
+import { resolveDisplayName } from '../../utils/pdfIdentity';
 
 interface CreateDocumentModalProps {
   onClose: () => void;
@@ -164,7 +165,6 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         enabled_products: ['FRA', 'DSEAR'],
       } : {};
 
-      const resolvedAuthorName = user?.name || user?.email || null;
       const resolvedAuthorRole = userRole || null;
 
       const documentData = {
@@ -175,13 +175,11 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
         status: 'draft',
         version: 1,
         assessment_date: formData.assessmentDate,
-        assessor_name: resolvedAuthorName,
+        // assessor_name, created_by_user_id, author_profile_id,
+        // author_name_snapshot, and display_author_name are enforced
+        // server-side by trg_enforce_document_author_identity — do not send.
         assessor_role: resolvedAuthorRole,
-        created_by_user_id: user?.id ?? null,
-        author_profile_id: user?.id ?? null,
-        author_name_snapshot: resolvedAuthorName,
         author_role_snapshot: resolvedAuthorRole,
-        display_author_name: resolvedAuthorName,
         display_author_role: resolvedAuthorRole,
         display_author_organisation: organisation.name,
         responsible_person: formData.responsiblePerson.trim() || null,
@@ -437,7 +435,7 @@ export default function CreateDocumentModal({ onClose, onDocumentCreated, allowe
             <div>
               <label className="block text-sm font-medium text-neutral-700 mb-2">Report Author</label>
               <div className="w-full px-3 py-2 border border-neutral-200 rounded-lg bg-neutral-50 text-sm text-neutral-700">
-                {user?.name || user?.email || 'Authenticated user'}
+                {resolveDisplayName(user) || 'Authenticated User'}
               </div>
             </div>
 

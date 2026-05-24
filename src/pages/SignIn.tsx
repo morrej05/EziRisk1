@@ -1,8 +1,9 @@
 import { useState, FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowLeft } from 'lucide-react';
 import LegalLinks from '../components/legal/LegalLinks';
+import { PUBLIC_LEGAL_DETAILS } from '../config/support';
 import { resolveLogoUrl } from '../utils/logo';
 
 type SignupPlan = 'free' | 'standard' | 'professional';
@@ -23,6 +24,10 @@ export default function SignIn() {
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const { signIn, signUp, resetPassword } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const inactivityMessage = typeof location.state?.inactivityMessage === 'string'
+    ? location.state.inactivityMessage
+    : null;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -94,16 +99,32 @@ export default function SignIn() {
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="max-w-md w-full space-y-8">
+          <div className="flex justify-center mb-4">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to home
+            </Link>
+          </div>
           <div>
             <h2 className="text-center text-3xl font-bold text-neutral-900">
               {isSignUp ? 'Create your account' : 'Sign in to your account'}
             </h2>
             <p className="mt-2 text-center text-sm text-neutral-600">
-              {isSignUp ? 'Start your 14-day free trial' : 'Access your fire risk reports'}
+              {isSignUp ? 'Start your 14-day free trial' : 'Access your assessments and reports'}
             </p>
           </div>
 
           <form className="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-sm" onSubmit={handleSubmit}>
+            {inactivityMessage && !error && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <span className="text-sm">{inactivityMessage}</span>
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -248,7 +269,10 @@ export default function SignIn() {
       <footer className="bg-neutral-900 text-neutral-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <p className="text-sm text-neutral-500">© {new Date().getFullYear()} EziRisk. All rights reserved.</p>
+            <div className="space-y-1">
+              <p className="text-sm text-neutral-500">© {new Date().getFullYear()} EziRisk. All rights reserved.</p>
+              <p className="text-sm text-neutral-500">{PUBLIC_LEGAL_DETAILS.footerStatement}</p>
+            </div>
             <LegalLinks
               className="flex flex-wrap items-center gap-4"
               itemClassName="text-sm text-neutral-400 hover:text-white transition-colors"

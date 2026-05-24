@@ -117,10 +117,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Phase 9: require the document to belong to the same org as the access
+    // link. Without this, a token from org A could surface documents from org B
+    // if base_document_id is guessed or reused across orgs.
     const { data: latestIssued, error: docError } = await supabase
       .from("documents")
       .select("id, title, document_type, version_number, issue_date, issue_status, locked_pdf_path")
       .eq("base_document_id", link.base_document_id)
+      .eq("organisation_id", link.organisation_id)
       .eq("issue_status", "issued")
       .order("version_number", { ascending: false })
       .limit(1)
@@ -152,13 +156,36 @@ Deno.serve(async (req: Request) => {
 
     const document = latestIssued as Document;
 
-    await supabase
+    // Update access counter (fire-and-forget; do not block response on failure)
+    supabase
       .from("document_access_links")
       .update({
         last_accessed_at: new Date().toISOString(),
         access_count: link.access_count + 1,
       })
-      .eq("id", link.id);
+      .eq("id", link.id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to update access count:", error);
+      });
+
+    // Phase 9: audit log for every public document view
+    supabase
+      .from("audit_log")
+      .insert({
+        organisation_id: link.organisation_id,
+        document_id: document.id,
+        actor_id: null,
+        event_type: "public_access",
+        details: {
+          access_type: "view",
+          token_prefix: token.substring(0, 8),
+          ip: req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null,
+          link_label: link.label ?? null,
+        },
+      })
+      .then(({ error }) => {
+        if (error) console.error("Failed to write audit log:", error);
+      });
 
     const response = {
       document_id: document.id,

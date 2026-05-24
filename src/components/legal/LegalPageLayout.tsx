@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { LegalDocumentContent } from '../../content/legalContent';
-import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
+import { PUBLIC_LEGAL_DETAILS, SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 
 interface LegalPageLayoutProps {
   content: LegalDocumentContent;
@@ -12,7 +12,10 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
       <main className="max-w-4xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 lg:p-10">
           <div className="mb-8 border-b border-slate-200 pb-6">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">{content.title}</h1>
+            <Link to="/" className="inline-flex items-center text-sm font-medium text-slate-900 underline hover:text-slate-700">
+              ← Back to Home
+            </Link>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">{content.title}</h1>
             <p className="mt-2 text-sm text-slate-500">{content.lastUpdated}</p>
           </div>
 
@@ -20,6 +23,29 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
             {content.intro.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
+          </div>
+
+          <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
+            <p><span className="font-semibold text-slate-900">Operator / Data Controller:</span> {PUBLIC_LEGAL_DETAILS.dataController}</p>
+            <p><span className="font-semibold text-slate-900">ICO registration number:</span> {PUBLIC_LEGAL_DETAILS.icoRegistrationNumber}</p>
+            <p>
+              <span className="font-semibold text-slate-900">Contact email:</span>{' '}
+              <a href={getSupportMailto(PUBLIC_LEGAL_DETAILS.contactEmail)} className="text-slate-900 underline hover:text-slate-700">
+                {PUBLIC_LEGAL_DETAILS.contactEmail}
+              </a>
+            </p>
+            <p>
+              <span className="font-semibold text-slate-900">Website:</span>{' '}
+              <a href={PUBLIC_LEGAL_DETAILS.website} className="text-slate-900 underline hover:text-slate-700">
+                {PUBLIC_LEGAL_DETAILS.website}
+              </a>
+            </p>
+            <p>
+              <span className="font-semibold text-slate-900">Phone:</span>{' '}
+              <a href={`tel:${PUBLIC_LEGAL_DETAILS.phone.replace(/\s/g, '')}`} className="text-slate-900 underline hover:text-slate-700">
+                {PUBLIC_LEGAL_DETAILS.phone}
+              </a>
+            </p>
           </div>
 
           <div className="mt-8 space-y-7">
@@ -44,7 +70,8 @@ export default function LegalPageLayout({ content }: LegalPageLayoutProps) {
 
           <div className="mt-10 pt-6 border-t border-slate-200 text-sm text-slate-600 space-y-2">
             <p>
-              Return to <Link to="/" className="text-slate-900 underline hover:text-slate-700">EziRisk home</Link>.
+              Return to <Link to="/" className="text-slate-900 underline hover:text-slate-700">EziRisk home</Link> or visit the{' '}
+              <Link to="/contact" className="text-slate-900 underline hover:text-slate-700">Contact page</Link>.
             </p>
             <p>
               Need help? Contact us at{' '}

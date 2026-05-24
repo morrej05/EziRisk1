@@ -41,6 +41,17 @@ function safeGet(obj: any, path: string, defaultVal: any = null): any {
   return current ?? defaultVal;
 }
 
+function getPassiveAssessments(data: any): Record<string, any> {
+  const source = safeGet(data, 'passive_fire_protection_assessments') || safeGet(data, 'passiveFireProtectionAssessments');
+  return source && typeof source === 'object' && !Array.isArray(source) ? source : {};
+}
+
+function hasPassiveAssessmentWith(data: any, predicate: (assessment: any) => boolean): boolean {
+  return Object.values(getPassiveAssessments(data)).some((assessment) =>
+    assessment && typeof assessment === 'object' && !Array.isArray(assessment) && predicate(assessment)
+  );
+}
+
 function isYes(value: any): boolean {
   if (!value) return false;
   const str = String(value).toLowerCase().trim();
@@ -342,6 +353,27 @@ export const section7Rules: KeyPointRule[] = [
  * Section 9: Passive Fire Protection (FRA_4_PASSIVE_PROTECTION)
  */
 export const section9Rules: KeyPointRule[] = [
+  {
+    id: 'detailed_passive_high_significance',
+    type: 'weakness',
+    weight: 92,
+    when: (data) => hasPassiveAssessmentWith(data, (assessment) =>
+      assessment.risk_significance === 'critical' ||
+      assessment.riskSignificance === 'critical' ||
+      assessment.risk_significance === 'high' ||
+      assessment.riskSignificance === 'high'
+    ),
+    text: (data) => 'Detailed passive fire protection assessment identifies high-significance compartmentation or protection concerns',
+    evidence: (data) => [{ field: 'passive_fire_protection_assessments', value: 'high-significance detailed finding' }],
+  },
+  {
+    id: 'detailed_passive_inadequate',
+    type: 'weakness',
+    weight: 82,
+    when: (data) => hasPassiveAssessmentWith(data, (assessment) => assessment.status === 'inadequate'),
+    text: (data) => 'Detailed passive fire protection assessment records inadequate elements requiring follow-up',
+    evidence: (data) => [{ field: 'passive_fire_protection_assessments', value: 'inadequate detailed finding' }],
+  },
   {
     id: 'fire_doors_inadequate',
     type: 'weakness',

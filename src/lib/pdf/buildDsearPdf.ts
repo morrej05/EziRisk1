@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { getModuleName } from '../modules/moduleCatalog';
 import { detectInfoGaps } from '../../utils/infoGapQuickActions';
-import { listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment, listAttachments, type Attachment } from '../supabase/attachments';
 import {
   explosiveAtmospheresPurposeText,
   hazardousAreaClassificationText,
@@ -258,7 +258,7 @@ export async function buildDsearPdf(options: BuildPdfOptions): Promise<Uint8Arra
   try {
     attachments = await listAttachments(document.id);
     } catch (error) {
-    console.warn('[DSEAR PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[DSEAR PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -318,7 +318,7 @@ export async function buildDsearPdf(options: BuildPdfOptions): Promise<Uint8Arra
     pdfDoc,
     isDraft,
     totalPages,
-    (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none',
+    document.executive_summary_mode,
     document.executive_summary_ai,
     document.executive_summary_author,
     { bold: fontBold, regular: font }
@@ -425,7 +425,7 @@ export async function buildDsearPdf(options: BuildPdfOptions): Promise<Uint8Arra
     page = result2b.page;
     recordToc(`${nextSectionNumber}. Attachments Index`);
     yPosition = PAGE_TOP_Y;
-    ({ page, yPosition } = drawAttachmentsIndex(page, attachments, sortedModules, actions, nextSectionNumber++, font, fontBold, yPosition, pdfDoc, isDraft, totalPages));
+    ({ page, yPosition } = await drawAttachmentsIndex(page, attachments, sortedModules, actions, nextSectionNumber++, font, fontBold, yPosition, pdfDoc, isDraft, totalPages));
   }
 
   // Now render the TOC with collected entries
@@ -1028,7 +1028,7 @@ function drawGenericModuleData(
   const keys = Object.keys(data).filter(k => k !== 'notes');
 
   if (keys.length === 0) {
-    page.drawText(sanitizePdfText('No data recorded'), {
+    page.drawText(sanitizePdfText('No assessment information recorded'), {
       x: MARGIN,
       y: yPosition,
       size: 10,
@@ -1356,7 +1356,7 @@ function drawInfoGapQuickActions(
   return { page, yPosition };
 }
 
-function drawAttachmentsIndex(
+async function drawAttachmentsIndex(
   page: PDFPage,
   attachments: Attachment[],
   moduleInstances: ModuleInstance[],
@@ -1368,7 +1368,7 @@ function drawAttachmentsIndex(
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[]
-): { page: PDFPage; yPosition: number } {
+): Promise<{ page: PDFPage; yPosition: number }> {
   ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
 
   const sectionTitle = `${sectionNumber}. Attachments Index`;
@@ -1469,6 +1469,55 @@ function drawAttachmentsIndex(
     });
 
     yPosition -= 15;
+  }
+
+  const documentLevelImages = attachments.filter((attachment) =>
+    isDocumentLevelAttachment(attachment) && isRenderableImageAttachment(attachment)
+  );
+
+  for (const attachment of documentLevelImages) {
+    ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+    yPosition = PAGE_TOP_Y;
+
+    page.drawText('Document-Level Photo Evidence', {
+      x: MARGIN,
+      y: yPosition,
+      size: 14,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+    yPosition -= 22;
+
+    const label = attachment.caption || attachment.file_name;
+    page.drawText(sanitizePdfText(label), {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    yPosition -= 18;
+
+    const bytes = await fetchAttachmentBytes(attachment);
+    if (!bytes) continue;
+
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
+    const image = fileType === 'image/png' || fileName.endsWith('.png')
+      ? await pdfDoc.embedPng(bytes)
+      : await pdfDoc.embedJpg(bytes);
+    const raw = image.scale(1);
+    const maxWidth = CONTENT_WIDTH * 0.75;
+    const maxHeight = yPosition - MARGIN;
+    const scale = Math.min(maxWidth / raw.width, maxHeight / raw.height, 1);
+    const width = raw.width * scale;
+    const height = raw.height * scale;
+    page.drawImage(image, {
+      x: MARGIN + ((CONTENT_WIDTH - width) / 2),
+      y: yPosition - height,
+      width,
+      height,
+    });
   }
 
   return { page, yPosition };
@@ -1760,7 +1809,7 @@ function drawExplosionCriticalitySummary(
     color: criticalityColor,
   });
 
-  page.drawText(`OVERALL CRITICALITY: ${explosionSummary.overall.toUpperCase()}`, {
+  page.drawText(`Overall Criticality: ${explosionSummary.overall.charAt(0).toUpperCase() + explosionSummary.overall.slice(1)}`, {
     x: MARGIN + 10,
     y: yPosition + 5,
     size: 14,

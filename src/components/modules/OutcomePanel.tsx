@@ -28,17 +28,20 @@ function Badge({ children }: { children: React.ReactNode }) {
 const CRITICAL_OPTIONS = [
   { value: 'compliant', label: 'Compliant' },
   { value: 'minor_def', label: 'Minor Deficiency' },
-  { value: 'material_def', label: 'Material Deficiency' },
+  { value: 'moderate_def', label: 'Moderate Deficiency' },
+  { value: 'material_def', label: 'Significant Deficiency' },
   { value: 'info_gap', label: 'Information Gap' },
   { value: 'na', label: 'Not Applicable' },
+  { value: 'not_assessed', label: 'Not Assessed' },
 ] as const;
 
 const GOVERNANCE_OPTIONS = [
-  { value: 'compliant', label: 'Adequate' },
+  { value: 'compliant', label: 'Compliant' },
   { value: 'minor_def', label: 'Improvement Recommended' },
   { value: 'material_def', label: 'Significant Improvement Required' },
   { value: 'info_gap', label: 'Information Incomplete' },
   { value: 'na', label: 'Not Applicable' },
+  { value: 'not_assessed', label: 'Not Assessed' },
 ] as const;
 
 function normalizeOutcomeValue(value: string | null | undefined): string {
@@ -57,13 +60,23 @@ function normalizeOutcomeValue(value: string | null | undefined): string {
     return 'minor_def';
   }
 
+  if (normalized === 'moderate_def' || normalized === 'moderate deficiency' || normalized === 'moderate_deficiency') {
+    return 'moderate_def';
+  }
+
   if (
     normalized === 'material_def' ||
     normalized === 'material deficiency' ||
     normalized === 'material_deficiency' ||
+    normalized === 'significant_def' ||
+    normalized === 'significant deficiency' ||
     normalized === 'significant improvement required'
   ) {
     return 'material_def';
+  }
+
+  if (normalized === 'not_assessed' || normalized === 'not assessed') {
+    return 'not_assessed';
   }
 
   if (
@@ -146,7 +159,7 @@ export default function OutcomePanel({
           </select>
           <p className="text-xs text-neutral-500 mt-1">
             {isCritical
-              ? 'Select "Material Deficiency" only where life safety may be significantly compromised.'
+              ? 'Select "Significant Deficiency" only where life safety may be significantly compromised.'
               : 'Select "Significant Improvement Required" where management arrangements materially affect fire safety performance.'}
           </p>
         </div>
@@ -194,7 +207,7 @@ export default function OutcomePanel({
             value={assessorNotes}
             onChange={(e) => onNotesChange(e.target.value)}
             placeholder="Add any notes, observations, or context relevant to this module assessment..."
-            rows={4}
+            rows={6}
             className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:border-transparent resize-none"
           />
           <p className="text-xs text-neutral-500 mt-1">

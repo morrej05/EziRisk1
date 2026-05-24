@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, CheckCircle, AlertTriangle, AlertCircle, Info, RefreshCw, Shield } from 'lucide-react';
+import { FileText, CheckCircle, AlertTriangle, AlertCircle, Info, RefreshCw, Shield, Save } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import OutcomePanel from '../OutcomePanel';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { computeFraSummary, type FraComputedSummary } from '../../../lib/modules/fra/significantFindingsEngine';
+import { computeFraSummary, normalizeFraPriority, type FraComputedSummary } from '../../../lib/modules/fra/significantFindingsEngine';
 import { deriveStoreysForScoring, type FraComplexityBand } from '../../../lib/modules/fra/complexityEngine';
 import type { FraContext, FraPriority, FraFindingCategory } from '../../../lib/modules/fra/severityEngine';
 import { scoreFraDocument, type ScoringResult } from '../../../lib/fra/scoring/scoringEngine';
+import { getRecommendationFindingText } from '../../../lib/actions/recommendationDetail';
 
 interface Document {
   id: string;
@@ -16,8 +16,7 @@ interface Document {
 
 interface ModuleInstance {
   id: string;
-  outcome: string | null;
-  assessor_notes: string;
+  module_key?: string;
   data: Record<string, any>;
 }
 
@@ -34,6 +33,21 @@ interface Action {
   category?: FraFindingCategory;
   trigger_text?: string;
   status: string;
+  created_at: string;
+}
+
+interface ActionRow {
+  id: string;
+  recommended_action: string | null;
+  title?: string | null;
+  priority_band: FraPriority | null;
+  priority?: FraPriority | null;
+  finding_category?: FraFindingCategory | null;
+  trigger_text?: string | null;
+  severity_tier?: string | null;
+  module_instance_id?: string | null;
+  recommendation_detail?: Record<string, unknown> | null;
+  status: string | null;
   created_at: string;
 }
 
@@ -66,9 +80,6 @@ export default function FRA4SignificantFindingsForm({
     moduleInstance.data.commentary?.limitationsAssumptions || ''
   );
 
-  const [outcome, setOutcome] = useState(moduleInstance.outcome || '');
-  const [assessorNotes, setAssessorNotes] = useState(moduleInstance.assessor_notes || '');
-
   useEffect(() => {
     loadData();
   }, [document.id]);
@@ -90,22 +101,35 @@ export default function FRA4SignificantFindingsForm({
       );
       setBuildingProfile(buildingProfileModule || null);
 
-      const moduleIds = moduleInstances?.map((m) => m.id) || [];
-
-      if (moduleIds.length === 0) {
-        setActions([]);
-        return;
-      }
-
       const { data: actionsData, error: actionsError } = await supabase
         .from('actions')
-        .select('id, title, priority, category, trigger_text, status, created_at')
-        .in('module_instance_id', moduleIds)
-        .order('created_at', { ascending: true });
+        .select('id, recommended_action, priority_band, finding_category, trigger_text, status, created_at, severity_tier, module_instance_id, recommendation_detail')
+        .eq('document_id', document.id)
+        .is('deleted_at', null)
+        .order('priority_band', { ascending: true })
+        .order('created_at', { ascending: false });
 
       if (actionsError) throw actionsError;
 
-      setActions(actionsData || []);
+      setActions(((actionsData || []) as ActionRow[]).map((action) => {
+        const priority = normalizeFraPriority({
+          priority: action.priority,
+          priority_band: action.priority_band,
+          severity_tier: action.severity_tier,
+        });
+
+        return {
+          id: action.id,
+          title: getRecommendationFindingText(action) || action.recommended_action || action.title || 'Untitled action',
+          priority,
+          priority_band: action.priority_band,
+          severity_tier: action.severity_tier,
+          category: action.finding_category || undefined,
+          trigger_text: action.trigger_text || undefined,
+          status: action.status || 'open',
+          created_at: action.created_at,
+        };
+      }));
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -175,15 +199,14 @@ export default function FRA4SignificantFindingsForm({
 
       const payload = sanitizeModuleInstancePayload({
         data: mergedData,
-        outcome,
-        assessor_notes: assessorNotes,
         updated_at: new Date().toISOString(),
       }, moduleInstance.module_key);
 
       console.log('[FRA4 Save] Payload being sent to Supabase:', {
         moduleKey: moduleInstance.module_key,
-        outcome: payload.outcome,
-        originalOutcome: outcome,
+        authoritativeOutcome: overrideEnabled && overrideOutcome
+          ? overrideOutcome
+          : computedSummary?.computedOutcome,
       });
 
       const { error } = await supabase
@@ -530,7 +553,7 @@ export default function FRA4SignificantFindingsForm({
           </h3>
           <p className="text-sm text-neutral-600 mb-3">
             Provide additional context, professional observations, and executive-level commentary
-            beyond the auto-generated summary
+            beyond the prepared summary
           </p>
           <textarea
             value={executiveCommentary}
@@ -558,14 +581,20 @@ export default function FRA4SignificantFindingsForm({
         </div>
       </div>
 
-      <OutcomePanel
-        outcome={outcome}
-        assessorNotes={assessorNotes}
-        onOutcomeChange={setOutcome}
-        onNotesChange={setAssessorNotes}
-        onSave={handleSave}
-        isSaving={isSaving}
-      />
+      <div className="bg-white rounded-lg border border-neutral-200 p-6 mt-6">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className={`w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-colors ${
+            isSaving
+              ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
+              : 'bg-neutral-900 text-white hover:bg-neutral-800'
+          }`}
+        >
+          <Save className="w-5 h-5" />
+          {isSaving ? 'Saving...' : 'Save Significant Findings Summary'}
+        </button>
+      </div>
     </div>
   );
 }

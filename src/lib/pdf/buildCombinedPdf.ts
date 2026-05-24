@@ -1,7 +1,7 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
 import { getModuleName } from '../modules/moduleCatalog';
 import { detectInfoGaps } from '../../utils/infoGapQuickActions';
-import { listAttachments, type Attachment } from '../supabase/attachments';
+import { fetchAttachmentBytes, isDocumentLevelAttachment, isRenderableImageAttachment, listAttachments, type Attachment } from '../supabase/attachments';
 import {
   fsdPurposeAndScopeText,
   fsdLimitationsText,
@@ -164,7 +164,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
     assessor_name: resolvePdfPreparedByName(options.preparedByName, organisation?.name),
   };
 
-  console.log('[Combined PDF] Building combined FRA + FSD PDF with:', {
+  if (import.meta.env.DEV) console.log('[Combined PDF] Building combined FRA + FSD PDF with:', {
     modules: moduleInstances.length,
     actions: actions.length,
     ratings: actionRatings.length,
@@ -173,9 +173,9 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   let attachments: Attachment[] = [];
   try {
     attachments = await listAttachments(document.id);
-    console.log('[Combined PDF] Fetched', attachments.length, 'attachments');
+    if (import.meta.env.DEV) console.log('[Combined PDF] Fetched', attachments.length, 'attachments');
   } catch (error) {
-    console.warn('[Combined PDF] Failed to fetch attachments:', error);
+    if (import.meta.env.DEV) console.warn('[Combined PDF] Failed to fetch attachments:', error);
   }
 
   const pdfDoc = await PDFDocument.create();
@@ -189,7 +189,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   let page: PDFPage;
   let yPosition: number;
 
-  console.log('[Combined PDF] Adding report pages with logo (cover + doc control)');
+  if (import.meta.env.DEV) console.log('[Combined PDF] Adding report pages with logo (cover + doc control)');
 
   // Use addIssuedReportPages for both draft and issued modes to ensure logo embedding
   const { coverPage, docControlPage } = await addIssuedReportPages({
@@ -222,7 +222,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
     pdfDoc,
     isDraft,
     totalPages,
-    (document.executive_summary_mode as 'ai' | 'author' | 'both' | 'none') || 'none',
+    document.executive_summary_mode,
     document.executive_summary_ai,
     document.executive_summary_author,
     { bold: fontBold, regular: font }
@@ -360,7 +360,7 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
     const attachResult = addNewPage(pdfDoc, isDraft, totalPages);
     page = attachResult.page;
     yPosition = PAGE_TOP_Y;
-    yPosition = drawAttachmentsIndex(page, attachments, moduleInstances, actions, font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
+    ({ page, yPosition } = await drawAttachmentsIndex(page, attachments, moduleInstances, actions, font, fontBold, yPosition, pdfDoc, isDraft, totalPages));
   }
 
   // Appendix: Assumptions and Limitations
@@ -1011,7 +1011,7 @@ function drawActionRegister(
   return yPosition;
 }
 
-function drawAttachmentsIndex(
+async function drawAttachmentsIndex(
   page: PDFPage,
   attachments: Attachment[],
   moduleInstances: ModuleInstance[],
@@ -1022,7 +1022,7 @@ function drawAttachmentsIndex(
   pdfDoc: PDFDocument,
   isDraft: boolean,
   totalPages: PDFPage[]
-): number {
+): Promise<{ page: PDFPage; yPosition: number }> {
   page.drawText('Attachments Index', {
     x: MARGIN,
     y: yPosition,
@@ -1041,7 +1041,7 @@ function drawAttachmentsIndex(
       yPosition = PAGE_TOP_Y;
     }
 
-    page.drawText(`${i + 1}. ${sanitizePdfText(att.filename)}`, {
+    page.drawText(`${i + 1}. ${sanitizePdfText(att.file_name)}`, {
       x: MARGIN,
       y: yPosition,
       size: 10,
@@ -1050,8 +1050,8 @@ function drawAttachmentsIndex(
     });
     yPosition -= 18;
 
-    if (att.description) {
-      const desc = sanitizePdfText(att.description);
+    if (att.caption) {
+      const desc = sanitizePdfText(att.caption);
       page.drawText(`   ${desc}`, {
         x: MARGIN,
         y: yPosition,
@@ -1065,7 +1065,33 @@ function drawAttachmentsIndex(
     yPosition -= 8;
   }
 
-  return yPosition;
+  const documentLevelImages = attachments.filter((attachment) =>
+    isDocumentLevelAttachment(attachment) && isRenderableImageAttachment(attachment)
+  );
+
+  for (const attachment of documentLevelImages) {
+    const result = addNewPage(pdfDoc, isDraft, totalPages);
+    page = result.page;
+    yPosition = PAGE_TOP_Y;
+    page.drawText('Document-level Photo Evidence', { x: MARGIN, y: yPosition, size: 14, font: fontBold, color: rgb(0, 0, 0) });
+    yPosition -= 22;
+    page.drawText(sanitizePdfText(attachment.caption || attachment.file_name), { x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.2, 0.2, 0.2) });
+    yPosition -= 18;
+    const bytes = await fetchAttachmentBytes(attachment);
+    if (!bytes) continue;
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
+    const image = fileType === 'image/png' || fileName.endsWith('.png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+    const raw = image.scale(1);
+    const maxWidth = CONTENT_WIDTH * 0.75;
+    const maxHeight = yPosition - MARGIN;
+    const scale = Math.min(maxWidth / raw.width, maxHeight / raw.height, 1);
+    const width = raw.width * scale;
+    const height = raw.height * scale;
+    page.drawImage(image, { x: MARGIN + ((CONTENT_WIDTH - width) / 2), y: yPosition - height, width, height });
+  }
+
+  return { page, yPosition };
 }
 
 function drawAssumptionsAndLimitations(

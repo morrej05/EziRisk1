@@ -29,7 +29,9 @@ END $$;
 WITH unique_module_match AS (
   SELECT
     rr.id AS recommendation_id,
-    MIN(mi.id) AS resolved_module_instance_id
+    -- MIN(uuid) is not supported; since HAVING COUNT = 1 there is exactly one
+    -- match, so array_agg()[1] is equivalent and works on all Postgres versions.
+    (array_agg(mi.id))[1] AS resolved_module_instance_id
   FROM public.re_recommendations rr
   JOIN public.module_instances mi
     ON mi.document_id = rr.document_id

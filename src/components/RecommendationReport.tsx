@@ -86,7 +86,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
         .order('sort_index', { ascending: true });
 
       if (recError) {
-        console.error('Error fetching recommendations:', recError);
+        if (import.meta.env.DEV) console.error('Error fetching recommendations:', recError);
       }
 
       const surveyYear = getSurveyYear(data.survey_date, data.issue_date);
@@ -158,7 +158,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
         setRecommendations(recsWithRefNumbers);
       }
     } catch (error) {
-      console.error('Error fetching survey:', error);
+      if (import.meta.env.DEV) console.error('Error fetching survey:', error);
       alert('Failed to load survey data.');
     } finally {
       setIsLoading(false);
@@ -166,7 +166,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
   };
 
   const formatDate = (dateString: string) => {
-    if (!dateString) return '—';
+    if (!dateString) return 'Not yet recorded';
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'long',
@@ -367,16 +367,18 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
                     {aiSummary}
                   </p>
                 </div>
-                <div className="text-xs text-slate-500 border-t border-violet-200 pt-3 mt-4">
-                  AI-generated summary based on structured survey data.
-                </div>
+                {import.meta.env.DEV && (
+                  <div className="text-xs text-slate-500 border-t border-violet-200 pt-3 mt-4">
+                    Generated summary based on structured survey data.
+                  </div>
+                )}
               </>
             ) : (
               <div className="bg-white rounded-lg border-2 border-dashed border-violet-300 p-6 text-center">
                 <Sparkles className="w-8 h-8 text-violet-400 mx-auto mb-3" />
-                <p className="text-slate-600 mb-2">No AI summary generated yet</p>
+                <p className="text-slate-600 mb-2">No executive summary has been prepared yet</p>
                 <p className="text-sm text-slate-500">
-                  Click "Generate AI Summary" in the toolbar above to create an executive summary.
+                  Prepare the executive summary before issuing the report.
                 </p>
               </div>
             )}
@@ -392,7 +394,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500 mb-1">Company</h3>
-                  <p className="text-lg font-semibold text-slate-900">{survey.company_name || '—'}</p>
+                  <p className="text-lg font-semibold text-slate-900">{survey.company_name || 'Client not recorded'}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500 mb-1">Address</h3>
@@ -400,7 +402,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500 mb-1">Industry Sector</h3>
-                  <p className="text-slate-700">{survey.form_data?.industrySector || '—'}</p>
+                  <p className="text-slate-700">{survey.form_data?.industrySector || 'Industry sector not recorded'}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500 mb-1">Survey Date</h3>
@@ -474,12 +476,12 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
                             ? rec.description.length > 200
                               ? rec.description.substring(0, 200) + '...'
                               : rec.description
-                            : rec.hazard || '—';
+                            : rec.hazard || 'Hazard not recorded';
 
                           return (
                             <tr key={rec.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                               <td className="px-4 py-3 text-sm text-slate-900 border-b border-slate-200 whitespace-nowrap font-medium">
-                                {rec.ref_number || '—'}
+                                {rec.ref_number || 'Reference not assigned'}
                               </td>
                               <td className="px-4 py-3 text-sm text-slate-700 border-b border-slate-200">
                                 {getDimensionLabel(rec.driver_dimension)}
@@ -524,7 +526,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
                             <div key={rec.id} className="border border-slate-200 rounded-lg p-6 bg-white hover:shadow-md transition-shadow">
                               <div className="flex items-start justify-between mb-4">
                                 <div className="flex items-center gap-3">
-                                  <span className="text-lg font-bold text-slate-900">{rec.ref_number || '—'}</span>
+                                  <span className="text-lg font-bold text-slate-900">{rec.ref_number || 'Reference not assigned'}</span>
                                   <span className={`px-3 py-1 text-xs font-semibold rounded-lg border ${getPriorityColor(rec.priority)}`}>
                                     {rec.priority}
                                   </span>
@@ -588,7 +590,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
 
                 {recommendations.length === 0 && (
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-6 text-center">
-                    <p className="text-slate-500 italic">No data added for this section</p>
+                    <p className="text-slate-500 italic">No narrative has been recorded for this section.</p>
                   </div>
                 )}
 
@@ -604,7 +606,7 @@ export default function RecommendationReport({ surveyId, surveyType, onClose, em
                           <div key={rec.id} className="border border-slate-200 rounded-lg p-6 bg-white">
                             <div className="flex items-start justify-between mb-4">
                               <div className="flex items-center gap-3">
-                                <span className="text-lg font-bold text-slate-900">{rec.ref_number || '—'}</span>
+                                <span className="text-lg font-bold text-slate-900">{rec.ref_number || 'Reference not assigned'}</span>
                                 {rec.status && (
                                   <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-lg">
                                     {getStatusIcon(rec.status)}

@@ -1,11 +1,30 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, AlertTriangle, CheckCircle, FileCheck, Shield, ArrowRight, Lock } from 'lucide-react';
+import { X, ArrowRight, Lock } from 'lucide-react';
 import { issueDocument, validateDocumentForIssue } from '../../utils/documentVersioning';
 import { assignActionReferenceNumbers } from '../../utils/actionReferenceNumbers';
 import { supabase } from '../../lib/supabase';
-import { getModuleName } from '../../lib/modules/moduleCatalog';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import { Button, Callout } from '../ui/DesignSystem';
+import { buildIssuedPdfForDocument, storeIssuedPdfWithEdgeFunction } from '../../utils/issuedPdfGeneration';
+import { ensureDocumentIdentitySnapshot } from '../../lib/documents/documentIdentity';
+import { useAuth } from '../../contexts/AuthContext';
+import { needsDisplayName } from '../../utils/displayNameGuard';
+import DisplayNameModal from '../profile/DisplayNameModal';
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+const LOCKED_PDF_REQUIRED_ERROR =
+  'Locked PDF generation failed. The document has not been issued and remains in draft.';
+
+type IssuedDocumentState = {
+  status: string | null;
+  issue_status: string | null;
+  locked_pdf_path: string | null;
+  pdf_generation_error: string | null;
+};
 
 interface IssueDocumentModalProps {
   documentId: string;
@@ -33,9 +52,11 @@ export default function IssueDocumentModal({
   const [validated, setValidated] = useState(false);
   const [issueProgress, setIssueProgress] = useState<string>('');
   const [documentVersion, setDocumentVersion] = useState<number>(1);
-  const [baseDocumentId, setBaseDocumentId] = useState<string | null>(null);
+  const [partialSuccessWarning, setPartialSuccessWarning] = useState<string>('');
+  const [showNameModal, setShowNameModal] = useState(false);
 
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Helper to extract module keys from error messages
   const extractMissingModules = (errors: string[]): string[] => {
@@ -51,6 +72,13 @@ export default function IssueDocumentModal({
   };
 
   const handleValidate = async () => {
+    // Guard: a valid display name is required before issuing.
+    // Issued documents are immutable, so the assessor name must be correct.
+    if (needsDisplayName(user)) {
+      setShowNameModal(true);
+      return;
+    }
+
     setIsValidating(true);
     try {
       const { data: doc } = await supabase
@@ -61,7 +89,6 @@ export default function IssueDocumentModal({
 
       if (doc) {
         setDocumentVersion(doc.version_number);
-        setBaseDocumentId(doc.base_document_id || documentId);
       }
 
       const result = await validateDocumentForIssue(documentId, organisationId);
@@ -80,7 +107,9 @@ export default function IssueDocumentModal({
         setValidated(true);
       }
     } catch (error) {
-      console.error('Error validating document:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error validating document:', error);
+      }
       setValidationError('Failed to validate document. Please try again.');
       setValidationErrorCode('VALIDATION_FAILED');
       setValidationWarnings([]);
@@ -109,100 +138,167 @@ export default function IssueDocumentModal({
         });
       }
     } catch (error) {
-      console.error('Error navigating to module:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error navigating to module:', error);
+      }
     }
+  };
+
+  const reloadIssuedDocumentState = async (): Promise<IssuedDocumentState | null> => {
+    const { data: currentDocument, error } = await supabase
+      .from('documents')
+      .select('status, issue_status, locked_pdf_path, pdf_generation_error')
+      .eq('id', documentId)
+      .maybeSingle();
+
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn('[Issue] Failed to reload document state after issue attempt:', error);
+      }
+      return null;
+    }
+
+    if (currentDocument?.status === 'issued' || currentDocument?.issue_status === 'issued') {
+      try { onSuccess(); } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('onSuccess failed', e);
+        }
+      }
+      return currentDocument;
+    }
+
+    return null;
+  };
+
+  const finishIssuedWithWarning = (warning = LOCKED_PDF_REQUIRED_ERROR) => {
+    setPartialSuccessWarning(warning);
+    setIssueProgress('Issued with warning');
+    setIsIssuing(false);
+
+    setTimeout(() => {
+      try { onClose(); } catch (e) {
+        if (import.meta.env.DEV) {
+          console.warn('onClose failed', e);
+        }
+      }
+      navigate(`/documents/${documentId}/workspace`, { replace: true });
+    }, 1200);
   };
 
   const handleIssue = async () => {
     setIsIssuing(true);
     setIssueProgress('Preparing to issue document...');
+    setPartialSuccessWarning('');
 
     try {
-      console.log('[Issue] Starting issue process for document:', documentId);
 
-      const { data: document, error: docError } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('id', documentId)
-        .single();
+      const { document, identity } = await ensureDocumentIdentitySnapshot(documentId, organisationId);
+      if (!identity.clientName || !identity.siteName) {
+        if (import.meta.env.DEV) {
+          console.warn('[Issue] Issuing with incomplete client/site identity snapshot:', {
+            hasClientName: Boolean(identity.clientName),
+            hasSiteName: Boolean(identity.siteName),
+          });
+        }
+      }
 
-      if (docError) throw docError;
+      setIssueProgress('Validating document...');
+      const preIssueValidation = await validateDocumentForIssue(documentId, organisationId);
+      if (!preIssueValidation.valid) {
+        throw new Error(preIssueValidation.errors.join(', '));
+      }
 
-      console.log('[Issue] Document fetched:', document.id, 'status:', document.issue_status);
       setIssueProgress('Assigning recommendation reference numbers...');
 
       const actualBaseDocumentId = document.base_document_id || document.id;
       try {
         await assignActionReferenceNumbers(documentId, actualBaseDocumentId);
-        console.log('[Issue] Reference numbers assigned');
       } catch (refError) {
-        console.warn('[Issue] Failed to assign reference numbers (non-fatal):', refError);
+        if (import.meta.env.DEV) {
+          console.warn('[Issue] Failed to assign reference numbers (non-fatal):', refError);
+        }
       }
 
+      setIssueProgress('Generating and storing locked PDF...');
+      const pdfBytes = await buildIssuedPdfForDocument(document, organisationId);
+      const storedPdf = await storeIssuedPdfWithEdgeFunction(document, organisationId, pdfBytes);
+
       setIssueProgress('Updating document status...');
-      console.log('[Issue] Calling issueDocument()');
 
       const issueResult = await issueDocument(documentId, userId, organisationId);
 
       if (issueResult.success) {
-        console.log('[Issue] Document issued successfully');
-        setIssueProgress('Generating locked PDF...');
+        const issuedDocument = await reloadIssuedDocumentState();
+        const issueWarning = issueResult.warning || issueResult.postIssueWarning;
+        const issuedWithWarning = Boolean(issueWarning || issueResult.partialSuccess);
 
-        // Call generate-issued-pdf edge function to get signed URL
-        try {
-          console.log('[generate-issued-pdf] sending survey_report_id', documentId);
+        if (issuedWithWarning) {
+          setPartialSuccessWarning(issueWarning || LOCKED_PDF_REQUIRED_ERROR);
+        }
 
-          const { data: sessionData } = await supabase.auth.getSession();
-          const accessToken = sessionData.session?.access_token;
-
-          if (!accessToken) {
-            throw new Error('No access token (user not signed in)');
+        if (!issuedDocument) {
+          if (import.meta.env.DEV) {
+            console.warn('[Issue] issueDocument returned success, but the issued status was not visible when reloading document state.');
           }
+        }
 
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (storedPdf.signedUrl) {
+          window.open(storedPdf.signedUrl, '_blank', 'noopener,noreferrer');
+        }
 
-          const pdfResp = await fetch(`${supabaseUrl}/functions/v1/generate-issued-pdf`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': anonKey,
-              'Authorization': `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({ survey_report_id: documentId }),
-          });
-
-          const respJson = await pdfResp.json().catch(() => null);
-
-          console.log('[generate-issued-pdf] status', pdfResp.status, respJson);
-
-          if (!pdfResp.ok) {
-            throw new Error(`generate-issued-pdf failed (${pdfResp.status}): ${JSON.stringify(respJson)}`);
-          }
-
-          if (respJson?.signed_url) {
-            window.open(respJson.signed_url, '_blank', 'noopener,noreferrer');
-          }
-        } catch (pdfError) {
-          console.warn('[Issue] Failed to generate PDF (non-fatal):', pdfError);
-          // Don't fail the entire issue process if PDF generation fails
+        if (issuedWithWarning) {
+          finishIssuedWithWarning(issueWarning || LOCKED_PDF_REQUIRED_ERROR);
+          return;
         }
 
         setIssueProgress('Complete!');
         setTimeout(() => {
-          try { onSuccess(); } catch (e) { console.warn('onSuccess failed', e); }
-          try { onClose(); } catch (e) { console.warn('onClose failed', e); }
+          try {
+            onSuccess();
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              console.warn('onSuccess failed', e);
+            }
+          }
+          try {
+            onClose();
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              console.warn('onClose failed', e);
+            }
+          }
           navigate(`/documents/${documentId}/workspace`, { replace: true });
         }, 500);
       } else {
+        const issuedDocument = await reloadIssuedDocumentState();
+        if (issuedDocument) {
+          if (import.meta.env.DEV) {
+            console.warn('[Issue] issueDocument returned failure, but document status is issued; treating as partial success.', {
+              hasWarning: Boolean(issueResult.warning || issueResult.postIssueWarning),
+              partialSuccess: Boolean(issueResult.partialSuccess),
+            });
+          }
+          finishIssuedWithWarning(LOCKED_PDF_REQUIRED_ERROR);
+          return;
+        }
+
         throw new Error(issueResult.error || 'Failed to issue document');
       }
-    } catch (error: any) {
-      console.error('[Issue] Error issuing document:', error);
-      alert(error.message || 'Failed to issue document. Document remains in draft.');
+    } catch (error: unknown) {
+      if (import.meta.env.DEV) {
+        console.error('[Issue] Error issuing document:', error);
+      }
+
+      const issuedDocument = await reloadIssuedDocumentState();
+
+      if (issuedDocument) {
+        finishIssuedWithWarning(LOCKED_PDF_REQUIRED_ERROR);
+        return;
+      }
+
+      alert(getErrorMessage(error, LOCKED_PDF_REQUIRED_ERROR));
       setIssueProgress('');
     } finally {
-      console.log('[Issue] Issue process complete, resetting UI state');
       setIsIssuing(false);
     }
   };
@@ -221,6 +317,12 @@ export default function IssueDocumentModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+          {partialSuccessWarning && (
+            <Callout variant="warning" className="mb-6">
+              <strong>Document issued with a warning.</strong> {partialSuccessWarning}
+            </Callout>
+          )}
+
           <div className="mb-6">
             <h3 className="font-semibold text-neutral-900 mb-2">{documentTitle}</h3>
             <p className="text-sm text-neutral-600 mb-4">
@@ -258,10 +360,10 @@ export default function IssueDocumentModal({
                 </p>
               </Callout>
               {validationWarnings.length > 0 && (
-                <Callout variant="warning" title="Optional Modules Incomplete" className="mb-6">
+                <Callout variant="warning" title="Recommended Before Issue" className="mb-6">
                   <div className="text-amber-900">
                     <p className="mb-2 text-sm">
-                      The following optional modules have no data. You can still issue the document, but consider completing them:
+                      These checks do not technically block issue, but should be reviewed and confirmed before issuing:
                     </p>
                     <ul className="space-y-1 ml-4 text-sm">
                       {validationWarnings.map((warning, idx) => (
@@ -288,7 +390,7 @@ export default function IssueDocumentModal({
                           className="w-full flex items-center justify-between px-4 py-3 bg-white border border-red-200 rounded-md hover:bg-red-50 hover:border-red-300 transition-colors text-left group"
                         >
                           <span className="font-medium text-neutral-900">
-                            {getModuleName(moduleKey)}
+                            {getModuleDisplayLabel(moduleKey)}
                           </span>
                           <ArrowRight className="w-4 h-4 text-red-600 group-hover:translate-x-1 transition-transform" />
                         </button>
@@ -372,6 +474,15 @@ export default function IssueDocumentModal({
           )}
         </div>
       </div>
+
+      {/* Display-name prompt — shown when user tries to validate without a valid name */}
+      {showNameModal && (
+        <DisplayNameModal
+          mode="prompt"
+          onSaved={() => setShowNameModal(false)}
+          onDismiss={() => setShowNameModal(false)}
+        />
+      )}
     </div>
   );
 }

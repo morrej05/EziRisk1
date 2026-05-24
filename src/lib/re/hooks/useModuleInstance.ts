@@ -41,7 +41,7 @@ export function useModuleInstance(instanceId: string | null): UseModuleInstanceR
           setLoaded(true);
         }
       } catch (err) {
-        console.error('Error loading module instance:', err);
+        if (import.meta.env.DEV) console.error('Error loading module instance:', err);
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load module instance');
           setLoaded(true);
@@ -83,7 +83,7 @@ export function useModuleInstance(instanceId: string | null): UseModuleInstanceR
 
       if (saveError) throw saveError;
     } catch (err) {
-      console.error('Error saving module instance:', err);
+      if (import.meta.env.DEV) console.error('Error saving module instance:', err);
       setError(err instanceof Error ? err.message : 'Failed to save module instance');
       throw err;
     } finally {

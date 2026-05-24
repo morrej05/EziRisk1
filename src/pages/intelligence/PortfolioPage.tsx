@@ -1,18 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Copy, Download, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, Download, Lock, Sparkles, Trash2 } from 'lucide-react';
 import PortfolioInsightPanel from '../../components/ai/PortfolioInsightPanel';
 import { type PortfolioScope, usePortfolioMetrics } from '../../hooks/usePortfolioMetrics';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import UpgradeBlockModal from '../../components/UpgradeBlockModal';
 import {
   type PortfolioAiInsights,
   type PortfolioAiPayload,
 } from '../../lib/ai/generatePortfolioInsights';
-import { canAccessPortfolio } from '../../utils/entitlements';
+import { canAccessPortfolio, isDev } from '../../utils/entitlements';
 import { buildUpgradePath } from '../../utils/upgradeNavigation';
-import { formatPortfolioGroupLabel, formatPortfolioStatusLabel } from '../../utils/portfolio/formatPortfolioLabels';
+import { formatPortfolioGroupLabel } from '../../utils/portfolio/formatPortfolioLabels';
 import {
   generatePortfolioMarkdown,
   generatePortfolioPdf,
@@ -101,7 +100,7 @@ function isMatchingSavedScope(scope: SavedPortfolioViewFilters, filters: SavedPo
   return normaliseNullable(scope.client) === normaliseNullable(filters.client)
     && normaliseNullable(scope.discipline) === normaliseNullable(filters.discipline)
     && scope.window === filters.window
-    && scope.site === filters.site;
+    && scope.site.trim() === filters.site.trim();
 }
 
 function TrendDelta({ value, windowDays }: { value: number; windowDays: 30 | 90 }) {
@@ -144,6 +143,8 @@ function InteractiveRow({
     </div>
   );
 }
+
+const SHOW_PORTFOLIO_AI = isDev();
 
 export default function PortfolioPage() {
   const navigate = useNavigate();
@@ -189,15 +190,30 @@ export default function PortfolioPage() {
   const [savedViewsError, setSavedViewsError] = useState<string | null>(null);
   const [savedViewsNotice, setSavedViewsNotice] = useState<string | null>(null);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [siteInputValue, setSiteInputValue] = useState(siteParam);
+
+  // Sync local input when the URL param changes externally (saved view load, reset scope, etc.)
+  useEffect(() => {
+    setSiteInputValue(siteParam);
+  }, [siteParam]);
+
+  // Debounce site filter — avoid firing a metrics recompute on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (!siteInputValue.trim()) {
+          next.delete('site');
+        } else {
+          next.set('site', siteInputValue);
+        }
+        return next;
+      }, { replace: true });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [siteInputValue, setSearchParams]);
 
   const portfolioLocked = Boolean(organisation) && !isPlatformAdmin && !canAccessPortfolio(organisation);
-
-  useEffect(() => {
-    if (portfolioLocked) {
-      setShowUpgradeModal(true);
-    }
-  }, [portfolioLocked]);
 
   const setScopeParam = (key: 'client' | 'discipline' | 'window' | 'site', value: string | null) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -237,25 +253,78 @@ export default function PortfolioPage() {
   };
 
   if (portfolioLocked) {
+    const PORTFOLIO_FEATURES = [
+      {
+        title: 'Remediation trends',
+        desc: 'Open, new and closed actions by discipline across your full portfolio and any time window.',
+      },
+      {
+        title: 'Site & client hotspots',
+        desc: 'Rank sites and clients by P1 actions, 90-day ageing backlog and total open items.',
+      },
+      {
+        title: 'Module hotspots',
+        desc: 'Which assessment modules generate the most persistent unresolved remediation.',
+      },
+      {
+        title: 'Ageing backlog',
+        desc: 'Actions and recommendations outstanding beyond 30, 60 and 90 days — one view.',
+      },
+      {
+        title: 'Scope filters & saved views',
+        desc: 'Filter by client, discipline, site and time window. Save named scopes for reuse.',
+      },
+      {
+        title: 'Portfolio exports',
+        desc: 'Export portfolio summaries as PDF or Markdown for client reporting and internal review.',
+      },
+    ];
+
     return (
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <h1 className="text-2xl font-semibold text-slate-900">Portfolio is locked on your current plan</h1>
-          <p className="mt-2 text-slate-600">Upgrade to unlock portfolio analytics and exports.</p>
-          <button
-            onClick={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
-            className="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Upgrade plan
-          </button>
+      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">Portfolio Analysis</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Cross-site remediation trends, hotspot ranking and risk velocity — available on Professional.
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            <Lock className="h-3 w-3" />
+            Professional plan
+          </span>
         </div>
-        <UpgradeBlockModal
-          open={showUpgradeModal}
-          reason="portfolio_locked"
-          detail="Portfolio analytics are only available on plans with portfolio access."
-          onClose={() => setShowUpgradeModal(false)}
-          onUpgrade={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
-        />
+
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2 lg:grid-cols-3">
+            {PORTFOLIO_FEATURES.map((feature) => (
+              <div key={feature.title} className="bg-white px-5 py-4">
+                <div className="mb-1.5 flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                  <p className="text-sm font-semibold text-slate-600">{feature.title}</p>
+                </div>
+                <p className="text-xs leading-relaxed text-slate-500">{feature.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-slate-900">
+                Upgrade to Professional to unlock Portfolio Analysis
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                30 reports/month · up to 5 users · portfolio tools · risk engineering access
+              </p>
+            </div>
+            <button
+              onClick={() => navigate(buildUpgradePath('portfolio_locked', { action: 'portfolio_access' }))}
+              className="shrink-0 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              View pricing →
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -416,7 +485,7 @@ export default function PortfolioPage() {
     setSelectedSavedViewId(matchingView?.id || '');
   }, [savedViews, currentScopeFilters]);
 
-  const activeScopeCount = Number(Boolean(scope.client)) + Number(Boolean(scope.disciplineOrType)) + Number(Boolean(scope.siteQuery?.trim()));
+  const activeScopeCount = [scope.client, scope.disciplineOrType, scope.siteQuery?.trim()].filter(Boolean).length;
 
   const appendScopeToPath = (path: string) => {
     const next = new URLSearchParams();
@@ -596,7 +665,7 @@ export default function PortfolioPage() {
           openReRecommendations: row.openReRecommendations,
           moduleAlignmentNote: row.moduleKey === 'RE recommendations'
             ? 'Source-specific RE grouping; no strict module-key alignment to assessment actions.'
-            : 'Assessment action module key grouping.',
+            : 'Assessment section grouping.',
           hotspotScore: row.hotspotScore,
         })),
       topClientHotspots: metrics.showClientHotspots
@@ -647,12 +716,10 @@ export default function PortfolioPage() {
     scope.siteQuery,
   ]);
 
-  const payloadSignature = useMemo(() => JSON.stringify(portfolioAiPayload), [portfolioAiPayload]);
-
   useEffect(() => {
     setReportAiError(null);
     setLatestAiInsights(null);
-  }, [payloadSignature]);
+  }, [portfolioAiPayload]);
 
   const assessmentActionTrend = useMemo(
     () => metrics.remediationTrends.find((row) => row.sourceType === 'assessment_action' && !row.discipline),
@@ -805,14 +872,16 @@ export default function PortfolioPage() {
               Copy Markdown
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowInsightPanel((current) => !current)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors"
-          >
-            <Sparkles className="w-4 h-4" />
-            Analyse Portfolio
-          </button>
+          {SHOW_PORTFOLIO_AI && (
+            <button
+              type="button"
+              onClick={() => setShowInsightPanel((current) => !current)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors"
+            >
+              <Sparkles className="w-4 h-4" />
+              Analyse Portfolio
+            </button>
+          )}
         </div>
       </div>
 
@@ -908,8 +977,8 @@ export default function PortfolioPage() {
           <label className="text-sm text-slate-700">
             <span className="block mb-1 font-medium">Site search</span>
             <input
-              value={scope.siteQuery || ''}
-              onChange={(event) => setSiteQuery(event.target.value)}
+              value={siteInputValue}
+              onChange={(event) => setSiteInputValue(event.target.value)}
               placeholder="Site or client"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
@@ -928,7 +997,7 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      {showInsightPanel && (
+      {SHOW_PORTFOLIO_AI && showInsightPanel && (
         <PortfolioInsightPanel
           isOpen={showInsightPanel}
           onClose={() => setShowInsightPanel(false)}
@@ -1164,7 +1233,7 @@ export default function PortfolioPage() {
                       className="rounded-md border border-slate-200 p-3 hover:bg-slate-50 cursor-pointer transition-colors"
                     >
                       <div className="flex items-center justify-between text-sm mb-1">
-                        <span className="font-medium text-slate-700">{formatPortfolioStatusLabel(row.label)}</span>
+                        <span className="font-medium text-slate-700">{formatPortfolioGroupLabel(row.label)}</span>
                         <span className="text-slate-600">{row.count} ({percentage}%)</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
@@ -1178,8 +1247,8 @@ export default function PortfolioPage() {
           </section>
 
           <section className="bg-white rounded-lg border border-slate-200 p-6">
-            <h2 className="text-xl font-semibold text-slate-900">Common Action Modules</h2>
-            <p className="text-sm text-slate-600 mt-1">Top module keys from action register entries (frequency-based).</p>
+            <h2 className="text-xl font-semibold text-slate-900">Common Action Sections</h2>
+            <p className="text-sm text-slate-600 mt-1">Top assessment sections from action register entries (frequency-based).</p>
             <div className="mt-4 overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200">
                 <thead className="bg-slate-50">
@@ -1244,7 +1313,7 @@ export default function PortfolioPage() {
                     actionStatusRows.map((row) => (
                       <InteractiveRow
                         key={row.label}
-                        label={formatPortfolioStatusLabel(row.label)}
+                        label={formatPortfolioGroupLabel(row.label)}
                         value={String(row.count)}
                         onClick={() => navigate(appendScopeToPath(`/remediation/actions?status=${encodeURIComponent(row.label)}`))}
                       />
@@ -1309,9 +1378,9 @@ export default function PortfolioPage() {
             </div>
 
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Hotspot Modules</h3>
+              <h3 className="text-base font-semibold text-slate-900">Hotspot Sections</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Module hotspots use assessment action module keys plus a separate RE recommendations grouping where direct module alignment is not available.
+                Section hotspots use assessment section names plus a separate RE recommendations grouping where direct section alignment is not available.
               </p>
               <div className="mt-3 overflow-x-auto">
                 <table className="min-w-full divide-y divide-slate-200">

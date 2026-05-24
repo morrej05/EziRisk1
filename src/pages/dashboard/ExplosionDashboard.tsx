@@ -52,6 +52,7 @@ export default function ExplosionDashboard() {
         .select('*')
         .eq('organisation_id', organisation.id)
         .eq('document_type', 'DSEAR')
+        .is('deleted_at', null)
         .order('updated_at', { ascending: false });
 
       if (error) throw error;
@@ -69,11 +70,19 @@ export default function ExplosionDashboard() {
   };
 
   const handleDeleteDocument = async (documentId: string) => {
+    if (!user?.id) return;
+
     try {
       const { error } = await supabase
         .from('documents')
-        .delete()
-        .eq('id', documentId);
+        .update({
+          status: 'deleted',
+          deleted_at: new Date().toISOString(),
+          deleted_by: user.id,
+        })
+        .eq('id', documentId)
+        .eq('issue_status', 'draft')
+        .is('deleted_at', null);
 
       if (error) throw error;
 
@@ -81,7 +90,7 @@ export default function ExplosionDashboard() {
       fetchDocuments();
     } catch (error) {
       console.error('Error deleting document:', error);
-      alert('Failed to delete document. It may be issued or have associated data.');
+      alert('Failed to delete document. Only draft documents can be deleted.');
     }
   };
 

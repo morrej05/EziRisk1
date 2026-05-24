@@ -8,7 +8,7 @@ interface FloatingSaveBarProps {
 
 export default function FloatingSaveBar({ onSave, isSaving, statusText }: FloatingSaveBarProps) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-40">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg z-40" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {statusText && (

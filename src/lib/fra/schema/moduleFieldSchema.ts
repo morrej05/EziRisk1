@@ -44,6 +44,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     high_risk_activities: [],
     oxygen_enrichment: [],
     ignition_sources: [],
+    ignition_source_assessments: ['ignitionSourceAssessments'],
     fuel_sources: [],
     electrical_safety: [],
     'electrical_safety.eicr_satisfactory': [],
@@ -52,13 +53,17 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
   },
 
   FRA_2_ESCAPE_ASIS: {
+    escape_strategy_current: ['escape_strategy'],
+    escape_routes_description: ['routes_description'],
     travel_distances_compliant: [],
     escape_route_obstructions: [],
     final_exits_adequate: [],
     stair_protection_status: [],
-    exit_signage_adequacy: [],
-    disabled_egress_arrangements: [],
-    escape_strategy: [],
+    inner_rooms_present: [],
+    basement_present: [],
+    exit_signage_adequacy: ['signage_adequacy'],
+    disabled_egress_arrangements: ['disabled_egress_adequacy'],
+    means_of_escape_assessments: ['meansOfEscapeAssessments'],
   },
 
   FRA_3_ACTIVE_SYSTEMS: {
@@ -82,6 +87,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     compartmentation_condition: [],
     fire_stopping_confidence: [],
     cavity_barriers_adequate: [],
+    passive_fire_protection_assessments: ['passiveFireProtectionAssessments'],
   },
 
   FRA_5_EXTERNAL_FIRE_SPREAD: {
@@ -121,6 +127,7 @@ export const FRA_MODULE_FIELD_SCHEMA: Record<FraSchemaModuleKey, FieldAliasMap> 
     inspection_alarm_weekly_test: [],
     inspection_emergency_lighting_monthly: [],
     inspection_records_available: ['testing_records'],
+    fire_safety_management_assessments: ['fireSafetyManagementAssessments'],
   },
 
   A5_EMERGENCY_ARRANGEMENTS: {

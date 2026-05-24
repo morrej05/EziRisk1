@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getChangeSummary,
   formatChangeSummaryText,
+  formatChangeSummaryPlainText,
   updateChangeSummaryText,
   setChangeSummaryClientVisibility,
   type ChangeSummaryViewRow,
+  getChangeSummaryErrorMessage,
 } from '../../utils/changeSummary';
 
 interface ChangeSummaryPanelProps {
@@ -24,12 +26,24 @@ export default function ChangeSummaryPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
 
-  const computedMarkdown = useMemo(() => {
+  const computedSummaryText = useMemo(() => {
     if (!summary) return '';
     return summary.summary_text?.trim()
       ? summary.summary_text
-      : formatChangeSummaryText(summary);
+      : summary.summary_markdown?.trim()
+        ? summary.summary_markdown
+        : formatChangeSummaryText(summary);
   }, [summary]);
+
+  const computedDisplayText = useMemo(
+    () => formatChangeSummaryPlainText(computedSummaryText),
+    [computedSummaryText]
+  );
+
+  const draftPreviewText = useMemo(
+    () => formatChangeSummaryPlainText(draftText?.trim() ? draftText : computedSummaryText),
+    [computedSummaryText, draftText]
+  );
 
   async function load() {
     setIsLoading(true);
@@ -46,8 +60,8 @@ export default function ChangeSummaryPanel({
 
       setSummary(s);
       setDraftText(s.summary_text ?? s.summary_markdown ?? '');
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load change summary');
+    } catch (e: unknown) {
+      setError(getChangeSummaryErrorMessage(e, 'Failed to load change summary'));
       setSummary(null);
       setDraftText('');
     } finally {
@@ -69,8 +83,8 @@ export default function ChangeSummaryPanel({
       const res = await updateChangeSummaryText(summary.id, draftText);
       if (!res.success) throw new Error(res.error || 'Save failed');
       await load();
-    } catch (e: any) {
-      setError(e?.message || 'Failed to save');
+    } catch (e: unknown) {
+      setError(getChangeSummaryErrorMessage(e, 'Failed to save'));
     } finally {
       setIsSaving(false);
     }
@@ -87,8 +101,8 @@ export default function ChangeSummaryPanel({
       );
       if (!res.success) throw new Error(res.error || 'Update failed');
       await load();
-    } catch (e: any) {
-      setError(e?.message || 'Failed to update visibility');
+    } catch (e: unknown) {
+      setError(getChangeSummaryErrorMessage(e, 'Failed to update visibility'));
     } finally {
       setIsToggling(false);
     }
@@ -148,7 +162,7 @@ export default function ChangeSummaryPanel({
             {canEdit ? (
               <>
                 <label className="block text-xs font-medium text-neutral-700 mb-1">
-                  Summary text (shown instead of auto-generated markdown)
+                  Summary text (shown instead of the prepared markdown)
                 </label>
                 <textarea
                   value={draftText}
@@ -190,19 +204,31 @@ export default function ChangeSummaryPanel({
                   <div className="text-xs font-medium text-neutral-700 mb-1">
                     Preview (what users will read)
                   </div>
-                  <pre className="whitespace-pre-wrap text-sm bg-neutral-50 border border-neutral-200 rounded p-3">
-                    {draftText?.trim() ? draftText : computedMarkdown}
-                  </pre>
+                  <ChangeSummaryText text={draftPreviewText} />
                 </div>
               </>
             ) : (
-              <pre className="whitespace-pre-wrap text-sm bg-neutral-50 border border-neutral-200 rounded p-3">
-                {computedMarkdown}
-              </pre>
+              <ChangeSummaryText text={computedDisplayText} />
             )}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function ChangeSummaryText({ text }: { text: string }) {
+  const [titleLine, ...bodyLines] = text.split('\n');
+  const body = bodyLines.join('\n').trim();
+
+  return (
+    <div className="whitespace-pre-line text-sm bg-neutral-50 border border-neutral-200 rounded p-3 text-neutral-800">
+      {titleLine && (
+        <h4 className="mb-2 text-sm font-semibold text-neutral-900">
+          {titleLine}
+        </h4>
+      )}
+      {body && <div>{body}</div>}
     </div>
   );
 }

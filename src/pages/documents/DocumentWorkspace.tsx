@@ -1,6 +1,6 @@
 // src/pages/documents/DocumentWorkspace.tsx
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -81,6 +81,7 @@ interface Action {
   status: string;
   priority_band: string | null;
   target_date: string | null;
+  timescale?: string | null;
   owner_user_id: string | null;
   updated_at: string;
   source: string | null;
@@ -135,14 +136,14 @@ function getExpectedKeysForDocument(document: Document, existingModuleKeys: stri
       'A3_PERSONS_AT_RISK',
       'FRA_6_MANAGEMENT_SYSTEMS',
       'FRA_7_EMERGENCY_ARRANGEMENTS',
-      'A7_REVIEW_ASSURANCE',
       'FRA_1_HAZARDS',
       'FRA_2_ESCAPE_ASIS',
       ...(existing.has('FRA_3_PROTECTION_ASIS')
         ? ['FRA_3_PROTECTION_ASIS']
         : ['FRA_3_ACTIVE_SYSTEMS', 'FRA_4_PASSIVE_PROTECTION', 'FRA_8_FIREFIGHTING_EQUIPMENT']),
       'FRA_90_SIGNIFICANT_FINDINGS',
-      'FRA_5_EXTERNAL_FIRE_SPREAD'
+      'FRA_5_EXTERNAL_FIRE_SPREAD',
+      'A7_REVIEW_ASSURANCE'
     );
   }
 
@@ -179,7 +180,13 @@ function getExpectedKeysForDocument(document: Document, existingModuleKeys: stri
     );
   }
 
-  return [...new Set(expected)];
+  const unique = [...new Set(expected)];
+  if (!unique.includes('A7_REVIEW_ASSURANCE')) return unique;
+
+  return [
+    ...unique.filter((moduleKey) => moduleKey !== 'A7_REVIEW_ASSURANCE'),
+    'A7_REVIEW_ASSURANCE',
+  ];
 }
 
 export default function DocumentWorkspace() {
@@ -208,6 +215,10 @@ export default function DocumentWorkspace() {
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [isActionsPanelCollapsed, setIsActionsPanelCollapsed] = useState(false);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
+  const [reModuleKeysWithActiveRecs, setReModuleKeysWithActiveRecs] = useState<Set<string> | null>(null);
+  const moduleScrollRef = useRef<HTMLDivElement | null>(null);
+  const [saveState, setSaveState] = useState<'unsaved' | 'saving' | 'saved' | 'error'>('saved');
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
 
   const openActionId = searchParams.get('openAction');
 
@@ -261,6 +272,24 @@ export default function DocumentWorkspace() {
     fetchActions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, selectedModuleId, actionScope, actionsVersion, modules]);
+
+  useEffect(() => {
+    if (!id || document?.document_type !== 'RE') return;
+    supabase
+      .from('re_recommendations')
+      .select('source_module_key')
+      .eq('document_id', id)
+      .eq('is_suppressed', false)
+      .in('status', ['Open', 'In Progress'])
+      .then(({ data }) => {
+        if (data) {
+          setReModuleKeysWithActiveRecs(
+            new Set(data.map((r) => r.source_module_key).filter(Boolean) as string[])
+          );
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, document?.document_type, actionsVersion]);
 
   useEffect(() => {
     if (searchParams.get('openAction')) return;
@@ -566,6 +595,7 @@ export default function DocumentWorkspace() {
   }, [searchParams, actionScope]);
 
   const handleModuleSaved = async (moduleId?: string, updatedData?: any) => {
+    setSaveState('saved');
     if (moduleId && updatedData) {
       const now = new Date().toISOString();
       setModules((prevModules) =>
@@ -612,6 +642,40 @@ export default function DocumentWorkspace() {
     if (found) setSelectedStable(found);
   }, [modules, selectedModuleId]);
 
+  useEffect(() => {
+    if (!selectedModuleId) return;
+    moduleScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    setShowScrollToTop(false);
+  }, [selectedModuleId]);
+
+  useEffect(() => {
+    const onInput = () => setSaveState('unsaved');
+    const onSaving = () => setSaveState('saving');
+    const onError = () => setSaveState('error');
+    const root = moduleScrollRef.current;
+    if (!root) return;
+    root.addEventListener('input', onInput, true);
+    root.addEventListener('change', onInput, true);
+    root.addEventListener('submit', onSaving, true);
+    root.addEventListener('error', onError, true);
+    window.addEventListener('module:save-start', onSaving);
+    return () => {
+      root.removeEventListener('input', onInput, true);
+      root.removeEventListener('change', onInput, true);
+      root.removeEventListener('submit', onSaving, true);
+      root.removeEventListener('error', onError, true);
+      window.removeEventListener('module:save-start', onSaving);
+    };
+  }, [selectedModuleId]);
+
+  useEffect(() => {
+    const el = moduleScrollRef.current;
+    if (!el) return;
+    const onScroll = () => setShowScrollToTop(el.scrollTop > 300);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
   if (documentNotFound) {
     return (
       <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
@@ -620,11 +684,11 @@ export default function DocumentWorkspace() {
             <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
           </div>
           <h2 className="text-xl font-semibold text-neutral-900 mb-2">
-            {invalidUrl ? 'Invalid Document URL' : 'Document Not Found'}
+            {invalidUrl ? 'Section Unavailable' : 'Document Not Found'}
           </h2>
           <p className="text-neutral-600 mb-6">
             {invalidUrl
-              ? 'The document URL is invalid or incomplete. Please check the URL and try again.'
+              ? 'This section could not be loaded. Please return to the overview and try again.'
               : "This document doesn't exist or you don't have permission to access it."}
           </p>
           <button
@@ -763,10 +827,11 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
           onCloseMobileMenu={() => setIsMobileMenuOpen(false)}
           documentId={document?.id}
           documentAssessmentDate={document?.assessment_date ?? null}
+          reModuleKeysWithActiveRecs={reModuleKeysWithActiveRecs ?? undefined}
         />
 
-        <div className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
-          <div className="w-full p-4 sm:p-6">
+        <div ref={moduleScrollRef} className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
+          <div className="w-full p-4 sm:p-6" style={{ paddingBottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}>
             {['FRA', 'DSEAR', 'FSD'].includes(document.document_type) && organisation?.id && (
               <ExecutiveSummaryPanel
                 documentId={document.id}
@@ -790,13 +855,13 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               </div>
             )}
 
-            {/* Actions Panel */}
+            {/* Recommendation Panel */}
             {selectedStable && !hideOutstandingActionsPanel && (
               <div className="bg-white rounded-lg shadow-sm border border-neutral-200 mb-6">
                 <div className="px-4 py-3 border-b border-neutral-200 bg-neutral-50">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-neutral-900">
-                      {isReRecommendationPanel ? 'Outstanding Recommendations' : 'Outstanding Actions'}
+                      Module Recommendations
                     </h3>
                     <button
                       onClick={() => setIsActionsPanelCollapsed(!isActionsPanelCollapsed)}
@@ -835,8 +900,8 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                         }`}
                       >
                         {forceDocumentActionScope
-                          ? `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actions.length})`
-                          : `${isReRecommendationPanel ? 'All recommendations' : 'All actions'} (${actionScope === 'document' ? actions.length : '...'})`}
+                          ? `All recommendations (${actions.length})`
+                          : `All recommendations (${actionScope === 'document' ? actions.length : '...'})`}
                       </button>
                     </div>
 
@@ -850,8 +915,8 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                           <AlertCircle className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
                           <p className="text-sm text-neutral-600">
                             {forceDocumentActionScope || actionScope === 'document'
-                              ? `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this document`
-                              : `No ${isReRecommendationPanel ? 'recommendations' : 'actions'} in this module`}
+                              ? 'No recommendations in this document'
+                              : 'No recommendations in this module'}
                           </p>
                         </div>
                       ) : (
@@ -875,7 +940,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                                     action.status
                                   )}`}
                                 >
-                                  {action.status}
+                                  {action.status?.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                                 </span>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm text-neutral-900 line-clamp-2">{action.recommended_action}</p>
@@ -888,7 +953,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                           ))}
 
                           {actions.length > 5 && (
-                            <p className="text-xs text-neutral-500 text-center pt-2">Showing 5 of {actions.length} actions</p>
+                            <p className="text-xs text-neutral-500 text-center pt-2">Showing 5 of {actions.length} recommendations</p>
                           )}
                         </div>
                       )}
@@ -896,6 +961,28 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                   </>
                 )}
               </div>
+            )}
+
+            <div className="fixed bottom-3 left-3 right-3 z-40 sm:bottom-4 sm:left-6 sm:right-6 md:left-[92px] md:right-6 lg:left-[332px]">
+              <div className="rounded-xl border border-neutral-200 bg-white/95 backdrop-blur px-4 py-2 shadow-sm">
+                <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
+                  <span className="font-medium text-neutral-700">Module save status</span>
+                  <span className={saveState === 'saved' ? 'text-emerald-700' : saveState === 'saving' ? 'text-blue-700' : saveState === 'error' ? 'text-red-700' : 'text-amber-700'}>
+                    {saveState === 'saved' ? 'Saved' : saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : 'Unsaved changes'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {showScrollToTop && (
+              <button
+                type="button"
+                onClick={() => moduleScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="fixed bottom-16 right-4 z-40 rounded-full border border-neutral-200 bg-white p-2.5 shadow-md text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50 transition-colors"
+                aria-label="Scroll to top of module"
+              >
+                <ChevronUp className="w-4 h-4" />
+              </button>
             )}
 
             {selectedStable ? (
@@ -927,6 +1014,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
 
       {modalAction && user?.id && organisation?.id && (
         <ActionDetailModal
+          returnTo={returnToPath || (selectedModuleId ? `/documents/${id}/workspace?m=${selectedModuleId}` : undefined)}
           action={{
             ...modalAction,
             document: document

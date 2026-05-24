@@ -105,10 +105,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Phase 9: require the document to belong to the same org as the access
+    // link. Without this, a token from org A could serve a PDF from org B
+    // if base_document_id happens to match.
     const { data: latestIssued, error: docError } = await supabase
       .from("documents")
       .select("id, title, locked_pdf_path")
       .eq("base_document_id", link.base_document_id)
+      .eq("organisation_id", link.organisation_id)
       .eq("issue_status", "issued")
       .order("version_number", { ascending: false })
       .limit(1)
@@ -152,7 +156,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: signedUrlData, error: signedUrlError } = await supabase
       .storage
-      .from("locked-pdfs")
+      .from("document-pdfs")
       .createSignedUrl(document.locked_pdf_path, 300);
 
     if (signedUrlError || !signedUrlData) {
@@ -166,13 +170,35 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    await supabase
+    // Update access counter (fire-and-forget; do not block response on failure)
+    supabase
       .from("document_access_links")
       .update({
         last_accessed_at: new Date().toISOString(),
         access_count: link.access_count + 1,
       })
-      .eq("id", link.id);
+      .eq("id", link.id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to update access count:", error);
+      });
+
+    // Phase 9: audit log for every public PDF download
+    supabase
+      .from("audit_log")
+      .insert({
+        organisation_id: link.organisation_id,
+        document_id: document.id,
+        actor_id: null,
+        event_type: "public_access",
+        details: {
+          access_type: "download",
+          token_prefix: token.substring(0, 8),
+          ip: req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? null,
+        },
+      })
+      .then(({ error }) => {
+        if (error) console.error("Failed to write audit log:", error);
+      });
 
     return new Response(
       JSON.stringify({

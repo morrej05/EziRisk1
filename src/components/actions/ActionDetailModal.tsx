@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { X, ExternalLink, FileText, Layers, Paperclip, Camera, Upload, AlertCircle, CheckCircle, Clock, XCircle, ArrowLeft, Download, Trash2, Eye } from 'lucide-react';
+import { X, ExternalLink, FileText, Layers, Paperclip, Camera, Upload, AlertCircle, CheckCircle, Clock, XCircle, ArrowLeft, Download, Trash2, Eye, Link2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { uploadEvidenceFile, createAttachmentRow, getSignedUrl, isValidAttachment, deleteAttachment } from '../../lib/supabase/attachments';
-import ConfirmModal from '../ConfirmModal';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
+import ConfirmModal from '../ConfirmModal';
+import {
+  compactRecommendationDetail,
+  hasRecommendationDetail,
+  normalizeRecommendationDetail,
+  type RecommendationDetail,
+} from '../../lib/actions/recommendationDetail';
 
 interface ActionDetailModalProps {
   action: {
@@ -13,6 +20,7 @@ interface ActionDetailModalProps {
     recommended_action: string;
     status: string;
     priority_band: string | null;
+    timescale?: string | null;
     target_date: string | null;
     owner_user_id: string | null;
     updated_at: string;
@@ -32,10 +40,82 @@ interface ActionDetailModalProps {
       name: string | null;
     } | null;
     attachment_count: number;
+    recommendation_detail?: RecommendationDetail | null;
+    trigger_text?: string | null;
   };
   onClose: () => void;
   onActionUpdated: () => void;
   returnTo?: string;
+}
+
+function formatTimescale(value?: string | null): string {
+  switch (value) {
+    case 'immediate':
+      return 'Immediate';
+    case '7d':
+      return '≤ 7 days';
+    case '30d':
+      return '≤ 30 days';
+    case '90d':
+      return '≤ 90 days';
+    case 'next_review':
+      return 'Next review';
+    case 'custom':
+      return 'Custom / manual';
+    default:
+      return value || 'No timescale recorded';
+  }
+}
+
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function targetDateFromTimescale(timescale?: string | null, baseDate = new Date()): string {
+  const dueDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+
+  switch (timescale) {
+    case 'immediate':
+      return toLocalIsoDate(dueDate);
+    case '7d':
+      dueDate.setDate(dueDate.getDate() + 7);
+      return toLocalIsoDate(dueDate);
+    case '30d':
+      dueDate.setDate(dueDate.getDate() + 30);
+      return toLocalIsoDate(dueDate);
+    case '90d':
+      dueDate.setDate(dueDate.getDate() + 90);
+      return toLocalIsoDate(dueDate);
+    default:
+      return '';
+  }
+}
+
+function suggestedTimescaleFromPriority(priority?: string | null): string | null {
+  switch (priority) {
+    case 'P1':
+      return 'immediate';
+    case 'P2':
+      return '30d';
+    case 'P3':
+      return '90d';
+    case 'P4':
+      return 'next_review';
+    default:
+      return null;
+  }
+}
+
+interface ActionSourceLinkDetail {
+  id: string;
+  source_assessment_type: string;
+  source_assessment_key: string;
+  source_assessment_label: string | null;
+  module_instance_id: string | null;
+  module_instance?: { module_key: string | null } | null;
 }
 
 interface Attachment {
@@ -79,11 +159,21 @@ export default function ActionDetailModal({
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closureNotes, setClosureNotes] = useState('');
   const [isClosing, setIsClosing] = useState(false);
+  const [isSavingDetail, setIsSavingDetail] = useState(false);
+  const [detail, setDetail] = useState<RecommendationDetail>(() => normalizeRecommendationDetail(action.recommendation_detail));
+  const [targetDate, setTargetDate] = useState(action.target_date || '');
+  const [targetDateJustification, setTargetDateJustification] = useState('');
+  const [sourceLinks, setSourceLinks] = useState<ActionSourceLinkDetail[]>([]);
+  const [showAdvancedDetail, setShowAdvancedDetail] = useState(false);
 
   useEffect(() => {
     fetchAttachments();
     fetchDocumentStatus();
-  }, [action.id]);
+    fetchSourceLinks();
+    setDetail(normalizeRecommendationDetail(action.recommendation_detail));
+    setTargetDate(action.target_date || '');
+    setTargetDateJustification('');
+  }, [action.id, action.recommendation_detail, action.target_date]);
 
   const fetchAttachments = async () => {
     setIsLoadingAttachments(true);
@@ -100,6 +190,24 @@ export default function ActionDetailModal({
       console.error('Error fetching attachments:', error);
     } finally {
       setIsLoadingAttachments(false);
+    }
+  };
+
+
+  const fetchSourceLinks = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('action_source_links')
+        .select('id, source_assessment_type, source_assessment_key, source_assessment_label, module_instance_id, module_instance:module_instances(module_key)')
+        .eq('action_id', action.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setSourceLinks((data || []) as ActionSourceLinkDetail[]);
+    } catch (error) {
+      console.error('Error fetching action source links:', error);
+      setSourceLinks([]);
     }
   };
 
@@ -256,6 +364,38 @@ export default function ActionDetailModal({
     }
   };
 
+
+  const handleSaveRecommendationDetail = async () => {
+    if (requiresTargetDateJustification && !targetDateJustification.trim()) {
+      alert('Please provide a justification for setting a later target completion date.');
+      return;
+    }
+
+    setIsSavingDetail(true);
+    try {
+      const { error } = await supabase
+        .from('actions')
+        .update({
+          recommendation_detail: compactRecommendationDetail(detail),
+          target_date: targetDate || null,
+          override_justification: requiresTargetDateJustification ? targetDateJustification.trim() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', action.id);
+
+      if (error) throw error;
+
+      bumpActionsVersion();
+      onActionUpdated();
+      alert('Recommendation detail saved.');
+    } catch (error) {
+      console.error('Error saving recommendation detail:', error);
+      alert('Failed to save recommendation detail.');
+    } finally {
+      setIsSavingDetail(false);
+    }
+  };
+
   const handleGoToDocument = () => {
     if (!action.document?.id) return;
     const documentType = action.document?.document_type;
@@ -389,7 +529,7 @@ export default function ActionDetailModal({
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—';
+    if (!dateString) return 'Not yet recorded';
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
@@ -397,8 +537,18 @@ export default function ActionDetailModal({
     });
   };
 
+  const formatSourceType = (value: string): string => {
+    const labels: Record<string, string> = {
+      ignition_source_assessments: 'Fire hazards / ignition source finding',
+      means_of_escape_assessments: 'Means of escape finding',
+      passive_fire_protection_assessments: 'Passive fire protection finding',
+      fire_safety_management_assessments: 'Fire safety management finding',
+    };
+    return labels[value] || value.replace(/_/g, ' ');
+  };
+
   const formatFileSize = (bytes: number | null) => {
-    if (!bytes) return '—';
+    if (!bytes) return 'File size not recorded';
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -437,10 +587,19 @@ export default function ActionDetailModal({
     }
   };
 
+  const suggestedTimescale = action.timescale || suggestedTimescaleFromPriority(action.priority_band);
+  const suggestedTargetDate = targetDateFromTimescale(suggestedTimescale);
+  const requiresTargetDateJustification = Boolean(
+    targetDate &&
+    suggestedTargetDate &&
+    targetDate > suggestedTargetDate
+  );
+  const legacyEvidenceNote = String(detail.evidence_notes || '').trim();
+
   const isOverdue =
-    action.target_date &&
+    targetDate &&
     action.status !== 'closed' &&
-    action.target_date < new Date().toISOString().split('T')[0];
+    targetDate < new Date().toISOString().split('T')[0];
 
   const isInfoGap = action.source === 'info_gap' || action.module_instance?.outcome === 'info_gap';
   const isDeletable = documentStatus === 'draft';
@@ -461,7 +620,7 @@ export default function ActionDetailModal({
                     action.priority_band
                   )}`}
                 >
-                  {action.priority_band || 'No Priority'}
+                  {action.priority_band || 'Priority not assigned'}
                 </span>
                 {isInfoGap && (
                   <div className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded border border-amber-300">
@@ -502,6 +661,186 @@ export default function ActionDetailModal({
             <p className="text-neutral-900 text-base">{action.recommended_action}</p>
           </div>
 
+          <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">Recommendation detail</h3>
+                <p className="text-xs text-neutral-600 mt-1">Default view shows assessor-facing action, finding, risk, evidence, priority and target date only.</p>
+              </div>
+              {documentStatus === 'draft' && (
+                <button
+                  type="button"
+                  onClick={handleSaveRecommendationDetail}
+                  disabled={isSavingDetail}
+                  className="px-3 py-1.5 text-sm bg-neutral-900 text-white rounded-lg hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  {isSavingDetail ? 'Saving...' : 'Save detail'}
+                </button>
+              )}
+            </div>
+            {!hasRecommendationDetail(detail) && documentStatus !== 'draft' ? (
+              <p className="text-sm text-neutral-500">No enhanced recommendation detail has been recorded.</p>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 mb-1">Recommendation / action required</label>
+                  <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 whitespace-pre-wrap">{action.recommended_action}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {[
+                    ['observation', 'Observation / finding'],
+                    ['consequence', 'Risk implication / consequence'],
+                  ].map(([key, label]) => (
+                    <div key={key}>
+                      <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                      {documentStatus === 'draft' ? (
+                        <textarea
+                          value={String(detail[key as keyof RecommendationDetail] || '')}
+                          onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
+                          rows={5}
+                          className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                        />
+                      ) : (
+                        <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || 'Not yet recorded')}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-700">Evidence</p>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {attachments.length > 0
+                          ? `${attachments.length} evidence item${attachments.length === 1 ? '' : 's'} attached`
+                          : 'No evidence has been added yet.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingFiles || documentStatus !== 'draft'}
+                      className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
+                      title={documentStatus !== 'draft' ? 'Document is issued - cannot add evidence' : ''}
+                    >
+                      <Upload className="w-4 h-4" />
+                      {isUploadingFiles ? 'Uploading...' : '+ Add evidence'}
+                    </button>
+                  </div>
+                  {attachments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {attachments.slice(0, 4).map((attachment) => (
+                        <span key={attachment.id} className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800">
+                          <Paperclip className="h-3 w-3" />
+                          {attachment.file_name}
+                        </span>
+                      ))}
+                      {attachments.length > 4 && (
+                        <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium text-neutral-600">+{attachments.length - 4} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Priority</label>
+                    <span className={`inline-flex px-3 py-1 text-sm font-bold rounded border ${getPriorityColor(action.priority_band)}`}>
+                      {action.priority_band || 'Priority not assigned'}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Target completion date</label>
+                    {documentStatus === 'draft' ? (
+                      <input
+                        type="date"
+                        value={targetDate}
+                        onChange={(e) => setTargetDate(e.target.value)}
+                        className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                      />
+                    ) : (
+                      <p className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900">{targetDate ? formatDate(targetDate) : 'No target completion date set'}</p>
+                    )}
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Suggested completion: {suggestedTimescale ? formatTimescale(suggestedTimescale) : 'Not yet specified'}
+                      {suggestedTargetDate ? ` (${formatDate(suggestedTargetDate)})` : ''}.
+                    </p>
+                  </div>
+                </div>
+
+                {requiresTargetDateJustification && documentStatus === 'draft' && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <label className="block text-xs font-semibold text-amber-900 mb-1">
+                      Later target date justification <span className="text-red-600">*</span>
+                    </label>
+                    <textarea
+                      value={targetDateJustification}
+                      onChange={(e) => setTargetDateJustification(e.target.value)}
+                      rows={3}
+                      placeholder="Explain why the target completion date is later than the suggested completion."
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-700 resize-none text-sm bg-white"
+                    />
+                  </div>
+                )}
+
+                <div className="border-t border-blue-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedDetail(!showAdvancedDetail)}
+                    className="text-sm font-medium text-blue-700 hover:text-blue-900"
+                  >
+                    {showAdvancedDetail ? 'Hide Advanced' : 'Show Advanced'}
+                  </button>
+                  {showAdvancedDetail && (
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {[
+                        ['rationale', 'Recommendation rationale'],
+                        ['standards_reference', 'Standards / guidance reference'],
+                        ['existing_controls', 'Existing controls noted'],
+                        ['assessor_commentary', 'Assessor commentary'],
+                        ['management_response', 'Management response / status notes'],
+                      ].map(([key, label]) => (
+                        <div key={key} className={key === 'rationale' ? 'md:col-span-2' : ''}>
+                          <label className="block text-xs font-semibold text-neutral-700 mb-1">{label}</label>
+                          {documentStatus === 'draft' ? (
+                            <textarea
+                              value={String(detail[key as keyof RecommendationDetail] || '')}
+                              onChange={(e) => setDetail({ ...detail, [key]: e.target.value })}
+                              rows={key === 'rationale' ? 4 : 3}
+                              className="w-full px-3 py-2 border border-neutral-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none text-sm bg-white"
+                            />
+                          ) : (
+                            <p className="text-sm text-neutral-900 whitespace-pre-wrap">{String(detail[key as keyof RecommendationDetail] || 'Not yet recorded')}</p>
+                          )}
+                        </div>
+                      ))}
+                      {legacyEvidenceNote && (
+                        <div className="md:col-span-2 rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                          <div className="text-xs font-semibold text-neutral-700">Legacy evidence note</div>
+                          <div className="mt-1 text-sm text-neutral-900 whitespace-pre-wrap">{legacyEvidenceNote}</div>
+                        </div>
+                      )}
+                      {detail.timeframe_guidance && (
+                        <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                          <div className="text-xs font-semibold text-neutral-700">Legacy priority-derived timeframe</div>
+                          <div className="mt-1 text-sm text-neutral-900">{String(detail.timeframe_guidance)}</div>
+                        </div>
+                      )}
+                      {detail.linked_module && (
+                        <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2">
+                          <div className="text-xs font-semibold text-neutral-700">Linked assessment area</div>
+                          <div className="mt-1 text-sm text-neutral-900">{getModuleDisplayLabel(String(detail.linked_module))}</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <h3 className="text-sm font-medium text-neutral-700 mb-2">Status</h3>
@@ -533,7 +872,12 @@ export default function ActionDetailModal({
             </div>
 
             <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-2">Due Date</h3>
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Timescale</h3>
+              <p className="text-neutral-900 font-medium">{formatTimescale(action.timescale)}</p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-neutral-700 mb-2">Target completion date</h3>
               <div className="flex items-center gap-2 h-full">
                 {getStatusIcon(status)}
                 <span className="text-neutral-900 font-medium">
@@ -544,7 +888,7 @@ export default function ActionDetailModal({
 
             <div>
               <h3 className="text-sm font-medium text-neutral-700 mb-2">Owner</h3>
-              <p className="text-neutral-900">{action.owner?.name || 'Unassigned'}</p>
+              <p className="text-neutral-900">{action.owner?.name || 'Not assigned'}</p>
             </div>
 
             <div>
@@ -552,6 +896,27 @@ export default function ActionDetailModal({
               <p className="text-neutral-900">{formatDate(action.updated_at)}</p>
             </div>
           </div>
+
+
+          {sourceLinks.length > 0 && (
+            <div className="border border-blue-100 rounded-lg bg-blue-50/40 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Link2 className="w-4 h-4 text-blue-700" />
+                <h3 className="text-sm font-semibold text-neutral-900">Linked detailed finding references</h3>
+              </div>
+              <div className="space-y-2">
+                {sourceLinks.map((link) => (
+                  <div key={link.id} className="text-sm text-blue-950">
+                    <span className="font-medium">{formatSourceType(link.source_assessment_type)}</span>
+                    <span> — {link.source_assessment_label || "Assessment section"}</span>
+                    {link.module_instance?.module_key && (
+                      <span className="text-blue-700"> ({getModuleDisplayLabel(link.module_instance.module_key)})</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="border-t border-neutral-200 pt-4">
             <h3 className="text-sm font-medium text-neutral-700 mb-3">Navigation</h3>
@@ -562,7 +927,7 @@ export default function ActionDetailModal({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                Back to Actions Register
+                {returnToPath && returnToPath !== '/dashboard/actions' ? 'Back to originating module' : 'Back to Actions Register'}
               </button>
               <button
                 type="button"
@@ -602,7 +967,7 @@ export default function ActionDetailModal({
                 <div className="text-xs text-neutral-500 mt-1">
                   {action.document?.document_type}
                   {action.module_instance?.module_key &&
-                    ` • ${action.module_instance.module_key}`}
+                    ` • ${getModuleDisplayLabel(action.module_instance.module_key)}`}
                 </div>
               </div>
             )}
@@ -618,6 +983,7 @@ export default function ActionDetailModal({
                   ref={fileInputRef}
                   type="file"
                   multiple
+                  capture="environment"
                   accept="image/*,.pdf,.doc,.docx"
                   onChange={handleFileSelect}
                   className="hidden"
@@ -641,7 +1007,7 @@ export default function ActionDetailModal({
             ) : attachments.length === 0 ? (
               <div className="text-center py-8 bg-neutral-50 rounded-lg border border-neutral-200">
                 <Camera className="w-12 h-12 text-neutral-400 mx-auto mb-2" />
-                <p className="text-neutral-500 text-sm">No evidence attached yet</p>
+                <p className="text-neutral-500 text-sm">No evidence has been attached yet.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -681,18 +1047,18 @@ export default function ActionDetailModal({
                           type="button"
                           onClick={() => handlePreview(attachment)}
                           disabled={!isValidAttachment(attachment)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-700 bg-neutral-100 rounded hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-neutral-700 bg-neutral-100 rounded-md hover:bg-neutral-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Eye className="w-3 h-3" />
+                          <Eye className="w-4 h-4" />
                           Preview
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDownload(attachment)}
                           disabled={!isValidAttachment(attachment)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          <Download className="w-3 h-3" />
+                          <Download className="w-4 h-4" />
                           Download
                         </button>
                       </div>

@@ -1,18 +1,19 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
 import FloatingSaveBar from './FloatingSaveBar';
 import ReRatingPanel from '../../re/ReRatingPanel';
 import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
 import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHelpers';
-import { ensureAutoRecommendation } from '../../../lib/re/recommendations/autoRecommendations';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
 interface Document {
   id: string;
   title: string;
+  issue_status?: 'draft' | 'issued' | 'superseded';
 }
 
 interface ModuleInstance {
@@ -38,8 +39,10 @@ const CANONICAL_KEYS = [
 
 export default function RE10ProcessRiskForm({
   moduleInstance,
+  document,
   onSaved,
 }: RE10ProcessRiskFormProps) {
+  const isLocked = isReDocumentLocked(document.issue_status);
   const [isSaving, setIsSaving] = useState(false);
   const d = moduleInstance.data || {};
 
@@ -106,15 +109,6 @@ export default function RE10ProcessRiskForm({
       });
       setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
 
-      const updatedFormData = ensureAutoRecommendation(formData, canonicalKey, newRating, industryKey);
-      if (updatedFormData !== formData) {
-        setFormData(updatedFormData);
-        const sanitized = sanitizeModuleInstancePayload({ data: updatedFormData });
-        await supabase
-          .from('module_instances')
-          .update({ data: sanitized.data })
-          .eq('id', moduleInstance.id);
-      }
     } catch (err) {
       console.error('Error updating rating:', err);
       alert('Failed to update rating');
@@ -122,6 +116,7 @@ export default function RE10ProcessRiskForm({
   };
 
   const handleSave = async () => {
+    if (isLocked) return;
     setIsSaving(true);
     try {
       const completedAt = outcome ? new Date().toISOString() : null;

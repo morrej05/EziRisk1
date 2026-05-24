@@ -212,7 +212,7 @@ export function generateFiredSentences(input: GenerateKeyPointsInput): FiredSent
       }
     } catch (error) {
       // Silently skip rules that throw (defensive programming)
-      console.warn(`[Key Points] Rule ${rule.id} failed for section ${sectionId}:`, error);
+      if (import.meta.env.DEV) console.warn(`[Key Points] Rule ${rule.id} failed for section ${sectionId}:`, error);
     }
   }
 

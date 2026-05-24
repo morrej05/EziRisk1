@@ -5,14 +5,18 @@
 
 const SW_VERSION = '1.0.0';
 const CACHE_NAME = `ezirisk-cache-${SW_VERSION}`;
+const DEBUG_LOGS = false;
+const debugLog = (...args) => { if (DEBUG_LOGS) console.log(...args); };
+const debugWarn = (...args) => { if (DEBUG_LOGS) console.warn(...args); };
+const debugError = (...args) => { if (DEBUG_LOGS) console.error(...args); };
 
 self.addEventListener('install', (event) => {
-  console.log('[Service Worker] Installing version', SW_VERSION);
+  debugLog('[Service Worker] Installing version', SW_VERSION);
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('[Service Worker] Activating version', SW_VERSION);
+  debugLog('[Service Worker] Activating version', SW_VERSION);
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
@@ -58,7 +62,7 @@ async function refreshClients(targetUrl) {
             await client.navigate(relativePath);
           } catch (navError) {
             // If navigation fails, fall back to postMessage
-            console.warn('[Service Worker] Navigation failed, using postMessage fallback:', navError);
+            debugWarn('[Service Worker] Navigation failed, using postMessage fallback:', navError);
             client.postMessage({
               type: 'NAVIGATE',
               url: relativePath
@@ -73,12 +77,12 @@ async function refreshClients(targetUrl) {
         }
       } catch (clientError) {
         // Continue with other clients if one fails
-        console.warn('[Service Worker] Failed to refresh client:', clientError);
+        debugWarn('[Service Worker] Failed to refresh client:', clientError);
       }
     }
   } catch (error) {
     // Don't throw - just log the error
-    console.error('[Service Worker] Error in refreshClients:', error);
+    debugError('[Service Worker] Error in refreshClients:', error);
   }
 }
 
@@ -104,4 +108,4 @@ self.addEventListener('fetch', (event) => {
   return;
 });
 
-console.log('[Service Worker] Loaded version', SW_VERSION);
+debugLog('[Service Worker] Loaded version', SW_VERSION);

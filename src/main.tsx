@@ -3,8 +3,24 @@ import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import './index.css';
 
+
+if (!import.meta.env.DEV) {
+  console.log = () => undefined;
+  console.warn = () => undefined;
+  console.error = () => undefined;
+}
+
+const COOKIE_CONSENT_KEY = 'ezirisk_cookie_consent';
+
 const maybeInitMonitoring = () => {
-  const mf = (window as any).mf || (window as any).MF;
+  if (localStorage.getItem(COOKIE_CONSENT_KEY) !== 'accept') {
+    return;
+  }
+  const monitoringWindow = window as Window & {
+    mf?: { init: (params: string) => void };
+    MF?: { init: (params: string) => void };
+  };
+  const mf = monitoringWindow.mf || monitoringWindow.MF;
   const mfParams = import.meta.env.VITE_MF_PARAMS;
 
   if (!mf || typeof mf.init !== 'function' || !mfParams) {
@@ -14,11 +30,20 @@ const maybeInitMonitoring = () => {
   try {
     mf.init(mfParams);
   } catch (error) {
-    console.warn('[MF] Monitoring init skipped:', error);
+    if (import.meta.env.DEV) {
+      console.warn('[MF] Monitoring init skipped:', error);
+    }
   }
 };
 
 maybeInitMonitoring();
+
+window.addEventListener('ezirisk:cookie-consent', (event) => {
+  const customEvent = event as CustomEvent<{ choice?: string }>;
+  if (customEvent.detail?.choice === 'accept') {
+    maybeInitMonitoring();
+  }
+});
 
 // Register service worker for safe navigation handling
 if ('serviceWorker' in navigator) {
@@ -26,10 +51,14 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
-        console.log('[App] Service Worker registered:', registration.scope);
+        if (import.meta.env.DEV) {
+          console.log('[App] Service Worker registered:', registration.scope);
+        }
       })
       .catch((error) => {
-        console.warn('[App] Service Worker registration failed:', error);
+        if (import.meta.env.DEV) {
+          console.warn('[App] Service Worker registration failed:', error);
+        }
       });
   });
 

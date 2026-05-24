@@ -11,10 +11,10 @@ const REPORT_HEADING_STYLES = {
     spacingBelow: 16,
   },
   section: {
-    size: 20,
-    lineHeight: 24,
-    spacingAbove: 20,
-    spacingBelow: 20,
+    size: 16,
+    lineHeight: 20,
+    spacingAbove: 18,
+    spacingBelow: 24,
     color: PDF_THEME.colours.charcoal,
   },
   module: {
@@ -215,9 +215,9 @@ export function drawRiskSignificanceBlock(args: {
 function normalizeOutcome(outcome: string) {
   const o = (outcome || '').toLowerCase();
   if (o.includes('compliant') || o === 'ok' || o === 'pass') return { label: 'Compliant', key: 'compliant' as const };
-  if (o.includes('minor')) return { label: 'Minor action', key: 'minor' as const };
-  if (o.includes('material') || o.includes('major')) return { label: 'Material', key: 'material' as const };
-  if (o.includes('info') || o.includes('gap') || o.includes('incomplete')) return { label: 'Info gap', key: 'info' as const };
+  if (o.includes('minor')) return { label: 'Minor Deficiency', key: 'minor' as const };
+  if (o.includes('material') || o.includes('major') || o.includes('significant')) return { label: 'Significant Deficiency', key: 'material' as const };
+  if (o.includes('info') || o.includes('gap') || o.includes('incomplete')) return { label: 'Information Gap', key: 'info' as const };
   return { label: outcome || 'Unknown', key: 'info' as const };
 }
 
@@ -718,8 +718,8 @@ export function drawContentsRow(
 }
 
 // Action Register Intro Box Constants (private to this module)
-const ACTION_REGISTER_INTRO_TITLE = "Action Register";
-const ACTION_REGISTER_INTRO_BODY = "The following actions arise from the findings of this Fire Risk Assessment. Each action has been prioritised based on potential life safety impact and overall risk. Recommended timescales should be considered alongside operational constraints and statutory obligations.";
+const ACTION_REGISTER_INTRO_TITLE = "Recommendations Register";
+const ACTION_REGISTER_INTRO_BODY = "The following recommendations arise from the findings of this Fire Risk Assessment. Each recommendation has been prioritised based on potential life safety impact and overall risk. Recommended timescales should be considered alongside operational constraints and statutory obligations.";
 const AR_INTRO_PADDING = 12;
 const AR_INTRO_TITLE_GAP = 6;
 const AR_INTRO_TITLE_SIZE = 12;

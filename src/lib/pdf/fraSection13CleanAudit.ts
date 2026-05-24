@@ -6,7 +6,7 @@
  */
 
 import { PDFDocument, PDFPage, rgb } from 'pdf-lib';
-import type { Action, ModuleInstance } from '../supabase/attachments';
+import type { Action, ModuleInstance } from './fra/fraTypes';
 import {
   sanitizePdfText,
   wrapText,
@@ -19,7 +19,6 @@ import {
 } from './pdfUtils';
 import {
   deriveExecutiveOutcome,
-  checkMaterialDeficiency,
   type FraContext,
   type FraExecutiveOutcome,
 } from '../modules/fra/severityEngine';
@@ -29,6 +28,7 @@ import {
   type FraBuildingComplexityInput,
 } from '../modules/fra/complexityEngine';
 import type { ScoringResult } from '../fra/scoring/scoringEngine';
+import { normalizeFraPriority } from '../modules/fra/significantFindingsEngine';
 
 interface CleanAuditOptions {
   page: PDFPage;
@@ -57,6 +57,23 @@ function getPriorityColor(priority: string): ReturnType<typeof rgb> {
   }
 }
 
+function getFraExecutiveReportLabel(
+  outcome: FraExecutiveOutcome,
+  actionCount: number,
+): string {
+  switch (outcome) {
+    case 'MaterialLifeSafetyRiskPresent':
+      return 'MATERIAL LIFE SAFETY RISK PRESENT';
+    case 'SignificantDeficiencies':
+      return 'SIGNIFICANT DEFICIENCY';
+    case 'ImprovementsRequired':
+      return 'MODERATE DEFICIENCY';
+    case 'SatisfactoryWithImprovements':
+    default:
+      return actionCount === 0 ? 'COMPLIANT' : 'MINOR DEFICIENCY';
+  }
+}
+
 export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDFPage; yPosition: number } {
   let { page, fra4Module, actions, moduleInstances, font, fontBold, yPosition, pdfDoc, isDraft, totalPages, scoringResult } = options;
 
@@ -72,11 +89,17 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     storeys: derivedStoreys,
   };
 
-  // Derive executive outcome
-  const openActions = actions.filter((a) => a.status === 'open' || a.status === 'in_progress');
-  const computedOutcome: FraExecutiveOutcome = deriveExecutiveOutcome(openActions);
-  const { isMaterialDeficiency } = checkMaterialDeficiency(openActions, fraContext);
-
+  // Derive executive outcome from the current document action register, matching All actions.
+  const currentActions = actions.map((action) => ({
+    ...action,
+    priority_band: normalizeFraPriority({
+      priority_band: action.priority_band,
+      severity_tier: action.severity_tier,
+    }),
+  }));
+  const computedOutcome: FraExecutiveOutcome = deriveExecutiveOutcome(
+    currentActions.map((action) => ({ priority: action.priority_band }))
+  );
   // Check for override
   const hasOverride = fra4Module.data.override?.enabled === true;
   const overrideOutcome = fra4Module.data.override?.outcome;
@@ -93,7 +116,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     floorAreaM2Exact: buildingProfile?.data.floor_area_m2 || null,
     sleepingRisk: buildingProfile?.data.sleeping_risk || 'None',
     layoutComplexity: buildingProfile?.data.layout_complexity || 'Simple',
-    fireProtectionReliance: 'Moderate', // Simplified for now
+    fireProtectionReliance: 'DetectionAndEmergencyLighting', // Simplified for now
   };
   const scs = calculateSCS(scsInput);
 
@@ -104,7 +127,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   // 1. OVERALL RISK TO LIFE (Large, Prominent)
   // ========================================================
   yPosition -= 20;
-  page.drawText('OVERALL RISK TO LIFE ASSESSMENT', {
+  page.drawText('Overall Risk to Life Assessment', {
     x: MARGIN,
     y: yPosition,
     size: 18,
@@ -114,13 +137,6 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
 
   yPosition -= 40;
 
-  const outcomeLabels: Record<FraExecutiveOutcome, string> = {
-    MaterialLifeSafetyRiskPresent: 'MATERIAL LIFE SAFETY RISK PRESENT',
-    SignificantDeficiencies: 'SIGNIFICANT DEFICIENCIES IDENTIFIED',
-    ImprovementsRequired: 'IMPROVEMENTS REQUIRED',
-    SatisfactoryWithImprovements: 'SATISFACTORY WITH IMPROVEMENTS',
-  };
-
   const outcomeColors: Record<FraExecutiveOutcome, ReturnType<typeof rgb>> = {
     MaterialLifeSafetyRiskPresent: rgb(0.7, 0, 0),
     SignificantDeficiencies: rgb(0.8, 0.3, 0),
@@ -128,7 +144,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     SatisfactoryWithImprovements: rgb(0.2, 0.6, 0.2),
   };
 
-  const outcomeLabel = outcomeLabels[outcome];
+  const outcomeLabel = getFraExecutiveReportLabel(outcome, currentActions.length);
   const outcomeColor = outcomeColors[outcome];
 
   // Large outcome box
@@ -268,11 +284,68 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   yPosition -= 30;
 
   // ========================================================
-  // 3. BASIS OF ASSESSMENT (3-5 Line Narrative)
+  // 3. ACTION PRIORITY SUMMARY
+  // ========================================================
+  const priorityCounts = {
+    P1: currentActions.filter((a) => a.priority_band === 'P1').length,
+    P2: currentActions.filter((a) => a.priority_band === 'P2').length,
+    P3: currentActions.filter((a) => a.priority_band === 'P3').length,
+    P4: currentActions.filter((a) => a.priority_band === 'P4').length,
+  };
+
+  ({ page, yPosition } = ensurePageSpace(
+    76,
+    page,
+    yPosition,
+    pdfDoc,
+    isDraft,
+    totalPages
+  ));
+
+  page.drawText('Action Priority Summary', {
+    x: MARGIN,
+    y: yPosition,
+    size: 12,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
+  });
+
+  yPosition -= 24;
+
+  const countColumns: Array<{ priority: 'P1' | 'P2' | 'P3' | 'P4'; label: string }> = [
+    { priority: 'P1', label: 'Immediate' },
+    { priority: 'P2', label: 'Urgent' },
+    { priority: 'P3', label: 'Planned' },
+    { priority: 'P4', label: 'Good practice' },
+  ];
+  const columnWidth = CONTENT_WIDTH / countColumns.length;
+
+  countColumns.forEach((column, index) => {
+    const x = MARGIN + (index * columnWidth);
+    page.drawText(`${column.priority}: ${priorityCounts[column.priority]}`, {
+      x,
+      y: yPosition,
+      size: 11,
+      font: fontBold,
+      color: getPriorityColor(column.priority),
+    });
+    page.drawText(column.label, {
+      x,
+      y: yPosition - 14,
+      size: 8,
+      font,
+      color: rgb(0.35, 0.35, 0.35),
+    });
+  });
+
+  yPosition -= 48;
+
+  // ========================================================
+  // 4. BASIS OF ASSESSMENT (3-5 Line Narrative)
   // ========================================================
   // Generate professional narrative based on context
-  const p1Count = openActions.filter((a) => a.priority_band === 'P1').length;
-  const p2Count = openActions.filter((a) => a.priority_band === 'P2').length;
+  const p1Count = priorityCounts.P1;
+  const p2Count = priorityCounts.P2;
   const materialDefCount = moduleInstances.filter((m) => m.outcome === 'material_def').length;
 
   let narrativeParts: string[] = [];
@@ -297,8 +370,8 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
     narrativeParts.push(`${p1Count} immediate priority issue${p1Count > 1 ? 's' : ''} ${p1Count > 1 ? 'have' : 'has'} been identified and require${p1Count > 1 ? '' : 's'} urgent attention.`);
   } else if (p2Count > 0) {
     narrativeParts.push(`${p2Count} urgent priority issue${p2Count > 1 ? 's' : ''} ${p2Count > 1 ? 'have' : 'has'} been identified and require${p2Count > 1 ? '' : 's'} prompt attention.`);
-  } else if (openActions.length > 0) {
-    narrativeParts.push(`${openActions.length} improvement action${openActions.length > 1 ? 's' : ''} ${openActions.length > 1 ? 'have' : 'has'} been identified to enhance overall fire safety provisions.`);
+  } else if (currentActions.length > 0) {
+    narrativeParts.push(`${currentActions.length} improvement action${currentActions.length > 1 ? 's' : ''} ${currentActions.length > 1 ? 'have' : 'has'} been identified to enhance overall fire safety provisions.`);
   } else {
     narrativeParts.push('No significant deficiencies were identified at the time of assessment.');
   }
@@ -344,7 +417,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   yPosition -= 15;
 
   // ========================================================
-  // 4. PROVISIONAL STATEMENT (If Info Gaps Present)
+  // 5. PROVISIONAL STATEMENT (If Info Gaps Present)
   // ========================================================
   const isProvisional = scoringResult?.provisional || infoGapCount > 0;
   if (isProvisional) {
@@ -392,11 +465,11 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   }
 
   // ========================================================
-  // 5. TOP 3 PRIORITY ISSUES
+  // 6. TOP 3 PRIORITY ISSUES
   // ========================================================
-  if (openActions.length > 0) {
+  if (currentActions.length > 0) {
     // Sort and get top 3
-    const sortedActions = [...openActions].sort((a, b) => {
+    const sortedActions = [...currentActions].sort((a, b) => {
       const priorityOrder = { P1: 1, P2: 2, P3: 3, P4: 4 };
       const aPriority = priorityOrder[a.priority_band as keyof typeof priorityOrder] || 5;
       const bPriority = priorityOrder[b.priority_band as keyof typeof priorityOrder] || 5;
@@ -525,7 +598,7 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
   }
 
   // ========================================================
-  // 6. ASSESSOR COMMENTARY (If Provided)
+  // 7. ASSESSOR COMMENTARY (If Provided)
   // ========================================================
   if (fra4Module.data.commentary?.executiveCommentary) {
     const commentaryLines = wrapText(fra4Module.data.commentary.executiveCommentary, CONTENT_WIDTH, 11, font);
@@ -549,6 +622,44 @@ export function drawCleanAuditSection13(options: CleanAuditOptions): { page: PDF
 
     yPosition -= 20;
     for (const line of commentaryLines) {
+      page.drawText(line, {
+        x: MARGIN,
+        y: yPosition,
+        size: 11,
+        font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+      yPosition -= 16;
+    }
+
+    yPosition -= 15;
+  }
+
+  // ========================================================
+  // 8. LIMITATIONS AND ASSUMPTIONS (If Provided)
+  // ========================================================
+  if (fra4Module.data.commentary?.limitationsAssumptions) {
+    const limitationsLines = wrapText(fra4Module.data.commentary.limitationsAssumptions, CONTENT_WIDTH, 11, font);
+    const requiredHeight = 20 + 20 + (limitationsLines.length * 16) + 15;
+    ({ page, yPosition } = ensurePageSpace(
+      requiredHeight,
+      page,
+      yPosition,
+      pdfDoc,
+      isDraft,
+      totalPages
+    ));
+
+    page.drawText('Limitations and Assumptions', {
+      x: MARGIN,
+      y: yPosition,
+      size: 12,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+
+    yPosition -= 20;
+    for (const line of limitationsLines) {
       page.drawText(line, {
         x: MARGIN,
         y: yPosition,

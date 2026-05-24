@@ -9,7 +9,7 @@ const features = [
   {
     icon: Sparkles,
     title: 'Smart Recommendations',
-    description: 'AI-powered suggestions automatically triggered based on survey responses and risk factors.',
+    description: 'Rule-based suggestions triggered by survey responses and risk factors.',
   },
   {
     icon: Scale,

@@ -17,12 +17,14 @@ import {
 } from '../pdfUtils';
 import { ensureSpace, ensureCursor } from './fraUtils';
 import {
+  drawFraOutcomeTag,
   drawModuleContent,
   renderFilteredModuleData,
 } from './fraCoreDraw';
 import type { Cursor, Document, ModuleInstance, Action } from './fraTypes';
 import type { Attachment } from '../../supabase/attachments';
 import { FRA_REPORT_STRUCTURE } from '../fraReportStructure';
+import { getFraReportOutcomeLabel, resolveFraOutcomeValue } from './fraOutcome';
 
 /**
  * Get display section number (uses displayNumber if available, otherwise falls back to id)
@@ -626,6 +628,28 @@ export function renderSection5FireHazards(
   const norm = (v: any) => sanitizePdfText(String(v ?? '')).replace(/_/g, ' ').trim();
   const titleCase = (s: string) =>
     s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+  const getLinkedActionText = (sourceAssessmentKey: string): string | null => {
+    const links = Array.isArray(d.__action_source_links) ? d.__action_source_links as Array<Record<string, unknown>> : [];
+    const matchingLinks = links.filter((item) =>
+      item.source_assessment_type === 'ignition_source_assessments' &&
+      item.source_assessment_key === sourceAssessmentKey &&
+      !item.deleted_at
+    );
+    if (matchingLinks.length === 0) return null;
+
+    const references = matchingLinks
+      .map((link) => {
+        const actionRecord = (link.action || link.actions || {}) as Record<string, unknown>;
+        return norm(actionRecord.reference_number);
+      })
+      .filter(Boolean);
+
+    if (references.length > 0) {
+      return `Linked recommendation${references.length > 1 ? 's' : ''}: ${references.join(', ')}`;
+    }
+
+    return matchingLinks.length > 1 ? 'Linked recommendations recorded' : 'Linked recommendation recorded';
+  };
 
   const list = (arr: any, other?: any) => {
     const a = Array.isArray(arr) ? arr.map(norm).filter(Boolean) : [];
@@ -633,6 +657,40 @@ export function renderSection5FireHazards(
     if (o) a.push(o);
     return a;
   };
+
+  const sourceLabels: Record<string, string> = {
+    electrical: 'Electrical ignition sources',
+    portable_heaters: 'Portable heaters / temporary heating',
+    smoking: 'Smoking and smoking controls',
+    cooking: 'Cooking / Kitchen Processes',
+    hot_works: 'Hot works',
+    plant_machinery: 'Plant, machinery and mechanical heat sources',
+    lighting_high_temp: 'Lighting and high-temperature equipment',
+    arson: 'Arson / deliberate ignition',
+    lightning: 'Lightning exposure / protection',
+    hazardous_substances_dsear: 'Hazardous substances / DSEAR relevance',
+    other: 'Other ignition sources',
+  };
+
+  const assessmentHasDetail = (assessment: unknown) => {
+    if (!assessment || typeof assessment !== 'object') return false;
+    const detail = assessment as Record<string, unknown>;
+    return [
+      'presence',
+      'condition_adequacy',
+      'existing_controls',
+      'deficiencies',
+      'evidence_references',
+      'assessor_commentary',
+      'risk_significance',
+      'recommended_action_trigger',
+      'linked_action_reference',
+    ].some((key) => norm(detail[key]));
+  };
+
+  const detailedAssessments = Object.entries(
+    d.ignition_source_assessments || d.ignitionSourceAssessments || {}
+  ).filter(([, assessment]) => assessmentHasDetail(assessment));
 
   const drawSubhead = (text: string) => {
     ({ page, yPosition } = ensureSpace(18, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -687,13 +745,66 @@ export function renderSection5FireHazards(
     yPosition -= 6;
   };
 
+  const drawOutcome = () => {
+    const outcomeLabel = getFraReportOutcomeLabel(resolveFraOutcomeValue(mod));
+    if (!outcomeLabel) return;
+
+    ({ page, yPosition } = ensureSpace(28, page, yPosition, pdfDoc, isDraft, totalPages));
+
+    drawFraOutcomeTag({ page, yPosition, outcomeLabel, fontBold });
+
+    yPosition -= 24;
+  };
+
   // --- Clean grouped output ---
+  // Outcome is rendered before Key Details to match the standard FRA section order.
+  drawOutcome();
+
   // Small divider after outcome/key points area
   drawLine();
 
-  const ignition = list(d.ignition_sources, d.ignition_other).filter((x: string) => x !== 'hot_work');
+  if (detailedAssessments.length) {
+    drawSubhead('Source-specific ignition findings');
+
+    detailedAssessments.forEach(([sourceKey, rawAssessment]) => {
+      const assessment = (rawAssessment || {}) as Record<string, unknown>;
+      const sourceName = sourceLabels[sourceKey] || titleCase(norm(sourceKey));
+      const parts: string[] = [];
+      const presence = norm(assessment.presence);
+      const condition = norm(assessment.condition_adequacy);
+      const controls = norm(assessment.existing_controls);
+      const deficiencies = norm(assessment.deficiencies);
+      const commentary = norm(assessment.assessor_commentary);
+      const risk = norm(assessment.risk_significance);
+      const action = norm(assessment.recommended_action_trigger);
+      const evidence = norm(assessment.evidence_references);
+      const linkedAction = getLinkedActionText(sourceKey);
+      const legacyLinkedAction = norm(assessment.linked_action_reference);
+
+      if (presence) parts.push(`Presence: ${titleCase(presence)}`);
+      if (condition) parts.push(`Adequacy/condition: ${condition}`);
+      if (controls) parts.push(`Key controls: ${controls}`);
+      if (deficiencies) parts.push(`Deficiencies: ${deficiencies}`);
+      if (commentary) parts.push(`Assessor commentary: ${commentary}`);
+      if (risk || action || linkedAction) {
+        const actionBits = [
+          risk ? `risk significance ${titleCase(risk)}` : '',
+          action ? `recommendation status ${titleCase(action)}` : '',
+          linkedAction || (legacyLinkedAction ? `previous linked recommendation ${legacyLinkedAction}` : ''),
+        ].filter(Boolean).join('; ');
+        parts.push(`Risk/action: ${actionBits}`);
+      }
+      if (evidence) parts.push(`Evidence/photo refs: ${evidence}`);
+
+      drawFact(sourceName, parts.join(' | '));
+    });
+
+    endGroup();
+  }
+
+  const ignition = list(d.ignition_sources, d.ignition_other);
   const fuels = list(d.fuel_sources, d.fuel_other);
-  const highRisk = list(d.high_risk_activities, d.high_risk_other).filter((x: string) => x !== 'hot_work');
+  const highRisk = list(d.high_risk_activities, d.high_risk_other);
 
   // Group 1: Sources
   if (ignition.length || fuels.length) {
@@ -829,7 +940,7 @@ if (d.electrical_safety && typeof d.electrical_safety === 'object') {
     }
 
     if (hasDsearData) {
-      if (dsFlam) drawFact('Flammable substances present', titleCase(dsFlam));
+      if (dsFlam) drawFact('Flammable substances or combustible dusts present', titleCase(dsFlam));
       if (dsAtmos) drawFact('Explosive atmospheres possible', titleCase(dsAtmos));
       if (dsStatus) drawFact('DSEAR assessment status', titleCase(dsStatus));
       if (dsAssessor) drawFact('DSEAR assessor', dsAssessor);
@@ -931,7 +1042,7 @@ export function renderSection8EmergencyLighting(
 ): Cursor {
   // DEPRECATED: Section 8 removed, emergency lighting now in Section 7
   // Return cursor unchanged to avoid breaking existing code
-  console.warn('[PDF] renderSection8EmergencyLighting is deprecated - Section 8 removed');
+  if (import.meta.env.DEV) console.warn('[PDF] renderSection8EmergencyLighting is deprecated - Section 8 removed');
   return cursor;
 }
 
@@ -1074,19 +1185,33 @@ export async function renderSection11Management(
       actionIdToSectionId // Pass action->section map for null module_instance_id fallback
     ));
 
-    // Hot work permit controls (detail) - if available
+    // Hot work permit/control detail is secondary to the Hazards & Ignition Sources
+    // hot work card. Render it only where hot work is present/relevant to avoid
+    // repeating generic hot work wording in both sections.
     const mgmtData: any = managementSystemsModule.data || {};
+    const hazardsModule = (moduleInstances || []).find((m: any) => m.module_key === 'FRA_1_HAZARDS');
+    const hazardsData: any = hazardsModule?.data || {};
+    const hotWorkAssessment = hazardsData.ignition_source_assessments?.hot_works || {};
+    const hotWorkPresent =
+      (Array.isArray(hazardsData.high_risk_activities) && hazardsData.high_risk_activities.includes('hot_work')) ||
+      hotWorkAssessment.presence === 'present' ||
+      Boolean(
+        String(hotWorkAssessment.condition_adequacy || '').trim() ||
+        String(hotWorkAssessment.existing_controls || '').trim() ||
+        String(hotWorkAssessment.deficiencies || '').trim() ||
+        String(hotWorkAssessment.assessor_commentary || '').trim()
+      );
     const hwFireWatchReq = mgmtData.ptw_hot_work_fire_watch_required;
     const hwPostMins = mgmtData.ptw_hot_work_post_watch_mins;
     const hwComments = sanitizePdfText(String(mgmtData.ptw_hot_work_comments ?? '')).trim();
 
-    const hasHotWorkDetail = hwFireWatchReq !== null || hwPostMins || hwComments;
+    const hasHotWorkDetail = hotWorkPresent && (hwFireWatchReq !== null || hwPostMins || hwComments);
 
     if (hasHotWorkDetail) {
       ({ page, yPosition } = ensureSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition -= 8;
 
-      page.drawText('Hot work permit controls (detail)', {
+      page.drawText('Hot work permit/control procedure (see Hazards & Ignition Sources for exposure)', {
         x: MARGIN,
         y: yPosition,
         size: 9,
@@ -1315,17 +1440,66 @@ export function renderSection14Review(
 
   yPosition -= 20;
 
-  const reviewText = `This fire risk assessment should be reviewed and, where necessary, updated:
+  const introLines = wrapText('This fire risk assessment should be reviewed and, where necessary, updated:', CONTENT_WIDTH, 11, font);
+  for (const line of introLines) {
+    if (yPosition < MARGIN + 50) {
+      const result = addNewPage(pdfDoc, isDraft, totalPages);
+      page = result.page;
+      yPosition = PAGE_TOP_Y;
+    }
+    page.drawText(line, {
+      x: MARGIN,
+      y: yPosition,
+      size: 11,
+      font,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    yPosition -= 16;
+  }
+  yPosition -= 2;
 
-• following any significant change to the building, occupancy, or use
-• following a fire, alarm activation, or near-miss incident
-• following enforcement action or formal notification by the fire authority
-• as part of the ongoing fire safety management programme
+  const bullets = [
+    'following any significant change to the building, occupancy, or use',
+    'following a fire, alarm activation, or near-miss incident',
+    'following enforcement action or formal notification by the fire authority',
+    'as part of the ongoing fire safety management programme',
+  ];
 
-Next formal reassessment recommended: ${document.review_date ? formatDate(document.review_date) : 'To be determined by the duty holder based on risk profile and material change'}`;
+  for (const bullet of bullets) {
+    const bulletLines = wrapText(bullet, CONTENT_WIDTH - 14, 11, font);
+    for (let i = 0; i < bulletLines.length; i++) {
+      if (yPosition < MARGIN + 50) {
+        const result = addNewPage(pdfDoc, isDraft, totalPages);
+        page = result.page;
+        yPosition = PAGE_TOP_Y;
+      }
+      page.drawText(i === 0 ? '•' : '', {
+        x: MARGIN,
+        y: yPosition,
+        size: 11,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      page.drawText(bulletLines[i], {
+        x: MARGIN + 12,
+        y: yPosition,
+        size: 11,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      yPosition -= 15;
+    }
+    yPosition -= 2;
+  }
 
-  const reviewLines = wrapText(reviewText, CONTENT_WIDTH, 11, font);
-  for (const line of reviewLines) {
+  yPosition -= 4;
+  const nextReviewLines = wrapText(
+    `Next formal reassessment recommended: ${document.review_date ? formatDate(document.review_date) : 'To be determined by the duty holder based on risk profile and material change'}`,
+    CONTENT_WIDTH,
+    11,
+    font
+  );
+  for (const line of nextReviewLines) {
     if (yPosition < MARGIN + 50) {
       const result = addNewPage(pdfDoc, isDraft, totalPages);
       page = result.page;
