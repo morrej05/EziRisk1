@@ -83,22 +83,22 @@ export default function AdminPage() {
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-6 min-w-0">
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors"
+            className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors shrink-0"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Dashboard
           </button>
-          <div className="h-6 w-px bg-slate-300" />
+          <div className="hidden sm:block h-6 w-px bg-slate-300" />
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Admin</h1>
-            <p className="text-sm text-slate-600">Organisation-level administration for users, billing, and branding.</p>
+            <h1 className="text-xl sm:text-3xl font-bold text-slate-900">Admin</h1>
+            <p className="hidden sm:block text-sm text-slate-600">Organisation-level administration for users, billing, and branding.</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="hidden sm:flex items-center gap-4">
           <a href={getSupportMailto()} className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
             {SUPPORT_CONFIG.linkLabel}
           </a>
@@ -130,14 +130,14 @@ export default function AdminPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 min-w-0">
-        <div className="px-8 py-4 border-b border-slate-200 bg-slate-50">
+        <div className="px-4 sm:px-8 py-3 sm:py-4 border-b border-slate-200 bg-slate-50">
           <p className="text-sm text-slate-600">
             Admin is limited to organisation-level controls. Platform-level controls are managed in Platform Admin.
           </p>
         </div>
 
         {upgradeSuccess && (
-          <div className="mx-8 mt-6 rounded-lg border border-green-200 bg-green-50 p-4">
+          <div className="mx-4 sm:mx-8 mt-4 sm:mt-6 rounded-lg border border-green-200 bg-green-50 p-4">
             <p className="text-sm font-medium text-green-800">
               {upgradeStatus === 'confirmed' && 'Subscription upgraded successfully! Your new plan features are now available.'}
               {upgradeStatus === 'checking' && 'We are finalising your upgrade. Your plan features will unlock automatically in a few seconds.'}
@@ -149,7 +149,7 @@ export default function AdminPage() {
         {activeTab === 'users' && <UserManagement />}
 
         {activeTab === 'organisation' && (
-          <div className="p-8 space-y-6">
+          <div className="p-4 sm:p-8 space-y-6">
             <div>
               <h2 className="text-xl font-semibold text-slate-900 mb-2">Organisation</h2>
               <p className="text-sm text-slate-600">Your organisation profile and tenancy details.</p>
@@ -177,7 +177,7 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'usage-limits' && (
-          <div className="p-8">
+          <div className="p-4 sm:p-8">
             <p className="text-sm text-slate-600 mb-4">
               Usage & Limits is your operational view for monthly report credits and seat consumption.
             </p>

@@ -7,6 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 interface InvitePayload {
   organisation_id: string;
   email: string;
@@ -20,16 +27,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return json({ error: 'Server configuration error: missing Supabase URL or anon key' }, 500);
+    }
+    if (!serviceRoleKey) {
+      return json({ error: 'Server configuration error: service role key is not available' }, 500);
+    }
 
     const bearerToken = getBearerToken(req);
     if (!bearerToken) {
-      return new Response(JSON.stringify({ error: 'Missing authorization token' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Missing or invalid authorization token' }, 401);
     }
 
     const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -38,29 +49,31 @@ Deno.serve(async (req: Request) => {
 
     const { user, error: authError } = await requireAuthenticatedUser(userSupabase, req);
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'Unauthorized' }, 401);
     }
 
-    const payload = (await req.json()) as InvitePayload;
+    let payload: InvitePayload;
+    try {
+      payload = (await req.json()) as InvitePayload;
+    } catch {
+      return json({ error: 'Invalid JSON in request body' }, 400);
+    }
+
     if (!payload.organisation_id || !payload.email || !payload.role) {
-      return new Response(JSON.stringify({ error: 'organisation_id, email, and role are required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: 'organisation_id, email, and role are required' }, 400);
+    }
+
+    const emailNormalised = payload.email.toLowerCase().trim();
+    if (!emailNormalised.includes('@')) {
+      return json({ error: 'Invalid email address' }, 400);
     }
 
     const validRoles = ['owner', 'admin', 'consultant', 'viewer'];
     if (!validRoles.includes(payload.role)) {
-      return new Response(JSON.stringify({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` }, 400);
     }
 
-    // Verify caller is an active admin of the target organisation.
+    // Verify caller is an active admin/owner of the target organisation.
     const { data: callerMember, error: memberError } = await userSupabase
       .from('organisation_members')
       .select('role')
@@ -69,39 +82,51 @@ Deno.serve(async (req: Request) => {
       .eq('status', 'active')
       .maybeSingle();
 
-    if (memberError || !callerMember || !['owner', 'admin'].includes(callerMember.role)) {
-      return new Response(JSON.stringify({ error: 'Forbidden: must be an admin of this organisation' }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (memberError) {
+      console.error('[invite-org-member] Admin check failed:', memberError.message);
+      return json({ error: 'Failed to verify admin permissions' }, 500);
+    }
+    if (!callerMember || !['owner', 'admin'].includes(callerMember.role)) {
+      return json({ error: 'You must be an admin of this organisation to invite users' }, 403);
     }
 
-    // Check seat limits before sending the invite.
+    // Check seat limits.
     const { data: seatRows, error: seatError } = await userSupabase
       .rpc('get_user_seat_entitlement', { p_org_id: payload.organisation_id });
 
     if (seatError) {
-      return new Response(JSON.stringify({ error: 'Failed to check seat entitlement' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error('[invite-org-member] Seat check failed:', seatError.message);
+      return json({ error: 'Failed to check seat entitlement. Please try again.' }, 500);
     }
 
     const seat = (seatRows as Array<{ allowed: boolean; reason: string | null }>)?.[0];
     if (seat && !seat.allowed) {
-      return new Response(JSON.stringify({ error: seat.reason ?? 'User seat limit reached' }), {
-        status: 422,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return json({ error: seat.reason ?? 'User seat limit reached. Upgrade your plan to invite more users.' }, 422);
     }
 
     const adminSupabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Send invite via Supabase admin. Passes org + role in metadata for handle_new_user() trigger.
+    // Pre-check: catch duplicate pending invites (by email) for this org before sending email.
+    const { data: pendingByEmail } = await adminSupabase
+      .from('organisation_members')
+      .select('status')
+      .eq('organisation_id', payload.organisation_id)
+      .eq('invited_email', emailNormalised)
+      .eq('status', 'invited')
+      .maybeSingle();
+
+    if (pendingByEmail) {
+      return json({
+        error: `An invitation has already been sent to ${emailNormalised}. Use "Resend" to send a new invite link.`,
+      }, 409);
+    }
+
+    // Send invite via Supabase admin.
+    // Metadata is read by the handle_new_user() trigger to set up user_profiles.
     const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
-      payload.email.toLowerCase().trim(),
+      emailNormalised,
       {
         data: {
           organisation_id: payload.organisation_id,
@@ -114,15 +139,14 @@ Deno.serve(async (req: Request) => {
     );
 
     if (inviteError) {
-      return new Response(JSON.stringify({ error: inviteError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error('[invite-org-member] inviteUserByEmail failed:', inviteError.message);
+      // Surface auth-layer errors clearly (rate limits, invalid email, etc.)
+      return json({ error: `Failed to send invite: ${inviteError.message}` }, 400);
     }
 
     const invitedUserId = inviteData.user.id;
 
-    // Check whether this user is already an active member of this org.
+    // Check whether this user is already an active member (after resolving user_id).
     const { data: existingMember } = await adminSupabase
       .from('organisation_members')
       .select('status')
@@ -131,13 +155,13 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (existingMember?.status === 'active') {
-      return new Response(
-        JSON.stringify({ error: 'This user is already an active member of this organisation' }),
-        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      return json({
+        error: `${emailNormalised} is already an active member of this organisation.`,
+      }, 409);
     }
 
-    // Create (or refresh) the invited membership row.
+    // Upsert invited membership row.
+    // created_at is intentionally omitted so the DB keeps the original value on update.
     const now = new Date().toISOString();
     const { error: memberInsertError } = await adminSupabase
       .from('organisation_members')
@@ -147,30 +171,23 @@ Deno.serve(async (req: Request) => {
           user_id: invitedUserId,
           role: payload.role,
           status: 'invited',
-          invited_email: payload.email.toLowerCase().trim(),
+          invited_email: emailNormalised,
           invited_by_user_id: user.id,
           invited_at: now,
-          created_at: now,
           updated_at: now,
         },
         { onConflict: 'organisation_id,user_id' },
       );
 
     if (memberInsertError) {
-      return new Response(JSON.stringify({ error: memberInsertError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error('[invite-org-member] Membership upsert failed:', memberInsertError.message);
+      return json({ error: `Failed to record invitation: ${memberInsertError.message}` }, 400);
     }
 
-    return new Response(JSON.stringify({ success: true, user_id: invitedUserId }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return json({ success: true, user_id: invitedUserId });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    );
+    const message = error instanceof Error ? error.message : 'Unknown server error';
+    console.error('[invite-org-member] Unhandled exception:', message);
+    return json({ error: `Server error: ${message}` }, 500);
   }
 });

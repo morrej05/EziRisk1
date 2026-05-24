@@ -25,7 +25,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-6 grid grid-cols-12 gap-6">
-        <aside className="col-span-12 md:col-span-3">
+        <aside className="hidden md:block md:col-span-3">
           <div className="bg-white border rounded-xl p-2">
             {nav.map((n) => {
               const active = loc.pathname === n.to;
