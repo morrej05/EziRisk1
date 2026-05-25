@@ -1,10 +1,20 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function AcceptInvitePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Set by AuthCallbackPage when the user arrived via a magic link (confirmed
+  // account being added to a new organisation).  In this path we skip the
+  // password form entirely: the user already has a password, and we just need
+  // to activate their pending membership via ensure_org_for_user().
+  const isExistingUser = Boolean(
+    (location.state as { isExistingUser?: boolean } | null)?.isExistingUser,
+  );
+
   const [email, setEmail] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -28,12 +38,32 @@ export default function AcceptInvitePage() {
       }
 
       setEmail(session.user.email ?? null);
+
+      if (isExistingUser) {
+        // Confirmed user joining a new organisation.
+        // Activate the pending membership directly — AuthContext won't do this
+        // automatically because it only calls ensure_org_for_user() when
+        // profileMembership is null, and existing users always have one.
+        try {
+          await supabase.rpc('ensure_org_for_user', { user_id: session.user.id });
+        } catch {
+          // Non-fatal: if RPC fails the user can still reach the dashboard;
+          // membership may activate on their next sign-in.
+          console.warn('[AcceptInvitePage] ensure_org_for_user RPC failed');
+        }
+
+        // Hard reload so AuthContext re-initialises fresh and picks up the
+        // newly activated membership and updated user_profiles.organisation_id.
+        window.location.replace('/dashboard');
+        return;
+      }
+
       setReady(true);
     };
 
     void init();
     return () => { isMounted = false; };
-  }, [navigate]);
+  }, [navigate, isExistingUser]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -52,6 +82,8 @@ export default function AcceptInvitePage() {
 
     // Set the password and clear the invite_flow flag from metadata so that
     // future sign-ins (magic link, social) don't re-enter this flow.
+    // The USER_UPDATED event triggers AuthContext.fetchUserRole() which calls
+    // ensure_org_for_user() and activates the invited membership.
     const { error: updateError } = await supabase.auth.updateUser({
       password,
       data: { invite_flow: null },
@@ -65,8 +97,6 @@ export default function AcceptInvitePage() {
 
     setDone(true);
     // Brief pause so the success state is visible, then land on dashboard.
-    // AuthContext will call ensure_org_for_user() which activates the invited
-    // membership automatically.
     setTimeout(() => {
       navigate('/dashboard', { replace: true });
     }, 1200);
@@ -85,7 +115,9 @@ export default function AcceptInvitePage() {
         <div className="max-w-md w-full bg-white rounded-lg shadow-sm p-8">
           <div className="text-center py-4">
             <div className="w-12 h-12 border-4 border-slate-200 border-t-slate-900 rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-sm text-slate-600">Setting up your account…</p>
+            <p className="text-sm text-slate-600">
+              {isExistingUser ? 'Joining your organisation…' : 'Setting up your account…'}
+            </p>
           </div>
         </div>
       </div>

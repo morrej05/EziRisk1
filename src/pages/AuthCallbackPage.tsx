@@ -41,8 +41,32 @@ function isInviteFlow(searchParams: URLSearchParams, hashParams: URLSearchParams
   // Implicit-flow invite links carry type=invite in the hash.
   if (hashParams.get('type') === 'invite') return true;
   // PKCE invite links carry just a `code`; detect via search param hint if present.
+  // Also matches the magic-link-as-invite path for confirmed users (resend/re-invite),
+  // where we embed ?type=invite in the redirectTo.
   if (searchParams.get('type') === 'invite') return true;
   return false;
+}
+
+/**
+ * Distinguish a genuine invite link (new / unconfirmed user) from the
+ * magic-link-as-invite path used for existing confirmed users.
+ *
+ * Genuine invite:
+ *   • Implicit: hash contains type=invite  (GoTrue invite email)
+ *   • PKCE:     metaInvite flag is true    (invite_flow metadata set on the user)
+ *
+ * Existing-user invite (magic link with ?type=invite in redirectTo):
+ *   • Only searchParams carries type=invite; hash carries type=magiclink.
+ *   • metaInvite is false because GoTrue ignores options.data for magiclink type.
+ */
+function isExistingUserInvite(
+  searchParams: URLSearchParams,
+  hashParams: URLSearchParams,
+  metaInvite: boolean,
+): boolean {
+  if (metaInvite) return false;                          // genuine PKCE invite
+  if (hashParams.get('type') === 'invite') return false; // genuine implicit invite
+  return searchParams.get('type') === 'invite';          // only search param set → magic-link path
 }
 
 export default function AuthCallbackPage() {
@@ -74,7 +98,10 @@ export default function AuthCallbackPage() {
         // the invite_flow flag we embed in the invite metadata.
         const metaInvite = data?.session?.user?.user_metadata?.invite_flow === 'true';
         if (urlSignalsInvite || metaInvite) {
-          navigate('/accept-invite', { replace: true });
+          navigate('/accept-invite', {
+            replace: true,
+            state: { isExistingUser: isExistingUserInvite(searchParams, hashParams, metaInvite) },
+          });
           return;
         }
 
@@ -95,7 +122,12 @@ export default function AuthCallbackPage() {
 
         // Implicit invite tokens carry type=invite in the hash.
         if (urlSignalsInvite) {
-          navigate('/accept-invite', { replace: true });
+          // metaInvite not available in implicit flow; use false as safe default —
+          // isExistingUserInvite falls back to the hash/search check correctly.
+          navigate('/accept-invite', {
+            replace: true,
+            state: { isExistingUser: isExistingUserInvite(searchParams, hashParams, false) },
+          });
           return;
         }
 

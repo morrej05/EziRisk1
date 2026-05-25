@@ -105,24 +105,66 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Use generateLink (type: 'invite') rather than inviteUserByEmail.
-    // inviteUserByEmail for an already-created user silently returns the
-    // existing user row without sending a new email in Supabase v2.
-    // generateLink always issues a fresh invite token and triggers the mailer.
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
-    const { error: linkError } = await adminSupabase.auth.admin.generateLink({
-      type: 'invite',
-      email: emailNormalised,
-      options: {
-        redirectTo: `${appBaseUrl}/auth/callback`,
-        data: {
-          organisation_id: payload.organisation_id,
-          role: invitedMember.role,
-          invite_flow: 'true',
-          invited_by_user_id: user.id,
+
+    // GoTrue enforces that generateLink({ type: 'invite' }) is only valid for
+    // users whose email_confirmed_at IS NULL (i.e. never accepted any invite or
+    // signed up).  Calling it for a confirmed user returns:
+    //   "A user with this email address has already been registered"
+    //
+    // Strategy: look up the user's confirmed status via getUserById, then choose
+    // the right link type:
+    //
+    //   • Unconfirmed (email_confirmed_at = null):
+    //       generateLink({ type: 'invite' }) — regenerates the real invite token
+    //       and sends the "You've been invited" email template.
+    //
+    //   • Confirmed (email_confirmed_at is set):
+    //       generateLink({ type: 'magiclink' }) — sends a sign-in link.
+    //       The redirectTo embeds ?type=invite so AuthCallbackPage routes the
+    //       user to /accept-invite, where ensure_org_for_user() activates the
+    //       pending membership.  options.data is intentionally omitted because
+    //       GoTrue ignores it for magiclink-type links.
+
+    let linkError: { message: string } | null = null;
+    let isConfirmed = false;
+
+    if (invitedMember.user_id) {
+      const { data: authUserData } = await adminSupabase.auth.admin.getUserById(
+        invitedMember.user_id as string,
+      );
+      isConfirmed = authUserData?.user?.email_confirmed_at != null;
+    }
+
+    if (!isConfirmed) {
+      // Unconfirmed user — regenerate the invite link.
+      const { error } = await adminSupabase.auth.admin.generateLink({
+        type: 'invite',
+        email: emailNormalised,
+        options: {
+          redirectTo: `${appBaseUrl}/auth/callback`,
+          data: {
+            organisation_id: payload.organisation_id,
+            role: invitedMember.role,
+            invite_flow: 'true',
+            invited_by_user_id: user.id,
+          },
         },
-      },
-    });
+      });
+      linkError = error;
+    } else {
+      // Confirmed user — send a magic link routed through the invite accept flow.
+      // ?type=invite in redirectTo tells AuthCallbackPage this is an invite flow
+      // and tells AcceptInvitePage to treat this as an existing-account join.
+      const { error } = await adminSupabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email: emailNormalised,
+        options: {
+          redirectTo: `${appBaseUrl}/auth/callback?type=invite`,
+        },
+      });
+      linkError = error;
+    }
 
     if (linkError) {
       console.error('[resend-invite] generateLink failed:', linkError.message);

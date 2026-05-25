@@ -123,18 +123,21 @@ Deno.serve(async (req: Request) => {
       }, 409);
     }
 
-    // Send invite via generateLink rather than inviteUserByEmail.
+    // GoTrue enforces that generateLink({ type: 'invite' }) is only valid for
+    // users whose email_confirmed_at IS NULL.  Calling it for an already-confirmed
+    // account returns "A user with this email address has already been registered".
     //
-    // inviteUserByEmail silently returns an existing confirmed user WITHOUT
-    // sending a new email (Supabase v2 behaviour).  generateLink always issues
-    // a fresh invite token and triggers the mailer for both new and existing
-    // users — the same reason it was chosen for the resend-invite function.
+    // Strategy: try the invite link first (correct UX for new/unconfirmed users).
+    // If GoTrue rejects it with the "already registered" error, fall back to a
+    // magic link whose redirectTo embeds ?type=invite.  AuthCallbackPage detects
+    // this signal and routes the confirmed user to /accept-invite, where
+    // ensure_org_for_user() activates the pending membership without requiring
+    // them to set a new password.
     //
-    // Metadata is read by the handle_new_user() trigger (new users) and by
-    // AuthCallbackPage / AcceptInvitePage (all users) to steer the invite flow.
-    // redirectTo must point to the production auth callback so the invite link
-    // lands on the app (not the Supabase Site URL fallback / staging domain).
+    // Both paths return data.user.id so the membership upsert below works
+    // identically regardless of which link was sent.
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
+
     const { data: linkData, error: inviteError } = await adminSupabase.auth.admin.generateLink({
       type: 'invite',
       email: emailNormalised,
@@ -150,13 +153,37 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    if (inviteError) {
-      console.error('[invite-org-member] generateLink failed:', inviteError.message);
-      // Surface auth-layer errors clearly (rate limits, invalid email, etc.)
-      return json({ error: `Failed to send invite: ${inviteError.message}` }, 400);
-    }
+    let invitedUserId: string;
 
-    const invitedUserId = linkData.user.id;
+    if (inviteError) {
+      const alreadyRegistered = inviteError.message.toLowerCase().includes('already been registered');
+      if (!alreadyRegistered) {
+        console.error('[invite-org-member] generateLink(invite) failed:', inviteError.message);
+        return json({ error: `Failed to send invite: ${inviteError.message}` }, 400);
+      }
+
+      // Existing confirmed user — fall back to magic link routed through the
+      // invite accept flow.  options.data is intentionally omitted: GoTrue
+      // ignores it for magiclink-type links.  The ?type=invite in redirectTo is
+      // the sole invite-flow signal used by AuthCallbackPage.
+      console.log('[invite-org-member] Confirmed user detected, sending magic link for:', emailNormalised);
+      const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
+        type: 'magiclink',
+        email: emailNormalised,
+        options: {
+          redirectTo: `${appBaseUrl}/auth/callback?type=invite`,
+        },
+      });
+
+      if (magicError) {
+        console.error('[invite-org-member] generateLink(magiclink) fallback failed:', magicError.message);
+        return json({ error: `Failed to send invite: ${magicError.message}` }, 400);
+      }
+
+      invitedUserId = magicData.user.id;
+    } else {
+      invitedUserId = linkData.user.id;
+    }
 
     // Check whether this user is already an active member (after resolving user_id).
     const { data: existingMember } = await adminSupabase
