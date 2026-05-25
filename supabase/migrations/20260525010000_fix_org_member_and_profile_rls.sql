@@ -1,4 +1,11 @@
 /*
+  SUPERSEDED BY 20260525020000_fix_rls_infinite_recursion.sql
+  The policies written here caused infinite recursion (500 errors on all auth
+  queries) because the organisation_members policy sub-selected the same table.
+  They were dropped within minutes and replaced by the SECURITY DEFINER approach
+  in the follow-up migration.  This file is kept for history only; do not apply
+  it independently.
+
   Fix RLS policies so org admins (and all active members) can read the full
   member list and associated profiles in their organisation.
 
