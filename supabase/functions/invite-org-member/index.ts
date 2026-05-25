@@ -108,16 +108,23 @@ Deno.serve(async (req: Request) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Pre-check: catch duplicate pending invites (by email) for this org before sending email.
-    const { data: pendingByEmail } = await adminSupabase
+    // Pre-check: catch existing active members and duplicate pending invites
+    // (both by invited_email) before sending any email.
+    const { data: existingByEmail } = await adminSupabase
       .from('organisation_members')
       .select('status')
       .eq('organisation_id', payload.organisation_id)
       .eq('invited_email', emailNormalised)
-      .eq('status', 'invited')
+      .in('status', ['invited', 'active'])
       .maybeSingle();
 
-    if (pendingByEmail) {
+    if (existingByEmail?.status === 'active') {
+      return json({
+        error: `${emailNormalised} is already an active member of this organisation.`,
+      }, 409);
+    }
+
+    if (existingByEmail?.status === 'invited') {
       return json({
         error: `An invitation has already been sent to ${emailNormalised}. Use "Resend" to send a new invite link.`,
       }, 409);

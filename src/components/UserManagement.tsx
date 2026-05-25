@@ -73,6 +73,8 @@ interface OrganisationMemberRow {
   role: UserRole;
   status: string;
   created_at: string;
+  invited_email: string | null;
+  joined_at: string | null;
 }
 
 interface UserProfileRow {
@@ -125,6 +127,10 @@ export default function UserManagement() {
   const isDuplicateInviteError = Boolean(
     modalError?.toLowerCase().includes('already been sent'),
   );
+  // Derived: is the user already an active member of this org?
+  const isAlreadyActiveMemberError = Boolean(
+    modalError?.toLowerCase().includes('already an active member'),
+  );
 
   const refreshSeatEntitlement = async () => {
     if (!currentUser?.organisation_id) { setSeatEntitlement(null); return; }
@@ -165,7 +171,7 @@ export default function UserManagement() {
       const [memberResult, inviteResult] = await Promise.all([
         supabase
           .from('organisation_members')
-          .select('user_id, role, status, created_at')
+          .select('user_id, role, status, created_at, invited_email, joined_at')
           .eq('organisation_id', currentUser.organisation_id)
           .eq('status', 'active')
           .order('created_at', { ascending: true }),
@@ -208,8 +214,14 @@ export default function UserManagement() {
           id: member.user_id,
           role: fromDbRole(member.role as unknown as string),
           name: profile?.name ?? null,
-          email: member.user_id === currentUser.id ? currentUser.email ?? undefined : undefined,
-          created_at: profile?.created_at ?? member.created_at,
+          // For the current user use the live session email; for others fall
+          // back to invited_email stored on the membership row (always present
+          // for users who joined via invite).
+          email: member.user_id === currentUser.id
+            ? currentUser.email ?? undefined
+            : member.invited_email ?? undefined,
+          // Prefer the actual join timestamp; fall back to profile/member created_at.
+          created_at: member.joined_at ?? profile?.created_at ?? member.created_at,
           is_platform_admin: Boolean(profile?.is_platform_admin),
         };
       });
@@ -1007,11 +1019,11 @@ export default function UserManagement() {
 
               {/* Inline modal error — with optional Resend shortcut */}
               {modalError && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                <div className={`rounded-md border px-3 py-2.5 text-sm ${isAlreadyActiveMemberError ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
                   <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                    <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${isAlreadyActiveMemberError ? 'text-blue-600' : 'text-red-600'}`} />
                     <div className="flex-1 min-w-0">
-                      <p>{modalError}</p>
+                      <p>{isAlreadyActiveMemberError ? `${newUserEmail.trim()} already belongs to this organisation.` : modalError}</p>
                       {isDuplicateInviteError && (
                         <button
                           onClick={handleResendFromModal}
