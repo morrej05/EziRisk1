@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle, Mail, RotateCcw } from 'lucide-react';
+import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle, Mail, RotateCcw, Copy } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import { showToast } from '../lib/toast';
 import { supabase } from '../lib/supabase';
@@ -108,6 +108,7 @@ export default function UserManagement() {
   const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
   const [copyingInviteLinkFor, setCopyingInviteLinkFor] = useState<string | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
+  const [manualInviteLink, setManualInviteLink] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     title: string;
     message: string;
@@ -330,6 +331,17 @@ export default function UserManagement() {
 
   // ── Invite ───────────────────────────────────────────────────────────────
 
+  const fetchInviteLinkByEmail = async (normalisedEmail: string): Promise<{ link: string; invitedAt: string | null }> => {
+    const { data: inviteLinkData, error } = await supabase.functions.invoke('resend-invite', {
+      body: { organisation_id: currentUser?.organisation_id, email: normalisedEmail },
+    });
+    if (error) throw error;
+    const payload = (inviteLinkData as { invite_link?: string; invited_at?: string } | null) ?? null;
+    const link = payload.invite_link?.trim();
+    if (!link) throw new Error('Invite link could not be generated.');
+    return { link, invitedAt: payload.invited_at ?? null };
+  };
+
   const handleInviteUser = async () => {
     if (!newUserEmail.trim() || isAddingUser) return;
 
@@ -390,9 +402,7 @@ export default function UserManagement() {
       setNewUserEmail('');
       setNewUserName('');
       setNewUserRole('viewer');
-      setAddSuccessMessage(
-        `Invite created for ${sentEmail}. Share the invite link from Pending Invitations.`,
-      );
+      setAddSuccessMessage(`Invite link created for ${sentEmail}.`);
 
       // Optimistically add the new invite row immediately so it's visible
       // without waiting for the background refresh.  The real row (with the
@@ -409,7 +419,25 @@ export default function UserManagement() {
       };
       setPendingInvites((prev) => [optimisticInvite, ...prev]);
 
-      // Refresh in the background to get the canonical DB row.
+      try {
+        const { link, invitedAt } = await fetchInviteLinkByEmail(sentEmail.trim().toLowerCase());
+        try {
+          await navigator.clipboard.writeText(link);
+          showToast('Invite link copied to clipboard.', 'success');
+        } catch {
+          setManualInviteLink(link);
+          showToast('Invite link created. Copy it below.', 'success');
+        }
+        if (invitedAt) {
+          setPendingInvites((prev) => prev.map((i) => (
+            i.invited_email.toLowerCase() === sentEmail.trim().toLowerCase() ? { ...i, invited_at: invitedAt } : i
+          )));
+        }
+      } catch (linkError: unknown) {
+        const message = await extractEdgeFunctionError(linkError);
+        showToast(`Invite created but link copy failed: ${message}`, 'error');
+      }
+
       void fetchUsers();
     } catch (error: unknown) {
       const message = await extractEdgeFunctionError(error);
@@ -435,29 +463,17 @@ export default function UserManagement() {
     setCopyingInviteLinkFor(normalisedEmail);
     setActionError(null);
     try {
-      const { data: inviteLinkData, error } = await supabase.functions.invoke('resend-invite', {
-        body: { organisation_id: currentUser?.organisation_id, email: normalisedEmail },
-      });
-
-      if (error) {
-        const message = await extractEdgeFunctionError(error);
-        showToast(`Failed to copy invite link: ${message}`, 'error');
-        return;
+      const { link, invitedAt } = await fetchInviteLinkByEmail(normalisedEmail);
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast('Invite link copied to clipboard.', 'success');
+      } catch {
+        setManualInviteLink(link);
+        showToast('Invite link created. Copy it below.', 'success');
       }
-
-      const inviteLinkPayload = (inviteLinkData as { invite_link?: string; invited_at?: string } | null) ?? null;
-      const link = inviteLinkPayload.invite_link?.trim();
-      if (!link) {
-        showToast('Failed to copy invite link: invite link could not be generated.', 'error');
-        return;
-      }
-
-      await navigator.clipboard.writeText(link);
-      showToast('Invite link copied to clipboard.', 'success');
 
       // Optimistically stamp the new invited_at on any matching row.
-      const newInvitedAt =
-        inviteLinkPayload.invited_at ?? new Date().toISOString();
+      const newInvitedAt = invitedAt ?? new Date().toISOString();
 
       setPendingInvites((prev) =>
         prev.map((i) =>
@@ -587,9 +603,10 @@ export default function UserManagement() {
           if (error) throw error;
           showToast(`${displayName} has been removed.`, 'success');
           await fetchUsers();
-        } catch (error) {
+        } catch (error: unknown) {
           console.error('[UserManagement] Error removing user:', error);
-          setActionError(`Failed to remove user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          const message = await extractEdgeFunctionError(error);
+          setActionError(message);
         }
       },
     });
@@ -726,7 +743,8 @@ export default function UserManagement() {
                         {(user.name || user.email || 'U').charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <span className="truncate text-sm font-medium text-slate-900">{user.name || 'Unnamed User'}</span>
+                      <span className="truncate text-sm font-medium text-slate-900">{user.name || 'Unnamed User'}</span>
+                      {user.id === currentUser?.id && <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">You</span>}
                   </div>
                 </td>
                 <td className="px-4 py-4 text-sm text-slate-600 max-w-0">
@@ -790,12 +808,16 @@ export default function UserManagement() {
                 )}
                 <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap w-[100px]">{formatDate(user.created_at)}</td>
                 <td className="px-4 py-4 text-right w-[100px]">
-                  <button
-                    onClick={() => handleRemoveUser(user.id, user.name || undefined)}
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />Remove
-                  </button>
+                  {user.id !== currentUser?.id ? (
+                    <button
+                      onClick={() => handleRemoveUser(user.id, user.name || undefined)}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />Remove
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-500">No actions</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -855,13 +877,13 @@ export default function UserManagement() {
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button
+                    {user.id !== currentUser?.id && <button
                       onClick={() => handleRemoveUser(user.id, user.name || undefined)}
                       className="p-1.5 text-red-500 hover:bg-red-50 rounded"
                       title="Remove"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </button>}
                   </div>
                 )}
               </div>
@@ -1154,16 +1176,30 @@ export default function UserManagement() {
                 {isAddingUser ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    Sending…
+                    Creating…
                   </>
                 ) : (
                   <>
                     <Mail className="w-4 h-4" />
-                    Send Invite
+                    Create invite link
                   </>
                 )}
               </button>
             </div>
+            {manualInviteLink && (
+              <div className="px-5 pb-4">
+                <p className="mb-1 text-xs font-medium text-slate-700">Invite link</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={manualInviteLink} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                  <button
+                    onClick={async () => { await navigator.clipboard.writeText(manualInviteLink); showToast('Invite link copied to clipboard.', 'success'); }}
+                    className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-medium border border-slate-300 rounded-lg hover:bg-slate-50"
+                  >
+                    <Copy className="w-3.5 h-3.5" />Copy
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
