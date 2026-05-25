@@ -445,7 +445,22 @@ export default function UserManagement() {
         return;
       }
 
-      if (!(resendData as { email_sent?: boolean } | null)?.email_sent) {
+      const resendPayload = (resendData as {
+        email_sent?: boolean;
+        manual_resend_required?: boolean;
+        invite_link?: string;
+      } | null) ?? null;
+
+      if (!resendPayload?.email_sent && resendPayload?.manual_resend_required) {
+        const link = resendPayload.invite_link?.trim();
+        if (!link) {
+          showToast('Failed to resend invite: invite link could not be generated.', 'error');
+          return;
+        }
+
+        await navigator.clipboard.writeText(link);
+        showToast(`Invite link regenerated for ${normalisedEmail}. Link copied for manual resend.`, 'success');
+      } else if (!resendPayload?.email_sent) {
         showToast('Failed to resend invite: email provider did not confirm delivery.', 'error');
         return;
       }
