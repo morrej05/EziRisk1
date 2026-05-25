@@ -586,7 +586,6 @@ export default function UserManagement() {
           });
           if (error) throw error;
           showToast(`${displayName} has been removed.`, 'success');
-          showToast(`Invite revoked for ${invite.invited_email}.`, 'success');
           await fetchUsers();
         } catch (error) {
           console.error('[UserManagement] Error removing user:', error);
@@ -731,7 +730,12 @@ export default function UserManagement() {
                   </div>
                 </td>
                 <td className="px-4 py-4 text-sm text-slate-600 max-w-0">
-                  <span className="block truncate">{user.email || '—'}</span>
+                  <span
+                    className="block break-all md:break-normal md:truncate"
+                    title={user.email || '—'}
+                  >
+                    {user.email || '—'}
+                  </span>
                 </td>
                 <td className="px-4 py-4 w-[150px]">
                   {editingUserId === user.id ? (
@@ -942,7 +946,12 @@ export default function UserManagement() {
                       </td>
                       {/* Email */}
                       <td className="px-4 py-3 text-sm text-slate-600 max-w-0">
-                        <span className="block truncate">{invite.invited_email}</span>
+                        <span
+                          className="block break-all md:break-normal md:truncate"
+                          title={invite.invited_email}
+                        >
+                          {invite.invited_email}
+                        </span>
                       </td>
                       {/* Role */}
                       <td className="px-4 py-3">

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { UserRole, SubscriptionPlan, DisciplineType } from '../utils/permissions';
@@ -97,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [disclaimerAcceptedAt, setDisclaimerAcceptedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [authInitialized, setAuthInitialized] = useState(false);
+  const membershipRealtimeChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // Helper to create enriched user object with profile fields
   const createAppUser = (authUser: User | null, profile: ProfileRecord | null): AppUser | null => {
@@ -585,6 +586,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) {
+      if (membershipRealtimeChannelRef.current) {
+        void supabase.removeChannel(membershipRealtimeChannelRef.current);
+        membershipRealtimeChannelRef.current = null;
+      }
+      return;
+    }
+
+    if (membershipRealtimeChannelRef.current) {
+      void supabase.removeChannel(membershipRealtimeChannelRef.current);
+      membershipRealtimeChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`auth-membership-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'organisation_members',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          void refreshUserRole();
+        }
+      )
+      .subscribe();
+
+    membershipRealtimeChannelRef.current = channel;
+
+    return () => {
+      if (membershipRealtimeChannelRef.current) {
+        void supabase.removeChannel(membershipRealtimeChannelRef.current);
+        membershipRealtimeChannelRef.current = null;
+      }
+    };
+  }, [user?.id]);
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({
