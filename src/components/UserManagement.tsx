@@ -233,12 +233,16 @@ export default function UserManagement() {
       setUsers(usersWithMembershipRole);
 
       // ── Pending invites ───────────────────────────────────────────────────
-      // Non-fatal if RLS denies (non-admin viewers), but log so it's visible.
+      // Non-fatal if RLS denies (non-admin viewers) or the column is absent.
+      // On error: keep whatever state we have (could be optimistic rows from a
+      // just-sent invite) rather than wiping it.  The erroneous clearing was the
+      // primary reason invited users disappeared immediately after the success
+      // banner appeared.
       if (inviteResult.error) {
         console.warn('[UserManagement] Pending invites query failed (RLS or schema issue):', inviteResult.error);
-      }
-      if (!inviteResult.error && inviteResult.data) {
-        const inviteRows = inviteResult.data;
+        // Intentionally do NOT call setPendingInvites here — keep existing state.
+      } else {
+        const inviteRows = inviteResult.data ?? [];
 
         // Fetch display names from user_profiles for invited user IDs.
         // The handle_new_user() trigger creates a user_profiles row with the
@@ -269,8 +273,6 @@ export default function UserManagement() {
             invited_at: row.invited_at as string | null,
           })),
         );
-      } else {
-        setPendingInvites([]);
       }
 
       await refreshSeatEntitlement();

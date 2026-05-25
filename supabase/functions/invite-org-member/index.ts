@@ -123,14 +123,22 @@ Deno.serve(async (req: Request) => {
       }, 409);
     }
 
-    // Send invite via Supabase admin.
-    // Metadata is read by the handle_new_user() trigger to set up user_profiles.
+    // Send invite via generateLink rather than inviteUserByEmail.
+    //
+    // inviteUserByEmail silently returns an existing confirmed user WITHOUT
+    // sending a new email (Supabase v2 behaviour).  generateLink always issues
+    // a fresh invite token and triggers the mailer for both new and existing
+    // users — the same reason it was chosen for the resend-invite function.
+    //
+    // Metadata is read by the handle_new_user() trigger (new users) and by
+    // AuthCallbackPage / AcceptInvitePage (all users) to steer the invite flow.
     // redirectTo must point to the production auth callback so the invite link
     // lands on the app (not the Supabase Site URL fallback / staging domain).
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
-    const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
-      emailNormalised,
-      {
+    const { data: linkData, error: inviteError } = await adminSupabase.auth.admin.generateLink({
+      type: 'invite',
+      email: emailNormalised,
+      options: {
         redirectTo: `${appBaseUrl}/auth/callback`,
         data: {
           organisation_id: payload.organisation_id,
@@ -140,15 +148,15 @@ Deno.serve(async (req: Request) => {
           ...(payload.name?.trim() ? { name: payload.name.trim() } : {}),
         },
       },
-    );
+    });
 
     if (inviteError) {
-      console.error('[invite-org-member] inviteUserByEmail failed:', inviteError.message);
+      console.error('[invite-org-member] generateLink failed:', inviteError.message);
       // Surface auth-layer errors clearly (rate limits, invalid email, etc.)
       return json({ error: `Failed to send invite: ${inviteError.message}` }, 400);
     }
 
-    const invitedUserId = inviteData.user.id;
+    const invitedUserId = linkData.user.id;
 
     // Check whether this user is already an active member (after resolving user_id).
     const { data: existingMember } = await adminSupabase
