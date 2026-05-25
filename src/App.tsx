@@ -111,6 +111,12 @@ function LegacyReportRedirect() {
   return <Navigate to={target} replace />;
 }
 
+function InviteTokenRedirect() {
+  const { token } = useParams<{ token: string }>();
+  if (!token) return <Navigate to="/signin" replace />;
+  return <Navigate to={`/accept-invite?token=${encodeURIComponent(token)}`} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -125,6 +131,7 @@ function App() {
           <Route path="/login" element={<SignIn />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/invite/:token" element={<InviteTokenRedirect />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/external/:token" element={<ExternalSurvey />} />
           <Route path="/client/document/:token" element={<ClientDocumentView />} />

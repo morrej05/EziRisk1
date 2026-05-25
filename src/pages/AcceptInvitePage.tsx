@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function AcceptInvitePage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('token');
 
   // Set by AuthCallbackPage when the user arrived via a magic link (confirmed
   // account being added to a new organisation).  In this path we skip the
@@ -28,7 +30,22 @@ export default function AcceptInvitePage() {
     let isMounted = true;
 
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+
+      // Legacy invite links may land directly on /accept-invite?token=<token_hash>
+      // without going through /auth/callback. Verify the OTP hash so the user
+      // gets a session and stays in invite flow instead of falling back to sign-in.
+      if (!session && inviteToken) {
+        const inviteAttempt = await supabase.auth.verifyOtp({ type: 'invite', token_hash: inviteToken });
+        if (inviteAttempt.error) {
+          // Some historical invite links were generated as magic links.
+          await supabase.auth.verifyOtp({ type: 'magiclink', token_hash: inviteToken });
+        }
+
+        const refreshed = await supabase.auth.getSession();
+        session = refreshed.data.session;
+      }
+
       if (!isMounted) return;
 
       if (!session) {
@@ -63,7 +80,7 @@ export default function AcceptInvitePage() {
 
     void init();
     return () => { isMounted = false; };
-  }, [navigate, isExistingUser]);
+  }, [navigate, isExistingUser, inviteToken]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
