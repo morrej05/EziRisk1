@@ -692,7 +692,7 @@ export default function UserManagement() {
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
-          Invite User
+          {atSeatLimit ? "Seat limit reached — revoke an invite, remove a user, or upgrade." : "Invite User"}
         </button>
       </div>
 
@@ -815,7 +815,7 @@ export default function UserManagement() {
                       <Trash2 className="w-4 h-4" />Remove
                     </button>
                   ) : (
-                    <span className="text-xs text-slate-500">No actions</span>
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-600">You</span>
                   )}
                 </td>
               </tr>
@@ -838,7 +838,7 @@ export default function UserManagement() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 truncate">{user.name || 'Unnamed User'}</p>
-                  {user.email && <p className="text-xs text-slate-500 truncate">{user.email}</p>}
+                  {user.email && <p className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</p>}
                   <p className="text-xs text-slate-400 mt-0.5">Joined {formatDate(user.created_at)}</p>
                 </div>
               </div>
@@ -876,13 +876,17 @@ export default function UserManagement() {
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    {user.id !== currentUser?.id && <button
-                      onClick={() => handleRemoveUser(user.id, user.name || undefined)}
-                      className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                      title="Remove"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>}
+                    {user.id !== currentUser?.id ? (
+                      <button
+                        onClick={() => handleRemoveUser(user.id, user.name || undefined)}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-600">You</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1085,7 +1089,7 @@ export default function UserManagement() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full sm:max-w-md max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">Invite User</h3>
+              <h3 className="text-base font-semibold text-slate-900">Create invite link</h3>
               <button onClick={closeAddModal} disabled={isAddingUser} className="text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40">
                 <X className="w-5 h-5" />
               </button>
