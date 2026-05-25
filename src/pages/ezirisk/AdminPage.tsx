@@ -18,7 +18,15 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
   const [upgradeStatus, setUpgradeStatus] = useState<'checking' | 'confirmed' | 'delayed'>('checking');
+  const [draftOrganisationName, setDraftOrganisationName] = useState('');
+  const [isEditingOrganisationName, setIsEditingOrganisationName] = useState(false);
+  const [isSavingOrganisationName, setIsSavingOrganisationName] = useState(false);
+  const [organisationNameMessage, setOrganisationNameMessage] = useState<string | null>(null);
   const hasHandledUpgradeSuccessRef = useRef(false);
+
+  useEffect(() => {
+    setDraftOrganisationName(organisation?.name ?? '');
+  }, [organisation?.name]);
 
   const runUpgradeSuccessRefresh = useCallback(async () => {
     const baselinePlanId = organisation?.plan_id ?? null;
@@ -80,6 +88,34 @@ export default function AdminPage() {
     { id: 'billing' as AdminTab, label: 'Billing' },
     { id: 'branding' as AdminTab, label: 'Branding' },
   ];
+
+  const saveOrganisationName = async () => {
+    const organisationId = organisation?.id;
+    if (!organisationId) return;
+    const cleanedName = draftOrganisationName.trim();
+    if (!cleanedName) {
+      setOrganisationNameMessage('Organisation name cannot be empty.');
+      return;
+    }
+
+    setIsSavingOrganisationName(true);
+    setOrganisationNameMessage(null);
+    const { error } = await supabase
+      .from('organisations')
+      .update({ name: cleanedName })
+      .eq('id', organisationId);
+
+    if (error) {
+      setOrganisationNameMessage(`Failed to save organisation name: ${error.message}`);
+      setIsSavingOrganisationName(false);
+      return;
+    }
+
+    await refreshUserRole();
+    setIsEditingOrganisationName(false);
+    setOrganisationNameMessage('Organisation name saved.');
+    setIsSavingOrganisationName(false);
+  };
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-6 min-w-0">
@@ -158,7 +194,56 @@ export default function AdminPage() {
             <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Organisation Name</dt>
-                <dd className="text-sm font-medium text-slate-900 mt-1">{organisation?.name || 'Organisation not recorded'}</dd>
+                <dd className="text-sm font-medium text-slate-900 mt-1">
+                  {isEditingOrganisationName ? (
+                    <div className="space-y-2">
+                      <input
+                        value={draftOrganisationName}
+                        onChange={(event) => setDraftOrganisationName(event.target.value)}
+                        maxLength={120}
+                        placeholder="My Organisation"
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => void saveOrganisationName()}
+                          disabled={isSavingOrganisationName}
+                          className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                        >
+                          {isSavingOrganisationName ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDraftOrganisationName(organisation?.name ?? '');
+                            setIsEditingOrganisationName(false);
+                            setOrganisationNameMessage(null);
+                          }}
+                          disabled={isSavingOrganisationName}
+                          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p>{organisation?.name || 'Organisation not recorded'}</p>
+                      <button
+                        onClick={() => {
+                          setDraftOrganisationName(organisation?.name ?? '');
+                          setOrganisationNameMessage(null);
+                          setIsEditingOrganisationName(true);
+                        }}
+                        className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Edit name
+                      </button>
+                    </div>
+                  )}
+                </dd>
+                {organisationNameMessage && (
+                  <p className="mt-2 text-xs text-slate-600">{organisationNameMessage}</p>
+                )}
               </div>
               <div className="rounded-lg border border-slate-200 p-4">
                 <dt className="text-xs uppercase tracking-wide text-slate-500">Organisation ID</dt>
