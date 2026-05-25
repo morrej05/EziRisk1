@@ -11,7 +11,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  admin: 'Organisation-level access including user management, billing, and survey operations',
+  admin: 'Admins can manage users, billing, and organisation settings',
   surveyor: 'Can create, edit, and manage surveys within plan limits',
   viewer: 'Read-only access to surveys and reports',
 };

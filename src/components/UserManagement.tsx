@@ -374,6 +374,11 @@ export default function UserManagement() {
       const sentName = newUserName.trim();
       const sentRole = newUserRole;
 
+      if (sentRole === 'admin') {
+        const confirmed = window.confirm('This user will be able to manage organisation settings and users. Continue?');
+        if (!confirmed) return;
+      }
+
       const { data: inviteResponseData, error } = await supabase.functions.invoke('invite-org-member', {
         body: {
           organisation_id: currentUser.organisation_id,
@@ -407,7 +412,7 @@ export default function UserManagement() {
       // Optimistically add the new invite row immediately so it's visible
       // without waiting for the background refresh.  The real row (with the
       // DB-generated id) will replace this once fetchUsers() completes.
-      const responseData = (inviteResponseData ?? {}) as { user_id?: string };
+      const responseData = (inviteResponseData ?? {}) as { user_id?: string; invite_link?: string };
       const optimisticInvite: PendingInvite = {
         id: `optimistic-${Date.now()}`,
         user_id: responseData.user_id ?? '',
@@ -419,8 +424,8 @@ export default function UserManagement() {
       };
       setPendingInvites((prev) => [optimisticInvite, ...prev]);
 
-      try {
-        const { link, invitedAt } = await fetchInviteLinkByEmail(sentEmail.trim().toLowerCase());
+      const link = responseData.invite_link?.trim();
+      if (link) {
         try {
           await navigator.clipboard.writeText(link);
           showToast('Invite link copied to clipboard.', 'success');
@@ -428,14 +433,8 @@ export default function UserManagement() {
           setManualInviteLink(link);
           showToast('Invite link created. Copy it below.', 'success');
         }
-        if (invitedAt) {
-          setPendingInvites((prev) => prev.map((i) => (
-            i.invited_email.toLowerCase() === sentEmail.trim().toLowerCase() ? { ...i, invited_at: invitedAt } : i
-          )));
-        }
-      } catch (linkError: unknown) {
-        const message = await extractEdgeFunctionError(linkError);
-        showToast(`Invite created but link copy failed: ${message}`, 'error');
+      } else {
+        showToast('Invite created but no link was returned. Use Copy invite link from pending invites.', 'error');
       }
 
       void fetchUsers();
@@ -1157,6 +1156,9 @@ export default function UserManagement() {
                   <option value="admin">Admin — full access</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">{ROLE_DESCRIPTIONS[newUserRole]}</p>
+                {newUserRole === 'admin' && (
+                  <p className="mt-1 text-xs text-amber-700">Admins can manage users, billing, and organisation settings.</p>
+                )}
               </div>
             </div>
 
