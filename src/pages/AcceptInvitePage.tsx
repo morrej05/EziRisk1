@@ -148,10 +148,33 @@ export default function AcceptInvitePage() {
   };
 
   const handleSkip = async () => {
-    // The user already has a password (they were an existing Supabase user
-    // being added to a new organisation). Clear the flag and proceed.
-    await supabase.auth.updateUser({ data: { invite_flow: null } });
-    navigate('/dashboard', { replace: true });
+    setError(null);
+    setLoading(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const invitedUserId = sessionData.session?.user?.id;
+
+    if (!invitedUserId) {
+      setError('Unable to complete invite acceptance. Please sign in again from your invite link.');
+      setLoading(false);
+      return;
+    }
+
+    const activated = await activateInvitedMembership(invitedUserId);
+    if (!activated) {
+      setLoading(false);
+      return;
+    }
+
+    // Clear invite-flow metadata only after membership activation succeeds.
+    const { error: clearFlagError } = await supabase.auth.updateUser({ data: { invite_flow: null } });
+    if (clearFlagError) {
+      setError(clearFlagError.message);
+      setLoading(false);
+      return;
+    }
+
+    window.location.replace('/dashboard');
   };
 
   if (!ready) {
@@ -264,7 +287,7 @@ export default function AcceptInvitePage() {
         <div className="text-center space-y-2">
           <p className="text-xs text-slate-500">Already have a password for this account?</p>
           <button
-            onClick={handleSkip}
+            onClick={() => { void handleSkip(); }}
             disabled={loading}
             className="text-sm text-slate-600 hover:text-slate-900 underline underline-offset-2 transition-colors"
           >
