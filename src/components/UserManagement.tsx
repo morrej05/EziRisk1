@@ -106,7 +106,7 @@ export default function UserManagement() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('user_limit');
   const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
-  const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+  const [copyingInviteLinkFor, setCopyingInviteLinkFor] = useState<string | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     title: string;
@@ -391,7 +391,7 @@ export default function UserManagement() {
       setNewUserName('');
       setNewUserRole('viewer');
       setAddSuccessMessage(
-        `Invite sent to ${sentEmail}. They'll receive an email with a link to join your organisation.`,
+        `Invite created for ${sentEmail}. Share the invite link from Pending Invitations.`,
       );
 
       // Optimistically add the new invite row immediately so it's visible
@@ -419,55 +419,45 @@ export default function UserManagement() {
     }
   };
 
-  // ── Resend / Revoke ──────────────────────────────────────────────────────
+  // ── Copy invite link / Revoke ──────────────────────────────────────────────
 
   /**
-   * Canonical resend handler.  Both call sites (modal CTA and pending-table
-   * Resend button) funnel through here with just an email address.
+   * Canonical invite-link copy handler. Both call sites (modal CTA and pending-table
+   * action button) funnel through here with just an email address.
    *
    * Using email as the lookup key mirrors the duplicate-detection query in
    * invite-org-member so both paths share a single source of truth
    * (organisation_members.invited_email) and neither depends on React state
    * being populated.
    */
-  const handleResendByEmail = async (email: string) => {
+  const handleCopyInviteLinkByEmail = async (email: string) => {
     const normalisedEmail = email.trim().toLowerCase();
-    setResendingUserId(normalisedEmail);
+    setCopyingInviteLinkFor(normalisedEmail);
     setActionError(null);
     try {
-      const { data: resendData, error } = await supabase.functions.invoke('resend-invite', {
+      const { data: inviteLinkData, error } = await supabase.functions.invoke('resend-invite', {
         body: { organisation_id: currentUser?.organisation_id, email: normalisedEmail },
       });
 
       if (error) {
         const message = await extractEdgeFunctionError(error);
-        showToast(`Failed to resend invite: ${message}`, 'error');
+        showToast(`Failed to copy invite link: ${message}`, 'error');
         return;
       }
 
-      const resendPayload = (resendData as {
-        email_sent?: boolean;
-        manual_resend_required?: boolean;
-        invite_link?: string;
-      } | null) ?? null;
-
-      if (!resendPayload?.email_sent && resendPayload?.manual_resend_required) {
-        const link = resendPayload.invite_link?.trim();
-        if (!link) {
-          showToast('Failed to resend invite: invite link could not be generated.', 'error');
-          return;
-        }
-
-        await navigator.clipboard.writeText(link);
-        showToast(`Invite link regenerated for ${normalisedEmail}. Link copied for manual resend.`, 'success');
-      } else if (!resendPayload?.email_sent) {
-        showToast('Failed to resend invite: email provider did not confirm delivery.', 'error');
+      const inviteLinkPayload = (inviteLinkData as { invite_link?: string; invited_at?: string } | null) ?? null;
+      const link = inviteLinkPayload.invite_link?.trim();
+      if (!link) {
+        showToast('Failed to copy invite link: invite link could not be generated.', 'error');
         return;
       }
+
+      await navigator.clipboard.writeText(link);
+      showToast('Invite link copied to clipboard.', 'success');
 
       // Optimistically stamp the new invited_at on any matching row.
       const newInvitedAt =
-        (resendData as { invited_at?: string } | null)?.invited_at ?? new Date().toISOString();
+        inviteLinkPayload.invited_at ?? new Date().toISOString();
 
       setPendingInvites((prev) =>
         prev.map((i) =>
@@ -477,29 +467,28 @@ export default function UserManagement() {
         ),
       );
 
-      showToast(`Invite resent to ${normalisedEmail}.`, 'success');
       void fetchUsers();
     } catch (err: unknown) {
       const message = await extractEdgeFunctionError(err);
-      showToast(`Failed to resend invite: ${message}`, 'error');
+      showToast(`Failed to copy invite link: ${message}`, 'error');
     } finally {
-      setResendingUserId(null);
+      setCopyingInviteLinkFor(null);
     }
   };
 
   /** Thin wrapper so the pending-invites table can pass a PendingInvite object. */
-  const handleResendInvite = (invite: PendingInvite) =>
-    handleResendByEmail(invite.invited_email);
+  const handleCopyInviteLink = (invite: PendingInvite) =>
+    handleCopyInviteLinkByEmail(invite.invited_email);
 
   /**
-   * Called from the "Resend invite" button in the duplicate-error banner.
+   * Called from the "Copy invite link" button in the duplicate-error banner.
    * Uses the email typed in the modal directly — no pendingInvites lookup
    * needed, so there is no race condition with fetchUsers().
    */
-  const handleResendFromModal = () => {
+  const handleCopyInviteLinkFromModal = () => {
     setShowAddModal(false);
     setModalError(null);
-    void handleResendByEmail(newUserEmail.trim());
+    void handleCopyInviteLinkByEmail(newUserEmail.trim());
   };
 
   const handleRevokeInvite = (invite: PendingInvite) => {
@@ -702,7 +691,7 @@ export default function UserManagement() {
           <li>Pending invitations reserve seats until accepted or revoked.</li>
           <li>Removing a user immediately revokes access.</li>
           <li>Existing assessments and audit history remain preserved.</li>
-          <li>Invitations can be resent or revoked at any time.</li>
+          <li>Invite links can be copied and shared manually.</li>
         </ul>
       </div>
 
@@ -932,7 +921,7 @@ export default function UserManagement() {
               <tbody className="divide-y divide-slate-100">
                 {pendingInvites.map((invite) => {
                   const displayName = inviteDisplayName(invite);
-                  const isResending = resendingUserId === invite.invited_email.toLowerCase();
+                  const isCopyingInviteLink = copyingInviteLinkFor === invite.invited_email.toLowerCase();
                   const isRevoking = revokingUserId === invite.user_id;
                   return (
                     <tr key={invite.id} className="hover:bg-amber-50/40 transition-colors">
@@ -969,17 +958,17 @@ export default function UserManagement() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => handleResendInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            onClick={() => handleCopyInviteLink(invite)}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors disabled:opacity-40"
-                            title="Resend invite"
+                            title="Copy invite link"
                           >
-                            <RotateCcw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                            {isResending ? 'Sending…' : 'Resend'}
+                            <RotateCcw className={`w-3.5 h-3.5 ${isCopyingInviteLink ? 'animate-spin' : ''}`} />
+                            {isCopyingInviteLink ? 'Copying…' : 'Copy invite link'}
                           </button>
                           <button
                             onClick={() => handleRevokeInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-40"
                             title="Revoke invite"
                           >
@@ -998,7 +987,7 @@ export default function UserManagement() {
           <div className="sm:hidden divide-y divide-slate-100">
             {pendingInvites.map((invite) => {
               const displayName = inviteDisplayName(invite);
-              const isResending = resendingUserId === invite.invited_email.toLowerCase();
+              const isCopyingInviteLink = copyingInviteLinkFor === invite.invited_email.toLowerCase();
               const isRevoking = revokingUserId === invite.user_id;
               return (
                 <div key={invite.id} className="px-4 py-3">
@@ -1026,16 +1015,16 @@ export default function UserManagement() {
                         {/* Icon-only action buttons on mobile */}
                         <div className="flex items-center gap-1 shrink-0">
                           <button
-                            onClick={() => handleResendInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            onClick={() => handleCopyInviteLink(invite)}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-40"
-                            title="Resend invite"
+                            title="Copy invite link"
                           >
-                            <RotateCcw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+                            <RotateCcw className={`w-4 h-4 ${isCopyingInviteLink ? 'animate-spin' : ''}`} />
                           </button>
                           <button
                             onClick={() => handleRevokeInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="p-1.5 text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
                             title="Revoke invite"
                           >
@@ -1074,10 +1063,10 @@ export default function UserManagement() {
 
             <div className="px-5 py-4 space-y-4">
               <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
-                An invitation email will be sent. The recipient clicks the link to create their account and join your organisation automatically.
+                An invite link will be generated. Share it with the recipient so they can create their account and join your organisation automatically.
               </p>
 
-              {/* Inline modal error — with optional Resend shortcut */}
+              {/* Inline modal error — with optional copy-link shortcut */}
               {modalError && (
                 <div className={`rounded-md border px-3 py-2.5 text-sm ${isAlreadyActiveMemberError ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
                   <div className="flex items-start gap-2">
@@ -1086,11 +1075,11 @@ export default function UserManagement() {
                       <p>{isAlreadyActiveMemberError ? `${newUserEmail.trim()} already belongs to this organisation.` : modalError}</p>
                       {isDuplicateInviteError && (
                         <button
-                          onClick={handleResendFromModal}
+                          onClick={handleCopyInviteLinkFromModal}
                           className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 underline underline-offset-2 hover:text-red-900 transition-colors"
                         >
                           <RotateCcw className="w-3 h-3" />
-                          Resend invite to {newUserEmail.trim()}
+                          Copy invite link for {newUserEmail.trim()}
                         </button>
                       )}
                     </div>

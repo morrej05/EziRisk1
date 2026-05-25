@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
 
     if (existingByEmail?.status === 'invited') {
       return json({
-        error: `An invitation has already been sent to ${emailNormalised}. Use "Resend" to send a new invite link.`,
+        error: `An invitation already exists for ${emailNormalised}. Use "Copy invite link" to share a fresh link.`,
       }, 409);
     }
 
