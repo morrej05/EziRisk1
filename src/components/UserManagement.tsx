@@ -445,6 +445,11 @@ export default function UserManagement() {
         return;
       }
 
+      if (!(resendData as { email_sent?: boolean } | null)?.email_sent) {
+        showToast('Failed to resend invite: email provider did not confirm delivery.', 'error');
+        return;
+      }
+
       // Optimistically stamp the new invited_at on any matching row.
       const newInvitedAt =
         (resendData as { invited_at?: string } | null)?.invited_at ?? new Date().toISOString();

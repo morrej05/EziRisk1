@@ -21,6 +21,49 @@ interface ResendPayload {
   email: string;
 }
 
+interface GeneratedMagicLink {
+  properties?: {
+    action_link?: string;
+  };
+}
+
+async function sendInviteEmailViaResend(params: {
+  apiKey: string;
+  from: string;
+  to: string;
+  organisationName?: string | null;
+  actionLink: string;
+}) {
+  const subjectOrg = params.organisationName?.trim() || 'your organisation';
+  const subject = `You're invited to join ${subjectOrg} on EziRisk`;
+  const html = `
+    <p>Hello,</p>
+    <p>You were invited to join <strong>${subjectOrg}</strong> on EziRisk.</p>
+    <p><a href="${params.actionLink}">Accept invitation</a></p>
+    <p>If the button does not work, copy and paste this link into your browser:</p>
+    <p>${params.actionLink}</p>
+  `;
+
+  const resendResp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: params.from,
+      to: [params.to],
+      subject,
+      html,
+    }),
+  });
+
+  if (!resendResp.ok) {
+    const raw = await resendResp.text();
+    throw new Error(`Resend API error (${resendResp.status}): ${raw.slice(0, 300)}`);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -147,10 +190,10 @@ Deno.serve(async (req: Request) => {
       );
       linkError = error;
     } else {
-      // Confirmed user — send a magic link routed through the invite accept flow.
-      // ?type=invite in redirectTo tells AuthCallbackPage this is an invite flow
-      // and tells AcceptInvitePage to treat this as an existing-account join.
-      const { error } = await adminSupabase.auth.admin.generateLink({
+      // Confirmed users cannot be re-invited with inviteUserByEmail.
+      // generateLink() only returns a link; it does NOT send email.
+      // So we generate the invite-flow magic link and dispatch the email via Resend.
+      const { data: generated, error } = await adminSupabase.auth.admin.generateLink({
         type: 'magiclink',
         email: emailNormalised,
         options: {
@@ -158,6 +201,45 @@ Deno.serve(async (req: Request) => {
         },
       });
       linkError = error;
+
+      if (!linkError) {
+        const actionLink = (generated as GeneratedMagicLink | null)?.properties?.action_link;
+        if (!actionLink) {
+          return json({ error: 'Failed to generate invite link for confirmed user' }, 500);
+        }
+
+        const resendApiKey = Deno.env.get('RESEND_API_KEY');
+        const inviteFromEmail = Deno.env.get('INVITE_FROM_EMAIL') ?? Deno.env.get('RESEND_FROM_EMAIL');
+
+        if (!resendApiKey || !inviteFromEmail) {
+          return json(
+            {
+              error:
+                'Confirmed-user resend requires RESEND_API_KEY and INVITE_FROM_EMAIL (or RESEND_FROM_EMAIL) environment variables',
+            },
+            500,
+          );
+        }
+
+        const { data: orgData } = await adminSupabase
+          .from('organisations')
+          .select('name')
+          .eq('id', payload.organisation_id)
+          .maybeSingle();
+
+        try {
+          await sendInviteEmailViaResend({
+            apiKey: resendApiKey,
+            from: inviteFromEmail,
+            to: emailNormalised,
+            organisationName: (orgData as { name?: string } | null)?.name ?? null,
+            actionLink,
+          });
+        } catch (sendErr) {
+          const sendMessage = sendErr instanceof Error ? sendErr.message : 'Unknown Resend send error';
+          return json({ error: `Failed to send invite email via Resend: ${sendMessage}` }, 502);
+        }
+      }
     }
 
     if (linkError) {
