@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { UserRole } from '../utils/permissions';
 import { Users, AlertCircle, CheckCircle, Shield } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 interface UserProfile {
   id: string;
@@ -17,6 +18,10 @@ export default function UserRoleManagement() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string; message: string; confirmText: string;
+    isDestructive?: boolean; onConfirm: () => void;
+  } | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -65,11 +70,19 @@ export default function UserRoleManagement() {
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     if (newRole === 'admin') {
-      if (!confirm('Are you sure you want to grant Admin privileges? This gives full organization access.')) {
-        return;
-      }
+      setConfirmState({
+        title: 'Grant Admin Privileges',
+        message: 'Are you sure you want to grant Admin privileges? This gives full organization access.',
+        confirmText: 'Grant Admin',
+        isDestructive: false,
+        onConfirm: () => { setConfirmState(null); void doRoleChange(userId, newRole); },
+      });
+      return;
     }
+    void doRoleChange(userId, newRole);
+  };
 
+  const doRoleChange = async (userId: string, newRole: UserRole) => {
     try {
       setUpdatingUserId(userId);
       setError(null);
@@ -95,6 +108,8 @@ export default function UserRoleManagement() {
       setUpdatingUserId(null);
     }
   };
+
+
 
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
@@ -236,6 +251,15 @@ export default function UserRoleManagement() {
           )}
         </div>
       </div>
+      <ConfirmModal
+        isOpen={confirmState !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText={confirmState?.confirmText}
+        isDestructive={confirmState?.isDestructive}
+      />
     </div>
   );
 }

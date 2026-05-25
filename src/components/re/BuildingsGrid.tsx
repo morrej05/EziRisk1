@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import ConfirmModal from '../ConfirmModal';
 import type { BuildingInput } from '../../lib/re/buildingsModel';
 import { createEmptyBuilding } from '../../lib/re/buildingsModel';
 import { Save, Trash2, Pencil, CheckCircle2, AlertTriangle, CircleDashed, Info, PlusCircle, Lock } from 'lucide-react';

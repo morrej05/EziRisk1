@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { X, AlertTriangle, Upload, CheckCircle } from 'lucide-react';
+import { showToast } from '../../lib/toast';
+import ConfirmModal from '../ConfirmModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { uploadAttachment } from '../../utils/evidenceManagement';
@@ -264,6 +266,11 @@ export default function AddActionModal({
   const [userEditedTimescale, setUserEditedTimescale] = useState(false);
   const [userEditedTargetDate, setUserEditedTargetDate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const skipNearDuplicateCheckRef = useRef(false);
+  const [confirmState, setConfirmState] = useState<{
+    title: string; message: string; confirmText: string;
+    isDestructive?: boolean; onConfirm: () => void;
+  } | null>(null);
 
   const recommendationContext = buildRecommendationContext({
     documentId,
@@ -609,22 +616,22 @@ export default function AddActionModal({
     e.preventDefault();
 
     if (!organisation?.id || !user?.id) {
-      alert('User or organisation not found. Please refresh and try again.');
+      showToast('User or organisation not found. Please refresh and try again.', 'error');
       return;
     }
 
     if (!formData.recommendedAction.trim()) {
-      alert('Please enter a recommended action.');
+      showToast('Please enter a recommended action.', 'error');
       return;
     }
 
     if (formData.escalateToP1 && !formData.escalationJustification.trim()) {
-      alert('Please provide a justification for escalating this action to P1.');
+      showToast('Please provide a justification for escalating this action to P1.', 'error');
       return;
     }
 
     if (isTimescaleRelaxation && !formData.overrideJustification.trim()) {
-      alert('Please provide a justification for overriding the suggested timescale.');
+      showToast('Please provide a justification for overriding the suggested timescale.', 'error');
       return;
     }
 
@@ -654,7 +661,7 @@ export default function AddActionModal({
 
       if (duplicate) {
         setIsSubmitting(false);
-        alert('This action already exists in this module.');
+        showToast('This action already exists in this module.', 'error');
         return;
       }
 
@@ -662,10 +669,18 @@ export default function AddActionModal({
         (action) => areActionTextsNearDuplicate(normalizedActionText, action.recommended_action)
       );
 
-      if (nearDuplicate && !window.confirm('A very similar action already exists in this module. Create this additional recommendation anyway?')) {
+      if (nearDuplicate && !skipNearDuplicateCheck) {
         setIsSubmitting(false);
+        setConfirmState({
+          title: 'Similar Action Exists',
+          message: 'A very similar action already exists in this module. Create this additional recommendation anyway?',
+          confirmText: 'Create Anyway',
+          isDestructive: false,
+          onConfirm: () => { setConfirmState(null); setSkipNearDuplicateCheck(true); },
+        });
         return;
       }
+      setSkipNearDuplicateCheck(false);
 
       const targetDate = formData.targetDate || targetDateFromTimescale(effectiveTimescale) || null;
 

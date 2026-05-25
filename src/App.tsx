@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { ClientBrandingProvider } from './contexts/ClientBrandingContext';
+import ToastContainer from './components/ToastContainer';
 import LandingPage from './pages/LandingPage';
 import SignIn from './pages/SignIn';
 import ResetPasswordPage from './pages/ResetPasswordPage';
@@ -371,6 +372,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <CookieConsentBanner />
+          <ToastContainer />
           </ErrorBoundary>
         </ClientBrandingProvider>
       </BrowserRouter>

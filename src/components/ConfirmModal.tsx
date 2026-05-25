@@ -7,10 +7,38 @@ interface ConfirmModalProps {
   title: string;
   message: string;
   confirmText?: string;
+  cancelText?: string;
+  /** @deprecated Use isDestructive instead. Kept for backward compatibility. */
   confirmButtonClass?: string;
   isDestructive?: boolean;
 }
 
+/**
+ * Branded confirmation dialog — replaces window.confirm() across the app.
+ *
+ * Usage:
+ *   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+ *
+ *   // Where you used to call confirm():
+ *   setConfirmState({
+ *     title: 'Remove user',
+ *     message: 'This cannot be undone.',
+ *     confirmText: 'Remove',
+ *     isDestructive: true,
+ *     onConfirm: doTheAction,
+ *   });
+ *
+ *   // In JSX:
+ *   <ConfirmModal
+ *     isOpen={confirmState !== null}
+ *     onClose={() => setConfirmState(null)}
+ *     onConfirm={confirmState?.onConfirm ?? (() => {})}
+ *     title={confirmState?.title ?? ''}
+ *     message={confirmState?.message ?? ''}
+ *     confirmText={confirmState?.confirmText}
+ *     isDestructive={confirmState?.isDestructive}
+ *   />
+ */
 export default function ConfirmModal({
   isOpen,
   onClose,
@@ -18,7 +46,7 @@ export default function ConfirmModal({
   title,
   message,
   confirmText = 'Confirm',
-  confirmButtonClass,
+  cancelText = 'Cancel',
   isDestructive = false,
 }: ConfirmModalProps) {
   if (!isOpen) return null;
@@ -28,45 +56,46 @@ export default function ConfirmModal({
     onClose();
   };
 
-  const defaultButtonClass = isDestructive
-    ? 'bg-red-600 hover:bg-red-700 text-white'
-    : 'bg-blue-600 hover:bg-blue-700 text-white';
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="flex items-start justify-between p-6 border-b">
-          <div className="flex items-center gap-3">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
+        {/* Header */}
+        <div className="flex items-start justify-between px-5 pt-5 pb-3">
+          <div className="flex items-start gap-3">
             {isDestructive && (
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
+              <div className="shrink-0 flex items-center justify-center h-9 w-9 rounded-full bg-red-100">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
               </div>
             )}
-            <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+              <p className="mt-1 text-sm text-slate-600 leading-snug">{message}</p>
+            </div>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors ml-2"
+            aria-label="Close"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6">
-          <p className="text-gray-700 leading-relaxed">{message}</p>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 rounded-b-lg">
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
           >
-            Cancel
+            {cancelText}
           </button>
           <button
             onClick={handleConfirm}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              confirmButtonClass || defaultButtonClass
+            className={`px-4 py-2 text-sm font-medium rounded-lg text-white transition-colors ${
+              isDestructive ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-800'
             }`}
           >
             {confirmText}

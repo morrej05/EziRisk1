@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle, Mail, RotateCcw } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
+import { showToast } from '../lib/toast';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../utils/permissions';
@@ -106,6 +108,13 @@ export default function UserManagement() {
   const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
   const [resendingUserId, setResendingUserId] = useState<string | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  } | null>(null);
 
   const maxUsers = useMemo(() => getUserLimitForOrganisation(organisation), [organisation]);
   const currentUsers = users.length;
@@ -452,26 +461,30 @@ export default function UserManagement() {
     void handleResendByEmail(newUserEmail.trim());
   };
 
-  const handleRevokeInvite = async (invite: PendingInvite) => {
-    if (
-      !confirm(
-        `Revoke the invite for ${invite.invited_email}? They won't be able to join using the current invite link.`,
-      )
-    ) return;
-    setRevokingUserId(invite.user_id);
-    setActionError(null);
-    try {
-      const { error } = await supabase.functions.invoke('revoke-invite', {
-        body: { organisation_id: currentUser?.organisation_id, user_id: invite.user_id },
-      });
-      if (error) throw error;
-      await fetchUsers();
-    } catch (error: unknown) {
-      const message = await extractEdgeFunctionError(error);
-      setActionError(`Failed to revoke invite: ${message}`);
-    } finally {
-      setRevokingUserId(null);
-    }
+  const handleRevokeInvite = (invite: PendingInvite) => {
+    setConfirmState({
+      title: 'Revoke invitation',
+      message: `Revoke the invite for ${invite.invited_email}? They won't be able to join using the current invite link.`,
+      confirmText: 'Revoke',
+      isDestructive: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setRevokingUserId(invite.user_id);
+        setActionError(null);
+        try {
+          const { error } = await supabase.functions.invoke('revoke-invite', {
+            body: { organisation_id: currentUser?.organisation_id, user_id: invite.user_id },
+          });
+          if (error) throw error;
+          await fetchUsers();
+        } catch (error: unknown) {
+          const message = await extractEdgeFunctionError(error);
+          setActionError(`Failed to revoke invite: ${message}`);
+        } finally {
+          setRevokingUserId(null);
+        }
+      },
+    });
   };
 
   // ── Active member actions ────────────────────────────────────────────────
@@ -482,7 +495,7 @@ export default function UserManagement() {
     const isDemotingAdmin = target?.role === 'admin' && newRole !== 'admin';
 
     if (adminCount === 1 && isDemotingAdmin) {
-      alert('Cannot change role: at least one admin must remain in the organisation.');
+      setActionError('Cannot change role: at least one admin must remain in the organisation.');
       setEditingUserId(null);
       return;
     }
@@ -499,13 +512,13 @@ export default function UserManagement() {
       setEditingUserId(null);
     } catch (error) {
       console.error('Error updating role:', error);
-      alert('Failed to update user role. Please try again.');
+      setActionError('Failed to update user role. Please try again.');
     }
   };
 
   const handleTogglePlatformAdmin = async (userId: string, currentValue: boolean) => {
     if (users.filter((u) => u.is_platform_admin).length === 1 && currentValue) {
-      alert('At least one Platform Admin is required. Cannot remove the last Platform Admin.');
+      setActionError('At least one Platform Admin is required. Cannot remove the last Platform Admin.');
       return;
     }
     try {
@@ -517,28 +530,38 @@ export default function UserManagement() {
       setUsers(users.map((u) => (u.id === userId ? { ...u, is_platform_admin: !currentValue } : u)));
     } catch (error) {
       console.error('Error updating platform admin status:', error);
-      alert('Failed to update Platform Admin status. Please try again.');
+      setActionError('Failed to update Platform Admin status. Please try again.');
     }
   };
 
-  const handleRemoveUser = async (userId: string, userName?: string) => {
+  const handleRemoveUser = (userId: string, userName?: string) => {
     const adminCount = users.filter((u) => u.role === 'admin').length;
     const target = users.find((u) => u.id === userId);
     if (adminCount === 1 && target?.role === 'admin') {
-      alert('Cannot remove user: at least one admin must remain in the organisation.');
+      setActionError('Cannot remove user: at least one admin must remain in the organisation.');
       return;
     }
-    if (!confirm(`Remove ${userName || 'this user'} from your organisation? They will lose access immediately.`)) return;
-    try {
-      const { error } = await supabase.functions.invoke('remove-org-member', {
-        body: { organisation_id: currentUser?.organisation_id, target_user_id: userId },
-      });
-      if (error) throw error;
-      await fetchUsers();
-    } catch (error) {
-      console.error('[UserManagement] Error removing user:', error);
-      alert(`Failed to remove user: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    const displayName = userName || 'this user';
+    setConfirmState({
+      title: 'Remove user',
+      message: `Remove ${displayName} from your organisation? They will lose access immediately.`,
+      confirmText: 'Remove',
+      isDestructive: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          const { error } = await supabase.functions.invoke('remove-org-member', {
+            body: { organisation_id: currentUser?.organisation_id, target_user_id: userId },
+          });
+          if (error) throw error;
+          showToast(`${displayName} has been removed.`, 'success');
+          await fetchUsers();
+        } catch (error) {
+          console.error('[UserManagement] Error removing user:', error);
+          setActionError(`Failed to remove user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      },
+    });
   };
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -1116,6 +1139,16 @@ export default function UserManagement() {
         detail={upgradeDetail}
         onClose={() => setShowUpgradeModal(false)}
         onUpgrade={() => window.location.assign(buildUpgradePath(upgradeReason, { action: 'add_user' }))}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText={confirmState?.confirmText}
+        isDestructive={confirmState?.isDestructive}
       />
     </div>
   );

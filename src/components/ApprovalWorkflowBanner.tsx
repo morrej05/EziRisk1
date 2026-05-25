@@ -3,6 +3,8 @@ import { AlertCircle, CheckCircle, Clock, FileCheck, Loader2 } from 'lucide-reac
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { isOrgAdmin } from '../utils/entitlements';
+import ConfirmModal from './ConfirmModal';
+import { showToast } from '../lib/toast';
 
 interface ApprovalWorkflowBannerProps {
   surveyId: string;
@@ -30,6 +32,10 @@ export default function ApprovalWorkflowBanner({
   const [approvalNoteText, setApprovalNoteText] = useState('');
   const [returnNoteText, setReturnNoteText] = useState('');
   const [approverName, setApproverName] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string; message: string; confirmText: string;
+    isDestructive?: boolean; onConfirm: () => void;
+  } | null>(null);
 
   const isAdmin = user ? isOrgAdmin(user.id) : false;
 
@@ -50,12 +56,16 @@ export default function ApprovalWorkflowBanner({
   const handleSubmitForReview = async () => {
     if (!surveyId) return;
 
-    const confirmed = window.confirm(
-      'Submit this survey for review?\n\nOnce submitted, you will not be able to edit it until an admin reviews it.'
-    );
+    setConfirmState({
+      title: 'Submit for Review',
+      message: 'Submit this survey for review?\n\nOnce submitted, you will not be able to edit it until an admin reviews it.',
+      confirmText: 'Submit',
+      isDestructive: false,
+      onConfirm: () => { setConfirmState(null); void doSubmitForReview(); },
+    });
+  };
 
-    if (!confirmed) return;
-
+  const doSubmitForReview = async () => {
     setIsSubmitting(true);
 
     try {
@@ -78,11 +88,11 @@ export default function ApprovalWorkflowBanner({
         throw new Error(result.error || 'Failed to submit for review');
       }
 
-      alert('Survey submitted for review successfully!');
+      showToast('Survey submitted for review successfully!', 'success');
       onStatusChange?.();
     } catch (err: any) {
       console.error('Error submitting for review:', err);
-      alert(`Failed to submit: ${err.message}`);
+      showToast(`Failed to submit: ${err.message}`, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -121,13 +131,13 @@ export default function ApprovalWorkflowBanner({
         throw new Error(result.error || 'Failed to return to draft');
       }
 
-      alert('Survey returned to draft successfully!');
+      showToast('Survey returned to draft successfully!', 'success');
       setShowReturnNote(false);
       setReturnNoteText('');
       onStatusChange?.();
     } catch (err: any) {
       console.error('Error returning to draft:', err);
-      alert(`Failed to return to draft: ${err.message}`);
+      showToast(`Failed to return to draft: ${err.message}`, 'error');
     } finally {
       setIsReturning(false);
     }
@@ -166,13 +176,13 @@ export default function ApprovalWorkflowBanner({
         throw new Error(result.error || 'Failed to approve survey');
       }
 
-      alert('Survey approved successfully!');
+      showToast('Survey approved successfully!', 'success');
       setShowApprovalNote(false);
       setApprovalNoteText('');
       onStatusChange?.();
     } catch (err: any) {
       console.error('Error approving survey:', err);
-      alert(`Failed to approve: ${err.message}`);
+      showToast(`Failed to approve: ${err.message}`, 'error');
     } finally {
       setIsApproving(false);
     }
@@ -407,6 +417,15 @@ export default function ApprovalWorkflowBanner({
           </div>
         )}
       </div>
+      <ConfirmModal
+        isOpen={confirmState !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText={confirmState?.confirmText}
+        isDestructive={confirmState?.isDestructive}
+      />
     </div>
   );
 }

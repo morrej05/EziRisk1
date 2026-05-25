@@ -4,6 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { SUPPORT_CONFIG, getSupportMailto } from '../../config/support';
 import { getUserSeatEntitlement, type UserSeatEntitlement } from '../../utils/userSeatEntitlements';
+import ConfirmModal from '../ConfirmModal';
+import PromptModal from '../PromptModal';
 
 type MemberRole = 'admin' | 'surveyor' | 'viewer';
 
@@ -54,6 +56,15 @@ export default function AccountLifecyclePanel() {
   const [soloFlowAcknowledgedOrgClose, setSoloFlowAcknowledgedOrgClose] = useState(false);
   const [soloFlowPhrase, setSoloFlowPhrase] = useState('');
   const [soloFlowPassword, setSoloFlowPassword] = useState('');
+  const [confirmState, setConfirmState] = useState<{
+    title: string; message: string; confirmText: string;
+    isDestructive?: boolean; onConfirm: () => void;
+  } | null>(null);
+  const [promptState, setPromptState] = useState<{
+    title: string; message?: string; placeholder?: string;
+    confirmText?: string; requiredValue?: string; requiredValueHint?: string;
+    onConfirm: (value: string) => void;
+  } | null>(null);
 
   const adminCount = useMemo(() => members.filter((m) => m.role === 'admin').length, [members]);
   const memberCount = members.length;
@@ -173,10 +184,16 @@ export default function AccountLifecyclePanel() {
       return;
     }
 
-    if (!window.confirm('Remove this member from the organisation? This action is destructive.')) {
-      return;
-    }
+    setConfirmState({
+      title: 'Remove Member',
+      message: 'Remove this member from the organisation? This action is destructive.',
+      confirmText: 'Remove',
+      isDestructive: true,
+      onConfirm: () => { setConfirmState(null); void doRemoveMember(targetUserId, isSoleOwnerRemoval); },
+    });
+  };
 
+  const doRemoveMember = async (targetUserId: string, isSoleOwnerRemoval: boolean) => {
     setWorking(true);
     setRemovingUserId(targetUserId);
     setError(null);
@@ -202,10 +219,16 @@ export default function AccountLifecyclePanel() {
       return;
     }
 
-    if (!window.confirm('Transfer admin role to the selected member?')) {
-      return;
-    }
+    setConfirmState({
+      title: 'Transfer Adminship',
+      message: 'Transfer admin role to the selected member?',
+      confirmText: 'Transfer',
+      isDestructive: false,
+      onConfirm: () => { setConfirmState(null); void doTransferOwnership(); },
+    });
+  };
 
+  const doTransferOwnership = async () => {
     setWorking(true);
     setError(null);
     try {
@@ -268,17 +291,22 @@ export default function AccountLifecyclePanel() {
       return;
     }
 
-    const confirmation = window.prompt('Type DELETE to permanently delete your account.');
-    if (confirmation !== 'DELETE') {
-      setError('Account deletion cancelled. Type DELETE exactly to continue.');
-      return;
-    }
-
     if (isCurrentUserSoleOwner && (!selfDeleteTransferOrgId || !selfDeleteTransferToUserId)) {
       setError('Sole admin must transfer adminship before self-delete.');
       return;
     }
 
+    setPromptState({
+      title: 'Delete account',
+      message: 'This action is permanent and cannot be undone.',
+      requiredValue: 'DELETE',
+      requiredValueHint: 'Type DELETE to confirm',
+      confirmText: 'Delete account',
+      onConfirm: () => { setPromptState(null); void doSelfDeleteAccount(); },
+    });
+  };
+
+  const doSelfDeleteAccount = async () => {
     setWorking(true);
     setError(null);
     try {
@@ -530,6 +558,26 @@ export default function AccountLifecyclePanel() {
           </>
         )}
       </section>
+      <ConfirmModal
+        isOpen={confirmState !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText={confirmState?.confirmText}
+        isDestructive={confirmState?.isDestructive}
+      />
+      <PromptModal
+        isOpen={promptState !== null}
+        onClose={() => setPromptState(null)}
+        onConfirm={promptState?.onConfirm ?? (() => {})}
+        title={promptState?.title ?? ''}
+        message={promptState?.message}
+        placeholder={promptState?.placeholder}
+        confirmText={promptState?.confirmText}
+        requiredValue={promptState?.requiredValue}
+        requiredValueHint={promptState?.requiredValueHint}
+      />
     </div>
   );
 }

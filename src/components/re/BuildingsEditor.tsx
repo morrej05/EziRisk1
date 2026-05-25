@@ -1,5 +1,6 @@
 // src/components/re/BuildingsEditor.tsx
 import { useEffect, useMemo, useState } from 'react';
+import ConfirmModal from '../ConfirmModal';
 import type { BuildingInput } from '../../lib/re/buildingsModel';
 import { createEmptyBuilding } from '../../lib/re/buildingsModel';
 import { listBuildings, upsertBuilding, deleteBuilding } from '../../lib/re/buildingsRepo';
@@ -14,6 +15,10 @@ export default function BuildingsEditor({ documentId, onAfterSave }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string; message: string; confirmText: string;
+    isDestructive?: boolean; onConfirm: () => void;
+  } | null>(null);
 
   const [buildings, setBuildings] = useState<BuildingInput[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -87,20 +92,28 @@ export default function BuildingsEditor({ documentId, onAfterSave }: Props) {
     }
   }
 
-  async function remove() {
+  function remove() {
     if (!selected?.id) return;
-    if (!confirm('Delete this building?')) return;
-
-    setSaving(true);
-    setError(null);
-    try {
-      await deleteBuilding(selected.id);
-      await refresh();
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to delete');
-    } finally {
-      setSaving(false);
-    }
+    const id = selected.id;
+    setConfirmState({
+      title: 'Delete building',
+      message: 'Delete this building? This cannot be undone.',
+      confirmText: 'Delete',
+      isDestructive: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        setSaving(true);
+        setError(null);
+        try {
+          await deleteBuilding(id);
+          await refresh();
+        } catch (e: any) {
+          setError(e?.message ?? 'Failed to delete');
+        } finally {
+          setSaving(false);
+        }
+      },
+    });
   }
 
   if (loading) return <div className="p-4">Loading buildings…</div>;
@@ -414,6 +427,15 @@ export default function BuildingsEditor({ documentId, onAfterSave }: Props) {
           </>
         )}
       </div>
+      <ConfirmModal
+        isOpen={confirmState !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText={confirmState?.confirmText}
+        isDestructive={confirmState?.isDestructive}
+      />
     </div>
   );
 }

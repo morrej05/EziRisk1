@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Upload, Trash2, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import ConfirmModal from './ConfirmModal';
 
 export default function OrganisationBranding() {
   const { user } = useAuth();
@@ -12,6 +13,10 @@ export default function OrganisationBranding() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [organisationId, setOrganisationId] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string; message: string; confirmText: string;
+    isDestructive?: boolean; onConfirm: () => void;
+  } | null>(null);
 
   useEffect(() => {
     loadOrganisationBranding();
@@ -207,40 +212,39 @@ export default function OrganisationBranding() {
     }
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!organisationId || !logoPath) return;
+    setConfirmState({
+      title: 'Remove logo',
+      message: 'Are you sure you want to remove the organisation logo?',
+      confirmText: 'Remove',
+      isDestructive: true,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          setLoading(true);
+          setError(null);
+          setSuccess(null);
 
-    if (!confirm('Are you sure you want to remove the organisation logo?')) {
-      return;
-    }
+          const { data: result, error: invokeError } = await supabase.functions.invoke('delete-org-logo', {
+            body: { organisation_id: organisationId },
+          });
 
-    try {
-      setLoading(true);
-      setError(null);
-      setSuccess(null);
+          if (invokeError) throw new Error(invokeError.message || 'Delete failed');
+          if (result?.error) throw new Error(result.error);
 
-      const { data: result, error: invokeError } = await supabase.functions.invoke('delete-org-logo', {
-        body: { organisation_id: organisationId },
-      });
-
-      if (invokeError) {
-        throw new Error(invokeError.message || 'Delete failed');
-      }
-
-      if (result?.error) {
-        throw new Error(result.error);
-      }
-
-      setSuccess('Logo removed successfully');
-      setLogoUrl(null);
-      setLogoPath(null);
-      await loadOrganisationBranding();
-    } catch (err: any) {
-      console.error('Error deleting logo:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+          setSuccess('Logo removed successfully');
+          setLogoUrl(null);
+          setLogoPath(null);
+          await loadOrganisationBranding();
+        } catch (err: any) {
+          console.error('Error deleting logo:', err);
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
   }
 
   if (loading && !logoUrl) {
@@ -342,6 +346,15 @@ export default function OrganisationBranding() {
           </ul>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={confirmState !== null}
+        onClose={() => setConfirmState(null)}
+        onConfirm={confirmState?.onConfirm ?? (() => {})}
+        title={confirmState?.title ?? ''}
+        message={confirmState?.message ?? ''}
+        confirmText={confirmState?.confirmText}
+        isDestructive={confirmState?.isDestructive}
+      />
     </div>
   );
 }
