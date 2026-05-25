@@ -123,49 +123,47 @@ Deno.serve(async (req: Request) => {
       }, 409);
     }
 
-    // GoTrue enforces that generateLink({ type: 'invite' }) is only valid for
-    // users whose email_confirmed_at IS NULL.  Calling it for an already-confirmed
-    // account returns "A user with this email address has already been registered".
-    //
-    // Strategy: try the invite link first (correct UX for new/unconfirmed users).
-    // If GoTrue rejects it with the "already registered" error, fall back to a
-    // magic link whose redirectTo embeds ?type=invite.  AuthCallbackPage detects
-    // this signal and routes the confirmed user to /accept-invite, where
-    // ensure_org_for_user() activates the pending membership without requiring
-    // them to set a new password.
-    //
-    // Both paths return data.user.id so the membership upsert below works
-    // identically regardless of which link was sent.
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
 
-    const { data: linkData, error: inviteError } = await adminSupabase.auth.admin.generateLink({
-      type: 'invite',
-      email: emailNormalised,
-      options: {
+    // Strategy: use inviteUserByEmail() for new / unconfirmed users — this is the
+    // correct GoTrue API that both creates the user AND sends the invite email.
+    //
+    // inviteUserByEmail() fails with "already been registered" for confirmed users.
+    // In that case fall back to generateLink({ type: 'magiclink' }) which sends a
+    // sign-in link whose redirectTo embeds ?type=invite so AuthCallbackPage routes
+    // the confirmed user to /accept-invite where ensure_org_for_user() activates
+    // the pending membership without requiring them to set a new password.
+    //
+    // NOTE: options.data is intentionally omitted for the magiclink fallback —
+    // GoTrue ignores it for magiclink type.  The ?type=invite in redirectTo is
+    // the sole invite-flow signal used by AuthCallbackPage for confirmed users.
+    const inviteMetadata = {
+      organisation_id: payload.organisation_id,
+      role: payload.role,
+      invite_flow: 'true',
+      invited_by_user_id: user.id,
+      ...(payload.name?.trim() ? { name: payload.name.trim() } : {}),
+    };
+
+    const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
+      emailNormalised,
+      {
         redirectTo: `${appBaseUrl}/auth/callback`,
-        data: {
-          organisation_id: payload.organisation_id,
-          role: payload.role,
-          invite_flow: 'true',
-          invited_by_user_id: user.id,
-          ...(payload.name?.trim() ? { name: payload.name.trim() } : {}),
-        },
+        data: inviteMetadata,
       },
-    });
+    );
 
     let invitedUserId: string;
 
     if (inviteError) {
       const alreadyRegistered = inviteError.message.toLowerCase().includes('already been registered');
       if (!alreadyRegistered) {
-        console.error('[invite-org-member] generateLink(invite) failed:', inviteError.message);
+        console.error('[invite-org-member] inviteUserByEmail failed:', inviteError.message);
         return json({ error: `Failed to send invite: ${inviteError.message}` }, 400);
       }
 
       // Existing confirmed user — fall back to magic link routed through the
-      // invite accept flow.  options.data is intentionally omitted: GoTrue
-      // ignores it for magiclink-type links.  The ?type=invite in redirectTo is
-      // the sole invite-flow signal used by AuthCallbackPage.
+      // invite accept flow.
       console.log('[invite-org-member] Confirmed user detected, sending magic link for:', emailNormalised);
       const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
         type: 'magiclink',
@@ -182,7 +180,7 @@ Deno.serve(async (req: Request) => {
 
       invitedUserId = magicData.user.id;
     } else {
-      invitedUserId = linkData.user.id;
+      invitedUserId = inviteData.user.id;
     }
 
     // Check whether this user is already an active member (after resolving user_id).
@@ -202,7 +200,7 @@ Deno.serve(async (req: Request) => {
     // Upsert invited membership row.
     // created_at is intentionally omitted so the DB keeps the original value on update.
     const now = new Date().toISOString();
-    const { error: memberInsertError } = await adminSupabase
+    const { data: memberRow, error: memberInsertError } = await adminSupabase
       .from('organisation_members')
       .upsert(
         {
@@ -216,14 +214,22 @@ Deno.serve(async (req: Request) => {
           updated_at: now,
         },
         { onConflict: 'organisation_id,user_id' },
-      );
+      )
+      .select('id')
+      .maybeSingle();
 
     if (memberInsertError) {
       console.error('[invite-org-member] Membership upsert failed:', memberInsertError.message);
       return json({ error: `Failed to record invitation: ${memberInsertError.message}` }, 400);
     }
 
-    return json({ success: true, user_id: invitedUserId });
+    return json({
+      success: true,
+      email_sent: true,
+      pending_invite_created: true,
+      membership_id: (memberRow as { id: string } | null)?.id ?? null,
+      user_id: invitedUserId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown server error';
     console.error('[invite-org-member] Unhandled exception:', message);

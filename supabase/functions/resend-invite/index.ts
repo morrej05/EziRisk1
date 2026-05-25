@@ -107,24 +107,18 @@ Deno.serve(async (req: Request) => {
 
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
 
-    // GoTrue enforces that generateLink({ type: 'invite' }) is only valid for
-    // users whose email_confirmed_at IS NULL (i.e. never accepted any invite or
-    // signed up).  Calling it for a confirmed user returns:
-    //   "A user with this email address has already been registered"
+    // Determine whether the user is confirmed so we choose the right link type.
     //
-    // Strategy: look up the user's confirmed status via getUserById, then choose
-    // the right link type:
+    // Unconfirmed (email_confirmed_at = null):
+    //   inviteUserByEmail() — the correct GoTrue API that both regenerates the
+    //   invite token AND sends the "You've been invited" email template.
     //
-    //   • Unconfirmed (email_confirmed_at = null):
-    //       generateLink({ type: 'invite' }) — regenerates the real invite token
-    //       and sends the "You've been invited" email template.
-    //
-    //   • Confirmed (email_confirmed_at is set):
-    //       generateLink({ type: 'magiclink' }) — sends a sign-in link.
-    //       The redirectTo embeds ?type=invite so AuthCallbackPage routes the
-    //       user to /accept-invite, where ensure_org_for_user() activates the
-    //       pending membership.  options.data is intentionally omitted because
-    //       GoTrue ignores it for magiclink-type links.
+    // Confirmed (email_confirmed_at is set):
+    //   generateLink({ type: 'magiclink' }) — sends a sign-in link.
+    //   The redirectTo embeds ?type=invite so AuthCallbackPage routes the
+    //   user to /accept-invite where ensure_org_for_user() activates the
+    //   pending membership.  options.data is intentionally omitted because
+    //   GoTrue ignores it for magiclink-type links.
 
     let linkError: { message: string } | null = null;
     let isConfirmed = false;
@@ -137,11 +131,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!isConfirmed) {
-      // Unconfirmed user — regenerate the invite link.
-      const { error } = await adminSupabase.auth.admin.generateLink({
-        type: 'invite',
-        email: emailNormalised,
-        options: {
+      // Unconfirmed user — use inviteUserByEmail which regenerates the invite
+      // token and sends the email.  Metadata preserved from the existing member row.
+      const { error } = await adminSupabase.auth.admin.inviteUserByEmail(
+        emailNormalised,
+        {
           redirectTo: `${appBaseUrl}/auth/callback`,
           data: {
             organisation_id: payload.organisation_id,
@@ -150,7 +144,7 @@ Deno.serve(async (req: Request) => {
             invited_by_user_id: user.id,
           },
         },
-      });
+      );
       linkError = error;
     } else {
       // Confirmed user — send a magic link routed through the invite accept flow.
@@ -167,7 +161,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (linkError) {
-      console.error('[resend-invite] generateLink failed:', linkError.message);
+      console.error('[resend-invite] send failed:', linkError.message);
       return json({ error: `Failed to resend invite: ${linkError.message}` }, 400);
     }
 
@@ -183,7 +177,7 @@ Deno.serve(async (req: Request) => {
       console.warn('[resend-invite] Failed to update invited_at:', updateError.message);
     }
 
-    return json({ success: true, invited_at: now });
+    return json({ success: true, email_sent: true, invited_at: now });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[resend-invite] Unhandled exception:', message);
