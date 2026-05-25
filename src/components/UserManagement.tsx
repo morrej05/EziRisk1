@@ -117,11 +117,13 @@ export default function UserManagement() {
   } | null>(null);
 
   const maxUsers = useMemo(() => getUserLimitForOrganisation(organisation), [organisation]);
-  const currentUsers = users.length;
-  const atSeatLimit = useMemo(() => currentUsers >= maxUsers, [currentUsers, maxUsers]);
+  const activeUsersCount = users.length;
+  const pendingInvitesCount = pendingInvites.length;
+  const reservedSeatsCount = activeUsersCount + pendingInvitesCount;
+  const atSeatLimit = useMemo(() => reservedSeatsCount >= maxUsers, [reservedSeatsCount, maxUsers]);
   const isNearSeatLimit = useMemo(
-    () => !atSeatLimit && maxUsers > 0 && currentUsers / maxUsers >= 0.8,
-    [atSeatLimit, currentUsers, maxUsers],
+    () => !atSeatLimit && maxUsers > 0 && reservedSeatsCount / maxUsers >= 0.8,
+    [atSeatLimit, reservedSeatsCount, maxUsers],
   );
   const seatLimitCopy = useMemo(
     () => getUserSeatLimitCopy(seatEntitlement, organisation),
@@ -152,6 +154,25 @@ export default function UserManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.organisation_id]);
 
+  useEffect(() => {
+    if (!currentUser?.organisation_id) return;
+    const channel = supabase
+      .channel(`org-members-${currentUser.organisation_id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'organisation_members',
+        filter: `organisation_id=eq.${currentUser.organisation_id}`,
+      }, () => {
+        void fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUser?.organisation_id]);
+
   const openAddModal = () => {
     setShowAddModal(true);
     setModalError(null);
@@ -165,7 +186,7 @@ export default function UserManagement() {
     setModalError(null);
   };
 
-  const fetchUsers = async () => {
+  async function fetchUsers() {
     if (!currentUser?.organisation_id) {
       setUsers([]);
       setPendingInvites([]);
@@ -305,7 +326,7 @@ export default function UserManagement() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   // ── Invite ───────────────────────────────────────────────────────────────
 
@@ -420,7 +441,7 @@ export default function UserManagement() {
 
       if (error) {
         const message = await extractEdgeFunctionError(error);
-        setActionError(`Failed to resend invite: ${message}`);
+        showToast(`Failed to resend invite: ${message}`, 'error');
         return;
       }
 
@@ -436,11 +457,11 @@ export default function UserManagement() {
         ),
       );
 
-      setAddSuccessMessage(`Invite resent to ${normalisedEmail}.`);
+      showToast(`Invite resent to ${normalisedEmail}.`, 'success');
       void fetchUsers();
     } catch (err: unknown) {
       const message = await extractEdgeFunctionError(err);
-      setActionError(`Failed to resend invite: ${message}`);
+      showToast(`Failed to resend invite: ${message}`, 'error');
     } finally {
       setResendingUserId(null);
     }
@@ -476,10 +497,11 @@ export default function UserManagement() {
             body: { organisation_id: currentUser?.organisation_id, user_id: invite.user_id },
           });
           if (error) throw error;
+          showToast(`Invite revoked for ${invite.invited_email}.`, 'success');
           await fetchUsers();
         } catch (error: unknown) {
           const message = await extractEdgeFunctionError(error);
-          setActionError(`Failed to revoke invite: ${message}`);
+          showToast(`Failed to revoke invite: ${message}`, 'error');
         } finally {
           setRevokingUserId(null);
         }
@@ -543,9 +565,9 @@ export default function UserManagement() {
     }
     const displayName = userName || 'this user';
     setConfirmState({
-      title: 'Remove user',
-      message: `Remove ${displayName} from your organisation? They will lose access immediately.`,
-      confirmText: 'Remove',
+      title: 'Remove user?',
+      message: `${displayName} will lose access to this organisation immediately. Existing assessments, findings, and audit history remain attached to the organisation.`,
+      confirmText: 'Remove user',
       isDestructive: true,
       onConfirm: async () => {
         setConfirmState(null);
@@ -555,6 +577,7 @@ export default function UserManagement() {
           });
           if (error) throw error;
           showToast(`${displayName} has been removed.`, 'success');
+          showToast(`Invite revoked for ${invite.invited_email}.`, 'success');
           await fetchUsers();
         } catch (error) {
           console.error('[UserManagement] Error removing user:', error);
@@ -603,32 +626,7 @@ export default function UserManagement() {
       {isNearSeatLimit && (
         <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-semibold">You're close to your seat limit ({currentUsers} of {maxUsers} users).</p>
-        </div>
-      )}
-      {atSeatLimit && (
-        <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p className="font-semibold">
-                {isTrialExpired
-                  ? 'Your free trial has ended. Upgrade to add team members.'
-                  : `You've reached your user limit (${maxUsers}). Upgrade to add more.`}
-              </p>
-              <p className="mt-0.5">{isTrialExpired ? 'Existing data is still available.' : seatLimitCopy.body}</p>
-              <button
-                onClick={() =>
-                  window.location.assign(
-                    buildUpgradePath(isTrialExpired ? 'trial_expired' : 'user_limit', { action: 'manage_users' }),
-                  )
-                }
-                className="mt-2 inline-flex rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 transition-colors"
-              >
-                Upgrade
-              </button>
-            </div>
-          </div>
+          <p className="font-semibold">You're close to your seat limit ({reservedSeatsCount} of {maxUsers} reserved seats).</p>
         </div>
       )}
       {loadError && (
@@ -660,18 +658,37 @@ export default function UserManagement() {
           <Users className="w-5 h-5 text-slate-600 shrink-0" />
           <h2 className="text-base sm:text-lg font-semibold text-slate-900 truncate">User Management</h2>
           <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded shrink-0">
-            {currentUsers}/{maxUsers} seats
+            {activeUsersCount}/{maxUsers} active
           </span>
         </div>
         <button
           onClick={openAddModal}
-          disabled={atSeatLimit || isTrialExpired}
-          title={isTrialExpired ? 'Upgrade to add team members.' : atSeatLimit ? seatLimitCopy.body : 'Invite a user'}
+          disabled={atSeatLimit}
+          title={atSeatLimit ? seatLimitCopy.body : 'Invite a user'}
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
           Invite User
         </button>
+      </div>
+
+
+
+      <div className="mx-4 mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <h3 className="text-sm font-semibold text-slate-800">How user access works</h3>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+          <li>Your subscription is organisation-based.</li>
+          <li>Active users consume seats within your plan.</li>
+          <li>Pending invitations reserve seats until accepted or revoked.</li>
+          <li>Removing a user immediately revokes access.</li>
+          <li>Existing assessments and audit history remain preserved.</li>
+          <li>Invitations can be resent or revoked at any time.</li>
+        </ul>
+      </div>
+
+      <div className="mx-4 mt-3 rounded-lg border border-slate-200 bg-white p-3">
+        <p className="text-sm font-medium text-slate-800">{activeUsersCount}/{maxUsers} active seats</p>
+        <p className="mt-1 text-sm text-slate-600">{pendingInvitesCount} pending {pendingInvitesCount === 1 ? 'invitation' : 'invitations'}</p>
       </div>
 
       {/* ── Active users — desktop table ── */}
@@ -1113,7 +1130,7 @@ export default function UserManagement() {
               </button>
               <button
                 onClick={handleInviteUser}
-                disabled={isAddingUser || atSeatLimit || isTrialExpired || !newUserEmail.trim()}
+                disabled={isAddingUser || atSeatLimit || !newUserEmail.trim()}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAddingUser ? (
