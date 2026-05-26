@@ -5,19 +5,19 @@ const workflowFriction = [
     image: '/what-create.webp',
     alt: 'Structured assessment form',
     title: 'Replace blank-document reporting',
-    description: 'Start from structured assessment sections instead of a blank report file.',
+    description: 'Start from structured assessment sections — premises, hazards, persons at risk and controls — not a blank document.',
   },
   {
     image: '/what-recommendations.webp',
     alt: 'Recommendations linked to assessment findings',
     title: 'Keep recommendations connected',
-    description: 'Link findings, actions and evidence back to the assessment context.',
+    description: 'Actions, priorities and supporting evidence stay linked to the finding they came from — through review, revision and final issue.',
   },
   {
     image: '/what-export.webp',
     alt: 'Professional report output',
     title: 'Issue with more control',
-    description: 'Resolve draft gaps before the assessment is issued.',
+    description: 'Run readiness checks, resolve outstanding items and lock a versioned report — so clients receive a complete, defensible record.',
   },
 ];
 
@@ -34,7 +34,7 @@ export default function WhatItDoes() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mx-auto mb-16 max-w-3xl text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
-            Built for fire risk assessors
+            Built for assessors and consultants
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
             Replace disconnected report assembly
@@ -50,7 +50,7 @@ export default function WhatItDoes() {
               <img
                 src={item.image}
                 alt={item.alt}
-                className="mb-6 h-44 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
+                className="mb-6 h-56 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
               />
               <h3 className="mb-3 text-xl font-semibold text-neutral-900">
                 {item.title}

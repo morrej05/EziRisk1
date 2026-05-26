@@ -21,15 +21,15 @@ export default function Hero() {
 
       <div className="relative z-10 mx-auto max-w-6xl px-6 py-24">
         <p className="mb-4 text-sm font-medium uppercase tracking-[0.2em] text-blue-200">
-          For fire risk assessors and consultants
+          For fire risk assessors, consultants and risk engineers
         </p>
 
         <h1 className="mb-6 max-w-3xl text-4xl font-bold leading-tight text-white sm:text-5xl md:text-6xl">
-          Finish professional fire assessment reports in one structured workflow.
+          From site walk to issued report — structured, traceable and defensible.
         </h1>
 
         <p className="mb-5 max-w-xl text-lg leading-8 text-blue-100">
-          Capture findings, link evidence and create traceable recommendations — then issue professional reports with readiness checks and evidence context intact.
+          Structure findings, link evidence and produce traceable recommendations — then issue defensible reports with readiness checks and a full audit trail built in.
         </p>
 
         <div className="mb-7 flex flex-wrap gap-2">
@@ -48,14 +48,14 @@ export default function Hero() {
             to="/signin"
             className="inline-flex items-center justify-center rounded-lg bg-white px-6 py-3 font-semibold text-blue-900 transition hover:bg-gray-100"
           >
-            Start an assessment
+            Start free trial
           </Link>
-          <a
-            href="#how-it-works"
+          <Link
+            to="/contact"
             className="inline-flex items-center justify-center rounded-lg border border-white/40 px-6 py-3 font-semibold text-white transition hover:bg-white/10"
           >
-            See how it works
-          </a>
+            Book a demo
+          </Link>
         </div>
       </div>
     </section>

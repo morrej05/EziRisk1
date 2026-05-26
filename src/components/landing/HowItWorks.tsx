@@ -6,31 +6,31 @@ const steps = [
     number: '01',
     icon: ClipboardList,
     title: 'Assess site',
-    description: 'Work through structured sections while observations are fresh.',
+    description: 'Complete structured sections on site — premises, hazards, persons at risk and existing controls.',
   },
   {
     number: '02',
     icon: Camera,
     title: 'Capture evidence',
-    description: 'Attach photos and documents to the right finding or control.',
+    description: 'Attach photos and documents directly to the finding or control they relate to.',
   },
   {
     number: '03',
     icon: ListChecks,
     title: 'Create recommendations',
-    description: 'Convert findings into clear, traceable actions.',
+    description: 'Convert findings into prioritised, traceable recommendations linked to the assessment record.',
   },
   {
     number: '04',
     icon: CheckCircle2,
     title: 'Validate readiness',
-    description: 'Check completeness before the report leaves draft.',
+    description: 'Run completeness checks across sections, evidence and recommendations before issue.',
   },
   {
     number: '05',
     icon: FileCheck2,
     title: 'Issue report',
-    description: 'Deliver a governed report with context intact.',
+    description: 'Lock and issue a version-controlled report — with findings, evidence and recommendations intact.',
   },
 ];
 

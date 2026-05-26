@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 import { getDefaultRegion, getPricing } from '../../config/pricing';
 import { PUBLIC_LEGAL_DETAILS } from '../../config/support';
 
@@ -81,6 +82,21 @@ export default function Pricing() {
         <p className="mt-3 text-center text-sm text-neutral-500">
           {PUBLIC_LEGAL_DETAILS.footerStatement}
         </p>
+
+        <div className="mt-10 mx-auto max-w-xl rounded-xl border border-neutral-200 bg-white p-6 text-center">
+          <p className="font-semibold text-neutral-900 mb-1">
+            Need more users, multi-site deployment or a custom setup?
+          </p>
+          <p className="text-sm text-neutral-500 mb-4">
+            Enterprise plans are available for insurers, consultancies and multi-site organisations.
+          </p>
+          <Link
+            to="/contact"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 hover:text-primary-800 transition-colors"
+          >
+            Get in touch <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
       </div>
     </section>
   );

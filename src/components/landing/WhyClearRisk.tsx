@@ -5,22 +5,26 @@ const benefits = [
   {
     icon: Link2,
     title: 'Evidence stays in context',
-    description: 'Photos and documents stay linked to the relevant finding or control.',
+    description:
+      'Photos, measurements and supporting documents stay linked to the finding or control that triggered them — not buried in a separate folder.',
   },
   {
     icon: CheckCircle2,
     title: 'Recommendations stay traceable',
-    description: 'Actions remain connected through review, reporting and issue.',
+    description:
+      'Each action traces back to the finding, risk level and assessment context — giving reviewers and insurers a clear line of sight.',
   },
   {
     icon: FileText,
-    title: 'Reports follow a consistent structure',
-    description: 'Consistent templates reduce missing context and ad hoc assembly.',
+    title: 'Issued reports are locked and versioned',
+    description:
+      'Once issued, reports are locked. Revisions create a new version — preserving the original for audit, regulatory or insurer reference.',
   },
   {
     icon: ShieldCheck,
     title: 'Issue controls support professionalism',
-    description: 'Readiness checks help resolve gaps before client delivery.',
+    description:
+      'Completeness checks before issue help ensure findings, evidence and recommendations are resolved before the report reaches the client.',
   },
 ];
 
@@ -75,7 +79,7 @@ export default function WhyClearRisk() {
 
         <div className="mt-16 rounded-xl border border-neutral-700 bg-neutral-800/50 p-8 text-center">
           <p className="mx-auto max-w-3xl text-lg text-neutral-300">
-            Replace scattered files with a single assessment record that is easier to review, issue and repeat.
+            Replace scattered files with a single assessment record — traceable, versioned and ready for client, audit or insurer review.
           </p>
         </div>
       </div>

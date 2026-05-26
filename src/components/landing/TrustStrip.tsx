@@ -1,11 +1,12 @@
 import { CheckCircle2 } from 'lucide-react';
 
 const SIGNALS = [
+  'PAS 79-aligned assessment structure',
+  'RR(FS)O 2005 reporting framework',
+  'Locked issued reports with version history',
   'Evidence linked to findings',
-  'Version-controlled issued reports',
-  'Review and issue controls',
-  'Role-based access',
-  'Traceable recommendations',
+  'Full audit trail',
+  'Role-based review controls',
 ];
 
 export default function TrustStrip() {

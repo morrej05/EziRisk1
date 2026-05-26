@@ -16,9 +16,9 @@ const personas = [
   },
   {
     icon: Building2,
-    title: 'Multi-site and insurer workflows',
-    description: 'Use a governed record for broader property and operational risk reviews.',
-    benefits: ['Portfolio context', 'Operational risk reviews', 'Issue-ready reporting'],
+    title: 'Insurers and risk engineering teams',
+    description: 'Apply the same structured evidence, recommendations and reporting approach to property and operational risk reviews across a portfolio.',
+    benefits: ['Portfolio-level context', 'Operational risk reviews', 'Issue-ready reporting'],
   },
 ];
 
@@ -36,10 +36,10 @@ export default function WhoItsFor() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mx-auto mb-16 max-w-3xl text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
-            Consultant-first
+            For assessors, consultancies and risk teams
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
-            For consultants who need controlled reporting
+            For assessors and consultants who need controlled delivery
           </h2>
           <p className="text-xl text-neutral-600">
             Complete assessments with full evidence context and issue reports clients can rely on.
