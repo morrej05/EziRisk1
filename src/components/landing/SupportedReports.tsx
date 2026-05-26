@@ -28,11 +28,13 @@ export default function SupportedReports() {
     <section className="max-w-7xl mx-auto px-6 py-20">
       <div className="grid grid-cols-1 gap-14 lg:grid-cols-2 lg:items-center">
         <div>
-          <img
-            src="/images/portfolio-dashboard.png"
-            alt="EziRisk assessment workflow preview"
-            className="w-full rounded-xl shadow-lg"
-          />
+          <div className="overflow-hidden rounded-xl border border-slate-200 shadow-xl ring-1 ring-black/[0.04]">
+            <img
+              src="/images/portfolio-dashboard.png"
+              alt="EziRisk assessment workflow preview"
+              className="block w-full"
+            />
+          </div>
         </div>
 
         <div>

@@ -3,7 +3,7 @@ import { ArrowRight } from 'lucide-react';
 
 export default function CallToAction() {
   return (
-    <section className="py-28 bg-white">
+    <section className="py-20 bg-white">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
           Ready to issue cleaner reports?

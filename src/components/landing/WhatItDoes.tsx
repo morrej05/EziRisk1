@@ -27,7 +27,7 @@ export default function WhatItDoes() {
   return (
     <section
       ref={ref}
-      className={`py-28 bg-white transition-all duration-300 ease-out ${
+      className={`py-20 bg-white transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
@@ -47,11 +47,13 @@ export default function WhatItDoes() {
         <div className="grid gap-8 md:grid-cols-3">
           {workflowFriction.map((item) => (
             <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <img
-                src={item.image}
-                alt={item.alt}
-                className="mb-6 h-56 w-full rounded-xl border border-slate-200 object-cover object-top shadow-sm"
-              />
+              <div className="mb-6 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-sm">
+                <img
+                  src={item.image}
+                  alt={item.alt}
+                  className="aspect-video w-full object-cover object-top"
+                />
+              </div>
               <h3 className="mb-3 text-xl font-semibold text-neutral-900">
                 {item.title}
               </h3>

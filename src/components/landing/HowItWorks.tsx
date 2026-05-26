@@ -65,7 +65,9 @@ export default function HowItWorks() {
               <div key={step.number} className="relative">
                 <div className="h-full rounded-xl border border-neutral-200 bg-neutral-50 p-5 transition-all hover:border-primary-300 hover:shadow-md">
                   <div className="mb-5 flex items-center justify-between gap-3">
-                    <span className="text-sm font-semibold text-primary-700">{step.number}</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700 ring-1 ring-primary-200">
+                      {step.number}
+                    </span>
                     <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary-600">
                       <Icon className="h-5 w-5 text-white" />
                     </div>
@@ -74,7 +76,7 @@ export default function HowItWorks() {
                   <p className="text-sm leading-6 text-neutral-600">{step.description}</p>
                 </div>
                 {index < steps.length - 1 && (
-                  <div className="hidden lg:block absolute left-[calc(100%-0.5rem)] top-1/2 z-10 h-0.5 w-4 bg-primary-200"></div>
+                  <div className="hidden lg:block absolute left-full top-1/2 z-10 h-px w-4 -translate-y-px bg-primary-300"></div>
                 )}
               </div>
             );

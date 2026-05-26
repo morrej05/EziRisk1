@@ -34,12 +34,12 @@ export default function WhyClearRisk() {
   return (
     <section
       ref={ref}
-      className={`py-28 bg-neutral-900 text-white transition-all duration-300 ease-out ${
+      className={`py-20 bg-neutral-900 text-white transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto mb-16 max-w-3xl text-center">
+        <div className="mx-auto mb-12 max-w-3xl text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-200">
             Calm, controlled report issue
           </p>

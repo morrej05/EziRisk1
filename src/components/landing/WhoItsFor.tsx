@@ -1,4 +1,4 @@
-import { Building2, Flame, Shield } from 'lucide-react';
+import { Building2, CheckCircle2, Flame, Shield } from 'lucide-react';
 import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 
 const personas = [
@@ -29,12 +29,12 @@ export default function WhoItsFor() {
     <section
       id="who-its-for"
       ref={ref}
-      className={`py-28 bg-neutral-50 transition-all duration-300 ease-out ${
+      className={`py-20 bg-neutral-50 transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto mb-16 max-w-3xl text-center">
+        <div className="mx-auto mb-12 max-w-3xl text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
             For assessors, consultancies and risk teams
           </p>
@@ -66,7 +66,7 @@ export default function WhoItsFor() {
                 <div className="space-y-2">
                   {persona.benefits.map((benefit) => (
                     <div key={benefit} className="flex items-center gap-2 text-sm text-neutral-700">
-                      <div className="w-1.5 h-1.5 bg-success-500 rounded-full"></div>
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success-600" />
                       <span>{benefit}</span>
                     </div>
                   ))}

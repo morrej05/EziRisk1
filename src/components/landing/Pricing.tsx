@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { getDefaultRegion, getPricing } from '../../config/pricing';
 import { PUBLIC_LEGAL_DETAILS } from '../../config/support';
 
@@ -60,9 +60,12 @@ export default function Pricing() {
               <h3 className="text-xl font-semibold text-neutral-900">{plan.title}</h3>
               <p className="text-3xl font-bold text-neutral-900 mt-3">{plan.price}</p>
               {plan.annualPrice && <p className="mt-1 text-sm text-neutral-500">{plan.annualPrice}</p>}
-              <ul className="mt-5 space-y-2 text-neutral-600">
+              <ul className="mt-5 space-y-2">
                 {plan.details.map((detail) => (
-                  <li key={detail}>{detail}</li>
+                  <li key={detail} className="flex items-start gap-2 text-sm text-neutral-600">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary-600" />
+                    <span>{detail}</span>
+                  </li>
                 ))}
               </ul>
               <Link
