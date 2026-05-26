@@ -126,24 +126,14 @@ Deno.serve(async (req: Request) => {
 
     if (existingByEmail?.status === 'invited') {
       return json({
-        error: `An invitation has already been sent to ${emailNormalised}. Use "Resend" to send a new invite link.`,
+        error: `An invitation already exists for ${emailNormalised}. Use "Copy invite link" to share a fresh link.`,
       }, 409);
     }
 
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
 
-    // Strategy: use inviteUserByEmail() for new / unconfirmed users — this is the
-    // correct GoTrue API that both creates the user AND sends the invite email.
-    //
-    // inviteUserByEmail() fails with "already been registered" for confirmed users.
-    // In that case fall back to generateLink({ type: 'magiclink' }) which sends a
-    // sign-in link whose redirectTo embeds ?type=invite so AuthCallbackPage routes
-    // the confirmed user to /accept-invite where ensure_org_for_user() activates
-    // the pending membership without requiring them to set a new password.
-    //
-    // NOTE: options.data is intentionally omitted for the magiclink fallback —
-    // GoTrue ignores it for magiclink type.  The ?type=invite in redirectTo is
-    // the sole invite-flow signal used by AuthCallbackPage for confirmed users.
+    // Manual-link-only strategy: use generateLink() exclusively so no
+    // automated invite email is sent by Supabase.
     const inviteMetadata = {
       organisation_id: payload.organisation_id,
       role: payload.role,
@@ -152,42 +142,47 @@ Deno.serve(async (req: Request) => {
       ...(payload.name?.trim() ? { name: payload.name.trim() } : {}),
     };
 
-    const { data: inviteData, error: inviteError } = await adminSupabase.auth.admin.inviteUserByEmail(
-      emailNormalised,
-      {
+    const { data: inviteGenerated, error: inviteError } = await adminSupabase.auth.admin.generateLink({
+      type: 'invite',
+      email: emailNormalised,
+      options: {
         redirectTo: `${appBaseUrl}/auth/callback`,
         data: inviteMetadata,
       },
-    );
+    });
 
     let invitedUserId: string;
+    let inviteLink: string | null = (inviteGenerated as { properties?: { action_link?: string } } | null)?.properties?.action_link ?? null;
 
     if (inviteError) {
       const alreadyRegistered = inviteError.message.toLowerCase().includes('already been registered');
       if (!alreadyRegistered) {
-        console.error('[invite-org-member] inviteUserByEmail failed:', inviteError.message);
-        return json({ error: `Failed to send invite: ${inviteError.message}` }, 400);
+        console.error('[invite-org-member] generateLink(invite) failed:', inviteError.message);
+        return json({ error: `Failed to create invite link: ${inviteError.message}` }, 400);
       }
 
-      // Existing confirmed user — fall back to magic link routed through the
-      // invite accept flow.
-      console.log('[invite-org-member] Confirmed user detected, sending magic link for:', emailNormalised);
       const { data: magicData, error: magicError } = await adminSupabase.auth.admin.generateLink({
         type: 'magiclink',
         email: emailNormalised,
         options: {
           redirectTo: `${appBaseUrl}/auth/callback?type=invite`,
+          data: inviteMetadata,
         },
       });
 
       if (magicError) {
         console.error('[invite-org-member] generateLink(magiclink) fallback failed:', magicError.message);
-        return json({ error: `Failed to send invite: ${magicError.message}` }, 400);
+        return json({ error: `Failed to create invite link: ${magicError.message}` }, 400);
       }
 
       invitedUserId = magicData.user.id;
+      inviteLink = (magicData as { properties?: { action_link?: string } } | null)?.properties?.action_link ?? null;
     } else {
-      invitedUserId = inviteData.user.id;
+      invitedUserId = inviteGenerated.user.id;
+    }
+
+    if (!inviteLink) {
+      return json({ error: 'Failed to create invite link' }, 500);
     }
 
     // Check whether this user is already an active member (after resolving user_id).
@@ -232,8 +227,9 @@ Deno.serve(async (req: Request) => {
 
     return json({
       success: true,
-      email_sent: true,
+      email_sent: false,
       pending_invite_created: true,
+      invite_link: inviteLink,
       membership_id: (memberRow as { id: string } | null)?.id ?? null,
       user_id: invitedUserId,
     });

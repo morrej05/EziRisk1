@@ -14,7 +14,7 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
-interface ResendPayload {
+interface InviteLinkPayload {
   organisation_id: string;
   // Canonical lookup is by email — mirrors the duplicate-detection query in
   // invite-org-member so both paths use the same source of truth.
@@ -45,9 +45,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Unauthorized' }, 401);
     }
 
-    let payload: ResendPayload;
+    let payload: InviteLinkPayload;
     try {
-      payload = (await req.json()) as ResendPayload;
+      payload = (await req.json()) as InviteLinkPayload;
     } catch {
       return json({ error: 'Invalid JSON in request body' }, 400);
     }
@@ -107,20 +107,7 @@ Deno.serve(async (req: Request) => {
 
     const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? 'https://ezirisk.co.uk';
 
-    // Determine whether the user is confirmed so we choose the right link type.
-    //
-    // Unconfirmed (email_confirmed_at = null):
-    //   inviteUserByEmail() — the correct GoTrue API that both regenerates the
-    //   invite token AND sends the "You've been invited" email template.
-    //
-    // Confirmed (email_confirmed_at is set):
-    //   generateLink({ type: 'magiclink' }) — sends a sign-in link.
-    //   The redirectTo embeds ?type=invite so AuthCallbackPage routes the
-    //   user to /accept-invite where ensure_org_for_user() activates the
-    //   pending membership.  options.data is intentionally omitted because
-    //   GoTrue ignores it for magiclink-type links.
-
-    let linkError: { message: string } | null = null;
+    // Determine whether the user is already confirmed so we choose the right link type.
     let isConfirmed = false;
 
     if (invitedMember.user_id) {
@@ -130,39 +117,33 @@ Deno.serve(async (req: Request) => {
       isConfirmed = authUserData?.user?.email_confirmed_at != null;
     }
 
-    if (!isConfirmed) {
-      // Unconfirmed user — use inviteUserByEmail which regenerates the invite
-      // token and sends the email.  Metadata preserved from the existing member row.
-      const { error } = await adminSupabase.auth.admin.inviteUserByEmail(
-        emailNormalised,
-        {
-          redirectTo: `${appBaseUrl}/auth/callback`,
-          data: {
-            organisation_id: payload.organisation_id,
-            role: invitedMember.role,
-            invite_flow: 'true',
-            invited_by_user_id: user.id,
-          },
+    const linkType: 'invite' | 'magiclink' = isConfirmed ? 'magiclink' : 'invite';
+    const redirectTo = isConfirmed
+      ? `${appBaseUrl}/auth/callback?type=invite`
+      : `${appBaseUrl}/auth/callback`;
+
+    const { data: generated, error: linkError } = await adminSupabase.auth.admin.generateLink({
+      type: linkType,
+      email: emailNormalised,
+      options: {
+        redirectTo,
+        data: {
+          organisation_id: payload.organisation_id,
+          role: invitedMember.role,
+          invite_flow: 'true',
+          invited_by_user_id: user.id,
         },
-      );
-      linkError = error;
-    } else {
-      // Confirmed user — send a magic link routed through the invite accept flow.
-      // ?type=invite in redirectTo tells AuthCallbackPage this is an invite flow
-      // and tells AcceptInvitePage to treat this as an existing-account join.
-      const { error } = await adminSupabase.auth.admin.generateLink({
-        type: 'magiclink',
-        email: emailNormalised,
-        options: {
-          redirectTo: `${appBaseUrl}/auth/callback?type=invite`,
-        },
-      });
-      linkError = error;
-    }
+      },
+    });
 
     if (linkError) {
-      console.error('[resend-invite] send failed:', linkError.message);
-      return json({ error: `Failed to resend invite: ${linkError.message}` }, 400);
+      console.error('[resend-invite] link generation failed:', linkError.message);
+      return json({ error: `Failed to generate invite link: ${linkError.message}` }, 400);
+    }
+
+    const actionLink = (generated as { properties?: { action_link?: string } } | null)?.properties?.action_link;
+    if (!actionLink) {
+      return json({ error: 'Failed to generate invite link' }, 500);
     }
 
     // Stamp the latest send time — non-fatal if this update fails.
@@ -177,7 +158,7 @@ Deno.serve(async (req: Request) => {
       console.warn('[resend-invite] Failed to update invited_at:', updateError.message);
     }
 
-    return json({ success: true, email_sent: true, invited_at: now });
+    return json({ success: true, invite_link: actionLink, invited_at: now });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[resend-invite] Unhandled exception:', message);

@@ -1,11 +1,13 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 export default function AcceptInvitePage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('token');
 
   // Set by AuthCallbackPage when the user arrived via a magic link (confirmed
   // account being added to a new organisation).  In this path we skip the
@@ -24,11 +26,41 @@ export default function AcceptInvitePage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const activateInvitedMembership = async (userId: string): Promise<boolean> => {
+    const { error: ensureOrgError } = await supabase.rpc('ensure_org_for_user', { user_id: userId });
+
+    if (!ensureOrgError) return true;
+
+    const normalized = ensureOrgError.message.toLowerCase();
+    if (normalized.includes('seat') || normalized.includes('limit') || normalized.includes('capacity')) {
+      setError('This organisation has reached its available user seats. Please contact your organisation administrator to increase seats before accepting this invite.');
+      return false;
+    }
+
+    setError(ensureOrgError.message);
+    return false;
+  };
+
   useEffect(() => {
     let isMounted = true;
 
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+
+      // Legacy invite links may land directly on /accept-invite?token=<token_hash>
+      // without going through /auth/callback. Verify the OTP hash so the user
+      // gets a session and stays in invite flow instead of falling back to sign-in.
+      if (!session && inviteToken) {
+        const inviteAttempt = await supabase.auth.verifyOtp({ type: 'invite', token_hash: inviteToken });
+        if (inviteAttempt.error) {
+          // Some historical invite links were generated as magic links.
+          await supabase.auth.verifyOtp({ type: 'magiclink', token_hash: inviteToken });
+        }
+
+        const refreshed = await supabase.auth.getSession();
+        session = refreshed.data.session;
+      }
+
       if (!isMounted) return;
 
       if (!session) {
@@ -44,12 +76,10 @@ export default function AcceptInvitePage() {
         // Activate the pending membership directly — AuthContext won't do this
         // automatically because it only calls ensure_org_for_user() when
         // profileMembership is null, and existing users always have one.
-        try {
-          await supabase.rpc('ensure_org_for_user', { user_id: session.user.id });
-        } catch {
-          // Non-fatal: if RPC fails the user can still reach the dashboard;
-          // membership may activate on their next sign-in.
-          console.warn('[AcceptInvitePage] ensure_org_for_user RPC failed');
+        const activated = await activateInvitedMembership(session.user.id);
+        if (!activated) {
+          setReady(true);
+          return;
         }
 
         // Hard reload so AuthContext re-initialises fresh and picks up the
@@ -63,7 +93,7 @@ export default function AcceptInvitePage() {
 
     void init();
     return () => { isMounted = false; };
-  }, [navigate, isExistingUser]);
+  }, [navigate, isExistingUser, inviteToken]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -95,18 +125,56 @@ export default function AcceptInvitePage() {
       return;
     }
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const invitedUserId = sessionData.session?.user?.id;
+
+    if (!invitedUserId) {
+      setError('Unable to complete invite acceptance. Please sign in again from your invite link.');
+      setLoading(false);
+      return;
+    }
+
+    const activated = await activateInvitedMembership(invitedUserId);
+    if (!activated) {
+      setLoading(false);
+      return;
+    }
+
     setDone(true);
     // Brief pause so the success state is visible, then land on dashboard.
     setTimeout(() => {
-      navigate('/dashboard', { replace: true });
+      window.location.replace('/dashboard');
     }, 1200);
   };
 
   const handleSkip = async () => {
-    // The user already has a password (they were an existing Supabase user
-    // being added to a new organisation). Clear the flag and proceed.
-    await supabase.auth.updateUser({ data: { invite_flow: null } });
-    navigate('/dashboard', { replace: true });
+    setError(null);
+    setLoading(true);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const invitedUserId = sessionData.session?.user?.id;
+
+    if (!invitedUserId) {
+      setError('Unable to complete invite acceptance. Please sign in again from your invite link.');
+      setLoading(false);
+      return;
+    }
+
+    const activated = await activateInvitedMembership(invitedUserId);
+    if (!activated) {
+      setLoading(false);
+      return;
+    }
+
+    // Clear invite-flow metadata only after membership activation succeeds.
+    const { error: clearFlagError } = await supabase.auth.updateUser({ data: { invite_flow: null } });
+    if (clearFlagError) {
+      setError(clearFlagError.message);
+      setLoading(false);
+      return;
+    }
+
+    window.location.replace('/dashboard');
   };
 
   if (!ready) {
@@ -219,7 +287,7 @@ export default function AcceptInvitePage() {
         <div className="text-center space-y-2">
           <p className="text-xs text-slate-500">Already have a password for this account?</p>
           <button
-            onClick={handleSkip}
+            onClick={() => { void handleSkip(); }}
             disabled={loading}
             className="text-sm text-slate-600 hover:text-slate-900 underline underline-offset-2 transition-colors"
           >

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle, Mail, RotateCcw } from 'lucide-react';
+import { Users, Plus, Trash2, Shield, Edit2, X, Check, AlertTriangle, Mail, RotateCcw, Copy } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 import { showToast } from '../lib/toast';
 import { supabase } from '../lib/supabase';
@@ -106,8 +106,9 @@ export default function UserManagement() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<UpgradeBlockReason>('user_limit');
   const [upgradeDetail, setUpgradeDetail] = useState<string | null>(null);
-  const [resendingUserId, setResendingUserId] = useState<string | null>(null);
+  const [copyingInviteLinkFor, setCopyingInviteLinkFor] = useState<string | null>(null);
   const [revokingUserId, setRevokingUserId] = useState<string | null>(null);
+  const [manualInviteLink, setManualInviteLink] = useState<string | null>(null);
   const [confirmState, setConfirmState] = useState<{
     title: string;
     message: string;
@@ -117,11 +118,13 @@ export default function UserManagement() {
   } | null>(null);
 
   const maxUsers = useMemo(() => getUserLimitForOrganisation(organisation), [organisation]);
-  const currentUsers = users.length;
-  const atSeatLimit = useMemo(() => currentUsers >= maxUsers, [currentUsers, maxUsers]);
+  const activeUsersCount = users.length;
+  const pendingInvitesCount = pendingInvites.length;
+  const reservedSeatsCount = activeUsersCount + pendingInvitesCount;
+  const atSeatLimit = useMemo(() => reservedSeatsCount >= maxUsers, [reservedSeatsCount, maxUsers]);
   const isNearSeatLimit = useMemo(
-    () => !atSeatLimit && maxUsers > 0 && currentUsers / maxUsers >= 0.8,
-    [atSeatLimit, currentUsers, maxUsers],
+    () => !atSeatLimit && maxUsers > 0 && reservedSeatsCount / maxUsers >= 0.8,
+    [atSeatLimit, reservedSeatsCount, maxUsers],
   );
   const seatLimitCopy = useMemo(
     () => getUserSeatLimitCopy(seatEntitlement, organisation),
@@ -152,6 +155,25 @@ export default function UserManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.organisation_id]);
 
+  useEffect(() => {
+    if (!currentUser?.organisation_id) return;
+    const channel = supabase
+      .channel(`org-members-${currentUser.organisation_id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'organisation_members',
+        filter: `organisation_id=eq.${currentUser.organisation_id}`,
+      }, () => {
+        void fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentUser?.organisation_id]);
+
   const openAddModal = () => {
     setShowAddModal(true);
     setModalError(null);
@@ -165,7 +187,7 @@ export default function UserManagement() {
     setModalError(null);
   };
 
-  const fetchUsers = async () => {
+  async function fetchUsers() {
     if (!currentUser?.organisation_id) {
       setUsers([]);
       setPendingInvites([]);
@@ -305,9 +327,20 @@ export default function UserManagement() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   // ── Invite ───────────────────────────────────────────────────────────────
+
+  const fetchInviteLinkByEmail = async (normalisedEmail: string): Promise<{ link: string; invitedAt: string | null }> => {
+    const { data: inviteLinkData, error } = await supabase.functions.invoke('resend-invite', {
+      body: { organisation_id: currentUser?.organisation_id, email: normalisedEmail },
+    });
+    if (error) throw error;
+    const payload = (inviteLinkData as { invite_link?: string; invited_at?: string } | null) ?? null;
+    const link = payload.invite_link?.trim();
+    if (!link) throw new Error('Invite link could not be generated.');
+    return { link, invitedAt: payload.invited_at ?? null };
+  };
 
   const handleInviteUser = async () => {
     if (!newUserEmail.trim() || isAddingUser) return;
@@ -341,6 +374,11 @@ export default function UserManagement() {
       const sentName = newUserName.trim();
       const sentRole = newUserRole;
 
+      if (sentRole === 'admin') {
+        const confirmed = window.confirm('This user will be able to manage organisation settings and users. Continue?');
+        if (!confirmed) return;
+      }
+
       const { data: inviteResponseData, error } = await supabase.functions.invoke('invite-org-member', {
         body: {
           organisation_id: currentUser.organisation_id,
@@ -369,14 +407,12 @@ export default function UserManagement() {
       setNewUserEmail('');
       setNewUserName('');
       setNewUserRole('viewer');
-      setAddSuccessMessage(
-        `Invite sent to ${sentEmail}. They'll receive an email with a link to join your organisation.`,
-      );
+      setAddSuccessMessage(`Invite link created for ${sentEmail}.`);
 
       // Optimistically add the new invite row immediately so it's visible
       // without waiting for the background refresh.  The real row (with the
       // DB-generated id) will replace this once fetchUsers() completes.
-      const responseData = (inviteResponseData ?? {}) as { user_id?: string };
+      const responseData = (inviteResponseData ?? {}) as { user_id?: string; invite_link?: string };
       const optimisticInvite: PendingInvite = {
         id: `optimistic-${Date.now()}`,
         user_id: responseData.user_id ?? '',
@@ -388,7 +424,19 @@ export default function UserManagement() {
       };
       setPendingInvites((prev) => [optimisticInvite, ...prev]);
 
-      // Refresh in the background to get the canonical DB row.
+      const link = responseData.invite_link?.trim();
+      if (link) {
+        try {
+          await navigator.clipboard.writeText(link);
+          showToast('Invite link copied to clipboard.', 'success');
+        } catch {
+          setManualInviteLink(link);
+          showToast('Invite link created. Copy it below.', 'success');
+        }
+      } else {
+        showToast('Invite created but no link was returned. Use Copy invite link from pending invites.', 'error');
+      }
+
       void fetchUsers();
     } catch (error: unknown) {
       const message = await extractEdgeFunctionError(error);
@@ -398,35 +446,33 @@ export default function UserManagement() {
     }
   };
 
-  // ── Resend / Revoke ──────────────────────────────────────────────────────
+  // ── Copy invite link / Revoke ──────────────────────────────────────────────
 
   /**
-   * Canonical resend handler.  Both call sites (modal CTA and pending-table
-   * Resend button) funnel through here with just an email address.
+   * Canonical invite-link copy handler. Both call sites (modal CTA and pending-table
+   * action button) funnel through here with just an email address.
    *
    * Using email as the lookup key mirrors the duplicate-detection query in
    * invite-org-member so both paths share a single source of truth
    * (organisation_members.invited_email) and neither depends on React state
    * being populated.
    */
-  const handleResendByEmail = async (email: string) => {
+  const handleCopyInviteLinkByEmail = async (email: string) => {
     const normalisedEmail = email.trim().toLowerCase();
-    setResendingUserId(normalisedEmail);
+    setCopyingInviteLinkFor(normalisedEmail);
     setActionError(null);
     try {
-      const { data: resendData, error } = await supabase.functions.invoke('resend-invite', {
-        body: { organisation_id: currentUser?.organisation_id, email: normalisedEmail },
-      });
-
-      if (error) {
-        const message = await extractEdgeFunctionError(error);
-        setActionError(`Failed to resend invite: ${message}`);
-        return;
+      const { link, invitedAt } = await fetchInviteLinkByEmail(normalisedEmail);
+      try {
+        await navigator.clipboard.writeText(link);
+        showToast('Invite link copied to clipboard.', 'success');
+      } catch {
+        setManualInviteLink(link);
+        showToast('Invite link created. Copy it below.', 'success');
       }
 
       // Optimistically stamp the new invited_at on any matching row.
-      const newInvitedAt =
-        (resendData as { invited_at?: string } | null)?.invited_at ?? new Date().toISOString();
+      const newInvitedAt = invitedAt ?? new Date().toISOString();
 
       setPendingInvites((prev) =>
         prev.map((i) =>
@@ -436,29 +482,28 @@ export default function UserManagement() {
         ),
       );
 
-      setAddSuccessMessage(`Invite resent to ${normalisedEmail}.`);
       void fetchUsers();
     } catch (err: unknown) {
       const message = await extractEdgeFunctionError(err);
-      setActionError(`Failed to resend invite: ${message}`);
+      showToast(`Failed to copy invite link: ${message}`, 'error');
     } finally {
-      setResendingUserId(null);
+      setCopyingInviteLinkFor(null);
     }
   };
 
   /** Thin wrapper so the pending-invites table can pass a PendingInvite object. */
-  const handleResendInvite = (invite: PendingInvite) =>
-    handleResendByEmail(invite.invited_email);
+  const handleCopyInviteLink = (invite: PendingInvite) =>
+    handleCopyInviteLinkByEmail(invite.invited_email);
 
   /**
-   * Called from the "Resend invite" button in the duplicate-error banner.
+   * Called from the "Copy invite link" button in the duplicate-error banner.
    * Uses the email typed in the modal directly — no pendingInvites lookup
    * needed, so there is no race condition with fetchUsers().
    */
-  const handleResendFromModal = () => {
+  const handleCopyInviteLinkFromModal = () => {
     setShowAddModal(false);
     setModalError(null);
-    void handleResendByEmail(newUserEmail.trim());
+    void handleCopyInviteLinkByEmail(newUserEmail.trim());
   };
 
   const handleRevokeInvite = (invite: PendingInvite) => {
@@ -476,10 +521,11 @@ export default function UserManagement() {
             body: { organisation_id: currentUser?.organisation_id, user_id: invite.user_id },
           });
           if (error) throw error;
+          showToast(`Invite revoked for ${invite.invited_email}.`, 'success');
           await fetchUsers();
         } catch (error: unknown) {
           const message = await extractEdgeFunctionError(error);
-          setActionError(`Failed to revoke invite: ${message}`);
+          showToast(`Failed to revoke invite: ${message}`, 'error');
         } finally {
           setRevokingUserId(null);
         }
@@ -543,9 +589,9 @@ export default function UserManagement() {
     }
     const displayName = userName || 'this user';
     setConfirmState({
-      title: 'Remove user',
-      message: `Remove ${displayName} from your organisation? They will lose access immediately.`,
-      confirmText: 'Remove',
+      title: 'Remove user?',
+      message: `${displayName} will lose access to this organisation immediately. Existing assessments, findings, and audit history remain attached to the organisation.`,
+      confirmText: 'Remove user',
       isDestructive: true,
       onConfirm: async () => {
         setConfirmState(null);
@@ -556,9 +602,10 @@ export default function UserManagement() {
           if (error) throw error;
           showToast(`${displayName} has been removed.`, 'success');
           await fetchUsers();
-        } catch (error) {
+        } catch (error: unknown) {
           console.error('[UserManagement] Error removing user:', error);
-          setActionError(`Failed to remove user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          const message = await extractEdgeFunctionError(error);
+          setActionError(message);
         }
       },
     });
@@ -603,32 +650,7 @@ export default function UserManagement() {
       {isNearSeatLimit && (
         <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex items-start gap-2">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="font-semibold">You're close to your seat limit ({currentUsers} of {maxUsers} users).</p>
-        </div>
-      )}
-      {atSeatLimit && (
-        <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p className="font-semibold">
-                {isTrialExpired
-                  ? 'Your free trial has ended. Upgrade to add team members.'
-                  : `You've reached your user limit (${maxUsers}). Upgrade to add more.`}
-              </p>
-              <p className="mt-0.5">{isTrialExpired ? 'Existing data is still available.' : seatLimitCopy.body}</p>
-              <button
-                onClick={() =>
-                  window.location.assign(
-                    buildUpgradePath(isTrialExpired ? 'trial_expired' : 'user_limit', { action: 'manage_users' }),
-                  )
-                }
-                className="mt-2 inline-flex rounded-md bg-red-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-800 transition-colors"
-              >
-                Upgrade
-              </button>
-            </div>
-          </div>
+          <p className="font-semibold">You're close to your seat limit ({reservedSeatsCount} of {maxUsers} reserved seats).</p>
         </div>
       )}
       {loadError && (
@@ -660,18 +682,37 @@ export default function UserManagement() {
           <Users className="w-5 h-5 text-slate-600 shrink-0" />
           <h2 className="text-base sm:text-lg font-semibold text-slate-900 truncate">User Management</h2>
           <span className="px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600 rounded shrink-0">
-            {currentUsers}/{maxUsers} seats
+            {activeUsersCount}/{maxUsers} active
           </span>
         </div>
         <button
           onClick={openAddModal}
-          disabled={atSeatLimit || isTrialExpired}
-          title={isTrialExpired ? 'Upgrade to add team members.' : atSeatLimit ? seatLimitCopy.body : 'Invite a user'}
+          disabled={atSeatLimit}
+          title={atSeatLimit ? seatLimitCopy.body : 'Invite a user'}
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
-          Invite User
+          {atSeatLimit ? "Seat limit reached — revoke an invite, remove a user, or upgrade." : "Invite User"}
         </button>
+      </div>
+
+
+
+      <div className="mx-4 mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <h3 className="text-sm font-semibold text-slate-800">How user access works</h3>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-600">
+          <li>Your subscription is organisation-based.</li>
+          <li>Active users consume seats within your plan.</li>
+          <li>Pending invitations reserve seats until accepted or revoked.</li>
+          <li>Removing a user immediately revokes access.</li>
+          <li>Existing assessments and audit history remain preserved.</li>
+          <li>Invite links can be copied and shared manually.</li>
+        </ul>
+      </div>
+
+      <div className="mx-4 mt-3 rounded-lg border border-slate-200 bg-white p-3">
+        <p className="text-sm font-medium text-slate-800">{activeUsersCount}/{maxUsers} active seats</p>
+        <p className="mt-1 text-sm text-slate-600">{pendingInvitesCount} pending {pendingInvitesCount === 1 ? 'invitation' : 'invitations'}</p>
       </div>
 
       {/* ── Active users — desktop table ── */}
@@ -701,11 +742,17 @@ export default function UserManagement() {
                         {(user.name || user.email || 'U').charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <span className="truncate text-sm font-medium text-slate-900">{user.name || 'Unnamed User'}</span>
+                      <span className="truncate text-sm font-medium text-slate-900">{user.name || 'Unnamed User'}</span>
+                      {user.id === currentUser?.id && <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600">You</span>}
                   </div>
                 </td>
                 <td className="px-4 py-4 text-sm text-slate-600 max-w-0">
-                  <span className="block truncate">{user.email || '—'}</span>
+                  <span
+                    className="block break-all md:break-normal md:truncate"
+                    title={user.email || '—'}
+                  >
+                    {user.email || '—'}
+                  </span>
                 </td>
                 <td className="px-4 py-4 w-[150px]">
                   {editingUserId === user.id ? (
@@ -760,12 +807,16 @@ export default function UserManagement() {
                 )}
                 <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap w-[100px]">{formatDate(user.created_at)}</td>
                 <td className="px-4 py-4 text-right w-[100px]">
-                  <button
-                    onClick={() => handleRemoveUser(user.id, user.name || undefined)}
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />Remove
-                  </button>
+                  {user.id !== currentUser?.id ? (
+                    <button
+                      onClick={() => handleRemoveUser(user.id, user.name || undefined)}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />Remove
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-600">You</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -787,7 +838,7 @@ export default function UserManagement() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900 truncate">{user.name || 'Unnamed User'}</p>
-                  {user.email && <p className="text-xs text-slate-500 truncate">{user.email}</p>}
+                  {user.email && <p className="text-xs text-slate-500 truncate" title={user.email}>{user.email}</p>}
                   <p className="text-xs text-slate-400 mt-0.5">Joined {formatDate(user.created_at)}</p>
                 </div>
               </div>
@@ -825,13 +876,17 @@ export default function UserManagement() {
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
-                    <button
-                      onClick={() => handleRemoveUser(user.id, user.name || undefined)}
-                      className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                      title="Remove"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {user.id !== currentUser?.id ? (
+                      <button
+                        onClick={() => handleRemoveUser(user.id, user.name || undefined)}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                        title="Remove"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded bg-slate-100 text-slate-600">You</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -895,7 +950,7 @@ export default function UserManagement() {
               <tbody className="divide-y divide-slate-100">
                 {pendingInvites.map((invite) => {
                   const displayName = inviteDisplayName(invite);
-                  const isResending = resendingUserId === invite.invited_email.toLowerCase();
+                  const isCopyingInviteLink = copyingInviteLinkFor === invite.invited_email.toLowerCase();
                   const isRevoking = revokingUserId === invite.user_id;
                   return (
                     <tr key={invite.id} className="hover:bg-amber-50/40 transition-colors">
@@ -916,7 +971,12 @@ export default function UserManagement() {
                       </td>
                       {/* Email */}
                       <td className="px-4 py-3 text-sm text-slate-600 max-w-0">
-                        <span className="block truncate">{invite.invited_email}</span>
+                        <span
+                          className="block break-all md:break-normal md:truncate"
+                          title={invite.invited_email}
+                        >
+                          {invite.invited_email}
+                        </span>
                       </td>
                       {/* Role */}
                       <td className="px-4 py-3">
@@ -932,17 +992,17 @@ export default function UserManagement() {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => handleResendInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            onClick={() => handleCopyInviteLink(invite)}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded transition-colors disabled:opacity-40"
-                            title="Resend invite"
+                            title="Copy invite link"
                           >
-                            <RotateCcw className={`w-3.5 h-3.5 ${isResending ? 'animate-spin' : ''}`} />
-                            {isResending ? 'Sending…' : 'Resend'}
+                            <RotateCcw className={`w-3.5 h-3.5 ${isCopyingInviteLink ? 'animate-spin' : ''}`} />
+                            {isCopyingInviteLink ? 'Copying…' : 'Copy invite link'}
                           </button>
                           <button
                             onClick={() => handleRevokeInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-40"
                             title="Revoke invite"
                           >
@@ -961,7 +1021,7 @@ export default function UserManagement() {
           <div className="sm:hidden divide-y divide-slate-100">
             {pendingInvites.map((invite) => {
               const displayName = inviteDisplayName(invite);
-              const isResending = resendingUserId === invite.invited_email.toLowerCase();
+              const isCopyingInviteLink = copyingInviteLinkFor === invite.invited_email.toLowerCase();
               const isRevoking = revokingUserId === invite.user_id;
               return (
                 <div key={invite.id} className="px-4 py-3">
@@ -989,16 +1049,16 @@ export default function UserManagement() {
                         {/* Icon-only action buttons on mobile */}
                         <div className="flex items-center gap-1 shrink-0">
                           <button
-                            onClick={() => handleResendInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            onClick={() => handleCopyInviteLink(invite)}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="p-1.5 text-slate-500 hover:bg-slate-100 rounded disabled:opacity-40"
-                            title="Resend invite"
+                            title="Copy invite link"
                           >
-                            <RotateCcw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+                            <RotateCcw className={`w-4 h-4 ${isCopyingInviteLink ? 'animate-spin' : ''}`} />
                           </button>
                           <button
                             onClick={() => handleRevokeInvite(invite)}
-                            disabled={isResending || isRevoking}
+                            disabled={isCopyingInviteLink || isRevoking}
                             className="p-1.5 text-red-500 hover:bg-red-50 rounded disabled:opacity-40"
                             title="Revoke invite"
                           >
@@ -1029,7 +1089,7 @@ export default function UserManagement() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-lg shadow-xl w-full sm:max-w-md max-h-[90dvh] overflow-y-auto">
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">Invite User</h3>
+              <h3 className="text-base font-semibold text-slate-900">Create invite link</h3>
               <button onClick={closeAddModal} disabled={isAddingUser} className="text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40">
                 <X className="w-5 h-5" />
               </button>
@@ -1037,10 +1097,10 @@ export default function UserManagement() {
 
             <div className="px-5 py-4 space-y-4">
               <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
-                An invitation email will be sent. The recipient clicks the link to create their account and join your organisation automatically.
+                An invite link will be generated. Share it with the recipient so they can create their account and join your organisation automatically.
               </p>
 
-              {/* Inline modal error — with optional Resend shortcut */}
+              {/* Inline modal error — with optional copy-link shortcut */}
               {modalError && (
                 <div className={`rounded-md border px-3 py-2.5 text-sm ${isAlreadyActiveMemberError ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-red-200 bg-red-50 text-red-800'}`}>
                   <div className="flex items-start gap-2">
@@ -1049,11 +1109,11 @@ export default function UserManagement() {
                       <p>{isAlreadyActiveMemberError ? `${newUserEmail.trim()} already belongs to this organisation.` : modalError}</p>
                       {isDuplicateInviteError && (
                         <button
-                          onClick={handleResendFromModal}
+                          onClick={handleCopyInviteLinkFromModal}
                           className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-red-700 underline underline-offset-2 hover:text-red-900 transition-colors"
                         >
                           <RotateCcw className="w-3 h-3" />
-                          Resend invite to {newUserEmail.trim()}
+                          Copy invite link for {newUserEmail.trim()}
                         </button>
                       )}
                     </div>
@@ -1100,6 +1160,9 @@ export default function UserManagement() {
                   <option value="admin">Admin — full access</option>
                 </select>
                 <p className="mt-1 text-xs text-slate-500">{ROLE_DESCRIPTIONS[newUserRole]}</p>
+                {newUserRole === 'admin' && (
+                  <p className="mt-1 text-xs text-amber-700">Admins can manage users, billing, and organisation settings.</p>
+                )}
               </div>
             </div>
 
@@ -1113,22 +1176,36 @@ export default function UserManagement() {
               </button>
               <button
                 onClick={handleInviteUser}
-                disabled={isAddingUser || atSeatLimit || isTrialExpired || !newUserEmail.trim()}
+                disabled={isAddingUser || atSeatLimit || !newUserEmail.trim()}
                 className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isAddingUser ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    Sending…
+                    Creating…
                   </>
                 ) : (
                   <>
                     <Mail className="w-4 h-4" />
-                    Send Invite
+                    Create invite link
                   </>
                 )}
               </button>
             </div>
+            {manualInviteLink && (
+              <div className="px-5 pb-4">
+                <p className="mb-1 text-xs font-medium text-slate-700">Invite link</p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={manualInviteLink} className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg" />
+                  <button
+                    onClick={async () => { await navigator.clipboard.writeText(manualInviteLink); showToast('Invite link copied to clipboard.', 'success'); }}
+                    className="inline-flex items-center gap-1 px-2.5 py-2 text-xs font-medium border border-slate-300 rounded-lg hover:bg-slate-50"
+                  >
+                    <Copy className="w-3.5 h-3.5" />Copy
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
