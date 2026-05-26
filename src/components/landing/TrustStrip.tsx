@@ -1,8 +1,8 @@
 import { CheckCircle2 } from 'lucide-react';
 
 const SIGNALS = [
-  'PAS 79-aligned assessment structure',
-  'RR(FS)O 2005 reporting framework',
+  'Structured around PAS 79 workflows',
+  'Built to support RR(FS)O 2005 reporting',
   'Locked issued reports with version history',
   'Evidence linked to findings',
   'Full audit trail',
