@@ -137,6 +137,7 @@ const MODULE_ORDER = [
   'DSEAR_6_RISK_ASSESSMENT',
   'DSEAR_10_HIERARCHY_OF_CONTROL',
   'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE',
+  'DSEAR_12_EXPLOSION_RISK_SUMMARY',
 ];
 
 /**
@@ -446,6 +447,148 @@ export async function buildDsearPdf(options: BuildPdfOptions): Promise<Uint8Arra
   }
 
   return await pdfDoc.save();
+}
+
+/**
+ * Render DSEAR-12 professional conclusion fields in the PDF.
+ * Outputs: criticality banner (with override notation if applicable),
+ * then each populated conclusion field as a labelled prose block.
+ */
+function drawExplosionRiskSummaryConclusion(
+  page: PDFPage,
+  data: Record<string, any>,
+  font: any,
+  fontBold: any,
+  yPosition: number,
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[]
+): { page: PDFPage; yPosition: number } {
+  const computed = data.computed || {};
+  const override = data.override || {};
+  const conclusion = data.conclusion || {};
+
+  const displayCriticality: string = override.enabled && override.outcome
+    ? override.outcome
+    : (computed.overall || 'Not assessed');
+
+  const criticalityColors: Record<string, ReturnType<typeof rgb>> = {
+    Critical: rgb(0.8, 0, 0),
+    High: rgb(0.9, 0.5, 0),
+    Moderate: rgb(0.7, 0.55, 0),
+    Low: rgb(0.2, 0.6, 0.2),
+  };
+
+  const bannerColor = criticalityColors[displayCriticality] || rgb(0.4, 0.4, 0.4);
+
+  // Criticality banner
+  ({ page, yPosition } = ensurePageSpace(50, page, yPosition, pdfDoc, isDraft, totalPages));
+
+  page.drawRectangle({
+    x: MARGIN,
+    y: yPosition - 5,
+    width: CONTENT_WIDTH,
+    height: 30,
+    color: bannerColor,
+  });
+
+  const bannerText = override.enabled && override.outcome
+    ? `Overall Explosion Criticality: ${displayCriticality} (Assessor Override)`
+    : `Overall Explosion Criticality: ${displayCriticality} (Computed)`;
+
+  page.drawText(sanitizePdfText(bannerText), {
+    x: MARGIN + 10,
+    y: yPosition + 5,
+    size: 12,
+    font: fontBold,
+    color: rgb(1, 1, 1),
+  });
+
+  yPosition -= 40;
+
+  // Override justification (if applicable)
+  if (override.enabled && override.reason) {
+    ({ page, yPosition } = ensurePageSpace(40, page, yPosition, pdfDoc, isDraft, totalPages));
+
+    page.drawText(sanitizePdfText('Assessor Override Justification:'), {
+      x: MARGIN,
+      y: yPosition,
+      size: 9,
+      font: fontBold,
+      color: rgb(0.5, 0.2, 0),
+    });
+    yPosition -= 13;
+
+    const reasonLines = wrapText(sanitizePdfText(override.reason), CONTENT_WIDTH - 20, 9, font);
+    for (const line of reasonLines) {
+      ({ page, yPosition } = ensurePageSpace(14, page, yPosition, pdfDoc, isDraft, totalPages));
+      page.drawText(line, {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 9,
+        font,
+        color: rgb(0.4, 0.2, 0),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 8;
+  }
+
+  // Conclusion fields
+  const conclusionFields: Array<{ label: string; value: string }> = [
+    { label: 'Overall Explosion Risk Position', value: conclusion.overallExplosionRiskPosition || '' },
+    { label: 'Principal Concerns', value: conclusion.principalConcerns || '' },
+    { label: 'Control Adequacy Assessment', value: conclusion.controlAdequacy || '' },
+    { label: 'Residual Risk Commentary', value: conclusion.residualRiskCommentary || '' },
+    { label: 'Operational Observations', value: conclusion.operationalObservations || '' },
+    { label: 'Recommendations Summary', value: conclusion.recommendationsSummary || '' },
+    { label: 'Limitations and Assumptions', value: conclusion.limitationsAndAssumptions || '' },
+  ];
+
+  for (const field of conclusionFields) {
+    if (!field.value.trim()) continue;
+
+    ({ page, yPosition } = ensurePageSpace(40, page, yPosition, pdfDoc, isDraft, totalPages));
+
+    page.drawText(sanitizePdfText(field.label + ':'), {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+    yPosition -= 16;
+
+    const lines = wrapText(sanitizePdfText(field.value), CONTENT_WIDTH - 10, 10, font);
+    for (const line of lines) {
+      ({ page, yPosition } = ensurePageSpace(14, page, yPosition, pdfDoc, isDraft, totalPages));
+      page.drawText(line, {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 10,
+        font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+      yPosition -= 14;
+    }
+    yPosition -= 8;
+  }
+
+  // If no conclusion fields populated
+  const hasAnyConclusion = conclusionFields.some((f) => f.value.trim());
+  if (!hasAnyConclusion) {
+    ({ page, yPosition } = ensurePageSpace(20, page, yPosition, pdfDoc, isDraft, totalPages));
+    page.drawText(sanitizePdfText('Professional conclusion not yet completed.'), {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+    yPosition -= 20;
+  }
+
+  return { page, yPosition };
 }
 
 function sortModules(modules: ModuleInstance[]): ModuleInstance[] {
@@ -779,6 +922,9 @@ function drawModuleContent(
 
     case 'DSEAR_6_RISK_ASSESSMENT':
       return drawRiskAssessmentTable(page, data.risk_rows || [], font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
+
+    case 'DSEAR_12_EXPLOSION_RISK_SUMMARY':
+      return drawExplosionRiskSummaryConclusion(page, data, font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
 
     default:
       // Generic data rendering

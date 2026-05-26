@@ -176,7 +176,8 @@ function getExpectedKeysForDocument(document: Document, existingModuleKeys: stri
       'DSEAR_5_EXPLOSION_PROTECTION',
       'DSEAR_6_RISK_ASSESSMENT',
       'DSEAR_10_HIERARCHY_OF_CONTROL',
-      'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE'
+      'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE',
+      'DSEAR_12_EXPLOSION_RISK_SUMMARY'
     );
   }
 

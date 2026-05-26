@@ -231,6 +231,11 @@ function getDsearRequiredModules(ctx: IssueCtx): ModuleRule[] {
       label: 'Explosion Emergency Response',
       required: true,
     },
+    {
+      key: MODULE_KEYS.explosion_risk_summary,
+      label: 'Explosion Risk Summary & Professional Conclusion',
+      required: true,
+    },
   ];
 }
 

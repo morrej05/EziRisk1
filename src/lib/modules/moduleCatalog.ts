@@ -308,6 +308,13 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     type: 'input',
     outcomeCategory: 'critical', // Emergency response
   },
+  DSEAR_12_EXPLOSION_RISK_SUMMARY: {
+    name: 'DSEAR-12 - Explosion Risk Summary & Professional Conclusion',
+    docTypes: ['DSEAR'],
+    order: 38,
+    type: 'derived',
+    outcomeCategory: 'critical', // Synthesis: overall risk position
+  },
 };
 
 const MODULE_KEY_ALIASES: Record<string, string> = {

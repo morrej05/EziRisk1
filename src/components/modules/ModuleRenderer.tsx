@@ -31,6 +31,7 @@ import DSEAR5ExplosionProtectionForm from './forms/DSEAR5ExplosionProtectionForm
 import DSEAR6RiskAssessmentTableForm from './forms/DSEAR6RiskAssessmentTableForm';
 import DSEAR10HierarchyControlForm from './forms/DSEAR10HierarchyControlForm';
 import DSEAR11ExplosionEmergencyResponseForm from './forms/DSEAR11ExplosionEmergencyResponseForm';
+import DSEAR12ExplosionRiskSummaryForm from './forms/DSEAR12ExplosionRiskSummaryForm';
 import OutcomePanel from './OutcomePanel';
 import ModuleActions from './ModuleActions';
 import { resolveSectionAssessmentOutcome, resolveSectionAssessmentNotes } from '../../utils/moduleAssessment';
@@ -598,6 +599,15 @@ export default function ModuleRenderer({
       <>
         {SavedIndicator}
         <DSEAR11ExplosionEmergencyResponseForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'DSEAR_12_EXPLOSION_RISK_SUMMARY') {
+    return (
+      <>
+        {SavedIndicator}
+        <DSEAR12ExplosionRiskSummaryForm moduleInstance={moduleInstance} document={document} onSaved={handleSaved} />
       </>
     );
   }

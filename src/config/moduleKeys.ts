@@ -45,6 +45,7 @@ export const MODULE_KEYS = {
   risk_assessment_table: 'DSEAR_6_RISK_ASSESSMENT',
   hierarchy_of_control: 'DSEAR_10_HIERARCHY_OF_CONTROL',
   explosion_emergency: 'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE',
+  explosion_risk_summary: 'DSEAR_12_EXPLOSION_RISK_SUMMARY',
 } as const;
 
 export type ModuleKeyMap = typeof MODULE_KEYS;
