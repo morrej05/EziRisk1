@@ -24,7 +24,7 @@ export default function Footer() {
                 <img
                   src="/ezirisk-logo-primary.svg"
                   alt="EziRisk"
-                  className="h-5 w-auto object-contain"
+                  className="h-7 w-auto object-contain"
                   loading="lazy"
                   onError={() => setLogoError(true)}
                 />

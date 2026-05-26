@@ -5,14 +5,17 @@ const portfolioFeatures = [
   {
     icon: BarChart3,
     title: 'See recurring findings across sites',
+    description: 'Compare observations across multiple locations to identify patterns that repeat across a client portfolio.',
   },
   {
     icon: TrendingUp,
     title: 'Spot repeated recommendation themes',
+    description: 'Surface common action areas when the same type of recommendation recurs across different properties.',
   },
   {
     icon: FileCheck,
     title: 'Report across clients without losing detail',
+    description: 'Produce cross-client summaries that retain the detail behind each individual site assessment record.',
   },
 ];
 
@@ -22,12 +25,12 @@ export default function Portfolio() {
   return (
     <section
       ref={ref}
-      className={`py-28 bg-neutral-50 transition-all duration-300 ease-out ${
+      className={`py-20 bg-neutral-50 transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto mb-16 max-w-3xl text-center">
+        <div className="mx-auto mb-12 max-w-3xl text-center">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-primary-700">
             When one client becomes many sites
           </p>
@@ -39,19 +42,22 @@ export default function Portfolio() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {portfolioFeatures.map((feature) => {
             const Icon = feature.icon;
             return (
               <div
                 key={feature.title}
-                className="bg-white p-8 rounded-xl border border-neutral-200 hover:border-primary-300 hover:shadow-md transition-all"
+                className="bg-white p-6 rounded-xl border border-neutral-200 hover:border-primary-300 hover:shadow-md transition-all"
               >
                 <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center mb-4">
                   <Icon className="w-6 h-6 text-white" />
                 </div>
-                <p className="text-neutral-900 text-lg leading-relaxed">
+                <p className="text-neutral-900 text-lg font-semibold leading-snug mb-2">
                   {feature.title}
+                </p>
+                <p className="text-sm leading-6 text-neutral-600">
+                  {feature.description}
                 </p>
               </div>
             );

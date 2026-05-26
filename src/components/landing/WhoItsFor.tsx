@@ -46,7 +46,7 @@ export default function WhoItsFor() {
           </p>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {personas.map((persona) => {
             const Icon = persona.icon;
             return (
