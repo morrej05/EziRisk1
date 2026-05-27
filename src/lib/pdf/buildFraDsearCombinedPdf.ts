@@ -570,6 +570,254 @@ function drawDsear12CombinedConclusion(
   return { page, yPosition };
 }
 
+/**
+ * Render a numbered evidence index for the FRA+DSEAR combined PDF.
+ * Mirrors buildFsdPdf.ts::drawAttachmentsIndex — keep in sync when updating that function.
+ */
+function drawFraDsearAttachmentsIndex(
+  page: PDFPage,
+  yPosition: number,
+  attachments: Attachment[],
+  moduleInstances: ModuleInstance[],
+  actions: Action[],
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any
+): { page: PDFPage; yPosition: number } {
+  page.drawText('Attachments & Evidence Index', {
+    x: MARGIN,
+    y: yPosition,
+    size: 16,
+    font: fontBold,
+    color: rgb(0, 0, 0),
+  });
+  yPosition -= 30;
+
+  if (attachments.length === 0) {
+    page.drawText('No attachments recorded.', {
+      x: MARGIN,
+      y: yPosition,
+      size: 11,
+      font,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+    return { page, yPosition };
+  }
+
+  for (let i = 0; i < attachments.length; i++) {
+    const attachment = attachments[i];
+    ({ page, yPosition } = ensurePageSpace(110, page, yPosition, pdfDoc, isDraft, totalPages));
+
+    const refNum = `E-${String(i + 1).padStart(3, '0')}`;
+
+    page.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+    yPosition -= 14;
+
+    if (attachment.caption) {
+      const captionLines = wrapText(attachment.caption, CONTENT_WIDTH - 20, 9, font);
+      for (const line of captionLines) {
+        ({ page, yPosition } = ensurePageSpace(14, page, yPosition, pdfDoc, isDraft, totalPages));
+        page.drawText(line, {
+          x: MARGIN + 10,
+          y: yPosition,
+          size: 9,
+          font,
+          color: rgb(0.3, 0.3, 0.3),
+        });
+        yPosition -= 12;
+      }
+    }
+
+    if (attachment.module_instance_id) {
+      const linkedModule = moduleInstances.find(m => m.id === attachment.module_instance_id);
+      if (linkedModule) {
+        const moduleName = getModuleName(linkedModule.module_key);
+        page.drawText(`Linked to: ${sanitizePdfText(moduleName)}`, {
+          x: MARGIN + 10,
+          y: yPosition,
+          size: 8,
+          font,
+          color: rgb(0.5, 0.5, 0.5),
+        });
+        yPosition -= 12;
+      }
+    }
+
+    if (attachment.action_id) {
+      const linkedAction = actions.find(a => a.id === attachment.action_id);
+      if (linkedAction) {
+        const actionRef = linkedAction.reference_number || 'Action';
+        page.drawText(`Linked to action: ${sanitizePdfText(actionRef)}`, {
+          x: MARGIN + 10,
+          y: yPosition,
+          size: 8,
+          font,
+          color: rgb(0.5, 0.5, 0.5),
+        });
+        yPosition -= 12;
+      }
+    }
+
+    yPosition -= 8;
+
+    page.drawLine({
+      start: { x: MARGIN, y: yPosition },
+      end: { x: PAGE_WIDTH - MARGIN, y: yPosition },
+      thickness: 0.5,
+      color: rgb(0.8, 0.8, 0.8),
+    });
+
+    yPosition -= 15;
+  }
+
+  return { page, yPosition };
+}
+
+/**
+ * Embed image attachment pages for the FRA+DSEAR combined PDF.
+ * Renders all renderable images (not only document-level), one page per image.
+ * Mirrors buildFsdPdf.ts::drawAttachmentPages — keep in sync when updating that function.
+ */
+async function drawFraDsearAttachmentPages(
+  page: PDFPage,
+  yPosition: number,
+  attachments: Attachment[],
+  moduleInstances: ModuleInstance[],
+  actions: Action[],
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any
+): Promise<{ page: PDFPage; yPosition: number }> {
+  const imageAttachments = attachments.filter(isRenderableImageAttachment);
+
+  if (imageAttachments.length === 0) {
+    return { page, yPosition };
+  }
+
+  for (const attachment of imageAttachments) {
+    ({ page } = addNewPage(pdfDoc, isDraft, totalPages));
+    yPosition = PAGE_TOP_Y;
+
+    // E-number is 1-based position in the full (unfiltered) attachments array so it
+    // matches the reference shown in the index.
+    const refNum = `E-${String(attachments.indexOf(attachment) + 1).padStart(3, '0')}`;
+
+    page.drawText('Attachment Evidence', {
+      x: MARGIN,
+      y: yPosition,
+      size: 14,
+      font: fontBold,
+      color: rgb(0, 0, 0),
+    });
+    yPosition -= 20;
+
+    page.drawText(`${refNum} ${sanitizePdfText(attachment.file_name)}`, {
+      x: MARGIN,
+      y: yPosition,
+      size: 11,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    yPosition -= 18;
+
+    const caption = attachment.caption || (isDocumentLevelAttachment(attachment) ? attachment.file_name : null);
+    if (caption) {
+      const captionLines = wrapText(caption, CONTENT_WIDTH, 9, font);
+      for (const line of captionLines) {
+        page.drawText(line, {
+          x: MARGIN,
+          y: yPosition,
+          size: 9,
+          font,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+        yPosition -= 11;
+      }
+    }
+
+    if (attachment.module_instance_id) {
+      const linkedModule = moduleInstances.find(m => m.id === attachment.module_instance_id);
+      if (linkedModule) {
+        // Strip "FSD-1 - " / "DSEAR-4 - " style prefix for a clean display name
+        const rawName = getModuleName(linkedModule.module_key);
+        const cleanName = rawName.replace(/^[A-Z]+-\d+\s*[–-]\s*/u, '').trim();
+        page.drawText(`Module: ${sanitizePdfText(cleanName)}`, {
+          x: MARGIN,
+          y: yPosition,
+          size: 8,
+          font,
+          color: rgb(0.45, 0.45, 0.45),
+        });
+        yPosition -= 11;
+      }
+    }
+
+    if (attachment.action_id) {
+      const linkedAction = actions.find(a => a.id === attachment.action_id);
+      if (linkedAction?.reference_number) {
+        page.drawText(`Action: ${sanitizePdfText(linkedAction.reference_number)}`, {
+          x: MARGIN,
+          y: yPosition,
+          size: 8,
+          font,
+          color: rgb(0.45, 0.45, 0.45),
+        });
+        yPosition -= 11;
+      }
+    }
+
+    yPosition -= 8;
+
+    const bytes = await fetchAttachmentBytes(attachment);
+    if (!bytes) {
+      page.drawText('Unable to load image.', {
+        x: MARGIN,
+        y: yPosition,
+        size: 9,
+        font,
+        color: rgb(0.65, 0.2, 0.2),
+      });
+      continue;
+    }
+
+    let embeddedImage;
+    const fileType = String(attachment.file_type || '').toLowerCase();
+    const fileName = String(attachment.file_name || '').toLowerCase();
+    if (fileType === 'image/png' || fileName.endsWith('.png')) {
+      embeddedImage = await pdfDoc.embedPng(bytes);
+    } else {
+      embeddedImage = await pdfDoc.embedJpg(bytes);
+    }
+
+    const rawImage = embeddedImage.scale(1);
+    const maxWidth = CONTENT_WIDTH * 0.5;
+    const maxHeight = yPosition - MARGIN;
+    const scale = Math.min(maxWidth / rawImage.width, maxHeight / rawImage.height, 1);
+    const imageWidth = rawImage.width * scale;
+    const imageHeight = rawImage.height * scale;
+    const imageX = MARGIN + ((CONTENT_WIDTH - imageWidth) / 2);
+
+    page.drawImage(embeddedImage, {
+      x: imageX,
+      y: yPosition - imageHeight,
+      width: imageWidth,
+      height: imageHeight,
+    });
+  }
+
+  return { page, yPosition };
+}
+
 export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promise<Uint8Array> {
   const { moduleInstances, actions, actionRatings, organisation, renderMode, applyTrialWatermark } = options;
   const document = {
@@ -1146,66 +1394,37 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
     totalPages
   ));
 
-  // Attachments Index (if present)
+  // Attachments Index + embedded image pages
   if (attachments.length > 0) {
     page = addNewPage(pdfDoc, isDraft, totalPages).page;
     recordToc('Attachments Index');
     yPosition = PAGE_TOP_Y;
 
-    page.drawText('Attachments Index', {
-      x: MARGIN,
-      y: yPosition,
-      size: 18,
-      font: fontBold,
-      color: rgb(0, 0, 0),
-    });
-    yPosition -= 30;
-
-    page.drawText(`Total attachments: ${attachments.length}`, {
-      x: MARGIN,
-      y: yPosition,
-      size: 11,
+    ({ page, yPosition } = drawFraDsearAttachmentsIndex(
+      page,
+      yPosition,
+      attachments,
+      moduleInstances,
+      actions,
+      pdfDoc,
+      isDraft,
+      totalPages,
       font,
-      color: rgb(0.3, 0.3, 0.3),
-    });
-    yPosition -= 30;
+      fontBold
+    ));
 
-    for (const attachment of attachments) {
-      ({ page, yPosition } = ensurePageSpace(40, page, yPosition, pdfDoc, isDraft, totalPages));
-      page.drawText(sanitizePdfText(`• ${attachment.file_name}`), {
-        x: MARGIN,
-        y: yPosition,
-        size: 10,
-        font,
-        color: rgb(0.1, 0.1, 0.1),
-      });
-      yPosition -= 20;
-    }
-
-    const documentLevelImages = attachments.filter((attachment) =>
-      isDocumentLevelAttachment(attachment) && isRenderableImageAttachment(attachment)
-    );
-
-    for (const attachment of documentLevelImages) {
-      page = addNewPage(pdfDoc, isDraft, totalPages).page;
-      yPosition = PAGE_TOP_Y;
-      page.drawText('Document-level Photo Evidence', { x: MARGIN, y: yPosition, size: 14, font: fontBold, color: rgb(0, 0, 0) });
-      yPosition -= 22;
-      page.drawText(sanitizePdfText(attachment.caption || attachment.file_name), { x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.2, 0.2, 0.2) });
-      yPosition -= 18;
-      const bytes = await fetchAttachmentBytes(attachment);
-      if (!bytes) continue;
-      const fileType = String(attachment.file_type || '').toLowerCase();
-      const fileName = String(attachment.file_name || '').toLowerCase();
-      const image = fileType === 'image/png' || fileName.endsWith('.png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
-      const raw = image.scale(1);
-      const maxWidth = CONTENT_WIDTH * 0.75;
-      const maxHeight = yPosition - MARGIN;
-      const scale = Math.min(maxWidth / raw.width, maxHeight / raw.height, 1);
-      const width = raw.width * scale;
-      const height = raw.height * scale;
-      page.drawImage(image, { x: MARGIN + ((CONTENT_WIDTH - width) / 2), y: yPosition - height, width, height });
-    }
+    ({ page, yPosition } = await drawFraDsearAttachmentPages(
+      page,
+      yPosition,
+      attachments,
+      moduleInstances,
+      actions,
+      pdfDoc,
+      isDraft,
+      totalPages,
+      font,
+      fontBold
+    ));
   }
 
   // Now render the TOC with collected entries (flowing to extra TOC pages if needed)
