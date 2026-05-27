@@ -23,6 +23,7 @@ import FSD6FireServiceAccessForm from './forms/FSD6FireServiceAccessForm';
 import FSD7DrawingsIndexForm from './forms/FSD7DrawingsIndexForm';
 import FSD8SmokeControlForm from './forms/FSD8SmokeControlForm';
 import FSD9ConstructionPhaseFireSafetyForm from './forms/FSD9ConstructionPhaseFireSafetyForm';
+import FSD10FireStrategySummaryForm from './forms/FSD10FireStrategySummaryForm';
 import DSEAR1DangerousSubstancesForm from './forms/DSEAR1DangerousSubstancesForm';
 import DSEAR2ProcessReleasesForm from './forms/DSEAR2ProcessReleasesForm';
 import DSEAR3HazardousAreaClassificationForm from './forms/DSEAR3HazardousAreaClassificationForm';
@@ -377,6 +378,19 @@ export default function ModuleRenderer({
       <>
         {SavedIndicator}
         <FSD9ConstructionPhaseFireSafetyForm
+          moduleInstance={moduleInstance}
+          document={document}
+          onSaved={handleSaved}
+        />
+      </>
+    );
+  }
+
+  if (moduleInstance.module_key === 'FSD_10_FIRE_STRATEGY_SUMMARY') {
+    return (
+      <>
+        {SavedIndicator}
+        <FSD10FireStrategySummaryForm
           moduleInstance={moduleInstance}
           document={document}
           onSaved={handleSaved}

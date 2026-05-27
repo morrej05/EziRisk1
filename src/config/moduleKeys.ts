@@ -36,6 +36,9 @@ export const MODULE_KEYS = {
   smoke_control: 'FSD_8_SMOKE_CONTROL',
   construction_phase: 'FSD_9_CONSTRUCTION_PHASE',
 
+  // FSD synthesis
+  fire_strategy_summary: 'FSD_10_FIRE_STRATEGY_SUMMARY',
+
   // DSEAR - Specific modules
   dangerous_substances: 'DSEAR_1_DANGEROUS_SUBSTANCES',
   process_releases: 'DSEAR_2_PROCESS_RELEASES',

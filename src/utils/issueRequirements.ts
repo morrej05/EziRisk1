@@ -151,6 +151,11 @@ function getFsdRequiredModules(ctx: IssueCtx): ModuleRule[] {
       label: 'Fire & Rescue Service Access',
       required: true,
     },
+    {
+      key: MODULE_KEYS.fire_strategy_summary,
+      label: 'Fire Strategy Summary & Professional Conclusion',
+      required: true,
+    },
   ];
 
   // Conditional modules

@@ -120,6 +120,7 @@ const MODULE_ORDER = [
   'FSD_7_DRAWINGS',
   'FSD_8_SMOKE_CONTROL',
   'FSD_9_CONSTRUCTION_PHASE',
+  'FSD_10_FIRE_STRATEGY_SUMMARY',
 ];
 
 const FSD_ALLOWED_MODULE_KEYS = new Set([
@@ -382,12 +383,25 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
     page = drawDocumentLimitations(page, document.limitations_assumptions, pdfDoc, isDraft, totalPages, font, fontBold);
   }
 
-  if (sortedModules.length > 0) {
+  const technicalModules = sortedModules.filter(
+    (m) => m.module_key !== 'FSD_10_FIRE_STRATEGY_SUMMARY'
+  );
+  const fsd10Module = sortedModules.find(
+    (m) => m.module_key === 'FSD_10_FIRE_STRATEGY_SUMMARY'
+  );
+
+  if (technicalModules.length > 0) {
     ({ page, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
     recordToc('Module Summaries');
-    for (const moduleInstance of sortedModules) {
+    for (const moduleInstance of technicalModules) {
       ({ page, yPosition } = drawModuleSummary(page, yPosition, moduleInstance, document, pdfDoc, isDraft, totalPages, font, fontBold));
     }
+  }
+
+  if (fsd10Module) {
+    ({ page, yPosition } = addNewPage(pdfDoc, isDraft, totalPages));
+    recordToc('Fire Strategy Summary & Professional Conclusion');
+    page = drawFsd10ProfessionalConclusion(page, fsd10Module, pdfDoc, isDraft, totalPages, font, fontBold);
   }
 
   if (actions.length > 0) {
@@ -420,6 +434,185 @@ export async function buildFsdPdf(options: BuildFsdPdfOptions): Promise<Uint8Arr
   }
 
   return await pdfDoc.save();
+}
+
+// ─── FSD-10: Fire Strategy Summary & Professional Conclusion ─────────────────
+
+function drawFsd10ProfessionalConclusion(
+  page: PDFPage,
+  moduleInstance: ModuleInstance,
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any
+): PDFPage {
+  let currentPage = page;
+  let yPosition = PAGE_TOP_Y;
+
+  const data = moduleInstance.data || {};
+  const override = data.override || {};
+  const conclusion = data.conclusion || {};
+  const computed = data.computed || {};
+
+  // Determine the authoritative outcome
+  const computedOutcome: string = computed.computedOutcome || '';
+  const isOverridden: boolean = override.enabled === true && !!override.outcome;
+  const authoritativeOutcome: string = isOverridden ? override.outcome : computedOutcome;
+
+  const OUTCOME_LABELS: Record<string, string> = {
+    compliant: 'Compliant',
+    minor_def: 'Minor Deficiency',
+    material_def: 'Significant Deficiency',
+    info_gap: 'Information Gap',
+  };
+
+  // ── Section title ───────────────────────────────────────────────────────
+  yPosition = drawSectionHeaderBar({
+    page: currentPage,
+    x: MARGIN,
+    y: yPosition,
+    w: CONTENT_WIDTH,
+    title: 'Fire Strategy Summary & Professional Conclusion',
+    product: 'fsd',
+    fonts: { regular: font, bold: fontBold },
+  });
+
+  // ── Strategy position banner ────────────────────────────────────────────
+  const outcomeLabel = OUTCOME_LABELS[authoritativeOutcome] || authoritativeOutcome || 'Not assessed';
+  const bannerText = isOverridden
+    ? `Fire Strategy Position: ${outcomeLabel} — Professional conclusion (computed: ${OUTCOME_LABELS[computedOutcome] || computedOutcome || 'not assessed'})`
+    : `Fire Strategy Position: ${outcomeLabel} — Computed from assessment data`;
+
+  ({ page: currentPage, yPosition } = ensurePageSpace(36, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+
+  const bannerColour = authoritativeOutcome === 'material_def'
+    ? rgb(0.97, 0.93, 0.93)
+    : authoritativeOutcome === 'minor_def'
+    ? rgb(1.0, 0.97, 0.88)
+    : authoritativeOutcome === 'info_gap'
+    ? rgb(0.93, 0.96, 1.0)
+    : authoritativeOutcome === 'compliant'
+    ? rgb(0.93, 0.98, 0.94)
+    : rgb(0.97, 0.97, 0.97);
+
+  const bannerHeight = 26;
+  currentPage.drawRectangle({
+    x: MARGIN,
+    y: yPosition - bannerHeight,
+    width: CONTENT_WIDTH,
+    height: bannerHeight,
+    color: bannerColour,
+  });
+  const bannerLines = wrapText(bannerText, CONTENT_WIDTH - 16, 10, fontBold);
+  let bannerY = yPosition - 9;
+  for (const line of bannerLines) {
+    currentPage.drawText(sanitizePdfText(line), {
+      x: MARGIN + 8,
+      y: bannerY,
+      size: 10,
+      font: fontBold,
+      color: rgb(0.1, 0.1, 0.1),
+    });
+    bannerY -= 13;
+  }
+  yPosition -= bannerHeight + 10;
+
+  // ── Override justification block ────────────────────────────────────────
+  if (isOverridden && override.reason) {
+    ({ page: currentPage, yPosition } = ensurePageSpace(60, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+
+    currentPage.drawText('Override Justification:', {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font: fontBold,
+      color: rgb(0.55, 0.35, 0.0),
+    });
+    yPosition -= 14;
+
+    const reasonLines = wrapText(override.reason, CONTENT_WIDTH - 20, 9, font);
+    for (const line of reasonLines) {
+      ({ page: currentPage, yPosition } = ensurePageSpace(13, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+      currentPage.drawText(sanitizePdfText(line), {
+        x: MARGIN + 10,
+        y: yPosition,
+        size: 9,
+        font,
+        color: rgb(0.45, 0.28, 0.0),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  }
+
+  // ── Assessor notes ───────────────────────────────────────────────────────
+  if (moduleInstance.assessor_notes && moduleInstance.assessor_notes.trim()) {
+    ({ page: currentPage, yPosition } = ensurePageSpace(30, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+    currentPage.drawText('Assessor Notes:', {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font: fontBold,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    yPosition -= 14;
+    const notesLines = wrapText(moduleInstance.assessor_notes, CONTENT_WIDTH, 9, font);
+    for (const line of notesLines) {
+      ({ page: currentPage, yPosition } = ensurePageSpace(13, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+      currentPage.drawText(sanitizePdfText(line), {
+        x: MARGIN,
+        y: yPosition,
+        size: 9,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  }
+
+  // ── Helper to draw a conclusion prose section ────────────────────────────
+  function drawConclusionSection(heading: string, body: string): void {
+    if (!body || !body.trim()) return;
+
+    ({ page: currentPage, yPosition } = ensurePageSpace(40, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+
+    currentPage.drawText(sanitizePdfText(heading), {
+      x: MARGIN,
+      y: yPosition,
+      size: 10,
+      font: fontBold,
+      color: rgb(0.15, 0.15, 0.15),
+    });
+    yPosition -= 15;
+
+    const bodyLines = wrapText(body, CONTENT_WIDTH, 9, font);
+    for (const line of bodyLines) {
+      ({ page: currentPage, yPosition } = ensurePageSpace(13, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+      currentPage.drawText(sanitizePdfText(line), {
+        x: MARGIN,
+        y: yPosition,
+        size: 9,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  }
+
+  // ── Render each conclusion field ─────────────────────────────────────────
+  drawConclusionSection('Overall Fire Strategy Position', conclusion.overallStrategyPosition);
+  drawConclusionSection('Principal Risks and Constraints', conclusion.principalRisksAndConstraints);
+  drawConclusionSection('Adequacy of Fire Strategy Measures', conclusion.strategyAdequacy);
+  drawConclusionSection('Outstanding Design Limitations', conclusion.outstandingLimitations);
+  drawConclusionSection('Assumptions and Design Dependencies', conclusion.assumptionsAndDependencies);
+  drawConclusionSection('Unresolved Information Gaps', conclusion.unresolvedInformationGaps);
+  drawConclusionSection('Recommended Follow-Up Actions', conclusion.recommendedFollowUp);
+  drawConclusionSection('Professional Commentary', conclusion.professionalCommentary);
+
+  return currentPage;
 }
 
 function sortModules(moduleInstances: ModuleInstance[]): ModuleInstance[] {

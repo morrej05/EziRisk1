@@ -160,7 +160,8 @@ function getExpectedKeysForDocument(document: Document, existingModuleKeys: stri
       'FSD_6_FRS_ACCESS',
       'FSD_7_DRAWINGS',
       'FSD_8_SMOKE_CONTROL',
-      'FSD_9_CONSTRUCTION_PHASE'
+      'FSD_9_CONSTRUCTION_PHASE',
+      'FSD_10_FIRE_STRATEGY_SUMMARY'
     );
   }
 

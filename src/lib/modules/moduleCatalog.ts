@@ -252,6 +252,13 @@ export const MODULE_CATALOG: Record<string, ModuleDefinition> = {
     type: 'input',
     outcomeCategory: 'governance', // Process management
   },
+  FSD_10_FIRE_STRATEGY_SUMMARY: {
+    name: 'FSD-10 - Fire Strategy Summary & Professional Conclusion',
+    docTypes: ['FSD'],
+    order: 29,
+    type: 'derived',
+    outcomeCategory: 'critical', // Synthesis: overall strategy position
+  },
   DSEAR_1_DANGEROUS_SUBSTANCES: {
     name: 'DSEAR-1 - Dangerous Substances Register',
     docTypes: ['DSEAR'],
