@@ -863,13 +863,13 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               </div>
             )}
 
-            {!isReDoc && (
-              <EvidenceQualitySummary
-                summary={evidenceSummary}
-                totalModuleCount={modules.length}
-                className="mb-6"
-              />
-            )}
+            {/* P2-A.1: isReDoc guard removed — RE docs now have attachment rows after P1 backfill.
+                EvidenceQualitySummary self-hides when totalCount === 0 (advisory-only). */}
+            <EvidenceQualitySummary
+              summary={evidenceSummary}
+              totalModuleCount={modules.length}
+              className="mb-6"
+            />
 
             {/* Recommendation Panel */}
             {selectedStable && !hideOutstandingActionsPanel && (

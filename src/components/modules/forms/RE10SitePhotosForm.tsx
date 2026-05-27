@@ -4,6 +4,7 @@ import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import { X, Upload, Image as ImageIcon, FileText, AlertCircle } from 'lucide-react';
 import FloatingSaveBar from './FloatingSaveBar';
+import ModuleEvidenceList from '../../evidence/ModuleEvidenceList';
 
 // Upload limits
 const MAX_FILE_SIZE_MB = 15;
@@ -466,6 +467,16 @@ export default function RE10SitePhotosForm({
           </div>
         )}
       </div>
+
+      {/* P2-A.1 bridge: attachment-driven display of backfilled evidence records.
+          isLocked={true} keeps mutations on the JSONB path until P2-A.2 completes
+          the upload migration. ModuleEvidenceList returns null when empty, so forms
+          with no backfilled attachments have zero visual footprint. */}
+      <ModuleEvidenceList
+        moduleInstanceId={moduleInstance.id}
+        documentId={moduleInstance.document_id}
+        isLocked={true}
+      />
 
     </div>
 
