@@ -2,9 +2,13 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
-import { X, Upload, Image as ImageIcon, FileText, AlertCircle } from 'lucide-react';
+import { Upload, AlertCircle } from 'lucide-react';
 import FloatingSaveBar from './FloatingSaveBar';
 import ModuleEvidenceList from '../../evidence/ModuleEvidenceList';
+import {
+  uploadAttachment,
+  getModuleAttachments,
+} from '../../../utils/evidenceManagement';
 
 // Upload limits
 const MAX_FILE_SIZE_MB = 15;
@@ -12,19 +16,13 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_BATCH_FILES = 20;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/heic'];
 
-// Helper to get signed URLs for private storage
-async function getSignedUrl(path: string): Promise<string | null> {
-  try {
-    const { data, error } = await supabase.storage
-      .from('evidence')
-      .createSignedUrl(path, 600); // 10 minute expiry
+// Naming convention that identifies a site plan attachment.
+// Applied at upload time and read back at save time when deriving the JSONB mirror.
+const SITE_PLAN_PREFIX = 'site_plan_';
 
-    if (error) throw error;
-    return data.signedUrl;
-  } catch (error) {
-    console.error('Error creating signed URL:', error);
-    return null;
-  }
+interface DocContext {
+  organisationId: string;
+  baseDocumentId: string;
 }
 
 interface Document {
@@ -41,19 +39,6 @@ interface ModuleInstance {
   data: Record<string, any>;
 }
 
-interface Photo {
-  id: string;
-  storage_path: string;
-  caption: string;
-  uploaded_at: string;
-}
-
-interface SitePlan {
-  storage_path: string;
-  description: string;
-  uploaded_at: string;
-}
-
 interface RE10SitePhotosFormProps {
   moduleInstance: ModuleInstance;
   document: Document;
@@ -66,46 +51,42 @@ export default function RE10SitePhotosForm({
   onSaved,
 }: RE10SitePhotosFormProps) {
   const isLocked = isReDocumentLocked(document.issue_status);
+  const outcome = moduleInstance.outcome || '';
+  const assessorNotes = moduleInstance.assessor_notes || '';
+
+  // Fetched once on mount — required by uploadAttachment(). Follows the same
+  // pattern as useInlineEvidenceUpload so uploads don't re-query on every call.
+  const [docContext, setDocContext] = useState<DocContext | null>(null);
+
+  // Incrementing this tells ModuleEvidenceList to re-fetch after each upload.
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
+
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [uploadingSitePlan, setUploadingSitePlan] = useState(false);
   const [uploadErrors, setUploadErrors] = useState<string[]>([]);
-  const d = moduleInstance.data || {};
 
-  const [photos, setPhotos] = useState<Photo[]>(d.photos || []);
-  const [sitePlan, setSitePlan] = useState<SitePlan | null>(d.site_plan || null);
-  const outcome = moduleInstance.outcome || '';
-  const assessorNotes = moduleInstance.assessor_notes || '';
-  void document;
-
-  // Track signed URLs for display
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-  const [sitePlanUrl, setSitePlanUrl] = useState<string | null>(null);
-
-  // Load signed URLs when photos or site plan change
   useEffect(() => {
-    async function loadSignedUrls() {
-      // Load photo URLs
-      const urls: Record<string, string> = {};
-      for (const photo of photos) {
-        if (photo.storage_path) {
-          const url = await getSignedUrl(photo.storage_path);
-          if (url) urls[photo.id] = url;
+    let cancelled = false;
+    supabase
+      .from('documents')
+      .select('organisation_id, base_document_id')
+      .eq('id', moduleInstance.document_id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          setDocContext({
+            organisationId: data.organisation_id,
+            baseDocumentId: data.base_document_id ?? '',
+          });
         }
-      }
-      setPhotoUrls(urls);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moduleInstance.document_id]);
 
-      // Load site plan URL
-      if (sitePlan?.storage_path) {
-        const url = await getSignedUrl(sitePlan.storage_path);
-        setSitePlanUrl(url);
-      } else {
-        setSitePlanUrl(null);
-      }
-    }
-
-    loadSignedUrls();
-  }, [photos, sitePlan]);
+  // ─── Validation ─────────────────────────────────────────────────────────────
 
   const validateImageFile = (file: File): string | null => {
     if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -117,17 +98,26 @@ export default function RE10SitePhotosForm({
     return null;
   };
 
+  // ─── Upload handlers ─────────────────────────────────────────────────────────
+
+  /**
+   * Uploads one or more site photos via the lock-safe uploadAttachment() path.
+   * After each successful batch the ModuleEvidenceList is refreshed.
+   * Captions are set by the user via ModuleEvidenceList's inline caption editor.
+   */
   const handleBatchPhotoUpload = async (files: FileList) => {
-    if (isLocked) return;
+    if (isLocked || !docContext) return;
     setUploadingPhoto(true);
     setUploadErrors([]);
     const errors: string[] = [];
-    const newPhotos: Photo[] = [];
+    let uploadCount = 0;
 
     try {
       const filesToUpload = Array.from(files).slice(0, MAX_BATCH_FILES);
       if (files.length > MAX_BATCH_FILES) {
-        errors.push(`Only first ${MAX_BATCH_FILES} files will be uploaded (limit: ${MAX_BATCH_FILES} per batch)`);
+        errors.push(
+          `Only first ${MAX_BATCH_FILES} files will be uploaded (limit: ${MAX_BATCH_FILES} per batch)`,
+        );
       }
 
       for (const file of filesToUpload) {
@@ -137,54 +127,54 @@ export default function RE10SitePhotosForm({
           continue;
         }
 
-        try {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `photo_${crypto.randomUUID()}.${fileExt}`;
-          const filePath = `${moduleInstance.document_id}/${moduleInstance.id}/${fileName}`;
+        const result = await uploadAttachment(
+          docContext.organisationId,
+          moduleInstance.document_id,
+          docContext.baseDocumentId,
+          file,
+          undefined,          // caption — user sets via ModuleEvidenceList inline edit
+          moduleInstance.id,  // module_instance_id
+        );
 
-          const { error: uploadError } = await supabase.storage
-            .from('evidence')
-            .upload(filePath, file);
-
-          if (uploadError) throw uploadError;
-
-          newPhotos.push({
-            id: crypto.randomUUID(),
-            storage_path: filePath,
-            caption: '',
-            uploaded_at: new Date().toISOString(),
-          });
-        } catch (error) {
-          console.error(`Error uploading ${file.name}:`, error);
-          errors.push(`Failed to upload ${file.name}`);
+        if (result.success) {
+          uploadCount++;
+        } else {
+          errors.push(
+            `Failed to upload ${file.name}${result.error ? `: ${result.error}` : ''}`,
+          );
         }
       }
 
-      if (newPhotos.length > 0) {
-        setPhotos([...photos, ...newPhotos]);
-      }
-
-      if (errors.length > 0) {
-        setUploadErrors(errors);
-      }
+      if (uploadCount > 0) setEvidenceRefreshKey((k) => k + 1);
+      if (errors.length > 0) setUploadErrors(errors);
     } finally {
       setUploadingPhoto(false);
     }
   };
 
+  /**
+   * Uploads a site plan via the lock-safe uploadAttachment() path.
+   *
+   * The file is renamed with the SITE_PLAN_PREFIX ('site_plan_') before upload.
+   * handleSave() uses this prefix to identify the site plan attachment when
+   * deriving the JSONB mirror read by buildReSurveyPdf.ts.
+   *
+   * To replace an existing site plan, the user deletes it via ModuleEvidenceList
+   * then uploads a new one.
+   */
   const handleSitePlanUpload = async (file: File) => {
-    if (isLocked) return;
+    if (isLocked || !docContext) return;
     setUploadingSitePlan(true);
     setUploadErrors([]);
 
-    // Validate file size
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setUploadErrors([`File exceeds ${MAX_FILE_SIZE_MB}MB limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`]);
+      setUploadErrors([
+        `File exceeds ${MAX_FILE_SIZE_MB}MB limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`,
+      ]);
       setUploadingSitePlan(false);
       return;
     }
 
-    // Validate file type (images + PDF)
     const allowedTypes = [...ALLOWED_IMAGE_TYPES, 'application/pdf'];
     if (!allowedTypes.includes(file.type.toLowerCase())) {
       setUploadErrors(['File must be an image (jpg, png, heic) or PDF']);
@@ -192,67 +182,80 @@ export default function RE10SitePhotosForm({
       return;
     }
 
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `site_plan_${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `${moduleInstance.document_id}/${moduleInstance.id}/${fileName}`;
+    // Rename to site_plan_ prefix so handleSave can identify it by file_name.
+    const fileExt = file.name.split('.').pop();
+    const renamedFile = new File(
+      [file],
+      `${SITE_PLAN_PREFIX}${crypto.randomUUID()}.${fileExt}`,
+      { type: file.type },
+    );
 
-      const { error: uploadError } = await supabase.storage
-        .from('evidence')
-        .upload(filePath, file);
+    const result = await uploadAttachment(
+      docContext.organisationId,
+      moduleInstance.document_id,
+      docContext.baseDocumentId,
+      renamedFile,
+      undefined,          // caption — user sets via ModuleEvidenceList inline edit
+      moduleInstance.id,
+    );
 
-      if (uploadError) throw uploadError;
-
-      setSitePlan({
-        storage_path: filePath,
-        description: '',
-        uploaded_at: new Date().toISOString(),
-      });
-    } catch (error) {
-      console.error('Error uploading site plan:', error);
-      setUploadErrors(['Failed to upload site plan. Please try again.']);
-    } finally {
-      setUploadingSitePlan(false);
+    if (result.success) {
+      setEvidenceRefreshKey((k) => k + 1);
+    } else {
+      setUploadErrors([
+        `Failed to upload site plan${result.error ? `: ${result.error}` : ''}. Please try again.`,
+      ]);
     }
+    setUploadingSitePlan(false);
   };
 
-  const removePhoto = (photoId: string) => {
-    const target = photos.find((p) => p.id === photoId);
-    if (target?.storage_path) {
-      supabase.storage
-        .from('evidence')
-        .remove([target.storage_path])
-        .catch((err) => console.error('[RE10] Failed to delete photo from storage:', err));
-    }
-    setPhotos(photos.filter((p) => p.id !== photoId));
-  };
+  // ─── Save ────────────────────────────────────────────────────────────────────
 
-  const updatePhotoCaption = (photoId: string, caption: string) => {
-    setPhotos(photos.map((p) => (p.id === photoId ? { ...p, caption } : p)));
-  };
-
-  const removeSitePlan = () => {
-    if (sitePlan?.storage_path) {
-      supabase.storage
-        .from('evidence')
-        .remove([sitePlan.storage_path])
-        .catch((err) => console.error('[RE10] Failed to delete site plan from storage:', err));
-    }
-    setSitePlan(null);
-  };
-
-  const updateSitePlanDescription = (description: string) => {
-    if (sitePlan) {
-      setSitePlan({ ...sitePlan, description });
-    }
-  };
-
+  /**
+   * Saves the module instance.
+   *
+   * Re-queries the current attachment list before writing so the JSONB mirror
+   * reflects any caption edits or deletions made via ModuleEvidenceList since
+   * the last upload. The mirror is consumed by buildReSurveyPdf.ts until P3
+   * migrates the PDF builder to query the attachments table directly.
+   *
+   * Mirror shape (unchanged from original JSONB schema):
+   *   data.photos[]   ← { id, storage_path, caption, uploaded_at }
+   *   data.site_plan  ← { storage_path, description, uploaded_at } | null
+   */
   const handleSave = async () => {
     if (isLocked) return;
     setIsSaving(true);
     try {
+      const currentAttachments = await getModuleAttachments(moduleInstance.id);
+
+      // Most-recent site plan wins when multiple exist (e.g. user uploaded twice).
+      const sortedDesc = [...currentAttachments].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      const sitePlanAtt =
+        sortedDesc.find((a) => a.file_name.startsWith(SITE_PLAN_PREFIX)) ?? null;
+      const photoAtts = currentAttachments.filter(
+        (a) => !a.file_name.startsWith(SITE_PLAN_PREFIX),
+      );
+
+      const photos = photoAtts.map((a) => ({
+        id: a.id,
+        storage_path: a.file_path,
+        caption: a.caption ?? '',
+        uploaded_at: a.created_at,
+      }));
+
+      const site_plan = sitePlanAtt
+        ? {
+            storage_path: sitePlanAtt.file_path,
+            description: sitePlanAtt.caption ?? '',
+            uploaded_at: sitePlanAtt.created_at,
+          }
+        : null;
+
       const payload = sanitizeModuleInstancePayload({
-        data: { photos, site_plan: sitePlan },
+        data: { photos, site_plan },
         outcome,
         assessor_notes: assessorNotes,
       });
@@ -272,213 +275,130 @@ export default function RE10SitePhotosForm({
     }
   };
 
+  // ─── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <>
-    <div className="space-y-6 px-6 py-6 max-w-5xl mx-auto pb-24">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-900">
-            <p className="font-semibold mb-1">RE-10 – Supporting Documentation</p>
-            <p className="text-blue-800 mb-2">
-              Upload site photographs and site plan documentation to support the assessment.
-            </p>
-            <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
-              <li>Maximum {MAX_FILE_SIZE_MB}MB per file</li>
-              <li>Up to {MAX_BATCH_FILES} photos per batch upload</li>
-              <li>Supported formats: JPG, PNG, HEIC (+ PDF for site plan)</li>
-            </ul>
-          </div>
-        </div>
-      </div>
+      <div className="space-y-6 px-6 py-6 max-w-5xl mx-auto pb-24">
 
-      {uploadErrors.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        {/* Info box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm">
-              <p className="font-semibold text-red-900 mb-2">Upload Errors</p>
-              <ul className="text-red-800 space-y-1">
-                {uploadErrors.map((error, idx) => (
-                  <li key={idx} className="text-xs">{error}</li>
-                ))}
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-900">
+              <p className="font-semibold mb-1">RE-10 – Supporting Documentation</p>
+              <p className="text-blue-800 mb-2">
+                Upload site photographs and site plan documentation to support the assessment.
+              </p>
+              <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                <li>Maximum {MAX_FILE_SIZE_MB}MB per file</li>
+                <li>Up to {MAX_BATCH_FILES} photos per batch upload</li>
+                <li>Supported formats: JPG, PNG, HEIC (+ PDF for site plan)</li>
               </ul>
             </div>
           </div>
         </div>
-      )}
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Site Photos ({photos.length})</h3>
-          <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
-            <Upload className="w-4 h-4" />
-            Upload Photos
-            <input
-              type="file"
-              accept="image/jpeg,image/jpg,image/png,image/heic"
-              multiple
-              capture="environment"
-              className="hidden"
-              disabled={uploadingPhoto}
-              onChange={(e) => {
-                const files = e.target.files;
-                if (files && files.length > 0) {
-                  handleBatchPhotoUpload(files);
-                }
-                e.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-
-        {uploadingPhoto && (
-          <div className="text-sm text-blue-600">Uploading photo...</div>
-        )}
-
-        {photos.length > 0 ? (
-          <div className="grid grid-cols-3 gap-4">
-            {photos.map((photo) => (
-              <div
-                key={photo.id}
-                className="relative bg-slate-50 border border-slate-200 rounded-lg overflow-hidden"
-              >
-                <div className="aspect-video bg-slate-100 flex items-center justify-center overflow-hidden">
-                  {photoUrls[photo.id] ? (
-                    <img
-                      src={photoUrls[photo.id]}
-                      alt={photo.caption || 'Site photo'}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <ImageIcon className="w-8 h-8 text-slate-400" />
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removePhoto(photo.id)}
-                  className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-                <div className="p-3">
-                  <textarea
-                    value={photo.caption}
-                    onChange={(e) => updatePhotoCaption(photo.id, e.target.value)}
-                    rows={2}
-                    className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent resize-none"
-                    placeholder="Photo caption..."
-                  />
-                </div>
+        {/* Upload errors */}
+        {uploadErrors.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-semibold text-red-900 mb-2">Upload Errors</p>
+                <ul className="text-red-800 space-y-1">
+                  {uploadErrors.map((err, idx) => (
+                    <li key={idx} className="text-xs">{err}</li>
+                  ))}
+                </ul>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-8 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500">
-            No site photos uploaded yet
+            </div>
           </div>
         )}
-      </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Site Plan</h3>
-          {!sitePlan && (
-            <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700">
-              <Upload className="w-4 h-4" />
-              Upload Site Plan
-              <input
-                type="file"
-                accept="image/*,.pdf"
-                className="hidden"
-                disabled={uploadingSitePlan}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleSitePlanUpload(file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
+        {/* Site Photos — upload controls.
+            Display, caption editing and deletion are handled by ModuleEvidenceList below. */}
+        <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-slate-900">Site Photos</h3>
+            {!isLocked && (
+              <label
+                className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  uploadingPhoto || !docContext
+                    ? 'bg-blue-300 text-white cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                <Upload className="w-4 h-4" />
+                {uploadingPhoto ? 'Uploading…' : 'Upload Photos'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/heic"
+                  multiple
+                  capture="environment"
+                  className="hidden"
+                  disabled={uploadingPhoto || !docContext}
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) handleBatchPhotoUpload(files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+          </div>
+          {!docContext && !isLocked && (
+            <p className="text-xs text-slate-400">Preparing upload…</p>
           )}
         </div>
 
-        {uploadingSitePlan && (
-          <div className="text-sm text-blue-600">Uploading site plan...</div>
-        )}
-
-        {sitePlan ? (
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                {sitePlanUrl && sitePlan.storage_path.match(/\.(jpg|jpeg|png|heic)$/i) ? (
-                  <div className="w-32 h-24 bg-slate-200 rounded overflow-hidden flex-shrink-0">
-                    <img
-                      src={sitePlanUrl}
-                      alt="Site plan preview"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 bg-slate-200 rounded flex items-center justify-center flex-shrink-0">
-                    <FileText className="w-6 h-6 text-slate-600" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900">Site Plan Document</p>
-                  <p className="text-xs text-slate-500">
-                    Uploaded {new Date(sitePlan.uploaded_at).toLocaleDateString()}
-                  </p>
-                  {sitePlanUrl && (
-                    <a
-                      href={sitePlanUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-blue-600 hover:text-blue-700 inline-flex items-center gap-1 mt-1"
-                    >
-                      View Full Size
-                    </a>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={removeSitePlan}
-                className="text-red-600 hover:text-red-700 p-1 flex-shrink-0"
+        {/* Site Plan — upload controls.
+            Display, caption editing and deletion are handled by ModuleEvidenceList below.
+            To replace an existing site plan, delete it from the list then upload again. */}
+        <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-slate-900">Site Plan</h3>
+            {!isLocked && (
+              <label
+                className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  uploadingSitePlan || !docContext
+                    ? 'bg-green-300 text-white cursor-not-allowed'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
               >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Description
+                <Upload className="w-4 h-4" />
+                {uploadingSitePlan ? 'Uploading…' : 'Upload Site Plan'}
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  disabled={uploadingSitePlan || !docContext}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleSitePlanUpload(file);
+                    e.target.value = '';
+                  }}
+                />
               </label>
-              <textarea
-                value={sitePlan.description}
-                onChange={(e) => updateSitePlanDescription(e.target.value)}
-                rows={3}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                placeholder="Describe the site plan document..."
-              />
-            </div>
+            )}
           </div>
-        ) : (
-          <div className="text-center py-8 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500">
-            No site plan uploaded yet
-          </div>
-        )}
+          <p className="text-xs text-slate-500">
+            Accepts image files or PDF. To replace an existing site plan, delete it from
+            the evidence list below then upload the new version.
+          </p>
+        </div>
+
+        {/* Evidence list — primary display for all RE-10 attachments.
+            Handles thumbnails, signed URLs, inline caption editing, and deletion.
+            refreshKey triggers a re-fetch after each upload. */}
+        <ModuleEvidenceList
+          moduleInstanceId={moduleInstance.id}
+          documentId={moduleInstance.document_id}
+          isLocked={isLocked}
+          refreshKey={evidenceRefreshKey}
+        />
+
       </div>
-
-      {/* P2-A.1 bridge: attachment-driven display of backfilled evidence records.
-          isLocked={true} keeps mutations on the JSONB path until P2-A.2 completes
-          the upload migration. ModuleEvidenceList returns null when empty, so forms
-          with no backfilled attachments have zero visual footprint. */}
-      <ModuleEvidenceList
-        moduleInstanceId={moduleInstance.id}
-        documentId={moduleInstance.document_id}
-        isLocked={true}
-      />
-
-    </div>
 
       <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
     </>
