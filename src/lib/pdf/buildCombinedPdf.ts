@@ -32,6 +32,7 @@ import {
   addSupersededWatermark,
   addExecutiveSummaryPages,
   drawRecommendationsSection,
+  ensurePageSpace,
 } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
 import { drawSectionHeaderBar } from './pdfPrimitives';
@@ -337,17 +338,25 @@ export async function buildCombinedPdf(options: BuildPdfOptions): Promise<Uint8A
   // Use legacy helper for FSD (it's jurisdiction-aware)
   yPosition = drawTextSection(page, 'Purpose and Scope', fsdPurposeAndScopeText(jurisdiction as any), font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
 
-  // FSD Modules
-  const fsdModules = sortModulesByOrder(
-    moduleInstances.filter(m => m.module_key.startsWith('FSD_') && !COMMON_MODULES.includes(m.module_key)),
+  // FSD Modules — separate FSD-10 (synthesis) so it renders with specialised formatting after all technical modules
+  const allFsdModules = moduleInstances.filter(m => m.module_key.startsWith('FSD_') && !COMMON_MODULES.includes(m.module_key));
+  const fsd10Module = allFsdModules.find(m => m.module_key === 'FSD_10_FIRE_STRATEGY_SUMMARY');
+  const technicalFsdModules = sortModulesByOrder(
+    allFsdModules.filter(m => m.module_key !== 'FSD_10_FIRE_STRATEGY_SUMMARY'),
     FSD_MODULE_ORDER
   );
 
-  for (const module of fsdModules) {
+  for (const module of technicalFsdModules) {
     const result = addNewPage(pdfDoc, isDraft, totalPages);
     page = result.page;
     yPosition = PAGE_TOP_Y;
     yPosition = drawModuleSummary(page, module, document, font, fontBold, yPosition, pdfDoc, isDraft, totalPages);
+  }
+
+  // Render FSD-10 with specialised professional-conclusion renderer (after all technical FSD modules)
+  if (fsd10Module) {
+    const fsd10Result = addNewPage(pdfDoc, isDraft, totalPages);
+    page = drawFsd10CombinedConclusion(fsd10Result.page, fsd10Module, pdfDoc, isDraft, totalPages, font, fontBold);
   }
 
   // Appendix: Action Register
@@ -927,6 +936,152 @@ function drawInfoGapQuickActions(
 
   yPosition -= 15;
   return yPosition;
+}
+
+/**
+ * Render FSD-10 Fire Strategy Summary & Professional Conclusion with specialised formatting.
+ * Mirrors the rendering in buildFsdPdf.ts — keep in sync when updating the FSD-10 form fields.
+ */
+function drawFsd10CombinedConclusion(
+  page: PDFPage,
+  moduleInstance: ModuleInstance,
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any
+): PDFPage {
+  let currentPage = page;
+  let yPosition = PAGE_TOP_Y;
+
+  const data = moduleInstance.data || {};
+  const override = data.override || {};
+  const conclusion = data.conclusion || {};
+  const computed = data.computed || {};
+
+  const computedOutcome: string = computed.computedOutcome || '';
+  const isOverridden: boolean = override.enabled === true && !!override.outcome;
+  const authoritativeOutcome: string = isOverridden ? override.outcome : computedOutcome;
+
+  const OUTCOME_LABELS: Record<string, string> = {
+    compliant: 'Compliant',
+    minor_def: 'Minor Deficiency',
+    material_def: 'Significant Deficiency',
+    info_gap: 'Information Gap',
+  };
+
+  // Section header
+  yPosition = drawSectionHeaderBar({
+    page: currentPage,
+    x: MARGIN,
+    y: yPosition,
+    w: CONTENT_WIDTH,
+    title: 'Fire Strategy Summary & Professional Conclusion',
+    product: 'fsd',
+    fonts: { regular: font, bold: fontBold },
+  });
+
+  // Strategy position banner
+  const outcomeLabel = OUTCOME_LABELS[authoritativeOutcome] || authoritativeOutcome || 'Not assessed';
+  const bannerText = isOverridden
+    ? `Fire Strategy Position: ${outcomeLabel} — Professional conclusion (computed: ${OUTCOME_LABELS[computedOutcome] || computedOutcome || 'not assessed'})`
+    : `Fire Strategy Position: ${outcomeLabel} — Computed from assessment data`;
+
+  ({ page: currentPage, yPosition } = ensurePageSpace(36, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+
+  const bannerColour = authoritativeOutcome === 'material_def'
+    ? rgb(0.97, 0.93, 0.93)
+    : authoritativeOutcome === 'minor_def'
+    ? rgb(1.0, 0.97, 0.88)
+    : authoritativeOutcome === 'info_gap'
+    ? rgb(0.93, 0.96, 1.0)
+    : authoritativeOutcome === 'compliant'
+    ? rgb(0.93, 0.98, 0.94)
+    : rgb(0.97, 0.97, 0.97);
+
+  const bannerHeight = 26;
+  currentPage.drawRectangle({
+    x: MARGIN,
+    y: yPosition - bannerHeight,
+    width: CONTENT_WIDTH,
+    height: bannerHeight,
+    color: bannerColour,
+  });
+  const bannerLines = wrapText(bannerText, CONTENT_WIDTH - 16, 10, fontBold);
+  let bannerY = yPosition - 9;
+  for (const line of bannerLines) {
+    currentPage.drawText(sanitizePdfText(line), {
+      x: MARGIN + 8, y: bannerY, size: 10, font: fontBold, color: rgb(0.1, 0.1, 0.1),
+    });
+    bannerY -= 13;
+  }
+  yPosition -= bannerHeight + 10;
+
+  // Override justification block
+  if (isOverridden && override.reason) {
+    ({ page: currentPage, yPosition } = ensurePageSpace(60, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+    currentPage.drawText('Override Justification:', {
+      x: MARGIN, y: yPosition, size: 10, font: fontBold, color: rgb(0.55, 0.35, 0.0),
+    });
+    yPosition -= 14;
+    const reasonLines = wrapText(override.reason, CONTENT_WIDTH - 20, 9, font);
+    for (const line of reasonLines) {
+      ({ page: currentPage, yPosition } = ensurePageSpace(13, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+      currentPage.drawText(sanitizePdfText(line), {
+        x: MARGIN + 10, y: yPosition, size: 9, font, color: rgb(0.45, 0.28, 0.0),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  }
+
+  // Assessor notes
+  if (moduleInstance.assessor_notes && moduleInstance.assessor_notes.trim()) {
+    ({ page: currentPage, yPosition } = ensurePageSpace(30, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+    currentPage.drawText('Assessor Notes:', {
+      x: MARGIN, y: yPosition, size: 10, font: fontBold, color: rgb(0.2, 0.2, 0.2),
+    });
+    yPosition -= 14;
+    const notesLines = wrapText(moduleInstance.assessor_notes, CONTENT_WIDTH, 9, font);
+    for (const line of notesLines) {
+      ({ page: currentPage, yPosition } = ensurePageSpace(13, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+      currentPage.drawText(sanitizePdfText(line), {
+        x: MARGIN, y: yPosition, size: 9, font, color: rgb(0.2, 0.2, 0.2),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  }
+
+  // Conclusion prose fields
+  const drawConclusionSection = (heading: string, body: string): void => {
+    if (!body || !body.trim()) return;
+    ({ page: currentPage, yPosition } = ensurePageSpace(40, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+    currentPage.drawText(sanitizePdfText(heading), {
+      x: MARGIN, y: yPosition, size: 10, font: fontBold, color: rgb(0.15, 0.15, 0.15),
+    });
+    yPosition -= 15;
+    const bodyLines = wrapText(body, CONTENT_WIDTH, 9, font);
+    for (const line of bodyLines) {
+      ({ page: currentPage, yPosition } = ensurePageSpace(13, currentPage, yPosition, pdfDoc, isDraft, totalPages));
+      currentPage.drawText(sanitizePdfText(line), {
+        x: MARGIN, y: yPosition, size: 9, font, color: rgb(0.2, 0.2, 0.2),
+      });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  };
+
+  drawConclusionSection('Overall Fire Strategy Position', conclusion.overallStrategyPosition);
+  drawConclusionSection('Principal Risks and Constraints', conclusion.principalRisksAndConstraints);
+  drawConclusionSection('Adequacy of Fire Strategy Measures', conclusion.strategyAdequacy);
+  drawConclusionSection('Outstanding Design Limitations', conclusion.outstandingLimitations);
+  drawConclusionSection('Assumptions and Design Dependencies', conclusion.assumptionsAndDependencies);
+  drawConclusionSection('Unresolved Information Gaps', conclusion.unresolvedInformationGaps);
+  drawConclusionSection('Recommended Follow-Up Actions', conclusion.recommendedFollowUp);
+  drawConclusionSection('Professional Commentary', conclusion.professionalCommentary);
+
+  return currentPage;
 }
 
 function drawActionRegister(

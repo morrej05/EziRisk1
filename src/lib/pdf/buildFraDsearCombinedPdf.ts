@@ -28,6 +28,7 @@ import {
   addExecutiveSummaryPages,
   resolveExecutiveSummaryMode,
   REPORT_TITLE_TO_BODY_GAP,
+  getOutcomeLabel,
   } from './pdfUtils';
 import { addIssuedReportPages } from './issuedPdfPages';
 import {
@@ -442,6 +443,130 @@ const reasonLines = wrapText(reason, CONTENT_WIDTH - 30, 9, font);
   if (!infoGapRendered) {
     yPosition -= REPORT_LAYOUT_SPACING.sectionToNextHeader; // Space between modules
   }
+  return { page, yPosition };
+}
+
+/**
+ * Render DSEAR-12 professional conclusion with criticality banner in the combined PDF.
+ * Mirrors the specialised rendering in buildDsearPdf.ts — keep in sync when updating DSEAR-12 form fields.
+ */
+function drawDsear12CombinedConclusion(
+  page: PDFPage,
+  moduleInstance: ModuleInstance,
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+  font: any,
+  fontBold: any,
+  yPosition: number
+): { page: PDFPage; yPosition: number } {
+  const data = moduleInstance.data || {};
+  const computed = data.computed || {};
+  const override = data.override || {};
+  const conclusion = data.conclusion || {};
+
+  const displayCriticality: string = override.enabled && override.outcome
+    ? override.outcome
+    : (computed.overall || 'Not assessed');
+
+  const criticalityColors: Record<string, ReturnType<typeof rgb>> = {
+    Critical: rgb(0.8, 0, 0),
+    High: rgb(0.9, 0.5, 0),
+    Moderate: rgb(0.7, 0.55, 0),
+    Low: rgb(0.2, 0.6, 0.2),
+  };
+  const bannerColor = criticalityColors[displayCriticality] || rgb(0.4, 0.4, 0.4);
+
+  // Criticality banner
+  ({ page, yPosition } = ensurePageSpace(50, page, yPosition, pdfDoc, isDraft, totalPages));
+  page.drawRectangle({
+    x: MARGIN,
+    y: yPosition - 5,
+    width: CONTENT_WIDTH,
+    height: 30,
+    color: bannerColor,
+  });
+  const bannerText = override.enabled && override.outcome
+    ? `Explosion Risk Position: ${displayCriticality} — Professional conclusion (computed: ${computed.overall || 'not assessed'})`
+    : `Explosion Risk Position: ${displayCriticality} — Computed from assessment data`;
+  page.drawText(sanitizePdfText(bannerText), {
+    x: MARGIN + 10,
+    y: yPosition + 5,
+    size: 12,
+    font: fontBold,
+    color: rgb(1, 1, 1),
+  });
+  yPosition -= 40;
+
+  // Override justification
+  if (override.enabled && override.reason) {
+    ({ page, yPosition } = ensurePageSpace(40, page, yPosition, pdfDoc, isDraft, totalPages));
+    page.drawText(sanitizePdfText('Assessor Override Justification:'), {
+      x: MARGIN,
+      y: yPosition,
+      size: 9,
+      font: fontBold,
+      color: rgb(0.5, 0.2, 0),
+    });
+    yPosition -= 13;
+    const reasonLines = wrapText(sanitizePdfText(override.reason), CONTENT_WIDTH - 20, 9, font);
+    for (const line of reasonLines) {
+      ({ page, yPosition } = ensurePageSpace(14, page, yPosition, pdfDoc, isDraft, totalPages));
+      page.drawText(line, { x: MARGIN + 10, y: yPosition, size: 9, font, color: rgb(0.4, 0.2, 0) });
+      yPosition -= 13;
+    }
+    yPosition -= 8;
+  }
+
+  // Assessor notes
+  if (moduleInstance.assessor_notes && moduleInstance.assessor_notes.trim()) {
+    ({ page, yPosition } = ensurePageSpace(30, page, yPosition, pdfDoc, isDraft, totalPages));
+    page.drawText('Assessor Notes:', { x: MARGIN, y: yPosition, size: 10, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+    yPosition -= 13;
+    const notesLines = wrapText(moduleInstance.assessor_notes, CONTENT_WIDTH, 9, font);
+    for (const line of notesLines) {
+      ({ page, yPosition } = ensurePageSpace(13, page, yPosition, pdfDoc, isDraft, totalPages));
+      page.drawText(sanitizePdfText(line), { x: MARGIN, y: yPosition, size: 9, font, color: rgb(0.2, 0.2, 0.2) });
+      yPosition -= 13;
+    }
+    yPosition -= 10;
+  }
+
+  // Conclusion prose fields
+  const conclusionFields: Array<{ label: string; value: string }> = [
+    { label: 'Overall Explosion Risk Position', value: conclusion.overallExplosionRiskPosition || '' },
+    { label: 'Principal Concerns', value: conclusion.principalConcerns || '' },
+    { label: 'Control Adequacy Assessment', value: conclusion.controlAdequacy || '' },
+    { label: 'Residual Risk Commentary', value: conclusion.residualRiskCommentary || '' },
+    { label: 'Operational Observations', value: conclusion.operationalObservations || '' },
+    { label: 'Recommendations Summary', value: conclusion.recommendationsSummary || '' },
+    { label: 'Limitations and Assumptions', value: conclusion.limitationsAndAssumptions || '' },
+  ];
+
+  for (const field of conclusionFields) {
+    if (!field.value.trim()) continue;
+    ({ page, yPosition } = ensurePageSpace(40, page, yPosition, pdfDoc, isDraft, totalPages));
+    page.drawText(sanitizePdfText(field.label + ':'), {
+      x: MARGIN, y: yPosition, size: 10, font: fontBold, color: rgb(0, 0, 0),
+    });
+    yPosition -= 16;
+    const lines = wrapText(sanitizePdfText(field.value), CONTENT_WIDTH - 10, 10, font);
+    for (const line of lines) {
+      ({ page, yPosition } = ensurePageSpace(14, page, yPosition, pdfDoc, isDraft, totalPages));
+      page.drawText(line, { x: MARGIN + 10, y: yPosition, size: 10, font, color: rgb(0.1, 0.1, 0.1) });
+      yPosition -= 14;
+    }
+    yPosition -= 8;
+  }
+
+  if (conclusionFields.every(f => !f.value.trim())) {
+    ({ page, yPosition } = ensurePageSpace(20, page, yPosition, pdfDoc, isDraft, totalPages));
+    page.drawText(sanitizePdfText('Professional conclusion not yet completed.'), {
+      x: MARGIN, y: yPosition, size: 10, font, color: rgb(0.5, 0.5, 0.5),
+    });
+    yPosition -= 20;
+  }
+
   return { page, yPosition };
 }
 
@@ -876,14 +1001,19 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
       dsearSectionNumber += 1;
     }
 
-    // Sort modules by DSEAR order
-    const sortedDsearModules = dsearModules.sort((a, b) => {
+    // Separate DSEAR-12 (synthesis module) from technical modules so it can be rendered last
+    // with specialised professional-conclusion formatting.
+    const dsear12Module = dsearModules.find(m => m.module_key === 'DSEAR_12_EXPLOSION_RISK_SUMMARY');
+    const technicalDsearModules = dsearModules.filter(m => m.module_key !== 'DSEAR_12_EXPLOSION_RISK_SUMMARY');
+
+    // Sort technical modules by DSEAR order
+    const sortedDsearModules = [...technicalDsearModules].sort((a, b) => {
       const aIndex = DSEAR_MODULE_ORDER.indexOf(a.module_key);
       const bIndex = DSEAR_MODULE_ORDER.indexOf(b.module_key);
       return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
     });
 
-    // Render each DSEAR module with section numbers
+    // Render each technical DSEAR module with section numbers
     for (const module of sortedDsearModules) {
       const moduleName = getModuleName(module.module_key);
       const displayName = stripDsearPrefix(moduleName);
@@ -907,6 +1037,20 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
         totalPages,
         'DSEAR',
         { showModuleHeading: false }
+      ));
+      dsearSectionNumber += 1;
+    }
+
+    // Render DSEAR-12 with specialised professional-conclusion renderer (after all technical modules)
+    if (dsear12Module) {
+      const dsear12Title = `${formatPart2Section(dsearSectionNumber)} Explosion Risk Summary & Professional Conclusion`;
+      recordToc(dsear12Title);
+      page = addNewPage(pdfDoc, isDraft, totalPages).page;
+      yPosition = PAGE_TOP_Y;
+      yPosition = drawPageTitle(page, MARGIN, yPosition, dsear12Title, { regular: font, bold: fontBold });
+      yPosition -= 10;
+      ({ page, yPosition } = drawDsear12CombinedConclusion(
+        page, dsear12Module, pdfDoc, isDraft, totalPages, font, fontBold, yPosition
       ));
       dsearSectionNumber += 1;
     }
@@ -1239,9 +1383,15 @@ function drawCombinedExecutiveSummary(
 
   // FRA section
   const fraModules = moduleInstances.filter(m => m.module_key.startsWith('FRA') || m.module_key.startsWith('A'));
+  const fra90 = fraModules.find(m => m.module_key === 'FRA_90_SIGNIFICANT_FINDINGS');
   const fra4 = fraModules.find(m => m.module_key === 'FRA_4_SIGNIFICANT_FINDINGS');
-   const fraOutcome = hasMeaningfulFraAssessment(fraModules)
-    ? (fra4?.data?.summary_outcome || NOT_ASSESSED_LABEL)
+  // Prefer FRA-90 professional outcome (module.outcome = final display outcome).
+  // Fall back to FRA-90 computed outcome, then legacy FRA-4 summary_outcome for pre-migration docs.
+  const fraOutcomeRaw = hasMeaningfulFraAssessment(fraModules)
+    ? (fra90?.outcome || fra90?.data?.computed?.computedOutcome || fra4?.data?.summary_outcome || NOT_ASSESSED_LABEL)
+    : NOT_ASSESSED_LABEL;
+  const fraOutcome = fraOutcomeRaw !== NOT_ASSESSED_LABEL
+    ? getOutcomeLabel(fraOutcomeRaw)
     : NOT_ASSESSED_LABEL;
 
   page.drawText(sanitizePdfText('Fire Risk Assessment Outcome:'), {
@@ -1264,9 +1414,11 @@ function drawCombinedExecutiveSummary(
 
   // DSEAR section
   const dsearModules = moduleInstances.filter(m => m.module_key.startsWith('DSEAR'));
+  let dsearCriticalityLabel = NOT_ASSESSED_LABEL;
   if (dsearModules.length > 0) {
     try {
       const explosionCriticality = getExplosionCriticalityLabel(dsearModules);
+      dsearCriticalityLabel = explosionCriticality.label;
 
       page.drawText(sanitizePdfText('Explosive Atmospheres Criticality:'), {
         x: MARGIN,
@@ -1296,12 +1448,47 @@ function drawCombinedExecutiveSummary(
         });
         yPosition -= 25;
       }
-
-      } catch (error) {
+    } catch (error) {
       if (import.meta.env.DEV) console.error('Error computing explosion summary:', error);
     }
   }
-const deduplicatedActions = deduplicateActions(actions, moduleInstances);
+
+  // Advisory: surface material conflict when FRA appears satisfactory but DSEAR is severe.
+  // This is informational only — it does not block issue or alter outcomes.
+  const CONCERNING_FRA_OUTCOMES = new Set(['high_risk', 'immediate_danger', 'material_def', 'significant', 'inadequate', 'critical']);
+  const fraIsSatisfactory = fraOutcomeRaw !== NOT_ASSESSED_LABEL && !CONCERNING_FRA_OUTCOMES.has(fraOutcomeRaw.toLowerCase());
+  const dsearIsSevere = ['Critical', 'High'].includes(dsearCriticalityLabel);
+  if (fraIsSatisfactory && dsearIsSevere) {
+    ({ page, yPosition } = ensurePageSpace(48, page, yPosition, pdfDoc, isDraft, totalPages));
+    const advisoryH = 38;
+    page.drawRectangle({
+      x: MARGIN,
+      y: yPosition - advisoryH,
+      width: CONTENT_WIDTH,
+      height: advisoryH,
+      color: rgb(1.0, 0.97, 0.88),
+    });
+    page.drawText(sanitizePdfText('Advisory — Outcome Conflict'), {
+      x: MARGIN + 8,
+      y: yPosition - 12,
+      size: 10,
+      font: fontBold,
+      color: rgb(0.6, 0.3, 0),
+    });
+    page.drawText(sanitizePdfText(
+      `The fire risk assessment outcome appears satisfactory, but an elevated explosion risk (${dsearCriticalityLabel}) has been identified. ` +
+      'Both sets of findings require independent consideration in your overall risk management plan.'
+    ), {
+      x: MARGIN + 8,
+      y: yPosition - 26,
+      size: 8,
+      font,
+      color: rgb(0.5, 0.25, 0),
+    });
+    yPosition -= advisoryH + 8;
+  }
+
+  const deduplicatedActions = deduplicateActions(actions, moduleInstances);
   const activeActions = filterActiveActions(deduplicatedActions);
   // Action counts (active actions only for executive summary)
   const fraActions = activeActions.filter(a => {
