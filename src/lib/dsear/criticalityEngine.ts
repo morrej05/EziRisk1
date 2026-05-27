@@ -86,7 +86,7 @@ export function computeExplosionSummary(context: {
   const dsear10 = normalized.find((m) => m.module_key === 'DSEAR_10_HIERARCHY_CONTROL');
 
   checkCriticalTriggers(flags, dsear1, dsear2, dsear3, dsear4, dsear5);
-  checkHighTriggers(flags, dsear2, dsear4, dsear6, normalized);
+  checkHighTriggers(flags, dsear2, dsear3, dsear4, dsear5, dsear6, normalized);
   checkModerateTriggers(flags, normalized);
 
   flags.sort((a, b) => {
@@ -262,7 +262,9 @@ function checkContinuousReleaseWithoutZoning(
 function checkHighTriggers(
   flags: ExplosionFlag[],
   dsear2: ModuleInstance | undefined,
+  dsear3: ModuleInstance | undefined,
   dsear4: ModuleInstance | undefined,
+  dsear5: ModuleInstance | undefined,
   dsear6: ModuleInstance | undefined,
   modules: ModuleInstance[]
 ): void {
@@ -270,6 +272,8 @@ function checkHighTriggers(
   checkNoInspectionRegime(flags, dsear4);
   checkRiskAssessmentBands(flags, dsear6);
   checkMultipleMaterialDeficiencies(flags, modules);
+  checkExplosionProtectionUnknown(flags, dsear3, dsear5);
+  checkNoExplosionProtectionForPrimaryZones(flags, dsear3, dsear5);
 }
 
 function checkVentilationUnknown(
@@ -375,6 +379,85 @@ function checkMultipleMaterialDeficiencies(
   }
 }
 
+/**
+ * EX-HI-06: Zone(s) are classified but the status of ALL three explosion
+ * protection system types is unknown, preventing adequate consequence
+ * mitigation assessment.
+ */
+function checkExplosionProtectionUnknown(
+  flags: ExplosionFlag[],
+  dsear3: ModuleInstance | undefined,
+  dsear5: ModuleInstance | undefined
+): void {
+  if (!dsear3 || !dsear5) return;
+
+  const zones = dsear3.data.zones || [];
+  const hasAnyZone = zones.some((z: any) => z.zone_type && z.zone_type !== '');
+  if (!hasAnyZone) return;
+
+  const venting = dsear5.data.explosion_venting || '';
+  const suppression = dsear5.data.suppression_systems || '';
+  const isolation = dsear5.data.explosion_isolation || '';
+
+  if (venting === 'unknown' && suppression === 'unknown' && isolation === 'unknown') {
+    flags.push({
+      id: 'EX-HI-06',
+      level: 'high',
+      title: 'Explosion protection system status unknown where hazardous zones exist',
+      detail:
+        'Hazardous areas are classified but the status of all explosion protection systems (venting, suppression, isolation) is unknown. This prevents adequate assessment of explosion consequence mitigation.',
+      relatedModules: ['DSEAR_3_HAC', 'DSEAR_5_EXPLOSION_PROTECTION'],
+    });
+  }
+}
+
+/**
+ * EX-HI-07: Zone 0, 1, 20, or 21 areas (continuous or frequent explosive
+ * atmosphere) are present but no explosion protection measures are in place —
+ * a significant gap in consequence mitigation for primary hazard zones.
+ */
+function checkNoExplosionProtectionForPrimaryZones(
+  flags: ExplosionFlag[],
+  dsear3: ModuleInstance | undefined,
+  dsear5: ModuleInstance | undefined
+): void {
+  if (!dsear3 || !dsear5) return;
+
+  const zones = dsear3.data.zones || [];
+  // Zone 0/20 = continuous release; Zone 1/21 = frequent release
+  const hasPrimaryZones = zones.some(
+    (z: any) =>
+      z.zone_type === '0' ||
+      z.zone_type === '1' ||
+      z.zone_type === '20' ||
+      z.zone_type === '21'
+  );
+  if (!hasPrimaryZones) return;
+
+  const venting = dsear5.data.explosion_venting || '';
+  const suppression = dsear5.data.suppression_systems || '';
+  const isolation = dsear5.data.explosion_isolation || '';
+  const segregation = (dsear5.data.segregation_distance_controls || '').trim();
+
+  // All three active protection systems are confirmed absent AND no segregation controls
+  const noActiveProtection =
+    venting === 'no' &&
+    suppression === 'no' &&
+    isolation === 'no' &&
+    segregation.length < 10;
+
+  if (noActiveProtection) {
+    flags.push({
+      id: 'EX-HI-07',
+      level: 'high',
+      title: 'No explosion protection measures for primary hazardous zones',
+      detail:
+        'Zone 0, 1, 20, or 21 areas are present (continuous or frequent explosive atmosphere) but no explosion protection systems (venting, suppression, isolation) or segregation controls are in place. This is a significant gap in consequence mitigation.',
+      relatedModules: ['DSEAR_3_HAC', 'DSEAR_5_EXPLOSION_PROTECTION'],
+    });
+  }
+}
+
 function checkModerateTriggers(
   flags: ExplosionFlag[],
   modules: ModuleInstance[]
@@ -435,7 +518,7 @@ export function deriveExplosionSeverity(context: {
   const dsear6 = normalized.find((m) => m.module_key === 'DSEAR_6_RISK_ASSESSMENT');
 
   checkCriticalTriggers(flags, dsear1, dsear2, dsear3, dsear4, dsear5);
-  checkHighTriggers(flags, dsear2, dsear4, dsear6, normalized);
+  checkHighTriggers(flags, dsear2, dsear3, dsear4, dsear5, dsear6, normalized);
   checkModerateTriggers(flags, normalized);
 
   flags.sort((a, b) => {

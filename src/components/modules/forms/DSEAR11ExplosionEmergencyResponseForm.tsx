@@ -37,7 +37,6 @@ export default function DSEAR11ExplosionEmergencyResponseForm({ moduleInstance, 
     setIsSaving(true);
     try {
       const payload = sanitizeModuleInstancePayload({ data: { explosion_scenarios_considered: scenarios, emergency_shutdown_procedures: shutdownProcs, isolation_arrangements: isolation, emergency_services_information: emergencyInfo, drills_and_training: drills }, outcome, assessor_notes: assessorNotes, updated_at: new Date().toISOString() }, moduleInstance.module_key);
-      console.log('MODULE SAVE PAYLOAD', JSON.parse(JSON.stringify(payload)));
       const { error } = await supabase.from('module_instances').update(payload).eq('id', moduleInstance.id);
       if (error) throw error;
       setLastSaved(new Date().toLocaleTimeString());

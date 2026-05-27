@@ -38,7 +38,6 @@ export default function DSEAR10HierarchyControlForm({ moduleInstance, document, 
     setIsSaving(true);
     try {
       const payload = sanitizeModuleInstancePayload({ data: { substitution_considered: substitutionConsidered, elimination_possible: eliminationPossible, engineering_controls: engineeringControls, administrative_controls: administrativeControls, PPE_controls: ppeControls, justification_for_retained_risk: justification }, outcome, assessor_notes: assessorNotes, updated_at: new Date().toISOString() }, moduleInstance.module_key);
-      console.log('MODULE SAVE PAYLOAD', JSON.parse(JSON.stringify(payload)));
       const { error } = await supabase.from('module_instances').update(payload).eq('id', moduleInstance.id);
       if (error) throw error;
       setLastSaved(new Date().toLocaleTimeString());

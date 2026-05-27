@@ -86,24 +86,31 @@ export default function DSEAR1DangerousSubstancesForm({
   };
 
   const getSuggestedOutcome = () => {
-    const unknownCriticalCount = substances.filter(s =>
-      s.name && (
-        s.SDS_available === 'unknown' ||
-        s.flash_point === 'unknown' ||
-        s.LFL_UFL === 'unknown'
-      )
+    const namedSubstances = substances.filter(s => s.name.trim());
+
+    if (namedSubstances.length === 0) {
+      return 'compliant';
+    }
+
+    // Material deficiency: SDS explicitly unavailable — missing compliance documentation
+    const missingSDSCount = namedSubstances.filter(s => s.SDS_available === 'no').length;
+    if (missingSDSCount > 0) {
+      return 'material_def';
+    }
+
+    // Count substances with unknown critical safety parameters
+    const unknownCriticalCount = namedSubstances.filter(s =>
+      s.SDS_available === 'unknown' ||
+      s.flash_point === 'unknown' ||
+      s.LFL_UFL === 'unknown'
     ).length;
 
     if (unknownCriticalCount >= 2) {
       return 'info_gap';
     }
 
-    const hasFlammables = substances.some(s =>
-      s.name && s.physical_state && s.SDS_available !== 'no'
-    );
-
-    if (hasFlammables) {
-      return 'material_def';
+    if (unknownCriticalCount === 1) {
+      return 'minor_def';
     }
 
     return 'compliant';

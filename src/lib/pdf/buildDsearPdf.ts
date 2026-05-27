@@ -493,8 +493,8 @@ function drawExplosionRiskSummaryConclusion(
   });
 
   const bannerText = override.enabled && override.outcome
-    ? `Overall Explosion Criticality: ${displayCriticality} (Assessor Override)`
-    : `Overall Explosion Criticality: ${displayCriticality} (Computed)`;
+    ? `Explosion Risk Position: ${displayCriticality} — Professional conclusion (computed: ${computed.overall || 'not assessed'})`
+    : `Explosion Risk Position: ${displayCriticality} — Computed from assessment data`;
 
   page.drawText(sanitizePdfText(bannerText), {
     x: MARGIN + 10,
