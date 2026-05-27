@@ -232,6 +232,12 @@ export default function CanonicalReRecommendationModal({
   };
 
   const removePhoto = (photoPath: string) => {
+    supabase.storage
+      .from("evidence")
+      .remove([photoPath])
+      .catch((err) =>
+        console.error("[RE Recommendation] Failed to delete photo from storage:", err),
+      );
     const url = photoUrls[photoPath];
     if (url?.startsWith("blob:")) {
       URL.revokeObjectURL(url);

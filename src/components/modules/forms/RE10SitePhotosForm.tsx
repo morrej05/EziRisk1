@@ -117,6 +117,7 @@ export default function RE10SitePhotosForm({
   };
 
   const handleBatchPhotoUpload = async (files: FileList) => {
+    if (isLocked) return;
     setUploadingPhoto(true);
     setUploadErrors([]);
     const errors: string[] = [];
@@ -171,6 +172,7 @@ export default function RE10SitePhotosForm({
   };
 
   const handleSitePlanUpload = async (file: File) => {
+    if (isLocked) return;
     setUploadingSitePlan(true);
     setUploadErrors([]);
 
@@ -214,6 +216,13 @@ export default function RE10SitePhotosForm({
   };
 
   const removePhoto = (photoId: string) => {
+    const target = photos.find((p) => p.id === photoId);
+    if (target?.storage_path) {
+      supabase.storage
+        .from('evidence')
+        .remove([target.storage_path])
+        .catch((err) => console.error('[RE10] Failed to delete photo from storage:', err));
+    }
     setPhotos(photos.filter((p) => p.id !== photoId));
   };
 
@@ -222,6 +231,12 @@ export default function RE10SitePhotosForm({
   };
 
   const removeSitePlan = () => {
+    if (sitePlan?.storage_path) {
+      supabase.storage
+        .from('evidence')
+        .remove([sitePlan.storage_path])
+        .catch((err) => console.error('[RE10] Failed to delete site plan from storage:', err));
+    }
     setSitePlan(null);
   };
 
