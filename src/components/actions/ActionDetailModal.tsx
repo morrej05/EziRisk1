@@ -3,7 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { X, ExternalLink, FileText, Layers, Paperclip, Camera, Upload, AlertCircle, CheckCircle, Clock, XCircle, ArrowLeft, Download, Trash2, Eye, Link2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { uploadEvidenceFile, createAttachmentRow, getSignedUrl, isValidAttachment, deleteAttachment } from '../../lib/supabase/attachments';
+import { getSignedUrl, isValidAttachment } from '../../lib/supabase/attachments';
+import { uploadAttachment } from '../../utils/evidenceManagement';
 import { bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 import { getModuleDisplayLabel } from '../../lib/modules/moduleCatalog';
 import ConfirmModal from '../ConfirmModal';
@@ -153,6 +154,7 @@ export default function ActionDetailModal({
   const [isLoadingAttachments, setIsLoadingAttachments] = useState(true);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [documentStatus, setDocumentStatus] = useState<string>('draft');
+  const [baseDocumentId, setBaseDocumentId] = useState<string>('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
@@ -217,12 +219,15 @@ export default function ActionDetailModal({
     try {
       const { data, error } = await supabase
         .from('documents')
-        .select('status')
+        .select('status, base_document_id')
         .eq('id', action.document.id)
         .single();
 
       if (error) throw error;
-      if (data) setDocumentStatus(data.status);
+      if (data) {
+        setDocumentStatus(data.status);
+        setBaseDocumentId(data.base_document_id || '');
+      }
     } catch (error) {
       console.error('Error fetching document status:', error);
     }
@@ -444,29 +449,29 @@ export default function ActionDetailModal({
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
-        const uploadResult = await uploadEvidenceFile(
-          file,
+        // Use the lock-safe upload path: checks issue_status before uploading,
+        // writes to the attachments table with soft-delete semantics, tracks
+        // storage quota, and links to the action and module automatically.
+        const result = await uploadAttachment(
           organisation.id,
-          action.document.id
+          action.document.id,
+          baseDocumentId,
+          file,
+          undefined,
+          action.module_instance?.id || undefined,
+          action.id
         );
 
-        await createAttachmentRow({
-          organisation_id: organisation.id,
-          document_id: action.document.id,
-          module_instance_id: action.module_instance?.id || null,
-          action_id: action.id,
-          file_path: uploadResult.file_path,
-          file_name: uploadResult.file_name,
-          file_type: uploadResult.file_type,
-          file_size_bytes: uploadResult.file_size_bytes,
-        });
+        if (!result.success) {
+          throw new Error(result.error || 'Upload failed');
+        }
       }
 
       fetchAttachments();
       onActionUpdated();
     } catch (error) {
       console.error('Error uploading files:', error);
-      alert('Failed to upload files');
+      alert(error instanceof Error ? error.message : 'Failed to upload files');
     } finally {
       setIsUploadingFiles(false);
       if (fileInputRef.current) {

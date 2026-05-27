@@ -1,3 +1,19 @@
+/**
+ * @deprecated — DO NOT REACTIVATE
+ *
+ * This is the V1 evidence page. It is no longer routed anywhere (App.tsx routes
+ * `/documents/:id/evidence` to DocumentEvidenceV2 instead).
+ *
+ * This file MUST NOT be re-imported or re-routed because it uses the unsafe
+ * attachment library (src/lib/supabase/attachments.ts) directly:
+ *   - Upload bypasses the document lock check (issued/superseded documents can
+ *     have files added without restriction).
+ *   - Delete performs a hard storage+DB delete with no lock check and no
+ *     soft-delete tombstone.
+ *
+ * Use DocumentEvidenceV2.tsx for all evidence management. If this file is ever
+ * needed again, rewrite it to use src/utils/evidenceManagement.ts exclusively.
+ */
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';

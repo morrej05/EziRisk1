@@ -488,6 +488,7 @@ export default function DocumentEvidenceV2() {
           ref={fileInputRef}
           type="file"
           multiple
+          capture="environment"
           accept="image/*,application/pdf"
           onChange={handleFileSelect}
           className="hidden"
