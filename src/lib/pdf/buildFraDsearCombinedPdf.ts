@@ -699,6 +699,7 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
     'DSEAR_6_RISK_ASSESSMENT',
     'DSEAR_10_HIERARCHY_OF_CONTROL',
     'DSEAR_11_EXPLOSION_EMERGENCY_RESPONSE',
+    'DSEAR_12_EXPLOSION_RISK_SUMMARY',
   ];
 
   const dsearModules = moduleInstances.filter(m => m.module_key.startsWith('DSEAR'));
@@ -971,7 +972,7 @@ export async function buildFraDsearCombinedPdf(options: BuildPdfOptions): Promis
 
       for (const flag of explosionSummary.flags.slice(0, 5)) {
         ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
-        page.drawText(sanitizePdfText(`• ${flag.description}`), {
+        page.drawText(sanitizePdfText(`• ${flag.detail}`), {
           x: MARGIN,
           y: yPosition,
           size: 10,
