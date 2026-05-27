@@ -15,6 +15,8 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useDocumentEvidenceSummary } from '../../hooks/useDocumentEvidenceSummary';
+import EvidenceQualitySummary from '../../components/evidence/EvidenceQualitySummary';
 import { withResolvedSectionAssessment } from '../../utils/moduleAssessment';
 import { isModuleCompleteForUi } from '../../utils/moduleCompletion';
 import {
@@ -221,6 +223,9 @@ export default function DocumentWorkspace() {
   const moduleScrollRef = useRef<HTMLDivElement | null>(null);
   const [saveState, setSaveState] = useState<'unsaved' | 'saving' | 'saved' | 'error'>('saved');
   const [showScrollToTop, setShowScrollToTop] = useState(false);
+
+  // Single document-level evidence summary — metadata only, no signed URLs
+  const evidenceSummary = useDocumentEvidenceSummary(document?.id);
 
   const openActionId = searchParams.get('openAction');
 
@@ -830,6 +835,7 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
           documentId={document?.id}
           documentAssessmentDate={document?.assessment_date ?? null}
           reModuleKeysWithActiveRecs={reModuleKeysWithActiveRecs ?? undefined}
+          evidenceCountsByModule={evidenceSummary.evidenceCountsByModule}
         />
 
         <div ref={moduleScrollRef} className="flex-1 min-w-0 overflow-y-auto bg-neutral-50 h-screen">
@@ -855,6 +861,14 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               <div className="mb-6">
                 <OverallGradeWidget documentId={document.id} />
               </div>
+            )}
+
+            {!isReDoc && (
+              <EvidenceQualitySummary
+                summary={evidenceSummary}
+                totalModuleCount={modules.length}
+                className="mb-6"
+              />
             )}
 
             {/* Recommendation Panel */}

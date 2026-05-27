@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Circle, AlertCircle, FileText, X, ChevronDown, ChevronRight, Flame, Zap } from 'lucide-react';
+import { CheckCircle2, Circle, AlertCircle, FileText, X, ChevronDown, ChevronRight, Flame, Zap, Camera } from 'lucide-react';
 import {
   buildModuleSections,
   getModuleCode,
@@ -20,6 +20,7 @@ interface ModuleSidebarProps {
   documentId?: string;
   documentAssessmentDate?: string | null;
   reModuleKeysWithActiveRecs?: Set<string>;
+  evidenceCountsByModule?: Record<string, number>;
 }
 
 export default function ModuleSidebar({
@@ -32,6 +33,7 @@ export default function ModuleSidebar({
   documentId,
   documentAssessmentDate,
   reModuleKeysWithActiveRecs,
+  evidenceCountsByModule = {},
 }: ModuleSidebarProps) {
   // Load/save expand/collapse state from localStorage
   const storageKey = documentId ? `moduleNavGroups:${documentId}` : null;
@@ -208,6 +210,15 @@ export default function ModuleSidebar({
               {isDerived && (
                 <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium tracking-wide rounded-md bg-neutral-50 text-neutral-500 border border-neutral-200">
                   Auto
+                </span>
+              )}
+              {(evidenceCountsByModule[module.id] ?? 0) > 0 && (
+                <span
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[11px] font-medium rounded-md bg-blue-50 text-blue-600 border border-blue-200"
+                  title={`${evidenceCountsByModule[module.id]} evidence file${evidenceCountsByModule[module.id] === 1 ? '' : 's'} linked`}
+                >
+                  <Camera className="w-2.5 h-2.5" />
+                  <span>{evidenceCountsByModule[module.id]}</span>
                 </span>
               )}
               <span className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold tracking-wide rounded-md bg-neutral-100 text-neutral-600 border border-neutral-200">

@@ -230,6 +230,7 @@ export default function DocumentOverview() {
   const [totalActions, setTotalActions] = useState(0);
   const [evidenceCount, setEvidenceCount] = useState(0);
   const [unlinkedEvidenceCount, setUnlinkedEvidenceCount] = useState(0);
+  const [uncaptionedEvidenceCount, setUncaptionedEvidenceCount] = useState(0);
   const [p1P2ActionsWithoutEvidence, setP1P2ActionsWithoutEvidence] =
     useState(0);
   const [issueValidation, setIssueValidation] =
@@ -641,7 +642,7 @@ export default function DocumentOverview() {
     try {
       const { data: attachments, error: attachmentError } = await supabase
         .from("attachments")
-        .select("id, module_instance_id, action_id")
+        .select("id, module_instance_id, action_id, caption")
         .eq("document_id", id)
         .eq("organisation_id", organisation.id)
         .is("deleted_at", null);
@@ -652,6 +653,10 @@ export default function DocumentOverview() {
         (attachments || []).filter(
           (item) => !item.module_instance_id && !item.action_id,
         ).length,
+      );
+
+      setUncaptionedEvidenceCount(
+        (attachments || []).filter((item) => !item.caption?.trim()).length,
       );
 
       if (document?.document_type === "RE") {
@@ -1341,6 +1346,15 @@ export default function DocumentOverview() {
       state: unlinkedEvidenceCount > 0 ? "needs_review" : "ready",
     },
     {
+      key: "uncaptioned-evidence",
+      label: "Evidence without captions",
+      detail:
+        uncaptionedEvidenceCount > 0
+          ? `${uncaptionedEvidenceCount} ${uncaptionedEvidenceCount === 1 ? "file has" : "files have"} no caption. Captions improve report clarity.`
+          : "All evidence files have captions",
+      state: uncaptionedEvidenceCount > 0 ? "needs_review" : "ready",
+    },
+    {
       key: "executive-summary",
       label: "Executive summary",
       detail: executiveSummaryPresent
@@ -1379,6 +1393,8 @@ export default function DocumentOverview() {
 
   const RE_IRRELEVANT_GATE_KEYS = new Set([
     "high-priority-evidence",
+    "unlinked-evidence",
+    "uncaptioned-evidence",
     "executive-summary",
     "review-assurance",
   ]);
