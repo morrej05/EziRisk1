@@ -8,6 +8,7 @@ import AutoExpandTextarea from '../../AutoExpandTextarea';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
+import InlineEvidenceUpload from '../../evidence/InlineEvidenceUpload';
 
 interface Substance {
   name: string;
@@ -342,6 +343,13 @@ export default function DSEAR1DangerousSubstancesForm({
                 />
               </div>
             </div>
+            <InlineEvidenceUpload
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+              isLocked={isLocked}
+              label="Add SDS / label photo"
+              className="pt-2 mt-2 border-t border-gray-100"
+            />
           </div>
         ))}
       </div>

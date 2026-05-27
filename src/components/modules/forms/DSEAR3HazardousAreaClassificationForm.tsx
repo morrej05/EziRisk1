@@ -6,6 +6,7 @@ import { getActionsRefreshKey } from '../../../utils/actionsRefreshKey';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
+import InlineEvidenceUpload from '../../evidence/InlineEvidenceUpload';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 
 interface Zone {
@@ -264,6 +265,13 @@ export default function DSEAR3HazardousAreaClassificationForm({
                 </p>
               </div>
             </div>
+            <InlineEvidenceUpload
+              documentId={document.id}
+              moduleInstanceId={moduleInstance.id}
+              isLocked={isLocked}
+              label="Add zone photo"
+              className="pt-2 mt-2 border-t border-gray-100"
+            />
           </div>
         ))}
       </div>

@@ -5,6 +5,7 @@ import { isDocumentLocked } from '../../../utils/documentLock';
 import AutoExpandTextarea from '../../AutoExpandTextarea';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
+import InlineEvidenceUpload from '../../evidence/InlineEvidenceUpload';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import {
   DSEAR_IGNITION_SECTION_KEY,
@@ -323,13 +324,19 @@ export default function DSEAR4IgnitionSourcesForm({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-neutral-800">Evidence</p>
-              <p className="mt-1 text-sm text-neutral-500">Use the Add evidence workflow below; linked recommendation cards show evidence counts.</p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-medium text-neutral-600">
               <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1">{presenceLabel(assessment.presence)}</span>
               <span className="rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1">{controlLabel(assessment.control_adequacy)}</span>
             </div>
           </div>
+          <InlineEvidenceUpload
+            documentId={document.id}
+            moduleInstanceId={moduleInstance.id}
+            isLocked={isLocked}
+            label="Add evidence photo"
+            className="mt-2"
+          />
 
           {assessment.legacy_evidence_reference?.trim() && (
             <details className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">

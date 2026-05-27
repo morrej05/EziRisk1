@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, AlertCircle, Upload } from "lucide-react";
+import { Plus, AlertCircle, Upload, X, CheckCircle, Loader2 } from "lucide-react";
+import { useInlineEvidenceUpload } from "../../hooks/useInlineEvidenceUpload";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { isDocumentLocked } from "../../utils/documentLock";
@@ -11,7 +12,6 @@ import {
   subscribeActionsVersion,
   getActionsVersion,
 } from "../../lib/actions/actionsInvalidation";
-import { uploadAttachment } from "../../utils/evidenceManagement";
 import {
   filterReRecommendationsByScope,
   hasReRecommendationWorkflow,
@@ -208,7 +208,6 @@ export default function ModuleActions({
   const [isLocked, setIsLocked] = useState(false);
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
-  const [isUploadingEvidence, setIsUploadingEvidence] = useState(false);
 
   const hasSectionRecommendationContext = Boolean(
     sectionKey || sectionLabel || sourceKey || sourceLabel || defaultCategory,
@@ -300,58 +299,24 @@ export default function ModuleActions({
     isModuleFooterRollup,
   ]);
 
-  const handleInlineEvidenceUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const files = event.target.files;
-    if (!files || files.length === 0 || !user?.id) return;
+  // Inline evidence upload — lock-safe path with optional caption.
+  const {
+    pendingFiles: evidencePendingFiles,
+    caption: evidenceCaption,
+    setCaption: setEvidenceCaption,
+    isUploading: isUploadingEvidence,
+    uploadResult: evidenceUploadResult,
+    onFilesSelected: onEvidenceFilesSelected,
+    upload: uploadEvidence,
+    dismiss: dismissEvidenceUpload,
+  } = useInlineEvidenceUpload(documentId, moduleInstanceId, fetchActions);
 
-    setIsUploadingEvidence(true);
-    try {
-      const { data: docData, error: docError } = await supabase
-        .from("documents")
-        .select("organisation_id, base_document_id")
-        .eq("id", documentId)
-        .single();
-
-      if (docError || !docData)
-        throw docError || new Error("Document not found");
-
-      let successCount = 0;
-      for (const file of Array.from(files)) {
-        const result = await uploadAttachment(
-          docData.organisation_id,
-          documentId,
-          docData.base_document_id,
-          file,
-          undefined,
-          moduleInstanceId,
-        );
-        if (!result.success) throw new Error(result.error || "Upload failed");
-        successCount++;
-      }
-
-      setFeedback({
-        isOpen: true,
-        type: "success",
-        title: "Evidence linked",
-        message: `${successCount} file${successCount === 1 ? "" : "s"} linked to this module.`,
-        autoClose: true,
-      });
-      fetchActions();
-    } catch (error) {
-      console.error("Error uploading inline evidence:", error);
-      setFeedback({
-        isOpen: true,
-        type: "error",
-        title: "Evidence upload failed",
-        message: error instanceof Error ? error.message : "Please try again.",
-      });
-    } finally {
-      setIsUploadingEvidence(false);
-      event.target.value = "";
-    }
-  };
+  // Auto-dismiss success indicator after 3 s so the trigger button reappears.
+  useEffect(() => {
+    if (!evidenceUploadResult?.success) return;
+    const t = setTimeout(() => dismissEvidenceUpload(), 3000);
+    return () => clearTimeout(t);
+  }, [evidenceUploadResult, dismissEvidenceUpload]);
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -676,29 +641,56 @@ export default function ModuleActions({
           </p>
         </div>
         {documentStatus === "draft" && !summaryOnly && (
-          <div className="flex items-center gap-2">
-            <label
-              className={`flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium ${isUploadingEvidence ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
-            >
-              <Upload className="w-4 h-4" />
-              {isUploadingEvidence ? "Uploading..." : "Add evidence"}
-              <input
-                type="file"
-                multiple
-                capture="environment"
-                accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
-                onChange={handleInlineEvidenceUpload}
-                disabled={isUploadingEvidence}
-                className="hidden"
-              />
-            </label>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Evidence trigger — hidden while files are staged or a result toast is showing */}
+            {evidencePendingFiles.length === 0 && !evidenceUploadResult && (
+              <label className="flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium cursor-pointer touch-manipulation select-none">
+                <Upload className="w-4 h-4 flex-shrink-0" />
+                <span>Add evidence</span>
+                <input
+                  type="file"
+                  multiple
+                  capture="environment"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
+                  onChange={(e) => {
+                    if (e.target.files?.length) onEvidenceFilesSelected(e.target.files);
+                    e.target.value = '';
+                  }}
+                  className="hidden"
+                />
+              </label>
+            )}
+
+            {/* Success toast (auto-dismisses via useEffect) */}
+            {evidenceUploadResult?.success && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{evidenceUploadResult.message}</span>
+              </div>
+            )}
+
+            {/* Error toast (persists until dismissed) */}
+            {evidenceUploadResult && !evidenceUploadResult.success && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="min-w-0">{evidenceUploadResult.message}</span>
+                <button
+                  type="button"
+                  onClick={dismissEvidenceUpload}
+                  className="flex-shrink-0 ml-1 hover:text-red-900 transition-colors"
+                  aria-label="Dismiss error"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => {
                 if (isReModule) {
                   setShowReRecommendationModal(true);
                   return;
                 }
-
                 setShowAddModal(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
@@ -709,6 +701,57 @@ export default function ModuleActions({
           </div>
         )}
       </div>
+
+      {/* ── Caption + upload panel — shown while files are staged ── */}
+      {evidencePendingFiles.length > 0 && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-semibold text-blue-900 truncate min-w-0">
+              {evidencePendingFiles.length === 1
+                ? evidencePendingFiles[0].name
+                : `${evidencePendingFiles.length} files selected`}
+            </p>
+            <button
+              type="button"
+              onClick={dismissEvidenceUpload}
+              disabled={isUploadingEvidence}
+              className="flex-shrink-0 text-blue-400 hover:text-blue-700 transition-colors disabled:opacity-40"
+              aria-label="Cancel upload"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <input
+            type="text"
+            value={evidenceCaption}
+            onChange={(e) => setEvidenceCaption(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); uploadEvidence(); }
+            }}
+            placeholder="Add a caption (optional)"
+            disabled={isUploadingEvidence}
+            className="w-full px-2.5 py-1.5 text-sm border border-blue-300 rounded-md bg-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={uploadEvidence}
+            disabled={isUploadingEvidence}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 transition-colors touch-manipulation"
+          >
+            {isUploadingEvidence ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+                <span>Uploading…</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>Upload</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
