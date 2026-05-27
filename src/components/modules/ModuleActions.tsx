@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Plus, AlertCircle, Upload, X, CheckCircle, Loader2 } from "lucide-react";
 import { useInlineEvidenceUpload } from "../../hooks/useInlineEvidenceUpload";
+import ModuleEvidenceList from "../evidence/ModuleEvidenceList";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 import { isDocumentLocked } from "../../utils/documentLock";
@@ -208,6 +209,7 @@ export default function ModuleActions({
   const [isLocked, setIsLocked] = useState(false);
   const [actionToDelete, setActionToDelete] = useState<string | null>(null);
   const [actionsVersion, setActionsVersion] = useState(getActionsVersion());
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
 
   const hasSectionRecommendationContext = Boolean(
     sectionKey || sectionLabel || sourceKey || sourceLabel || defaultCategory,
@@ -317,6 +319,13 @@ export default function ModuleActions({
     const t = setTimeout(() => dismissEvidenceUpload(), 3000);
     return () => clearTimeout(t);
   }, [evidenceUploadResult, dismissEvidenceUpload]);
+
+  // Refresh the evidence list whenever an upload completes successfully.
+  useEffect(() => {
+    if (evidenceUploadResult?.success) {
+      setEvidenceRefreshKey((k) => k + 1);
+    }
+  }, [evidenceUploadResult]);
 
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
@@ -894,6 +903,16 @@ export default function ModuleActions({
         <p className="text-xs text-neutral-500 mt-3 italic">
           Document is issued — actions are read-only and cannot be edited or deleted.
         </p>
+      )}
+
+      {isValidUUID(moduleInstanceId) && isValidUUID(documentId) && (
+        <ModuleEvidenceList
+          moduleInstanceId={moduleInstanceId}
+          documentId={documentId}
+          isLocked={isLocked}
+          refreshKey={evidenceRefreshKey}
+          className="mt-4 pt-4 border-t border-neutral-100"
+        />
       )}
 
       <FeedbackModal

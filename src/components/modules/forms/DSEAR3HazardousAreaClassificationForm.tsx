@@ -7,6 +7,7 @@ import AutoExpandTextarea from '../../AutoExpandTextarea';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import InlineEvidenceUpload from '../../evidence/InlineEvidenceUpload';
+import ModuleEvidenceList from '../../evidence/ModuleEvidenceList';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 
 interface Zone {
@@ -51,6 +52,7 @@ export default function DSEAR3HazardousAreaClassificationForm({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const [zones, setZones] = useState<Zone[]>(
@@ -271,6 +273,7 @@ export default function DSEAR3HazardousAreaClassificationForm({
               isLocked={isLocked}
               label="Add zone photo"
               className="pt-2 mt-2 border-t border-gray-100"
+              onUploaded={() => setEvidenceRefreshKey((k) => k + 1)}
             />
           </div>
         ))}
@@ -316,6 +319,16 @@ export default function DSEAR3HazardousAreaClassificationForm({
           Reference to formal HAC drawings showing zone extents on site plans
         </p>
       </div>
+
+      {document?.id && moduleInstance?.id && (
+        <ModuleEvidenceList
+          moduleInstanceId={moduleInstance.id}
+          documentId={document.id}
+          isLocked={isLocked}
+          refreshKey={evidenceRefreshKey}
+          className="mb-6"
+        />
+      )}
 
       <OutcomePanel
         outcome={outcome}

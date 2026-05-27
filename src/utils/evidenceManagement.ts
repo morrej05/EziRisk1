@@ -63,6 +63,54 @@ export async function getDocumentAttachments(documentId: string): Promise<Attach
   }
 }
 
+/**
+ * Returns all non-deleted attachments linked to a specific module instance.
+ * Scoped query — never loads the full document attachment set.
+ */
+export async function getModuleAttachments(moduleInstanceId: string): Promise<Attachment[]> {
+  try {
+    const { data, error } = await supabase
+      .from('attachments')
+      .select('*')
+      .eq('module_instance_id', moduleInstanceId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching module attachments:', error);
+    return [];
+  }
+}
+
+/**
+ * Batch-fetches signed URLs for multiple storage paths in a single Supabase call.
+ * Returns a map of { filePath → signedUrl } for paths that succeeded.
+ */
+export async function batchGetSignedUrls(
+  filePaths: string[],
+  expiresIn = 3600,
+): Promise<Record<string, string>> {
+  if (filePaths.length === 0) return {};
+  try {
+    const { data, error } = await supabase.storage
+      .from('evidence')
+      .createSignedUrls(filePaths, expiresIn);
+
+    if (error || !data) return {};
+
+    const result: Record<string, string> = {};
+    data.forEach((item) => {
+      if (item.signedUrl) result[item.path] = item.signedUrl;
+    });
+    return result;
+  } catch (error) {
+    console.error('Error batch-fetching signed URLs:', error);
+    return {};
+  }
+}
+
 export async function uploadAttachment(
   organisationId: string,
   documentId: string,

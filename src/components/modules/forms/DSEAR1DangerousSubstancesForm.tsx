@@ -9,6 +9,7 @@ import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import AddActionModal from '../../actions/AddActionModal';
 import InlineEvidenceUpload from '../../evidence/InlineEvidenceUpload';
+import ModuleEvidenceList from '../../evidence/ModuleEvidenceList';
 
 interface Substance {
   name: string;
@@ -63,6 +64,7 @@ export default function DSEAR1DangerousSubstancesForm({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showActionModal, setShowActionModal] = useState(false);
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
   const actionsRefreshKey = getActionsRefreshKey(document.id, moduleInstance.id);
 
   const [substances, setSubstances] = useState<Substance[]>(
@@ -349,10 +351,21 @@ export default function DSEAR1DangerousSubstancesForm({
               isLocked={isLocked}
               label="Add SDS / label photo"
               className="pt-2 mt-2 border-t border-gray-100"
+              onUploaded={() => setEvidenceRefreshKey((k) => k + 1)}
             />
           </div>
         ))}
       </div>
+
+      {document?.id && moduleInstance?.id && (
+        <ModuleEvidenceList
+          moduleInstanceId={moduleInstance.id}
+          documentId={document.id}
+          isLocked={isLocked}
+          refreshKey={evidenceRefreshKey}
+          className="mb-6"
+        />
+      )}
 
       <OutcomePanel
         outcome={outcome}

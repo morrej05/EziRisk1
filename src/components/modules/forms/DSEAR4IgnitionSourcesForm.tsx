@@ -6,6 +6,7 @@ import AutoExpandTextarea from '../../AutoExpandTextarea';
 import OutcomePanel from '../OutcomePanel';
 import ModuleActions from '../ModuleActions';
 import InlineEvidenceUpload from '../../evidence/InlineEvidenceUpload';
+import ModuleEvidenceList from '../../evidence/ModuleEvidenceList';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import {
   DSEAR_IGNITION_SECTION_KEY,
@@ -168,6 +169,7 @@ export default function DSEAR4IgnitionSourcesForm({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [showOtherSources, setShowOtherSources] = useState(false);
+  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
 
   const [sourceAssessments, setSourceAssessments] = useState<Record<string, DsearIgnitionSourceAssessment>>(
     () => normaliseDsearIgnitionAssessments(moduleInstance.data || {})
@@ -336,6 +338,7 @@ export default function DSEAR4IgnitionSourcesForm({
             isLocked={isLocked}
             label="Add evidence photo"
             className="mt-2"
+            onUploaded={() => setEvidenceRefreshKey((k) => k + 1)}
           />
 
           {assessment.legacy_evidence_reference?.trim() && (
@@ -426,6 +429,16 @@ export default function DSEAR4IgnitionSourcesForm({
           </details>
         )}
       </div>
+
+      {document?.id && moduleInstance?.id && (
+        <ModuleEvidenceList
+          moduleInstanceId={moduleInstance.id}
+          documentId={document.id}
+          isLocked={isLocked}
+          refreshKey={evidenceRefreshKey}
+          className="mb-6"
+        />
+      )}
 
       <OutcomePanel
         outcome={outcome}
