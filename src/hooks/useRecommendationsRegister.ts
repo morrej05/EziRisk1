@@ -12,6 +12,7 @@ export type RecommendationStatusFilter = (typeof RE_RECOMMENDATION_STATUSES)[num
 export interface RecommendationsRegisterRow {
   id: string;
   documentId: string;
+  moduleInstanceId: string | null;
   recNumber: string;
   title: string;
   status: string;
@@ -33,6 +34,7 @@ export interface RecommendationsRegisterRow {
 interface RecommendationDbRow {
   id: string;
   document_id: string;
+  module_instance_id?: string | null;
   rec_number: string;
   title: string;
   status: string;
@@ -90,6 +92,7 @@ function mapDbRowToRegisterRow(row: RecommendationDbRow): RecommendationsRegiste
   return {
     id: row.id,
     documentId: row.document_id,
+    moduleInstanceId: row.module_instance_id ?? null,
     recNumber: row.rec_number,
     title: row.title,
     status: row.status,
@@ -136,6 +139,7 @@ export function useRecommendationsRegister() {
           .select(`
             id,
             document_id,
+            module_instance_id,
             rec_number,
             title,
             status,

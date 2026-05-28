@@ -35,6 +35,7 @@ import { SurveyBadgeRow } from '../../components/SurveyBadgeRow';
 import { JurisdictionSelector } from '../../components/JurisdictionSelector';
 import DocumentStatusBadge from '../../components/documents/DocumentStatusBadge';
 import OverallGradeWidget from '../../components/re/OverallGradeWidget';
+import ReRecommendationViewModal from '../../components/re/ReRecommendationViewModal';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
 import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
 import {
@@ -228,6 +229,7 @@ export default function DocumentWorkspace() {
   const evidenceSummary = useDocumentEvidenceSummary(document?.id);
 
   const openActionId = searchParams.get('openAction');
+  const openRecId = searchParams.get('openRec');
 
   const modalAction = useMemo(() => {
     if (selectedAction) return selectedAction;
@@ -762,6 +764,14 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
                 <List className="w-4 h-4" />
                 <span className="hidden sm:inline">Actions Register</span>
               </button>
+            ) : returnToPath === '/remediation/recommendations' ? (
+              <button
+                onClick={() => navigate('/remediation/recommendations')}
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline">RE Recommendations</span>
+              </button>
             ) : (
               <button
                 onClick={() => navigate(`/documents/${id}`, { state: { returnTo: returnToPath || '/dashboard' } })}
@@ -1025,6 +1035,23 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
             fetchDocument();
             fetchModules();
           }}
+        />
+      )}
+
+      {openRecId && (
+        <ReRecommendationViewModal
+          recId={openRecId}
+          returnTo={returnToPath}
+          onClose={() =>
+            setSearchParams(
+              (cur) => {
+                const next = new URLSearchParams(cur);
+                next.delete('openRec');
+                return next;
+              },
+              { replace: true }
+            )
+          }
         />
       )}
 

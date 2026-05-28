@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 import {
   RE_RECOMMENDATION_PRIORITIES,
@@ -97,7 +97,15 @@ function applyFilters(rows: RecommendationsRegisterRow[], filters: {
   });
 }
 
+function buildWorkspaceUrl(documentId: string, moduleInstanceId: string | null, recId: string): string {
+  const params = new URLSearchParams();
+  if (moduleInstanceId) params.set('m', moduleInstanceId);
+  params.set('openRec', recId);
+  return `/documents/${documentId}/workspace?${params.toString()}`;
+}
+
 export default function RecommendationsRegisterPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { rows, loading, error, options } = useRecommendationsRegister();
 
@@ -334,7 +342,16 @@ export default function RecommendationsRegisterPage() {
                   <div className="grid grid-cols-2 gap-2"><div><dt className="font-semibold text-slate-700">Target date</dt><dd>{formatDate(row.targetDate)}</dd></div><div><dt className="font-semibold text-slate-700">Updated</dt><dd>{formatDate(row.updatedAt)}</dd></div></div>
                   <div><dt className="font-semibold text-slate-700">Client / Site</dt><dd>{row.clientName} — {row.siteName}</dd></div>
                 </dl>
-                <Link to={`/documents/${row.documentId}/workspace`} className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Open recommendation</Link>
+                <button
+                  type="button"
+                  onClick={() => navigate(
+                    buildWorkspaceUrl(row.documentId, row.moduleInstanceId, row.id),
+                    { state: { returnTo: '/remediation/recommendations' } }
+                  )}
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Open recommendation
+                </button>
               </article>
             ))
           )}
@@ -402,12 +419,16 @@ export default function RecommendationsRegisterPage() {
                     <td className="px-4 py-3 text-sm text-slate-700">{formatDate(row.updatedAt)}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{row.documentName}</td>
                     <td className="px-4 py-3 text-sm text-right">
-                      <Link
-                        to={`/documents/${row.documentId}/workspace`}
+                      <button
+                        type="button"
+                        onClick={() => navigate(
+                          buildWorkspaceUrl(row.documentId, row.moduleInstanceId, row.id),
+                          { state: { returnTo: '/remediation/recommendations' } }
+                        )}
                         className="text-slate-700 hover:text-slate-900 underline"
                       >
                         Open
-                      </Link>
+                      </button>
                     </td>
                   </tr>
                 ))
