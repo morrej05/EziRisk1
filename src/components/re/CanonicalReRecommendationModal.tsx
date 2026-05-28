@@ -10,6 +10,7 @@ import {
   uploadAttachment,
   deleteAttachment,
   updateAttachmentCaption,
+  batchGetSignedUrls,
 } from "../../utils/evidenceManagement";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -45,6 +46,8 @@ interface CanonicalReRecommendationModalProps {
   defaultCategory?: string | null;
   metadata?: Record<string, unknown> | null;
   createdBy?: string | null;
+  /** When provided the modal opens in edit mode and loads the existing rec. */
+  recId?: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -106,6 +109,7 @@ export default function CanonicalReRecommendationModal({
   defaultCategory,
   metadata,
   createdBy,
+  recId,
 }: CanonicalReRecommendationModalProps) {
   const [title, setTitle] = useState("");
   const [observation, setObservation] = useState("");
@@ -132,11 +136,19 @@ export default function CanonicalReRecommendationModal({
   const [docContext, setDocContext] = useState<DocContext | null>(null);
   const isLocked = docContext?.isLocked ?? false;
 
+  // Edit mode — populated when recId is provided.
+  const isEditMode = Boolean(recId);
+  const [recNumber, setRecNumber] = useState<string | null>(null);
+  const [isLoadingRec, setIsLoadingRec] = useState(false);
+
   // Refs for cleanup across all close paths (X, Cancel, Escape, navigation away).
   const cleanupDoneRef = useRef(false);
   const photosRef = useRef<Photo[]>([]);
   const documentIdRef = useRef(documentId);
   const handleCancelRef = useRef<() => void>(() => {});
+  // Tracks photos uploaded during the current edit session so cancel only
+  // deletes those, leaving pre-existing photos untouched.
+  const sessionNewAttachmentIdsRef = useRef<Set<string>>(new Set());
 
   const defaultModule = useMemo(
     () => sourceModuleKey || "OTHER",
@@ -186,10 +198,13 @@ export default function CanonicalReRecommendationModal({
   useEffect(() => {
     if (!isOpen) {
       setDocContext(null);
+      setRecNumber(null);
+      setIsLoadingRec(false);
       return;
     }
 
     cleanupDoneRef.current = false;
+    sessionNewAttachmentIdsRef.current = new Set();
     let cancelled = false;
     supabase
       .from("documents")
@@ -212,15 +227,115 @@ export default function CanonicalReRecommendationModal({
     };
   }, [isOpen, documentId]);
 
-  // Auto-set target date from priority unless user has manually edited it.
+  // Auto-set target date from priority unless user has manually edited it,
+  // or we are in edit mode (the stored date is loaded from the DB instead).
   useEffect(() => {
-    if (!isOpen || userEditedTargetDate) return;
+    if (!isOpen || userEditedTargetDate || isEditMode) return;
     setTargetDate(targetDateFromTimescale(timescaleForPriority(priority)));
-  }, [isOpen, priority, userEditedTargetDate]);
+  }, [isOpen, priority, userEditedTargetDate, isEditMode]);
 
   // Keep refs in sync so the Escape/unmount closures always have fresh values.
   useEffect(() => { photosRef.current = photos; }, [photos]);
   useEffect(() => { documentIdRef.current = documentId; }, [documentId]);
+
+  // Load existing recommendation data when opening in edit mode.
+  useEffect(() => {
+    if (!isOpen || !recId) return;
+    let cancelled = false;
+    setIsLoadingRec(true);
+
+    (async () => {
+      try {
+        const { data: rec } = await supabase
+          .from("re_recommendations")
+          .select(
+            "rec_number, title, observation_text, action_required_text, hazard_text, comments_text, priority, status, target_date, owner, photos, source_module_key",
+          )
+          .eq("id", recId)
+          .maybeSingle();
+
+        if (cancelled || !rec) return;
+
+        setRecNumber(rec.rec_number ?? null);
+        setTitle(rec.title ?? "");
+        setObservation(rec.observation_text ?? "");
+        setActionRequired(rec.action_required_text ?? "");
+        setHazardDescription(rec.hazard_text ?? "");
+        setComments(rec.comments_text ?? "");
+        setPriority((rec.priority as "High" | "Medium" | "Low") ?? "Medium");
+        setStatus(
+          (rec.status as "Open" | "In Progress" | "Completed") ?? "Open",
+        );
+        setTargetDate(rec.target_date ?? "");
+        setUserEditedTargetDate(true); // prevent auto-overwrite from priority effect
+        setOwner(rec.owner ?? "");
+        setRelatedModule(rec.source_module_key ?? defaultModule);
+
+        // Load photos from JSONB mirror, then cross-reference attachments for IDs.
+        type RawPhoto = {
+          path?: string;
+          storage_path?: string;
+          file_name?: string;
+          size_bytes?: number;
+          mime_type?: string;
+          uploaded_at?: string;
+          caption?: string;
+        };
+        const rawPhotos: RawPhoto[] = Array.isArray(rec.photos)
+          ? (rec.photos as RawPhoto[])
+          : [];
+
+        if (rawPhotos.length > 0) {
+          const paths = rawPhotos
+            .map((p) => p.path ?? p.storage_path ?? "")
+            .filter(Boolean);
+
+          const [urlMap, { data: attRows }] = await Promise.all([
+            batchGetSignedUrls(paths),
+            supabase
+              .from("attachments")
+              .select("id, file_path, caption")
+              .in("file_path", paths)
+              .is("deleted_at", null),
+          ]);
+
+          if (cancelled) return;
+
+          const attByPath: Record<string, { id: string; caption: string }> = {};
+          for (const a of attRows ?? []) {
+            attByPath[a.file_path] = { id: a.id, caption: a.caption ?? "" };
+          }
+
+          const loadedPhotos: Photo[] = rawPhotos
+            .map((p): Photo | null => {
+              const path = p.path ?? p.storage_path ?? "";
+              if (!path) return null;
+              const att = attByPath[path];
+              if (!att) return null;
+              return {
+                attachmentId: att.id,
+                path,
+                file_name: p.file_name ?? "",
+                size_bytes: p.size_bytes ?? 0,
+                mime_type: p.mime_type ?? "",
+                uploaded_at: p.uploaded_at ?? "",
+                caption: att.caption || p.caption || "",
+                signedUrl: urlMap[path] ?? null,
+              };
+            })
+            .filter((p): p is Photo => p !== null);
+
+          if (!cancelled) setPhotos(loadedPhotos);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingRec(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, recId, defaultModule]);
 
   // ─── Form helpers ────────────────────────────────────────────────────────────
 
@@ -237,6 +352,7 @@ export default function CanonicalReRecommendationModal({
     setOwner("");
     setRelatedModule(sourceKey || defaultModule);
     setPhotos([]);
+    setRecNumber(null);
   };
 
   // ─── Photo handlers ──────────────────────────────────────────────────────────
@@ -290,6 +406,9 @@ export default function CanonicalReRecommendationModal({
       }
 
       const att = result.attachment;
+
+      // In edit mode, record IDs so cancel only deletes photos added this session.
+      if (isEditMode) sessionNewAttachmentIdsRef.current.add(att.id);
 
       // Get a signed URL (private bucket — blob URL would expire on navigation).
       const { data: signedData } = await supabase.storage
@@ -354,18 +473,18 @@ export default function CanonicalReRecommendationModal({
 
   /**
    * Cancels the modal.
-   * Any photos uploaded during this session but not yet saved are soft-deleted
-   * so they don't accumulate as orphans in the attachments table.
+   * Create mode: all uploaded photos are soft-deleted (they were never saved to a rec).
+   * Edit mode: only photos added during this session are deleted; pre-existing ones remain.
    */
   const handleCancel = () => {
     cleanupDoneRef.current = true;
-    // Fire-and-forget cleanup of session photos (skip temp entries).
     photos.forEach((p) => {
-      if (!p.attachmentId.startsWith("temp-")) {
-        void deleteAttachment(p.attachmentId, documentId).catch((err) =>
-          console.error("[RE Recommendation] Cancel cleanup failed:", err),
-        );
-      }
+      if (p.attachmentId.startsWith("temp-")) return;
+      // In edit mode only clean up photos that were added in this session.
+      if (isEditMode && !sessionNewAttachmentIdsRef.current.has(p.attachmentId)) return;
+      void deleteAttachment(p.attachmentId, documentId).catch((err) =>
+        console.error("[RE Recommendation] Cancel cleanup failed:", err),
+      );
     });
     resetForm();
     onClose();
@@ -386,11 +505,16 @@ export default function CanonicalReRecommendationModal({
 
   // Unmount cleanup — handles navigation away while modal is open.
   // cleanupDoneRef prevents double-deletion when handleCancel already ran.
+  // Edit mode: only delete session-new photos; pre-existing photos stay on the rec.
   useEffect(() => {
     return () => {
       if (!cleanupDoneRef.current) {
         photosRef.current
-          .filter((p) => !p.attachmentId.startsWith("temp-"))
+          .filter((p) => {
+            if (p.attachmentId.startsWith("temp-")) return false;
+            if (isEditMode) return sessionNewAttachmentIdsRef.current.has(p.attachmentId);
+            return true;
+          })
           .forEach((p) => {
             void deleteAttachment(p.attachmentId, documentIdRef.current).catch(
               (err) =>
@@ -399,6 +523,7 @@ export default function CanonicalReRecommendationModal({
           });
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ─── Save ────────────────────────────────────────────────────────────────────
@@ -406,26 +531,28 @@ export default function CanonicalReRecommendationModal({
   const handleSave = async () => {
     if (!title.trim() || isSaving || isLocked) return;
 
-    const duplicateQuery = supabase
-      .from("re_recommendations")
-      .select("id")
-      .eq("document_id", documentId)
-      .eq("module_instance_id", moduleInstanceId)
-      .eq("source_factor_key", recommendationContext.sourceKey)
-      .eq("title", title.trim())
-      .eq("action_required_text", actionRequired.trim())
-      .eq("is_suppressed", false)
-      .limit(1);
+    // Duplicate check — only meaningful for new recommendations, not edits.
+    if (!isEditMode) {
+      const { data: duplicates } = await supabase
+        .from("re_recommendations")
+        .select("id")
+        .eq("document_id", documentId)
+        .eq("module_instance_id", moduleInstanceId)
+        .eq("source_factor_key", recommendationContext.sourceKey)
+        .eq("title", title.trim())
+        .eq("action_required_text", actionRequired.trim())
+        .eq("is_suppressed", false)
+        .limit(1);
 
-    const { data: duplicates } = await duplicateQuery;
-    if (
-      duplicates &&
-      duplicates.length > 0 &&
-      !window.confirm(
-        "An exact duplicate recommendation already exists for this section. Save another copy anyway?",
-      )
-    ) {
-      return;
+      if (
+        duplicates &&
+        duplicates.length > 0 &&
+        !window.confirm(
+          "An exact duplicate recommendation already exists for this section. Save another copy anyway?",
+        )
+      ) {
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -440,7 +567,6 @@ export default function CanonicalReRecommendationModal({
       await Promise.all(captionUpdates);
 
       // Build JSONB mirror for PDF builder (re_recommendations.photos).
-      // Caption is additive — existing readers that don't know about it are unaffected.
       const photosJsonb = photos
         .filter((p) => !p.attachmentId.startsWith("temp-"))
         .map((p) => ({
@@ -452,31 +578,54 @@ export default function CanonicalReRecommendationModal({
           ...(p.caption.trim() ? { caption: p.caption.trim() } : {}),
         }));
 
-      const { error } = await supabase.from("re_recommendations").insert({
-        document_id: documentId,
-        module_instance_id: moduleInstanceId,
-        source_type: "manual",
-        source_module_key: sourceModuleKey || defaultModule,
-        source_factor_key: recommendationContext.sourceKey,
-        title: title.trim(),
-        observation_text: observation.trim(),
-        action_required_text: actionRequired.trim(),
-        hazard_text: hazardDescription.trim(),
-        comments_text: comments.trim() || null,
-        category: resolvedCategory,
-        metadata: {
-          ...(metadata || {}),
-          ...recommendationContext.metadata,
-        },
-        status,
-        priority,
-        target_date: targetDate || null,
-        owner: owner.trim() || null,
-        photos: photosJsonb,
-        created_by: createdBy || null,
-      });
+      if (isEditMode) {
+        // UPDATE path
+        const { error } = await supabase
+          .from("re_recommendations")
+          .update({
+            title: title.trim(),
+            observation_text: observation.trim(),
+            action_required_text: actionRequired.trim(),
+            hazard_text: hazardDescription.trim(),
+            comments_text: comments.trim() || null,
+            status,
+            priority,
+            target_date: targetDate || null,
+            owner: owner.trim() || null,
+            photos: photosJsonb,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", recId as string);
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // INSERT path
+        const { error } = await supabase.from("re_recommendations").insert({
+          document_id: documentId,
+          module_instance_id: moduleInstanceId,
+          source_type: "manual",
+          source_module_key: sourceModuleKey || defaultModule,
+          source_factor_key: recommendationContext.sourceKey,
+          title: title.trim(),
+          observation_text: observation.trim(),
+          action_required_text: actionRequired.trim(),
+          hazard_text: hazardDescription.trim(),
+          comments_text: comments.trim() || null,
+          category: resolvedCategory,
+          metadata: {
+            ...(metadata || {}),
+            ...recommendationContext.metadata,
+          },
+          status,
+          priority,
+          target_date: targetDate || null,
+          owner: owner.trim() || null,
+          photos: photosJsonb,
+          created_by: createdBy || null,
+        });
+
+        if (error) throw error;
+      }
 
       cleanupDoneRef.current = true;
       await onSaved();
@@ -499,10 +648,14 @@ export default function CanonicalReRecommendationModal({
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-xl font-bold text-slate-900">
-              Add Recommendation
+              {isEditMode ? "Edit Recommendation" : "Add Recommendation"}
             </h3>
             <p className="mt-1 text-sm text-slate-600">
-              Capture the finding, evidence and action in one place.
+              {isEditMode
+                ? recNumber
+                  ? `${recNumber} · Update fields and save.`
+                  : "Update fields and save."
+                : "Capture the finding, evidence and action in one place."}
             </p>
           </div>
           <button
@@ -515,8 +668,14 @@ export default function CanonicalReRecommendationModal({
           </button>
         </div>
 
+        {isLoadingRec ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+          </div>
+        ) : (
+        <>
         <RecommendationWorkflowShell
-          title="Add Recommendation"
+          title={isEditMode ? "Edit Recommendation" : "Add Recommendation"}
           context={{
             documentId,
             moduleInstanceId,
@@ -602,7 +761,7 @@ export default function CanonicalReRecommendationModal({
                   <option value="Low">P3 / Low</option>
                 </select>
               </div>
-              <div className="hidden">
+              <div className={isEditMode ? "" : "hidden"}>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Status
                 </label>
@@ -839,6 +998,8 @@ export default function CanonicalReRecommendationModal({
             {isSaving ? "Saving…" : "Save Recommendation"}
           </button>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

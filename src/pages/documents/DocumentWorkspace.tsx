@@ -36,8 +36,9 @@ import { JurisdictionSelector } from '../../components/JurisdictionSelector';
 import DocumentStatusBadge from '../../components/documents/DocumentStatusBadge';
 import OverallGradeWidget from '../../components/re/OverallGradeWidget';
 import ReRecommendationViewModal from '../../components/re/ReRecommendationViewModal';
+import CanonicalReRecommendationModal from '../../components/re/CanonicalReRecommendationModal';
 import ActionDetailModal from '../../components/actions/ActionDetailModal';
-import { subscribeActionsVersion, getActionsVersion } from '../../lib/actions/actionsInvalidation';
+import { subscribeActionsVersion, getActionsVersion, bumpActionsVersion } from '../../lib/actions/actionsInvalidation';
 import {
   filterReRecommendationsByScope,
   hasReRecommendationWorkflow,
@@ -1038,21 +1039,46 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
         />
       )}
 
-      {openRecId && (
-        <ReRecommendationViewModal
-          recId={openRecId}
-          returnTo={returnToPath}
-          onClose={() =>
-            setSearchParams(
-              (cur) => {
-                const next = new URLSearchParams(cur);
-                next.delete('openRec');
-                return next;
-              },
-              { replace: true }
-            )
-          }
-        />
+      {openRecId && document && (
+        document.issue_status === 'draft' && selectedModuleId ? (
+          // Draft document → editable modal (reuses create modal with recId prop).
+          <CanonicalReRecommendationModal
+            isOpen={true}
+            recId={openRecId}
+            documentId={document.id}
+            moduleInstanceId={selectedModuleId}
+            sourceModuleKey={selectedStable?.module_key || ''}
+            onClose={() =>
+              setSearchParams(
+                (cur) => {
+                  const next = new URLSearchParams(cur);
+                  next.delete('openRec');
+                  return next;
+                },
+                { replace: true }
+              )
+            }
+            onSaved={async () => {
+              bumpActionsVersion();
+            }}
+          />
+        ) : (
+          // Issued / superseded document → read-only view modal.
+          <ReRecommendationViewModal
+            recId={openRecId}
+            returnTo={returnToPath}
+            onClose={() =>
+              setSearchParams(
+                (cur) => {
+                  const next = new URLSearchParams(cur);
+                  next.delete('openRec');
+                  return next;
+                },
+                { replace: true }
+              )
+            }
+          />
+        )
       )}
 
       {modalAction && user?.id && organisation?.id && (
