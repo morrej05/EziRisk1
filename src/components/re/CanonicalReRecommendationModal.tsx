@@ -6,13 +6,29 @@ import {
   formatSuggestedCompletion,
 } from "../recommendations/RecommendationWorkflow";
 import { buildRecommendationContext } from "../../lib/re/recommendations/sectionRecommendationContext";
+import {
+  uploadAttachment,
+  deleteAttachment,
+  updateAttachmentCaption,
+} from "../../utils/evidenceManagement";
+
+// ─── Interfaces ───────────────────────────────────────────────────────────────
 
 interface Photo {
+  attachmentId: string;
   path: string;
   file_name: string;
   size_bytes: number;
   mime_type: string;
   uploaded_at: string;
+  caption: string;
+  signedUrl: string | null;
+}
+
+interface DocContext {
+  organisationId: string;
+  baseDocumentId: string;
+  isLocked: boolean;
 }
 
 interface CanonicalReRecommendationModalProps {
@@ -31,6 +47,8 @@ interface CanonicalReRecommendationModalProps {
   createdBy?: string | null;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const MODULE_SECTIONS = [
   { key: "RE_01_DOC_CONTROL", label: "RE-01 – Document Control" },
   { key: "RE_02_CONSTRUCTION", label: "RE-02 – Construction" },
@@ -45,6 +63,8 @@ const MODULE_SECTIONS = [
 
 const MAX_PHOTOS_PER_RECOMMENDATION = 3;
 const MAX_PHOTO_SIZE_BYTES = 15 * 1024 * 1024;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function toLocalIsoDate(date: Date): string {
   const year = date.getFullYear();
@@ -69,6 +89,8 @@ function targetDateFromTimescale(timescale: string): string {
   if (timescale === "90d") dueDate.setDate(dueDate.getDate() + 90);
   return toLocalIsoDate(dueDate);
 }
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function CanonicalReRecommendationModal({
   isOpen,
@@ -102,14 +124,19 @@ export default function CanonicalReRecommendationModal({
     sourceModuleKey || "OTHER",
   );
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Fetched once per modal open — required for uploadAttachment().
+  // Also carries isLocked so the form can guard against mutations.
+  const [docContext, setDocContext] = useState<DocContext | null>(null);
+  const isLocked = docContext?.isLocked ?? false;
 
   const defaultModule = useMemo(
     () => sourceModuleKey || "OTHER",
     [sourceModuleKey],
   );
+
   const recommendationContext = useMemo(
     () =>
       buildRecommendationContext({
@@ -136,24 +163,55 @@ export default function CanonicalReRecommendationModal({
       isOpen,
     ],
   );
+
   const resolvedCategory = recommendationContext.defaultCategory;
 
+  // ─── Effects ────────────────────────────────────────────────────────────────
+
+  // Set related module when modal opens.
   useEffect(() => {
     if (isOpen) {
       setRelatedModule(sourceKey || defaultModule);
+    }
+  }, [isOpen, defaultModule, sourceKey]);
+
+  // Fetch document context (org, base doc, lock status) when modal opens.
+  // Clear on close so stale context doesn't persist if documentId changes.
+  useEffect(() => {
+    if (!isOpen) {
+      setDocContext(null);
       return;
     }
 
-    Object.values(photoUrls).forEach((url) => {
-      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-    });
-    setPhotoUrls({});
-  }, [isOpen, defaultModule, sourceKey]);
+    let cancelled = false;
+    supabase
+      .from("documents")
+      .select("organisation_id, base_document_id, issue_status")
+      .eq("id", documentId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data) {
+          setDocContext({
+            organisationId: data.organisation_id,
+            baseDocumentId: data.base_document_id ?? "",
+            isLocked:
+              data.issue_status === "issued" ||
+              data.issue_status === "superseded",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, documentId]);
 
+  // Auto-set target date from priority unless user has manually edited it.
   useEffect(() => {
     if (!isOpen || userEditedTargetDate) return;
     setTargetDate(targetDateFromTimescale(timescaleForPriority(priority)));
   }, [isOpen, priority, userEditedTargetDate]);
+
+  // ─── Form helpers ────────────────────────────────────────────────────────────
 
   const resetForm = () => {
     setTitle("");
@@ -168,90 +226,143 @@ export default function CanonicalReRecommendationModal({
     setOwner("");
     setRelatedModule(sourceKey || defaultModule);
     setPhotos([]);
-    setPhotoUrls({});
   };
 
-  // evidence is a private bucket; getPublicUrl returns a non-functional URL.
-  // Always use signed URLs — the public URL path never works here.
-  const getStorageUrl = async (path: string): Promise<string | null> => {
-    const { data: signedData } = await supabase.storage
-      .from("evidence")
-      .createSignedUrl(path, 3600);
-    return signedData?.signedUrl ?? null;
-  };
+  // ─── Photo handlers ──────────────────────────────────────────────────────────
 
+  /**
+   * Uploads a photo via uploadAttachment() and adds it to local state.
+   * Shows a blob preview immediately; replaces with a signed URL after upload.
+   * If upload fails the optimistic entry is removed.
+   */
   const handleUploadPhoto = async (file: File) => {
+    if (isLocked || !docContext) return;
     if (!file.type.startsWith("image/")) return;
     if (file.size > MAX_PHOTO_SIZE_BYTES) return;
     if (photos.length >= MAX_PHOTOS_PER_RECOMMENDATION) return;
 
     setUploadingPhoto(true);
-    const previewUrl = URL.createObjectURL(file);
+    const blobUrl = URL.createObjectURL(file);
+
+    // Optimistic placeholder — no attachmentId yet.
+    const tempId = `temp-${crypto.randomUUID()}`;
+    setPhotos((prev) => [
+      ...prev,
+      {
+        attachmentId: tempId,
+        path: "",
+        file_name: file.name,
+        size_bytes: file.size,
+        mime_type: file.type,
+        uploaded_at: new Date().toISOString(),
+        caption: "",
+        signedUrl: blobUrl,
+      },
+    ]);
 
     try {
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
-      const filePath = `${documentId}/recommendations/${moduleInstanceId}/${fileName}`;
+      const result = await uploadAttachment(
+        docContext.organisationId,
+        documentId,
+        docContext.baseDocumentId,
+        file,
+        undefined,        // caption — user sets inline after upload
+        moduleInstanceId, // link to the module so getModuleAttachments() finds it
+      );
 
-      setPhotoUrls((prev) => ({ ...prev, [filePath]: previewUrl }));
-
-      const { error: uploadError } = await supabase.storage
-        .from("evidence")
-        .upload(filePath, file);
-      if (uploadError) throw uploadError;
-
-      const persistentUrl = await getStorageUrl(filePath);
-
-      setPhotos((prev) => [
-        ...prev,
-        {
-          path: filePath,
-          file_name: file.name,
-          size_bytes: file.size,
-          mime_type: file.type,
-          uploaded_at: new Date().toISOString(),
-        },
-      ]);
-
-      if (persistentUrl) {
-        URL.revokeObjectURL(previewUrl);
-        setPhotoUrls((prev) => ({ ...prev, [filePath]: persistentUrl }));
+      if (!result.success || !result.attachment) {
+        // Remove the optimistic entry on failure.
+        setPhotos((prev) => prev.filter((p) => p.attachmentId !== tempId));
+        URL.revokeObjectURL(blobUrl);
+        console.error("[RE Recommendation] Photo upload failed:", result.error);
+        return;
       }
-    } catch (error) {
-      console.error("Error uploading recommendation photo:", error);
-      URL.revokeObjectURL(previewUrl);
-      setPhotoUrls((prev) => {
-        const next = { ...prev };
-        const stalePath = Object.keys(next).find((k) => next[k] === previewUrl);
-        if (stalePath) delete next[stalePath];
-        return next;
-      });
+
+      const att = result.attachment;
+
+      // Get a signed URL (private bucket — blob URL would expire on navigation).
+      const { data: signedData } = await supabase.storage
+        .from("evidence")
+        .createSignedUrl(att.file_path, 3600);
+      const signedUrl = signedData?.signedUrl ?? null;
+
+      // Replace the optimistic entry with the confirmed attachment data.
+      URL.revokeObjectURL(blobUrl);
+      setPhotos((prev) =>
+        prev.map((p) =>
+          p.attachmentId === tempId
+            ? {
+                attachmentId: att.id,
+                path: att.file_path,
+                file_name: att.file_name,
+                size_bytes: att.file_size_bytes ?? file.size,
+                mime_type: att.file_type,
+                uploaded_at: att.created_at,
+                caption: "",
+                signedUrl,
+              }
+            : p,
+        ),
+      );
+    } catch (err) {
+      setPhotos((prev) => prev.filter((p) => p.attachmentId !== tempId));
+      URL.revokeObjectURL(blobUrl);
+      console.error("[RE Recommendation] Unexpected upload error:", err);
     } finally {
       setUploadingPhoto(false);
     }
   };
 
-  const removePhoto = (photoPath: string) => {
-    supabase.storage
-      .from("evidence")
-      .remove([photoPath])
-      .catch((err) =>
-        console.error("[RE Recommendation] Failed to delete photo from storage:", err),
+  /**
+   * Soft-deletes the attachment and removes it from local state.
+   * Skips delete for optimistic (temp-*) entries that haven't committed yet.
+   */
+  const removePhoto = (attachmentId: string) => {
+    if (!attachmentId.startsWith("temp-")) {
+      void deleteAttachment(attachmentId, documentId).catch((err) =>
+        console.error("[RE Recommendation] Failed to delete photo:", err),
       );
-    const url = photoUrls[photoPath];
-    if (url?.startsWith("blob:")) {
-      URL.revokeObjectURL(url);
     }
-    setPhotos((prev) => prev.filter((p) => p.path !== photoPath));
-    setPhotoUrls((prev) => {
-      const next = { ...prev };
-      delete next[photoPath];
-      return next;
-    });
+    setPhotos((prev) => prev.filter((p) => p.attachmentId !== attachmentId));
   };
 
+  /**
+   * Updates the caption for a photo in local state only.
+   * Captions are persisted to the attachments table in handleSave() so they
+   * are written in a single pass together with the JSONB mirror.
+   */
+  const updatePhotoCaption = (attachmentId: string, caption: string) => {
+    setPhotos((prev) =>
+      prev.map((p) =>
+        p.attachmentId === attachmentId ? { ...p, caption } : p,
+      ),
+    );
+  };
+
+  // ─── Cancel ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Cancels the modal.
+   * Any photos uploaded during this session but not yet saved are soft-deleted
+   * so they don't accumulate as orphans in the attachments table.
+   */
+  const handleCancel = () => {
+    // Fire-and-forget cleanup of session photos (skip temp entries).
+    photos.forEach((p) => {
+      if (!p.attachmentId.startsWith("temp-")) {
+        void deleteAttachment(p.attachmentId, documentId).catch((err) =>
+          console.error("[RE Recommendation] Cancel cleanup failed:", err),
+        );
+      }
+    });
+    resetForm();
+    onClose();
+  };
+
+  // ─── Save ────────────────────────────────────────────────────────────────────
+
   const handleSave = async () => {
-    if (!title.trim() || isSaving) return;
+    if (!title.trim() || isSaving || isLocked) return;
 
     const duplicateQuery = supabase
       .from("re_recommendations")
@@ -277,6 +388,28 @@ export default function CanonicalReRecommendationModal({
 
     setIsSaving(true);
     try {
+      // Persist any captions the user typed before saving.
+      // Only committed attachments (no temp- prefix) need this.
+      const captionUpdates = photos
+        .filter((p) => !p.attachmentId.startsWith("temp-") && p.caption.trim())
+        .map((p) =>
+          updateAttachmentCaption(p.attachmentId, documentId, p.caption.trim()),
+        );
+      await Promise.all(captionUpdates);
+
+      // Build JSONB mirror for PDF builder (re_recommendations.photos).
+      // Caption is additive — existing readers that don't know about it are unaffected.
+      const photosJsonb = photos
+        .filter((p) => !p.attachmentId.startsWith("temp-"))
+        .map((p) => ({
+          path: p.path,
+          file_name: p.file_name,
+          size_bytes: p.size_bytes,
+          mime_type: p.mime_type,
+          uploaded_at: p.uploaded_at,
+          ...(p.caption.trim() ? { caption: p.caption.trim() } : {}),
+        }));
+
       const { error } = await supabase.from("re_recommendations").insert({
         document_id: documentId,
         module_instance_id: moduleInstanceId,
@@ -297,7 +430,7 @@ export default function CanonicalReRecommendationModal({
         priority,
         target_date: targetDate || null,
         owner: owner.trim() || null,
-        photos,
+        photos: photosJsonb,
         created_by: createdBy || null,
       });
 
@@ -312,6 +445,8 @@ export default function CanonicalReRecommendationModal({
       setIsSaving(false);
     }
   };
+
+  // ─── Render ──────────────────────────────────────────────────────────────────
 
   if (!isOpen) return null;
 
@@ -329,10 +464,7 @@ export default function CanonicalReRecommendationModal({
           </div>
           <button
             type="button"
-            onClick={() => {
-              resetForm();
-              onClose();
-            }}
+            onClick={handleCancel}
             className="rounded-full p-1 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
             aria-label="Close recommendation modal"
           >
@@ -531,29 +663,37 @@ export default function CanonicalReRecommendationModal({
               )}
             </div>
 
+            {/* Evidence section */}
             <div className="border-t border-slate-200 pt-4">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <label className="block text-sm font-medium text-slate-700">
                   Evidence ({photos.length}/
                   {MAX_PHOTOS_PER_RECOMMENDATION})
                 </label>
-                {photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
-                  <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 sm:w-auto sm:py-1.5">
+                {!isLocked && photos.length < MAX_PHOTOS_PER_RECOMMENDATION ? (
+                  <label
+                    className={`inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm text-white sm:w-auto sm:py-1.5 ${
+                      uploadingPhoto || !docContext
+                        ? "cursor-not-allowed bg-blue-300"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
                     <Upload className="h-4 w-4" />
-                    Add evidence
+                    {uploadingPhoto ? "Uploading…" : "Add evidence"}
                     <input
                       type="file"
                       accept="image/*"
+                      capture="environment"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) void handleUploadPhoto(file);
                         e.currentTarget.value = "";
                       }}
-                      disabled={uploadingPhoto}
+                      disabled={uploadingPhoto || !docContext}
                     />
                   </label>
-                ) : (
+                ) : isLocked ? null : (
                   <span className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-600">
                     Maximum {MAX_PHOTOS_PER_RECOMMENDATION} photos
                   </span>
@@ -564,13 +704,13 @@ export default function CanonicalReRecommendationModal({
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {photos.map((photo) => (
                     <div
-                      key={photo.path}
+                      key={photo.attachmentId}
                       className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
                     >
                       <div className="aspect-video overflow-hidden bg-slate-100">
-                        {photoUrls[photo.path] ? (
+                        {photo.signedUrl ? (
                           <img
-                            src={photoUrls[photo.path]}
+                            src={photo.signedUrl}
                             alt={photo.file_name}
                             className="h-full w-full object-cover"
                           />
@@ -580,20 +720,46 @@ export default function CanonicalReRecommendationModal({
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removePhoto(photo.path)}
-                        className="absolute right-2 top-2 rounded-full bg-red-600 p-1 text-white hover:bg-red-700"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                      <div className="p-2 text-xs text-slate-600">
-                        <p className="truncate" title={photo.file_name}>
+                      {!isLocked && (
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(photo.attachmentId)}
+                          className="absolute right-2 top-2 rounded-full bg-red-600 p-1 text-white hover:bg-red-700"
+                          aria-label={`Remove ${photo.file_name}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                      <div className="p-2 space-y-1">
+                        <p
+                          className="truncate text-xs text-slate-600"
+                          title={photo.file_name}
+                        >
                           {photo.file_name}
                         </p>
-                        <p className="text-slate-500">
+                        <p className="text-xs text-slate-400">
                           {(photo.size_bytes / 1024 / 1024).toFixed(1)} MB
                         </p>
+                        {!isLocked && (
+                          <input
+                            type="text"
+                            value={photo.caption}
+                            onChange={(e) =>
+                              updatePhotoCaption(
+                                photo.attachmentId,
+                                e.target.value,
+                              )
+                            }
+                            placeholder="Add caption…"
+                            className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none"
+                            maxLength={200}
+                          />
+                        )}
+                        {isLocked && photo.caption && (
+                          <p className="text-xs italic text-slate-500">
+                            {photo.caption}
+                          </p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -606,7 +772,7 @@ export default function CanonicalReRecommendationModal({
 
               {uploadingPhoto && (
                 <div className="mt-2 text-sm text-blue-600">
-                  Uploading evidence...
+                  Uploading evidence…
                 </div>
               )}
             </div>
@@ -616,17 +782,14 @@ export default function CanonicalReRecommendationModal({
         <div className="sticky bottom-0 -mx-4 mt-6 flex flex-col gap-3 border-t border-slate-200 bg-slate-50/95 px-4 py-3 sm:static sm:mx-0 sm:flex-row sm:items-center sm:justify-end sm:border-t-0 sm:bg-transparent sm:p-0">
           <button
             type="button"
-            onClick={() => {
-              resetForm();
-              onClose();
-            }}
+            onClick={handleCancel}
             className="w-full rounded-lg bg-slate-100 px-4 py-3 font-medium text-slate-700 transition-colors hover:bg-slate-200 sm:w-auto sm:py-2"
           >
             Cancel
           </button>
           <button
             type="button"
-            disabled={!title.trim() || isSaving}
+            disabled={!title.trim() || isSaving || isLocked}
             onClick={handleSave}
             className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:py-2"
           >
