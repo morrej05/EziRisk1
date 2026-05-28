@@ -219,13 +219,14 @@ export default function ActionDetailModal({
     try {
       const { data, error } = await supabase
         .from('documents')
-        .select('status, base_document_id')
+        .select('issue_status, base_document_id')
         .eq('id', action.document.id)
         .single();
 
       if (error) throw error;
       if (data) {
-        setDocumentStatus(data.status);
+        // Use issue_status — the canonical lock field also checked by evidenceManagement.ts.
+        setDocumentStatus(data.issue_status);
         setBaseDocumentId(data.base_document_id || '');
       }
     } catch (error) {
@@ -932,7 +933,11 @@ export default function ActionDetailModal({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                {returnToPath && returnToPath !== '/dashboard/actions' ? 'Back to originating module' : 'Back to Actions Register'}
+                {!returnToPath || returnToPath.startsWith('/dashboard/actions')
+                ? 'Back to Actions Register'
+                : returnToPath.startsWith('/remediation/')
+                ? 'Back to Remediation'
+                : 'Back to originating module'}
               </button>
               <button
                 type="button"

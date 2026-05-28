@@ -598,6 +598,27 @@ export default function DocumentWorkspace() {
     if (action) setSelectedAction(action);
   };
 
+  /**
+   * Closes the RE recommendation modal.
+   * When opened from a remediation page (returnToPath starts with /remediation/),
+   * navigate back there so the user returns to the list — not the workspace.
+   * Otherwise, just clear openRec from the URL and remain in the workspace.
+   */
+  const closeRecModal = () => {
+    if (returnToPath?.startsWith('/remediation/')) {
+      navigate(returnToPath);
+    } else {
+      setSearchParams(
+        (cur) => {
+          const next = new URLSearchParams(cur);
+          next.delete('openRec');
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  };
+
   useEffect(() => {
     const openActionId2 = searchParams.get('openAction');
     if (!openActionId2) return;
@@ -757,17 +778,17 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
               {isMobileMenuOpen ? <X className="w-5 h-5 text-neutral-600" /> : <Menu className="w-5 h-5 text-neutral-600" />}
             </button>
 
-            {returnToPath === '/dashboard/actions' ? (
+            {returnToPath?.startsWith('/dashboard/actions') || returnToPath?.startsWith('/remediation/actions') ? (
               <button
-                onClick={() => navigate('/dashboard/actions')}
+                onClick={() => navigate(returnToPath!)}
                 className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors"
               >
                 <List className="w-4 h-4" />
                 <span className="hidden sm:inline">Actions Register</span>
               </button>
-            ) : returnToPath === '/remediation/recommendations' ? (
+            ) : returnToPath?.startsWith('/remediation/recommendations') ? (
               <button
-                onClick={() => navigate('/remediation/recommendations')}
+                onClick={() => navigate(returnToPath!)}
                 className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -1042,41 +1063,25 @@ const product = isDsearDoc ? 'DSEAR' : isReDoc ? 'RE' : 'GENERIC';
       {openRecId && document && (
         document.issue_status === 'draft' && selectedModuleId ? (
           // Draft document → editable modal (reuses create modal with recId prop).
+          // onClose navigates back to remediation when opened from there; otherwise stays in workspace.
           <CanonicalReRecommendationModal
             isOpen={true}
             recId={openRecId}
             documentId={document.id}
             moduleInstanceId={selectedModuleId}
             sourceModuleKey={selectedStable?.module_key || ''}
-            onClose={() =>
-              setSearchParams(
-                (cur) => {
-                  const next = new URLSearchParams(cur);
-                  next.delete('openRec');
-                  return next;
-                },
-                { replace: true }
-              )
-            }
+            onClose={closeRecModal}
             onSaved={async () => {
               bumpActionsVersion();
             }}
           />
         ) : (
           // Issued / superseded document → read-only view modal.
+          // returnTo drives the "Back" button; onClose (X) uses closeRecModal for same behaviour.
           <ReRecommendationViewModal
             recId={openRecId}
             returnTo={returnToPath}
-            onClose={() =>
-              setSearchParams(
-                (cur) => {
-                  const next = new URLSearchParams(cur);
-                  next.delete('openRec');
-                  return next;
-                },
-                { replace: true }
-              )
-            }
+            onClose={closeRecModal}
           />
         )
       )}

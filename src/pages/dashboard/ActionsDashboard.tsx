@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { ArrowLeft, Filter, X, ClipboardList, AlertTriangle, Paperclip, ExternalLink, AlertCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -45,6 +45,7 @@ interface SummaryMetrics {
 
 export default function ActionsDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedActionIdFromUrl = searchParams.get('actionId');
   const { organisation } = useAuth();
@@ -54,6 +55,9 @@ export default function ActionsDashboard() {
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
   const [evidenceActionId, setEvidenceActionId] = useState<string | null>(null);
   const [actionNavigationError, setActionNavigationError] = useState<string | null>(null);
+  // Captures the URL (minus modal-specific params) at the moment the action modal opens,
+  // so that ActionDetailModal "Back" can return here with filters intact.
+  const [returnToUrl, setReturnToUrl] = useState<string | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string[]>([]);
@@ -260,6 +264,15 @@ export default function ActionsDashboard() {
   };
 
   const handleActionClick = (action: Action) => {
+    // Snapshot the pre-modal URL (current path + search minus any stale modal params) so that
+    // ActionDetailModal's "Back to Remediation" button returns here with filters preserved.
+    const baseParams = new URLSearchParams(searchParams);
+    baseParams.delete('actionId');
+    baseParams.delete('document');
+    baseParams.delete('moduleInstance');
+    const baseSearch = baseParams.toString();
+    setReturnToUrl(`${location.pathname}${baseSearch ? `?${baseSearch}` : ''}`);
+
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('actionId', action.id);
     if (action.document?.id) {
@@ -281,6 +294,7 @@ export default function ActionsDashboard() {
     setSelectedAction(null);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete('actionId');
+    nextParams.delete('document');
     nextParams.delete('moduleInstance');
     setSearchParams(nextParams, { replace: true });
   };
@@ -634,7 +648,7 @@ export default function ActionsDashboard() {
           action={selectedAction}
           onClose={handleActionModalClose}
           onActionUpdated={handleActionUpdated}
-          returnTo="/dashboard"
+          returnTo={returnToUrl ?? '/remediation/actions'}
         />
       )}
 

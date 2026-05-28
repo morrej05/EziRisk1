@@ -1,4 +1,4 @@
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { ActiveFilterChip, ActiveFilterChips } from '../../components/filters/ActiveFilterChips';
 import {
   RE_RECOMMENDATION_PRIORITIES,
@@ -106,6 +106,7 @@ function buildWorkspaceUrl(documentId: string, moduleInstanceId: string | null, 
 
 export default function RecommendationsRegisterPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { rows, loading, error, options } = useRecommendationsRegister();
 
@@ -346,7 +347,7 @@ export default function RecommendationsRegisterPage() {
                   type="button"
                   onClick={() => navigate(
                     buildWorkspaceUrl(row.documentId, row.moduleInstanceId, row.id),
-                    { state: { returnTo: '/remediation/recommendations' } }
+                    { state: { returnTo: location.pathname + location.search } }
                   )}
                   className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
                 >
@@ -423,7 +424,7 @@ export default function RecommendationsRegisterPage() {
                         type="button"
                         onClick={() => navigate(
                           buildWorkspaceUrl(row.documentId, row.moduleInstanceId, row.id),
-                          { state: { returnTo: '/remediation/recommendations' } }
+                          { state: { returnTo: location.pathname + location.search } }
                         )}
                         className="text-slate-700 hover:text-slate-900 underline"
                       >
