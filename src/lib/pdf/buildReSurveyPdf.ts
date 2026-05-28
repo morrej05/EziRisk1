@@ -2051,20 +2051,110 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   const modulesByKey = new Map(modulesToInclude.map(m => [m.module_key, m]));
   const modulesById = new Map(moduleInstances.map((m) => [m.id, m]));
   const re10SitePhotosModule = modulesByKey.get('RE_10_SITE_PHOTOS');
-  const re10Data = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
-  const sitePhotos = Array.isArray(re10Data.photos)
-    ? (re10Data.photos as ReSurveySitePhoto[])
-      .map((photo) => ({
-        storage_path: photo?.storage_path,
-        caption: typeof photo?.caption === 'string' ? photo.caption : '',
-        description: typeof photo?.description === 'string' ? photo.description : '',
-        notes: typeof photo?.notes === 'string' ? photo.notes : '',
-        metadata: photo?.metadata,
-      }))
-      .filter((photo) => !!photo?.storage_path && isSupportedImagePath(String(photo.storage_path)))
+
+  // ─── P3: Attachment-first evidence resolution ─────────────────────────────
+  //
+  // RE-10 photos and site plan are read from the `attachments` table (primary)
+  // with a JSONB fallback for documents where the P1 backfill migration has not
+  // been run or where uploads pre-date the P2-A.2 migration.
+  //
+  // Recommendation evidence counts use JSONB action.photos (accurate per-rec)
+  // with an attachment-row count as a safety fallback when JSONB is absent.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // Unique module instance IDs from recommendations (for count fallback query).
+  const recModuleInstanceIds = [
+    ...new Set(
+      currentSurveyRecommendations
+        .map((a) => a.module_instance_id)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+
+  // Batch-fetch all relevant attachment rows in a single query.
+  const attFetchIds: string[] = [];
+  const re10ModuleId = re10SitePhotosModule?.id;
+  if (re10ModuleId) attFetchIds.push(re10ModuleId);
+  attFetchIds.push(...recModuleInstanceIds);
+
+  let allModuleAttachments: Array<{
+    id: string;
+    file_path: string;
+    file_name: string;
+    caption: string | null;
+    created_at: string;
+    module_instance_id: string | null;
+  }> = [];
+  if (attFetchIds.length > 0) {
+    const { data: attData } = await supabase
+      .from('attachments')
+      .select('id, file_path, file_name, caption, created_at, module_instance_id')
+      .in('module_instance_id', attFetchIds)
+      .is('deleted_at', null);
+    allModuleAttachments = attData || [];
+  }
+
+  // ─── RE-10: photos + site plan (attachment-first, JSONB fallback) ─────────
+  const SITE_PLAN_PREFIX = 'site_plan_';
+  const re10Attachments = re10ModuleId
+    ? allModuleAttachments.filter((a) => a.module_instance_id === re10ModuleId)
     : [];
-  const sitePlan = ((re10Data.site_plan || null) as ReSurveySitePlan | null);
-  const sitePlanPath = sitePlan?.storage_path && isSupportedImagePath(sitePlan.storage_path) ? sitePlan.storage_path : null;
+
+  let sitePhotos: ReSurveySitePhoto[];
+  let sitePlan: ReSurveySitePlan | null;
+  let sitePlanPath: string | null;
+
+  if (re10Attachments.length > 0) {
+    // Primary: attachments table (P2-A.2+ uploads and P1 backfill).
+    const photoAtts = re10Attachments.filter((a) => !a.file_name.startsWith(SITE_PLAN_PREFIX));
+    const planAtts = [...re10Attachments.filter((a) => a.file_name.startsWith(SITE_PLAN_PREFIX))].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    sitePhotos = photoAtts
+      .map((a) => ({ storage_path: a.file_path, caption: a.caption ?? '' }))
+      .filter((p) => isSupportedImagePath(p.storage_path ?? ''));
+
+    const planAtt = planAtts[0] ?? null;
+    sitePlan = planAtt
+      ? { storage_path: planAtt.file_path, description: planAtt.caption ?? '', uploaded_at: planAtt.created_at }
+      : null;
+    sitePlanPath = planAtt && isSupportedImagePath(planAtt.file_path) ? planAtt.file_path : null;
+  } else {
+    // Fallback: JSONB mirror (pre-P2 docs or P1 backfill not yet run).
+    const re10JsonbData = (re10SitePhotosModule?.data || {}) as Record<string, unknown>;
+    sitePhotos = Array.isArray(re10JsonbData.photos)
+      ? (re10JsonbData.photos as ReSurveySitePhoto[])
+        .map((photo) => ({
+          storage_path: photo?.storage_path,
+          caption: typeof photo?.caption === 'string' ? photo.caption : '',
+          description: typeof photo?.description === 'string' ? photo.description : '',
+          notes: typeof photo?.notes === 'string' ? photo.notes : '',
+          metadata: photo?.metadata,
+        }))
+        .filter((photo) => !!photo.storage_path && isSupportedImagePath(String(photo.storage_path)))
+      : [];
+    sitePlan = ((re10JsonbData.site_plan || null) as ReSurveySitePlan | null);
+    sitePlanPath = sitePlan?.storage_path && isSupportedImagePath(sitePlan.storage_path)
+      ? sitePlan.storage_path
+      : null;
+  }
+
+  // ─── Recommendations: attachment count fallback ───────────────────────────
+  // JSONB action.photos is the per-recommendation accurate primary source.
+  // The attachment map is used only when JSONB photos are absent (safety net
+  // for recs where the upload succeeded but the save did not complete).
+  const recAttachmentCounts = new Map<string, number>();
+  for (const att of allModuleAttachments) {
+    if (att.module_instance_id && recModuleInstanceIds.includes(att.module_instance_id)) {
+      recAttachmentCounts.set(
+        att.module_instance_id,
+        (recAttachmentCounts.get(att.module_instance_id) ?? 0) + 1,
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   const evidenceImageCache = {
     bytes: new Map<string, Promise<Uint8Array | null>>(),
     embedded: new Map<string, Promise<any | null>>(),
@@ -2860,7 +2950,12 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       const tableRows = rows.map((action) => {
         const linkedModule = modulesById.get(action.module_instance_id);
         const sectionLabel = getModuleDisplayName(action.source_module_key || linkedModule?.module_key || '');
-        const evidenceCount = Array.isArray(action.photos) ? action.photos.length : 0;
+        // JSONB is per-recommendation accurate; attachment count is a fallback
+        // for recs where JSONB is absent (upload succeeded, save did not finish).
+        const jsonbPhotoCount = Array.isArray(action.photos) ? action.photos.length : 0;
+        const evidenceCount = jsonbPhotoCount > 0
+          ? jsonbPhotoCount
+          : (recAttachmentCounts.get(action.module_instance_id) ?? 0);
         const riskImplication = action.hazard_text ? `Risk: ${action.hazard_text}` : 'Risk: Not recorded';
         const evidenceText = evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached';
         return [
