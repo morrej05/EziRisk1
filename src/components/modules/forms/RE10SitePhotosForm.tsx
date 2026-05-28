@@ -14,7 +14,7 @@ import {
 const MAX_FILE_SIZE_MB = 15;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_BATCH_FILES = 20;
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/heic'];
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
 
 // Naming convention that identifies a site plan attachment.
 // Applied at upload time and read back at save time when deriving the JSONB mirror.
@@ -93,7 +93,7 @@ export default function RE10SitePhotosForm({
       return `${file.name} exceeds ${MAX_FILE_SIZE_MB}MB limit (${(file.size / 1024 / 1024).toFixed(1)}MB)`;
     }
     if (!ALLOWED_IMAGE_TYPES.includes(file.type.toLowerCase())) {
-      return `${file.name} is not a supported image format (jpg, png, heic only)`;
+      return `${file.name} is not a supported image format (JPG or PNG only)`;
     }
     return null;
   };
@@ -177,7 +177,7 @@ export default function RE10SitePhotosForm({
 
     const allowedTypes = [...ALLOWED_IMAGE_TYPES, 'application/pdf'];
     if (!allowedTypes.includes(file.type.toLowerCase())) {
-      setUploadErrors(['File must be an image (jpg, png, heic) or PDF']);
+      setUploadErrors(['File must be an image (JPG or PNG) or PDF']);
       setUploadingSitePlan(false);
       return;
     }
@@ -293,7 +293,7 @@ export default function RE10SitePhotosForm({
               <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
                 <li>Maximum {MAX_FILE_SIZE_MB}MB per file</li>
                 <li>Up to {MAX_BATCH_FILES} photos per batch upload</li>
-                <li>Supported formats: JPG, PNG, HEIC (+ PDF for site plan)</li>
+                <li>Supported formats: JPG, PNG (+ PDF for site plan)</li>
               </ul>
             </div>
           </div>
@@ -333,7 +333,7 @@ export default function RE10SitePhotosForm({
                 {uploadingPhoto ? 'Uploading…' : 'Upload Photos'}
                 <input
                   type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/heic"
+                  accept="image/jpeg,image/jpg,image/png"
                   multiple
                   capture="environment"
                   className="hidden"

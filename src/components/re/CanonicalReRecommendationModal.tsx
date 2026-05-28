@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Image as ImageIcon, Upload, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import {
@@ -132,6 +132,12 @@ export default function CanonicalReRecommendationModal({
   const [docContext, setDocContext] = useState<DocContext | null>(null);
   const isLocked = docContext?.isLocked ?? false;
 
+  // Refs for cleanup across all close paths (X, Cancel, Escape, navigation away).
+  const cleanupDoneRef = useRef(false);
+  const photosRef = useRef<Photo[]>([]);
+  const documentIdRef = useRef(documentId);
+  const handleCancelRef = useRef<() => void>(() => {});
+
   const defaultModule = useMemo(
     () => sourceModuleKey || "OTHER",
     [sourceModuleKey],
@@ -183,6 +189,7 @@ export default function CanonicalReRecommendationModal({
       return;
     }
 
+    cleanupDoneRef.current = false;
     let cancelled = false;
     supabase
       .from("documents")
@@ -210,6 +217,10 @@ export default function CanonicalReRecommendationModal({
     if (!isOpen || userEditedTargetDate) return;
     setTargetDate(targetDateFromTimescale(timescaleForPriority(priority)));
   }, [isOpen, priority, userEditedTargetDate]);
+
+  // Keep refs in sync so the Escape/unmount closures always have fresh values.
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+  useEffect(() => { documentIdRef.current = documentId; }, [documentId]);
 
   // ─── Form helpers ────────────────────────────────────────────────────────────
 
@@ -347,6 +358,7 @@ export default function CanonicalReRecommendationModal({
    * so they don't accumulate as orphans in the attachments table.
    */
   const handleCancel = () => {
+    cleanupDoneRef.current = true;
     // Fire-and-forget cleanup of session photos (skip temp entries).
     photos.forEach((p) => {
       if (!p.attachmentId.startsWith("temp-")) {
@@ -358,6 +370,36 @@ export default function CanonicalReRecommendationModal({
     resetForm();
     onClose();
   };
+
+  // Keep handleCancelRef up to date after every render for the Escape handler.
+  useEffect(() => { handleCancelRef.current = handleCancel; });
+
+  // Escape key — dismiss and clean up like the X button.
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleCancelRef.current();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  // Unmount cleanup — handles navigation away while modal is open.
+  // cleanupDoneRef prevents double-deletion when handleCancel already ran.
+  useEffect(() => {
+    return () => {
+      if (!cleanupDoneRef.current) {
+        photosRef.current
+          .filter((p) => !p.attachmentId.startsWith("temp-"))
+          .forEach((p) => {
+            void deleteAttachment(p.attachmentId, documentIdRef.current).catch(
+              (err) =>
+                console.error("[RE Recommendation] Unmount cleanup failed:", err),
+            );
+          });
+      }
+    };
+  }, []);
 
   // ─── Save ────────────────────────────────────────────────────────────────────
 
@@ -436,6 +478,7 @@ export default function CanonicalReRecommendationModal({
 
       if (error) throw error;
 
+      cleanupDoneRef.current = true;
       await onSaved();
       resetForm();
       onClose();

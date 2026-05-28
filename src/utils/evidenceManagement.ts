@@ -306,22 +306,38 @@ export async function carryForwardEvidence(
       return { success: true, count: 0 };
     }
 
+    // Idempotency guard: fetch paths already copied to the destination so a
+    // retry after partial failure doesn't violate the unique index on
+    // (document_id, file_path) WHERE deleted_at IS NULL.
+    const { data: existing } = await supabase
+      .from('attachments')
+      .select('file_path')
+      .eq('document_id', toDocumentId)
+      .is('deleted_at', null);
+    const existingPaths = new Set((existing || []).map((r: { file_path: string }) => r.file_path));
+
     const userId = (await supabase.auth.getUser()).data.user?.id;
 
-    const newAttachments = attachments.map(att => ({
-      organisation_id: organisationId,
-      document_id: toDocumentId,
-      base_document_id: toBaseDocumentId,
-      module_instance_id: att.module_instance_id ? (moduleInstanceIdMap[att.module_instance_id] || null) : null,
-      action_id: att.action_id ? (actionIdMap[att.action_id] || null) : null,
-      file_path: att.file_path,
-      file_name: att.file_name,
-      file_type: att.file_type,
-      file_size_bytes: att.file_size_bytes,
-      caption: att.caption,
-      taken_at: att.taken_at,
-      uploaded_by: userId,
-    }));
+    const newAttachments = attachments
+      .filter(att => !existingPaths.has(att.file_path))
+      .map(att => ({
+        organisation_id: organisationId,
+        document_id: toDocumentId,
+        base_document_id: toBaseDocumentId,
+        module_instance_id: att.module_instance_id ? (moduleInstanceIdMap[att.module_instance_id] || null) : null,
+        action_id: att.action_id ? (actionIdMap[att.action_id] || null) : null,
+        file_path: att.file_path,
+        file_name: att.file_name,
+        file_type: att.file_type,
+        file_size_bytes: att.file_size_bytes,
+        caption: att.caption,
+        taken_at: att.taken_at,
+        uploaded_by: userId,
+      }));
+
+    if (newAttachments.length === 0) {
+      return { success: true, count: 0 };
+    }
 
     const { error } = await supabase
       .from('attachments')
