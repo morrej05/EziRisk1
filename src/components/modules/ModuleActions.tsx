@@ -301,32 +301,10 @@ export default function ModuleActions({
     isModuleFooterRollup,
   ]);
 
-  // Inline evidence upload — lock-safe path with optional caption.
-  const {
-    pendingFiles: evidencePendingFiles,
-    caption: evidenceCaption,
-    setCaption: setEvidenceCaption,
-    isUploading: isUploadingEvidence,
-    uploadResult: evidenceUploadResult,
-    onFilesSelected: onEvidenceFilesSelected,
-    upload: uploadEvidence,
-    dismiss: dismissEvidenceUpload,
-  } = useInlineEvidenceUpload(documentId, moduleInstanceId, fetchActions);
-
-  // Auto-dismiss success indicator after 3 s so the trigger button reappears.
-  useEffect(() => {
-    if (!evidenceUploadResult?.success) return;
-    const t = setTimeout(() => dismissEvidenceUpload(), 3000);
-    return () => clearTimeout(t);
-  }, [evidenceUploadResult, dismissEvidenceUpload]);
-
-  // Refresh the evidence list whenever an upload completes successfully.
-  useEffect(() => {
-    if (evidenceUploadResult?.success) {
-      setEvidenceRefreshKey((k) => k + 1);
-    }
-  }, [evidenceUploadResult]);
-
+  // fetchActions must be declared before useInlineEvidenceUpload so it is
+  // already initialised when passed as the onUploaded callback. Declaring it
+  // after that hook call would put it in the temporal dead zone and produce
+  // "Cannot access 'fetchActions' before initialization" in production builds.
   const fetchActions = async () => {
     if (!isValidUUID(moduleInstanceId)) {
       console.error(
@@ -492,6 +470,32 @@ export default function ModuleActions({
       setIsLoading(false);
     }
   };
+
+  // Inline evidence upload — lock-safe path with optional caption.
+  const {
+    pendingFiles: evidencePendingFiles,
+    caption: evidenceCaption,
+    setCaption: setEvidenceCaption,
+    isUploading: isUploadingEvidence,
+    uploadResult: evidenceUploadResult,
+    onFilesSelected: onEvidenceFilesSelected,
+    upload: uploadEvidence,
+    dismiss: dismissEvidenceUpload,
+  } = useInlineEvidenceUpload(documentId, moduleInstanceId, fetchActions);
+
+  // Auto-dismiss success indicator after 3 s so the trigger button reappears.
+  useEffect(() => {
+    if (!evidenceUploadResult?.success) return;
+    const t = setTimeout(() => dismissEvidenceUpload(), 3000);
+    return () => clearTimeout(t);
+  }, [evidenceUploadResult, dismissEvidenceUpload]);
+
+  // Refresh the evidence list whenever an upload completes successfully.
+  useEffect(() => {
+    if (evidenceUploadResult?.success) {
+      setEvidenceRefreshKey((k) => k + 1);
+    }
+  }, [evidenceUploadResult]);
 
   const fetchDocumentStatus = async () => {
     if (!isValidUUID(documentId)) {
