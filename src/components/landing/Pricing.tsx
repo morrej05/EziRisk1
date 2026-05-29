@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { getDefaultRegion, getPricing } from '../../config/pricing';
 import { PUBLIC_LEGAL_DETAILS } from '../../config/support';
 
@@ -31,6 +31,14 @@ const plans = [
   },
 ];
 
+const enterpriseFeatures = [
+  'Higher report volumes',
+  'Multi-user deployment',
+  'Multi-site portfolios',
+  'Flexible implementation',
+  'Custom requirements',
+];
+
 export default function Pricing() {
   return (
     <section id="pricing" className="py-24 bg-neutral-50">
@@ -42,7 +50,7 @@ export default function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
           {plans.map((plan) => (
             <div
               key={plan.title}
@@ -76,6 +84,28 @@ export default function Pricing() {
               </Link>
             </div>
           ))}
+
+          {/* Enterprise card */}
+          <div className="relative p-6 bg-slate-50 rounded-xl border border-slate-300 transition-shadow">
+            <h3 className="text-xl font-semibold text-neutral-900">Enterprise</h3>
+            <p className="mt-2 text-sm text-neutral-500">
+              For insurers, consultancies and multi-site organisations.
+            </p>
+            <ul className="mt-5 space-y-2">
+              {enterpriseFeatures.map((feature) => (
+                <li key={feature} className="flex items-start gap-2 text-sm text-neutral-600">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+            <Link
+              to="/contact"
+              className="inline-flex items-center justify-center mt-6 w-full px-4 py-2 bg-slate-800 text-white rounded-lg font-medium hover:bg-slate-700 transition-colors"
+            >
+              Book a demo
+            </Link>
+          </div>
         </div>
 
         <p className="mt-8 text-center text-sm text-neutral-500">No long-term contracts. Upgrade or cancel anytime.</p>
@@ -85,21 +115,6 @@ export default function Pricing() {
         <p className="mt-3 text-center text-sm text-neutral-500">
           {PUBLIC_LEGAL_DETAILS.footerStatement}
         </p>
-
-        <div className="mt-10 mx-auto max-w-xl rounded-xl border border-neutral-200 bg-white p-6 text-center">
-          <p className="font-semibold text-neutral-900 mb-1">
-            Need more users, multi-site deployment or a custom setup?
-          </p>
-          <p className="text-sm text-neutral-500 mb-4">
-            Enterprise plans are available for insurers, consultancies and multi-site organisations.
-          </p>
-          <Link
-            to="/contact"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-700 hover:text-primary-800 transition-colors"
-          >
-            Get in touch <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
       </div>
     </section>
   );
