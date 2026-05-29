@@ -1,8 +1,8 @@
 import { CheckCircle2 } from 'lucide-react';
 
 const SIGNALS = [
-  'Structured around PAS 79 workflows',
-  'Built to support RR(FS)O 2005 reporting',
+  'Aligned to recognised fire risk assessment methodology',
+  'Jurisdiction-aware reporting across the UK and Ireland',
   'Locked issued reports with version history',
   'Evidence linked to findings',
   'Full audit trail',
