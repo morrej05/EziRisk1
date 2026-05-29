@@ -2,10 +2,8 @@ import { normalizeFsdJurisdiction } from './jurisdiction';
 
 function getLegislationReference(jurisdiction: ReturnType<typeof normalizeFsdJurisdiction>): string {
   switch (jurisdiction) {
-    case 'england':
-      return 'the Regulatory Reform (Fire Safety) Order 2005 (England)';
-    case 'wales':
-      return 'the Regulatory Reform (Fire Safety) Order 2005 (as applicable in Wales)';
+    case 'england_wales':
+      return 'the Regulatory Reform (Fire Safety) Order 2005 (England and Wales)';
     case 'scotland':
       return 'the Fire (Scotland) Act 2005 and Fire Safety (Scotland) Regulations 2006';
     case 'northern_ireland':
@@ -25,7 +23,7 @@ function getStandardsReference(jurisdiction: ReturnType<typeof normalizeFsdJuris
   return 'relevant British Standards and manufacturers\' installation instructions';
 }
 
-export function fsdLimitationsText(jurisdiction: string = 'england'): string {
+export function fsdLimitationsText(jurisdiction: string = 'england_wales'): string {
   const fsdJurisdiction = normalizeFsdJurisdiction(jurisdiction);
   const standardsRef = getStandardsReference(fsdJurisdiction);
   const legislationRef = getLegislationReference(fsdJurisdiction);

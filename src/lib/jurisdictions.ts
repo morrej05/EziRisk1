@@ -261,15 +261,6 @@ export function getStandardsOptions(jurisdiction: Jurisdiction | string | null |
 
 
 /**
- * Normalize jurisdiction values for DSEAR context
- * DSEAR is currently constrained to Great Britain jurisdictions.
- */
-export function normalizeDsearJurisdiction(jurisdiction: Jurisdiction | string | null | undefined): Jurisdiction {
-  const normalized = normalizeJurisdiction(jurisdiction);
-  return normalized === 'ireland' ? 'england_wales' : normalized;
-}
-
-/**
  * Get available jurisdictions for DSEAR selection
  */
 export function getDsearJurisdictionOptions() {

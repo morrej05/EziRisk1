@@ -2,10 +2,8 @@ import { normalizeFsdJurisdiction } from './jurisdiction';
 
 function getComplianceReference(jurisdiction: ReturnType<typeof normalizeFsdJurisdiction>): string {
   switch (jurisdiction) {
-    case 'england':
-      return 'the Building Regulations 2010 (England), Approved Document B and the agreed fire engineering/design standards for the project';
-    case 'wales':
-      return 'the Building Regulations applicable in Wales (including Approved Document B for Wales) and the agreed fire engineering/design standards for the project';
+    case 'england_wales':
+      return 'the Building Regulations 2010 (England and Wales), Approved Document B and the agreed fire engineering/design standards for the project';
     case 'scotland':
       return 'the Building (Scotland) Regulations 2004 and the Scottish Technical Handbooks (Fire), together with the agreed fire engineering/design standards for the project';
     case 'northern_ireland':
@@ -17,7 +15,7 @@ function getComplianceReference(jurisdiction: ReturnType<typeof normalizeFsdJuri
   }
 }
 
-export function fsdPurposeAndScopeText(jurisdiction: string = 'england'): string {
+export function fsdPurposeAndScopeText(jurisdiction: string = 'england_wales'): string {
   const fsdJurisdiction = normalizeFsdJurisdiction(jurisdiction);
   const complianceRef = getComplianceReference(fsdJurisdiction);
 
