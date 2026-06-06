@@ -341,9 +341,13 @@ interface LibraryRecommendation {
 }
 
 /**
- * Ensures ONE auto recommendation is created in re_recommendations for a rating.
+ * Intended lifecycle:
+ * Auto recommendations are generated once from a poor RE rating, then become
+ * independent recommendation records. Later rating changes must not suppress,
+ * delete, restore or overwrite them; assessors must manage the recommendation
+ * manually.
  *
- * Generate-once semantics:
+ * Implementation:
  *   - If a recommendation already exists for this (document, module, factor,
  *     module_instance) identity, it is left completely untouched and 'exists'
  *     is returned.  The record is an independent assessor-owned artefact.
@@ -351,9 +355,6 @@ interface LibraryRecommendation {
  *     is returned.  The triggering rating is stored in metadata for traceability.
  *   - If no record exists and the rating is > 2, nothing is created and 'none'
  *     is returned.
- *
- * The pipeline never suppresses, restores, or updates existing auto recs.
- * Lifecycle management (close, delete, supersede) is the assessor's responsibility.
  */
 export async function ensureRecommendationFromRating(
   params: RecommendationFromRatingParams
