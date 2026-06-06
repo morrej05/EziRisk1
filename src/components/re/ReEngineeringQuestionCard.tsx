@@ -36,13 +36,13 @@ export default function ReEngineeringQuestionCard({
   onNotesChange,
 }: ReEngineeringQuestionCardProps) {
   const autoRecHint =
-    typeof rating === 'number' && rating <= 2
-      ? autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored'
-        ? 'Targeted recommendation active'
-        : 'Targeted recommendation will be created on save'
-      : autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored'
-        ? 'Recommendation will be suppressed on save'
-        : 'No active recommendation';
+    autoRecommendationState === 'created'
+      ? 'Targeted recommendation created'
+      : autoRecommendationState === 'exists'
+        ? 'Targeted recommendation on file'
+        : typeof rating === 'number' && rating <= 2
+          ? 'Targeted recommendation will be created on save'
+          : 'No active recommendation';
 
   return (
     <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3 h-full min-h-0">

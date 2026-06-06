@@ -161,7 +161,7 @@ export default function RE03OccupancyForm({
         industryKey,
       });
       setAutoRecStates((prev) => ({ ...prev, [canonicalKey]: lifecycleState }));
-      if (lifecycleState !== 'none') {
+      if (lifecycleState === 'created') {
         bumpActionsVersion();
       }
 

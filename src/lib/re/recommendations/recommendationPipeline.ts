@@ -9,12 +9,16 @@ interface RecommendationFromRatingParams {
   industryKey: string | null;
 }
 
-export type AutoRecommendationLifecycleState =
-  | 'none'
-  | 'created'
-  | 'updated'
-  | 'restored'
-  | 'suppressed';
+/**
+ * 'none'    — no recommendation was created or already existed.
+ * 'created' — a new recommendation was just created for the first time.
+ * 'exists'  — a recommendation already exists for this factor; left untouched.
+ *
+ * 'updated', 'restored', and 'suppressed' are intentionally removed:
+ * auto recommendations are now independent records after creation and are
+ * never mutated or suppressed by the pipeline.
+ */
+export type AutoRecommendationLifecycleState = 'none' | 'created' | 'exists';
 
 interface FallbackContent {
   title: string;
@@ -337,64 +341,52 @@ interface LibraryRecommendation {
 }
 
 /**
- * Ensures ONE auto recommendation is created in re_recommendations table based on a rating.
- * Uses same wording for rating 1 and 2 (only priority differs).
+ * Ensures ONE auto recommendation is created in re_recommendations for a rating.
  *
- * @param params - Parameters for creating/ensuring the recommendation
- * @returns The created or existing recommendation ID, or null if no recommendation needed
+ * Generate-once semantics:
+ *   - If a recommendation already exists for this (document, module, factor,
+ *     module_instance) identity, it is left completely untouched and 'exists'
+ *     is returned.  The record is an independent assessor-owned artefact.
+ *   - If no record exists and the rating is ≤ 2, one is created and 'created'
+ *     is returned.  The triggering rating is stored in metadata for traceability.
+ *   - If no record exists and the rating is > 2, nothing is created and 'none'
+ *     is returned.
+ *
+ * The pipeline never suppresses, restores, or updates existing auto recs.
+ * Lifecycle management (close, delete, supersede) is the assessor's responsibility.
  */
 export async function ensureRecommendationFromRating(
   params: RecommendationFromRatingParams
 ): Promise<AutoRecommendationLifecycleState> {
   const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, rating_1_5, industryKey } = params;
 
-  // Find all historical rows for this auto recommendation identity.
-  const { data: allRows, error: readError } = await supabase
+  // Check whether an auto recommendation already exists for this identity.
+  const { data: existingRow, error: readError } = await supabase
     .from('re_recommendations')
-    .select('id, is_suppressed, created_at')
+    .select('id')
     .eq('document_id', documentId)
     .eq('source_type', 'auto')
     .eq('source_module_key', sourceModuleKey)
     .eq('source_factor_key', sourceFactorKey || null)
     .eq('module_instance_id', moduleInstanceId || null)
-    .order('created_at', { ascending: false });
+    .maybeSingle();
 
   if (readError) {
-    if (import.meta.env.DEV) console.error('Error loading auto recommendation rows:', readError);
+    if (import.meta.env.DEV) console.error('Error checking auto recommendation:', readError);
     return 'none';
   }
 
-  const existingRows = allRows || [];
-  const primaryRow = existingRows[0] || null;
-
-  if (existingRows.length > 1) {
-    const duplicateIds = existingRows.slice(1).map((row) => row.id);
-    if (duplicateIds.length > 0) {
-      await supabase
-        .from('re_recommendations')
-        .update({ is_suppressed: true })
-        .in('id', duplicateIds);
-    }
+  // Record already exists — it is now independent; leave it untouched.
+  if (existingRow) {
+    return 'exists';
   }
 
+  // No record exists and the rating is acceptable — nothing to create.
   if (rating_1_5 > 2) {
-    if (!primaryRow || primaryRow.is_suppressed) {
-      return 'none';
-    }
-
-    const { error: suppressError } = await supabase
-      .from('re_recommendations')
-      .update({ is_suppressed: true })
-      .eq('id', primaryRow.id);
-
-    if (suppressError) {
-      if (import.meta.env.DEV) console.error('Error suppressing auto recommendation:', suppressError);
-      return 'none';
-    }
-
-    return 'suppressed';
+    return 'none';
   }
 
+  // First time a poor rating (≤ 2) is seen for this factor — create once.
   const recommendationPayload = await buildRecommendationPayload({
     sourceModuleKey,
     sourceFactorKey,
@@ -403,29 +395,13 @@ export async function ensureRecommendationFromRating(
     industryKey,
   });
 
-  if (primaryRow) {
-    const { error: updateError } = await supabase
-      .from('re_recommendations')
-      .update({
-        ...recommendationPayload,
-        is_suppressed: false,
-      })
-      .eq('id', primaryRow.id);
-
-    if (updateError) {
-      if (import.meta.env.DEV) console.error('Error updating auto recommendation:', updateError);
-      return 'none';
-    }
-
-    return primaryRow.is_suppressed ? 'restored' : 'updated';
-  }
-
   const created = await createAutoRecommendation({
     documentId,
     moduleInstanceId,
     sourceModuleKey,
     sourceFactorKey,
     recommendationPayload,
+    triggeredByRating: rating_1_5,
   });
 
   return created ? 'created' : 'none';
@@ -555,7 +531,8 @@ async function findMatchingLibraryRecommendation(params: {
 }
 
 /**
- * Create a recommendation from a library template
+ * Create an auto recommendation record.
+ * Stores the triggering rating in metadata for traceability.
  */
 async function createAutoRecommendation(params: {
   documentId: string;
@@ -563,8 +540,9 @@ async function createAutoRecommendation(params: {
   sourceModuleKey: string;
   sourceFactorKey?: string;
   recommendationPayload: Awaited<ReturnType<typeof buildRecommendationPayload>>;
+  triggeredByRating?: number;
 }): Promise<boolean> {
-  const { documentId, moduleInstanceId, sourceModuleKey, sourceFactorKey, recommendationPayload } = params;
+  const { documentId, moduleInstanceId, sourceModuleKey, sourceFactorKey, recommendationPayload, triggeredByRating } = params;
 
   const { data, error } = await supabase
     .from('re_recommendations')
@@ -575,6 +553,11 @@ async function createAutoRecommendation(params: {
       source_module_key: sourceModuleKey,
       source_factor_key: sourceFactorKey || null,
       ...recommendationPayload,
+      metadata: {
+        ...(recommendationPayload.metadata ?? {}),
+        triggered_by_rating: triggeredByRating ?? null,
+        triggered_at: new Date().toISOString(),
+      },
     })
     .select('id')
     .single();

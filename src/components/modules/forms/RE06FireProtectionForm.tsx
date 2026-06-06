@@ -1157,7 +1157,7 @@ export default function RE06FireProtectionForm({
             </div>
             {(() => {
               const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
-              const hasActiveRecommendation = currentState === 'created' || currentState === 'updated' || currentState === 'restored';
+              const hasActiveRecommendation = currentState === 'created' || currentState === 'exists';
 
               if (isLocalisedKnockoutFailed) {
                 return (
@@ -1170,7 +1170,7 @@ export default function RE06FireProtectionForm({
               if (hasActiveRecommendation) {
                 return (
                   <p className="mt-3 text-sm text-risk-info-fg">
-                    Localised protection knockout recommendation will be suppressed on save.
+                    Localised protection knockout recommendation is on file.
                   </p>
                 );
               }

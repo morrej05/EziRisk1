@@ -215,7 +215,7 @@ export default function RE09ManagementForm({
         const factorKey = row.source_factor_key;
         if (!factorKey || !factorKeys.includes(factorKey)) continue;
         if (nextStates[factorKey] !== "none") continue;
-        nextStates[factorKey] = row.is_suppressed ? "suppressed" : "created";
+        nextStates[factorKey] = "exists";
       }
 
       setAutoRecStates(nextStates);
@@ -291,31 +291,14 @@ export default function RE09ManagementForm({
     rating: number | null,
     autoRecommendationState: AutoRecommendationLifecycleState,
   ) => {
+    if (autoRecommendationState === "created") {
+      return "Auto recommendation created";
+    }
+    if (autoRecommendationState === "exists") {
+      return "Auto recommendation on file";
+    }
     const lowScore = rating !== null && rating <= 2;
-
-    if (lowScore) {
-      if (
-        autoRecommendationState === "created" ||
-        autoRecommendationState === "updated" ||
-        autoRecommendationState === "restored"
-      ) {
-        return "Auto recommendation active";
-      }
-      if (autoRecommendationState === "suppressed") {
-        return "Recommendation will be reactivated on save";
-      }
-      return "Recommendation will be created on save";
-    }
-
-    if (
-      autoRecommendationState === "created" ||
-      autoRecommendationState === "updated" ||
-      autoRecommendationState === "restored"
-    ) {
-      return "Recommendation will be suppressed on save";
-    }
-
-    return "No active recommendation";
+    return lowScore ? "Recommendation will be created on save" : "No active recommendation";
   };
 
   const handleSave = async () => {
@@ -379,7 +362,7 @@ export default function RE09ManagementForm({
           });
 
           lifecycleUpdates[canonicalKey] = lifecycleState;
-          if (lifecycleState !== "none") {
+          if (lifecycleState === "created") {
             hasLifecycleChange = true;
           }
         }

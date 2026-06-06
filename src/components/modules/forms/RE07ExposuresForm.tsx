@@ -196,7 +196,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         const factorKey = row.source_factor_key;
         if (!factorKey || !allFactorKeys.includes(factorKey)) continue;
         if (nextStates[factorKey] !== 'none') continue;
-        nextStates[factorKey] = row.is_suppressed ? 'suppressed' : 'created';
+        nextStates[factorKey] = 'exists';
       }
 
       setAutoRecStates(nextStates);
@@ -217,23 +217,13 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
     if (rating === null) {
       return 'Unrated';
     }
-    const lowScore = rating <= 2;
-
-    if (lowScore) {
-      if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
-        return 'Recommendation has been added';
-      }
-      if (autoRecommendationState === 'suppressed') {
-        return 'Recommendation will be reactivated on save';
-      }
-      return 'Recommendation will be created on save';
+    if (autoRecommendationState === 'created') {
+      return 'Recommendation added';
     }
-
-    if (autoRecommendationState === 'created' || autoRecommendationState === 'updated' || autoRecommendationState === 'restored') {
-      return 'Recommendation will be suppressed on save';
+    if (autoRecommendationState === 'exists') {
+      return 'Recommendation on file';
     }
-
-    return 'No active recommendation';
+    return rating <= 2 ? 'Recommendation will be created on save' : 'No active recommendation';
   };
 
   const syncExposureAutosToRegister = async () => {
@@ -270,7 +260,7 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         industryKey: null,
       });
 
-      if (lifecycleState !== 'none') {
+      if (lifecycleState === 'created') {
         hasLifecycleChange = true;
       }
 
