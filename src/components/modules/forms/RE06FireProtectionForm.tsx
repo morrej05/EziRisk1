@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, Info, Building as BuildingIcon, TrendingUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { isReDocumentLocked } from '../../../lib/re/documentLock';
@@ -1116,212 +1116,6 @@ export default function RE06FireProtectionForm({
     <>
     <div className="pb-24">
 
-      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Site-level fire protection engineering judgement</h3>
-            <p className="text-sm text-slate-600">Use this section to score the overall adequacy and reliability of fixed fire protection across the site. This includes sprinklers, localised systems, gaseous systems, foam, water spray, detection interfaces, water supplies, impairment control and evidence confidence. It remains applicable even where sprinklers are absent, because absence of warranted fixed protection is itself a scoreable deficiency.</p>
-            <p className="text-xs text-slate-500 mt-1">This is the only scoring layer that drives the RE-05 fire protection section grade. Scores of 4 are intended to be realistically achievable for well-managed normal risks; 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Adequacy</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Reliability</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Localised / Special</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Evidence / Confidence</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.evidence_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
-            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score</div>
-            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q4)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.adequacy.map((definition) => {
-                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
-                if (!question) return null;
-                return (
-                  <ReEngineeringQuestionCard
-                    key={definition.factorKey}
-                    questionId={definition.id}
-                    factorKey={definition.factorKey}
-                    title={definition.uiLabel}
-                    prompt={definition.prompt}
-                    weight={definition.weight}
-                    answerStates={definition.answerStates}
-                    rating={question.score_1_5}
-                    notes={question.notes}
-                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
-                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
-                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
-                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q5–Q7)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.reliability.map((definition) => {
-                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
-                if (!question) return null;
-                return (
-                  <ReEngineeringQuestionCard
-                    key={definition.factorKey}
-                    questionId={definition.id}
-                    factorKey={definition.factorKey}
-                    title={definition.uiLabel}
-                    prompt={definition.prompt}
-                    weight={definition.weight}
-                    answerStates={definition.answerStates}
-                    rating={question.score_1_5}
-                    notes={question.notes}
-                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
-                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
-                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
-                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {sprinklerKnockoutBranch.showDetailQuestions && (
-            <div className="border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
-              <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?</label>
-                  <select
-                    value={selectedSprinklerData.localised_required || 'Unknown'}
-                    onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                  >
-                    <option value="Unknown">Unknown</option>
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </select>
-                </div>
-                {selectedSprinklerData.localised_required === 'Yes' && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">If yes, is it installed?</label>
-                    <select
-                      value={selectedSprinklerData.localised_present || 'Unknown'}
-                      onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                    >
-                      <option value="Unknown">Unknown</option>
-                      <option value="Yes">Yes</option>
-                      <option value="No">No</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-              {(() => {
-                const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
-                const hasActiveRecommendation = currentState === 'created' || currentState === 'exists';
-
-                if (isLocalisedKnockoutFailed) {
-                  return (
-                    <p className="mt-3 text-sm text-risk-high-fg">
-                      {hasActiveRecommendation ? 'Localised protection knockout recommendation is active.' : 'Localised protection knockout recommendation will be created on save.'}
-                    </p>
-                  );
-                }
-
-                if (hasActiveRecommendation) {
-                  return (
-                    <p className="mt-3 text-sm text-risk-info-fg">
-                      Localised protection knockout recommendation is on file.
-                    </p>
-                  );
-                }
-
-                return null;
-              })()}
-              {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q8–Q9 are shown only when localised protection is required and installed.</p>}
-            </div>
-          )}
-
-
-
-          {sprinklerKnockoutBranch.showDetailQuestions && showLocalisedDetailedAssessment && (
-            <div>
-              <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
-                  const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
-                  if (!question) return null;
-                  return (
-                    <ReEngineeringQuestionCard
-                      key={definition.factorKey}
-                      questionId={definition.id}
-                      factorKey={definition.factorKey}
-                      title={definition.uiLabel}
-                      prompt={definition.prompt}
-                      weight={definition.weight}
-                      answerStates={definition.answerStates}
-                      rating={question.score_1_5}
-                      notes={question.notes}
-                      autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
-                      onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
-                      onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
-                      onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
-                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
-                if (!question) return null;
-                return (
-                  <ReEngineeringQuestionCard
-                    key={definition.factorKey}
-                    questionId={definition.id}
-                    factorKey={definition.factorKey}
-                    title={definition.uiLabel}
-                    prompt={definition.prompt}
-                    weight={definition.weight}
-                    answerStates={definition.answerStates}
-                    rating={question.score_1_5}
-                    notes={question.notes}
-                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
-                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
-                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
-                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
 
       <div className="grid grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
@@ -1965,6 +1759,214 @@ export default function RE06FireProtectionForm({
             </>
           )}
         </div>
+
+      <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-risk-info-bg rounded-lg flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-risk-info-fg" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-slate-900">Site-level fire protection engineering judgement</h3>
+            <p className="text-sm text-slate-600 mt-1">Complete the building-level fixed protection data first, then use this section to apply your overall engineering judgement.</p>
+            <p className="text-sm text-slate-600">Use this section to score the overall adequacy and reliability of fixed fire protection across the site. This includes sprinklers, localised systems, gaseous systems, foam, water spray, detection interfaces, water supplies, impairment control and evidence confidence. It remains applicable even where sprinklers are absent, because absence of warranted fixed protection is itself a scoreable deficiency.</p>
+            <p className="text-xs text-slate-500 mt-1">This is the only scoring layer that drives the RE-05 fire protection section grade. Scores of 4 are intended to be realistically achievable for well-managed normal risks; 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Adequacy</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Reliability</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Localised / Special</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+            <div className="text-sm text-slate-600 mb-1">Evidence / Confidence</div>
+            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.evidence_subscore ?? 'Not rated'}</div>
+          </div>
+          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
+            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score</div>
+            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q4)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.adequacy.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q5–Q7)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.reliability.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {sprinklerKnockoutBranch.showDetailQuestions && (
+            <div className="border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
+              <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?</label>
+                  <select
+                    value={selectedSprinklerData.localised_required || 'Unknown'}
+                    onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="Unknown">Unknown</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                {selectedSprinklerData.localised_required === 'Yes' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">If yes, is it installed?</label>
+                    <select
+                      value={selectedSprinklerData.localised_present || 'Unknown'}
+                      onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    >
+                      <option value="Unknown">Unknown</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {(() => {
+                const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
+                const hasActiveRecommendation = currentState === 'created' || currentState === 'exists';
+
+                if (isLocalisedKnockoutFailed) {
+                  return (
+                    <p className="mt-3 text-sm text-risk-high-fg">
+                      {hasActiveRecommendation ? 'Localised protection knockout recommendation is active.' : 'Localised protection knockout recommendation will be created on save.'}
+                    </p>
+                  );
+                }
+
+                if (hasActiveRecommendation) {
+                  return (
+                    <p className="mt-3 text-sm text-risk-info-fg">
+                      Localised protection knockout recommendation is on file.
+                    </p>
+                  );
+                }
+
+                return null;
+              })()}
+              {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q8–Q9 are shown only when localised protection is required and installed.</p>}
+            </div>
+          )}
+
+
+
+          {sprinklerKnockoutBranch.showDetailQuestions && showLocalisedDetailedAssessment && (
+            <div>
+              <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
+                  const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                  if (!question) return null;
+                  return (
+                    <ReEngineeringQuestionCard
+                      key={definition.factorKey}
+                      questionId={definition.id}
+                      factorKey={definition.factorKey}
+                      title={definition.uiLabel}
+                      prompt={definition.prompt}
+                      weight={definition.weight}
+                      answerStates={definition.answerStates}
+                      rating={question.score_1_5}
+                      notes={question.notes}
+                      autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                      onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                      onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                      onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
+                const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
+                if (!question) return null;
+                return (
+                  <ReEngineeringQuestionCard
+                    key={definition.factorKey}
+                    questionId={definition.id}
+                    factorKey={definition.factorKey}
+                    title={definition.uiLabel}
+                    prompt={definition.prompt}
+                    weight={definition.weight}
+                    answerStates={definition.answerStates}
+                    rating={question.score_1_5}
+                    notes={question.notes}
+                    autoRecommendationState={supplementaryAutoRecStates[definition.factorKey] || 'none'}
+                    onRatingChange={(rating) => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', rating)}
+                    onClearRating={() => updateSupplementaryQuestion(definition.factorKey, 'score_1_5', null)}
+                    onNotesChange={(notes) => updateSupplementaryQuestion(definition.factorKey, 'notes', notes)}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
 
       <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
