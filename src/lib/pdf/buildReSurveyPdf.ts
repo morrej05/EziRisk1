@@ -676,14 +676,22 @@ function resolveSectionRating(module: ModuleInstance, breakdown: Breakdown): num
   return null;
 }
 
-function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: Breakdown): string {
-  const notes = sanitizePdfText(module.assessor_notes || '').trim();
+export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: Breakdown): string {
+  let notes = sanitizePdfText(module.assessor_notes || '').trim();
   const rating = resolveSectionRating(module, breakdown);
   const scoreBand = getScoreBand(rating);
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
     const context = getConstructionContext(module, breakdown);
     const construction = (module.data as any)?.construction || module.data || {};
+    notes = sanitizePdfText(String(
+      notes ||
+      construction?.narrative_commentary ||
+      construction?.construction_narrative ||
+      construction?.site_notes ||
+      construction?.comments ||
+      ''
+    )).trim();
     const buildings = getConstructionBuildings(construction);
     const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
     const combustibleValue = context.explicitCombustiblePct ?? context.derivedCombustiblePct;
@@ -1671,16 +1679,21 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
   return [opening, weaknessNarrative, resilienceNarrative, closing].filter(Boolean).join('\n\n');
 }
 
-function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+export function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
   if (module.module_key === 'RE_02_CONSTRUCTION') return buildConstructionEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module);
+  if (module.module_key === 'RE_07_NATURAL_HAZARDS') return buildNaturalHazardsEngineeringInterpretation(module, breakdown);
+  if (module.module_key === 'RE_08_UTILITIES') return buildUtilitiesEngineeringInterpretation(module, breakdown);
+  if (module.module_key === 'RE_09_MANAGEMENT') return buildManagementEngineeringInterpretation(module, breakdown);
+  if (module.module_key === 'RE_12_LOSS_VALUES') return buildLossValuesEngineeringInterpretation(module, breakdown);
 
   const rating = resolveSectionRating(module, breakdown);
   if (!Number.isFinite(Number(rating))) {
-    return 'Engineering interpretation is constrained because section rating data is not provided. Conclusions are therefore provisional and should be treated as data-limited.';
+    return 'Engineering interpretation is constrained because section rating data is not provided. Conclusions are provisional and should be read as data-limited rather than as a confirmed risk view.';
   }
-  return `Engineering interpretation is aligned to submitted section inputs and current score (${Number(rating)}/5). No additional inferred values are applied.`;
+  const band = getScoreBand(rating);
+  return `Engineering interpretation: Current score is ${formatScoreOutOfFive(rating)} (${band.label}). The entered evidence should be reviewed for whether controls are reliable in a severe but credible loss scenario, not just whether fields are present.`;
 }
 
 function getExposuresStructuredRows(module: ModuleInstance): Row[] {
@@ -1815,6 +1828,62 @@ function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle' | 'e
   ], ['scenario title', 'scenario description']);
 }
 
+
+function getRatingByKey(breakdown: Breakdown, key: string): number | null {
+  const direct = breakdown.globalPillars.find((pillar) => pillar.key === key)?.rating;
+  if (Number.isFinite(Number(direct))) return Number(direct);
+  const driver = breakdown.occupancyDrivers.find((item) => item.key === key)?.rating;
+  return Number.isFinite(Number(driver)) ? Number(driver) : null;
+}
+
+function buildNaturalHazardsEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  const rows = getExposuresStructuredRows(module);
+  const weakerPerils = rows
+    .filter(([, detail]) => /rating\s*[12]\b/i.test(String(detail)))
+    .map(([label]) => label)
+    .slice(0, 3);
+  const rating = getRatingByKey(breakdown, 'natural_hazards_and_external_exposures') ?? resolveSectionRating(module, breakdown);
+  const focus = weakerPerils.length
+    ? `Priority exposure attention is indicated for ${weakerPerils.join(', ')}.`
+    : 'No low-rated peril has been isolated from the entered exposure table, but site-specific exposure evidence should still be validated against flood, wind, wildfire and human-threat data.';
+  return `Engineering interpretation: Natural hazards score is ${formatScoreOutOfFive(rating)}. ${focus} The underwriting relevance is the potential for common-mode damage, access constraints and extended restoration time rather than only physical damage at the surveyed buildings.`;
+}
+
+function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  const rows = getUtilitiesStructuredRows(module);
+  const criticalEquipmentRows = rows.find(([label]) => label === 'Critical equipment')?.[1];
+  const criticalServicesRows = rows.find(([label]) => label === 'Critical services')?.[1];
+  const rating = getRatingByKey(breakdown, 'electrical_and_utilities_reliability') ?? resolveSectionRating(module, breakdown);
+  const evidence = [criticalServicesRows, criticalEquipmentRows].filter((value) => !isMissingDataValue(String(value))).length;
+  const evidenceText = evidence > 0
+    ? 'Critical services/equipment dependencies have been recorded and should be tested against single-point-of-failure and spares assumptions.'
+    : 'Critical services/equipment dependencies are not yet evidenced, limiting confidence in downtime estimates.';
+  return `Engineering interpretation: Utilities and critical-services resilience is ${formatScoreOutOfFive(rating)}. ${evidenceText} For insurance purposes this section influences expected interruption duration, restart complexity and the credibility of any loss-mitigation assumptions.`;
+}
+
+function buildManagementEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  const rows = getManagementCategoryRows(module);
+  const weakRows = rows.filter(([, rating]) => Number(rating) <= 2).map(([category]) => formatIdentifierLabel(category)).slice(0, 3);
+  const rating = getRatingByKey(breakdown, 'management_systems') ?? resolveSectionRating(module, breakdown);
+  const weakText = weakRows.length
+    ? `Weaknesses requiring management attention are ${weakRows.join(', ')}.`
+    : 'No management category is currently rated poor, so emphasis should be on sustaining evidence quality, audit cadence and impairment discipline.';
+  return `Engineering interpretation: Management systems score is ${formatScoreOutOfFive(rating)}. ${weakText} These controls are loss-frequency and loss-severity modifiers because they govern housekeeping, hot work, impairments, contractor activity and emergency response reliability.`;
+}
+
+function buildLossValuesEngineeringInterpretation(module: ModuleInstance, _breakdown: Breakdown): string {
+  const loss = getLossValuesSummary((module.data as any) || {});
+  const insuredValueText = [
+    loss.buildings ? `buildings ${formatDataValue(loss.buildings)}` : '',
+    loss.plantMachinery ? `plant/machinery ${formatDataValue(loss.plantMachinery)}` : '',
+    loss.stock ? `stock ${formatDataValue(loss.stock)}` : '',
+  ].filter(Boolean).join(', ');
+  const biText = loss.grossProfitAnnual || loss.indemnityMonths
+    ? `BI inputs include gross profit ${formatDataValue(loss.grossProfitAnnual)} and indemnity period ${formatDataValue(loss.indemnityMonths)} months.`
+    : 'BI values or indemnity assumptions are not fully evidenced.';
+  return `Engineering interpretation: Declared values frame the financial materiality of the engineering findings${insuredValueText ? ` (${insuredValueText})` : ''}. ${biText} Loss expectancy scenarios should be sense-checked against construction/fire-protection performance so the report does not treat sums insured as isolated accounting fields.`;
+}
+
 function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): string {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
@@ -1855,7 +1924,7 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     ? `total floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
     : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
   const geometryText = `Recorded geometry: ${giaText}${context.totalMezzArea > 0 ? `, mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m²` : ''} across ${context.buildingCount} building(s).`;
-  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText}`;
+  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText} The underwriting relevance is potential fire spread, smoke-remediation scope, reinstatement complexity and business interruption duration.`;
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -2761,8 +2830,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    // RE_06 was previously excluded here; it now renders its own EI via buildSectionInterpretation
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS' && module.module_key !== 'RE_08_UTILITIES' && module.module_key !== 'RE_09_MANAGEMENT' && module.module_key !== 'RE_12_LOSS_VALUES') {
+    if (module.module_key !== 'RE_14_DRAFT_OUTPUTS') {
       const interpretation = buildSectionInterpretation(module, breakdown);
       if (interpretation) {
         ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
@@ -2772,7 +2840,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_03_OCCUPANCY' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS' && module.module_key !== 'RE_08_UTILITIES' && module.module_key !== 'RE_09_MANAGEMENT' && module.module_key !== 'RE_12_LOSS_VALUES') {
+    if (module.module_key !== 'RE_14_DRAFT_OUTPUTS') {
       const commentary = getNarrativeCommentaryWithBreakdown(module, breakdown);
       if (commentary) {
         ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
