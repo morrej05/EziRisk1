@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical } from 'lucide-react';
 
+export function getAutoExpandTextareaHeight(scrollHeight: number, minRows = 3, lineHeight = 24, verticalPadding = 20): number {
+  const minHeight = lineHeight * minRows + verticalPadding;
+  return Math.max(scrollHeight, minHeight);
+}
+
 interface AutoExpandTextareaProps {
   id?: string;
   name?: string;
@@ -35,10 +40,10 @@ export default function AutoExpandTextarea({
       textareaRef.current.style.height = 'auto';
       const scrollHeight = textareaRef.current.scrollHeight;
       const lineHeight = 24;
-      const minHeight = lineHeight * minRows + 20;
+      const minHeight = getAutoExpandTextareaHeight(0, minRows, lineHeight);
 
-      if (isFocused || hasContent) {
-        textareaRef.current.style.height = `${Math.max(scrollHeight, minHeight)}px`;
+      if (isFocused || value.trim().length > 0) {
+        textareaRef.current.style.height = `${getAutoExpandTextareaHeight(scrollHeight, minRows, lineHeight)}px`;
       } else {
         textareaRef.current.style.height = `${minHeight}px`;
       }

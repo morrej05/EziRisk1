@@ -125,4 +125,81 @@ describe('getModuleCompletionDetails for RE modules', () => {
 
     expect(completion.missingRequirements).not.toContain('Select an industry classification');
   });
+
+  it('keeps RE-06 incomplete until sprinkler, detection and water-score fields are genuinely completed', () => {
+    const base = {
+      module_key: 'RE_06_FIRE_PROTECTION',
+      data: {
+        fire_protection: {
+          buildings: {
+            b1: {
+              sprinklerData: {
+                sprinklers_installed: 'Yes',
+                sprinkler_coverage_installed_pct: 100,
+                sprinkler_coverage_required_pct: 100,
+                system_type: 'Wet pipe',
+                sprinkler_adequacy: 'Adequate',
+                sprinkler_score_1_5: 4,
+                detection_installed: 'Yes',
+              },
+            },
+          },
+          site: { water_score_1_5: null },
+        },
+      } as any,
+    };
+
+    const incomplete = getModuleCompletionDetails(base);
+    expect(incomplete.state).toBe('incomplete');
+    expect(incomplete.missingRequirements).toContain('Complete sprinkler, detection and scoring fields for assessed buildings');
+    expect(incomplete.missingRequirements).toContain('Complete fire water supply reliability score');
+
+    const complete = getModuleCompletionDetails({
+      ...base,
+      data: {
+        fire_protection: {
+          buildings: {
+            b1: {
+              sprinklerData: {
+                ...base.data.fire_protection.buildings.b1.sprinklerData,
+                detection_score_1_5: 4,
+              },
+            },
+          },
+          site: { water_score_1_5: 4 },
+        },
+      } as any,
+    });
+
+    expect(complete.state).toBe('complete');
+    expect(complete.missingRequirements).toEqual([]);
+  });
+
+  it('requires RE-06 no-sprinkler knockout judgement before showing complete', () => {
+    const missingJudgement = getModuleCompletionDetails({
+      module_key: 'RE_06_FIRE_PROTECTION',
+      data: {
+        fire_protection: {
+          buildings: { b1: { sprinklerData: { sprinklers_installed: 'No' } } },
+          site: { water_score_1_5: 3 },
+        },
+      } as any,
+    });
+
+    expect(missingJudgement.state).toBe('incomplete');
+    expect(missingJudgement.missingRequirements).toContain('Complete sprinkler, detection and scoring fields for assessed buildings');
+
+    const notWarranted = getModuleCompletionDetails({
+      module_key: 'RE_06_FIRE_PROTECTION',
+      data: {
+        fire_protection: {
+          buildings: { b1: { sprinklerData: { sprinklers_installed: 'No', sprinklers_warranted: 'No' } } },
+          site: { water_score_1_5: 3 },
+        },
+      } as any,
+    });
+
+    expect(notWarranted.state).toBe('complete');
+  });
+
 });

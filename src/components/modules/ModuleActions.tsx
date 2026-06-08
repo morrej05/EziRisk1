@@ -659,24 +659,26 @@ export default function ModuleActions({
   return (
     <div
       id={recommendationContext?.returnAnchor}
-      className={`bg-white rounded-lg border border-neutral-200 ${compact ? "p-4 mt-4" : "p-6 mt-6"}`}
+      className={compact ? "mt-3 rounded-md border border-neutral-200 bg-neutral-50/70 px-3 py-2" : "bg-white rounded-lg border border-neutral-200 p-6 mt-6"}
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className={compact ? "flex items-center justify-between gap-3 mb-0" : "flex items-center justify-between mb-4"}>
         <div>
-          <h3 className="text-lg font-bold text-neutral-900">
-            {`Recommendations — ${recommendationContext?.displayLabel || "Assessment section"}`}
+          <h3 className={compact ? "text-xs font-semibold text-neutral-700" : "text-lg font-bold text-neutral-900"}>
+            {compact ? `Recs — ${recommendationContext?.displayLabel || "Section"}` : `Recommendations — ${recommendationContext?.displayLabel || "Assessment section"}`}
           </h3>
-          <p className="text-sm text-neutral-500">
-            Section-owned finding, evidence, priority and due-date workflow.
-          </p>
+          {!compact && (
+            <p className="text-sm text-neutral-500">
+              Section-owned finding, evidence, priority and due-date workflow.
+            </p>
+          )}
         </div>
         {documentStatus === "draft" && !summaryOnly && (
           <div className="flex items-center gap-2 flex-wrap">
             {/* Evidence trigger — hidden while files are staged or a result toast is showing */}
             {evidencePendingFiles.length === 0 && !evidenceUploadResult && (
-              <label className="flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium cursor-pointer touch-manipulation select-none">
+              <label className={compact ? "flex items-center gap-1.5 px-2.5 py-1.5 border border-blue-200 bg-white text-blue-700 rounded-md hover:bg-blue-50 transition-colors text-xs font-medium cursor-pointer touch-manipulation select-none" : "flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium cursor-pointer touch-manipulation select-none"}>
                 <Upload className="w-4 h-4 flex-shrink-0" />
-                <span>Add evidence</span>
+                <span>{compact ? 'Evidence' : 'Add evidence'}</span>
                 <input
                   type="file"
                   multiple
@@ -723,10 +725,10 @@ export default function ModuleActions({
                 }
                 setShowAddModal(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"
+              className={compact ? "flex items-center gap-1.5 px-2.5 py-1.5 bg-neutral-900 text-white text-xs font-medium rounded-md hover:bg-neutral-800 transition-colors" : "flex items-center gap-2 px-4 py-2 bg-neutral-900 text-white font-medium rounded-lg hover:bg-neutral-800 transition-colors"}
             >
-              <Plus className="w-4 h-4" />
-              {buttonLabel}
+              <Plus className={compact ? "w-3.5 h-3.5" : "w-4 h-4"} />
+              {compact ? (buttonLabel === "Add Recommendation" ? "Add rec" : buttonLabel) : buttonLabel}
             </button>
           </div>
         )}
@@ -783,7 +785,7 @@ export default function ModuleActions({
         </div>
       )}
 
-      {isLoading ? (
+      {!compact && (isLoading ? (
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-neutral-300 border-t-neutral-900"></div>
         </div>
@@ -840,7 +842,7 @@ export default function ModuleActions({
             />
           ))}
         </div>
-      )}
+      ))}
 
       {!isReModule && showAddModal && (
         <AddActionModal

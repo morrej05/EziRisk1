@@ -129,7 +129,7 @@ function getReModuleMissingRequirements(
   context?: ModuleCompletionContext,
 ): string[] {
   const moduleKey = moduleInstance.module_key;
-  const data = moduleInstance.data || {};
+  const data = (moduleInstance.data || {}) as any;
 
   if (moduleKey === 'RISK_ENGINEERING' || moduleKey === 'RE_14_DRAFT_OUTPUTS') {
     return [];
@@ -159,12 +159,12 @@ function getReModuleMissingRequirements(
       return ['Add at least one building'];
     }
 
-    const includedBuildings = buildings.filter((building) => building?.include_in_scoring !== false);
+    const includedBuildings = buildings.filter((building: any) => building?.include_in_scoring !== false);
     if (includedBuildings.length === 0) {
       return ['Add at least one building included in scoring'];
     }
 
-    const missingBuildingInputs = includedBuildings.some((building) => {
+    const missingBuildingInputs = includedBuildings.some((building: any) => {
       const roofArea = Number(building?.roof?.area_sqm ?? building?.roof_area_m2);
       const mezzAreaRaw = building?.upper_floors_mezzanine?.area_sqm ?? building?.mezzanine_area_m2;
       const mezzArea = Number(mezzAreaRaw);
@@ -216,18 +216,69 @@ function getReModuleMissingRequirements(
   }
 
   if (moduleKey === 'RE_06_FIRE_PROTECTION') {
-    // RE06 stores data in its own module at data.fire_protection, not in the
-    // RISK_ENGINEERING ratings store. Check that at least one building has been
-    // assessed (sprinklerData populated) or that a supplementary overall score exists.
     const fp = data?.fire_protection as Record<string, any> | undefined;
-    const buildings = fp?.buildings as Record<string, any> | undefined;
-    const hasBuildingData = buildings && Object.values(buildings).some(
-      (b: any) => hasMeaningfulValue(b?.sprinklerData?.sprinklers_installed)
-    );
-    const hasSupplementaryScore = typeof fp?.supplementary_assessment?.overall_score === 'number';
-    return hasBuildingData || hasSupplementaryScore
-      ? []
-      : ['Complete fire protection assessment for at least one building'];
+    const buildings = fp?.buildings && typeof fp.buildings === 'object'
+      ? Object.values(fp.buildings as Record<string, any>)
+      : [];
+    const missing: string[] = [];
+
+    if (buildings.length === 0) {
+      return ['Complete fire protection assessment for at least one building'];
+    }
+
+    const assessedBuildings = buildings.filter((building: any) => {
+      const status = building?.sprinklerData?.sprinklers_installed;
+      return hasMeaningfulValue(status) && String(status).toLowerCase() !== 'unknown';
+    });
+
+    if (assessedBuildings.length === 0) {
+      missing.push('Confirm sprinkler installation status for at least one building');
+    }
+
+    const incompleteBuilding = assessedBuildings.some((building: any) => {
+      const sprinkler = building?.sprinklerData || {};
+      const status = String(sprinkler.sprinklers_installed || '').trim();
+
+      if (status === 'No') {
+        if (!hasMeaningfulValue(sprinkler.sprinklers_warranted)) return true;
+        if (sprinkler.sprinklers_warranted === 'Yes' && !hasMeaningfulValue(sprinkler.no_sprinklers_commentary)) return true;
+        return false;
+      }
+
+      if (status === 'Yes' || status === 'Partial') {
+        const hasInstalledCoverage = Number.isFinite(Number(sprinkler.sprinkler_coverage_installed_pct));
+        const hasRequiredCoverage = Number.isFinite(Number(sprinkler.sprinkler_coverage_required_pct));
+        const hasSystemType = hasMeaningfulValue(sprinkler.system_type);
+        const hasAdequacy = hasMeaningfulValue(sprinkler.sprinkler_adequacy);
+        const hasSprinklerScore = Number.isFinite(Number(sprinkler.sprinkler_score_1_5))
+          || Number.isFinite(Number(sprinkler.final_active_score_1_5));
+        const detectionStatusKnown = hasMeaningfulValue(sprinkler.detection_installed);
+        const detectionScoredOrNotInstalled = sprinkler.detection_installed === 'No'
+          || Number.isFinite(Number(sprinkler.detection_score_1_5));
+
+        return !(
+          hasInstalledCoverage
+          && hasRequiredCoverage
+          && hasSystemType
+          && hasAdequacy
+          && hasSprinklerScore
+          && detectionStatusKnown
+          && detectionScoredOrNotInstalled
+        );
+      }
+
+      return true;
+    });
+
+    if (incompleteBuilding) {
+      missing.push('Complete sprinkler, detection and scoring fields for assessed buildings');
+    }
+
+    if (!(fp?.site?.water_score_1_5 !== null && fp?.site?.water_score_1_5 !== undefined && Number.isFinite(Number(fp.site.water_score_1_5)))) {
+      missing.push('Complete fire water supply reliability score');
+    }
+
+    return missing;
   }
 
   if (moduleKey === 'RE_07_NATURAL_HAZARDS') {

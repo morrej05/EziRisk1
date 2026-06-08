@@ -11,11 +11,13 @@ import {
   generateAutoFlags,
 } from '../../../lib/re/fireProtectionModel';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
+import { collectRe06AutoRecommendationSyncInputs } from '../../../lib/re/fireProtectionWorkflow';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import FireProtectionRecommendations from '../../re/FireProtectionRecommendations';
 import ModuleActions from '../ModuleActions';
 import ReEngineeringQuestionCard from '../../re/ReEngineeringQuestionCard';
 import FloatingSaveBar from './FloatingSaveBar';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
 import {
   RE04_ENGINEERING_QUESTIONS,
@@ -546,12 +548,12 @@ export default function RE06FireProtectionForm({
   const isLocalisedKnockoutFailed = isLocalisedRequired && selectedSprinklerData.localised_present === 'No';
   const showLocalisedDetailedAssessment = isLocalisedRequired && isLocalisedInstalled;
 
-  const rawSprinklerScore = useMemo(() => calculateSprinklerScore(selectedSprinklerData), [selectedSprinklerData]);
+  const rawSprinklerScore = useMemo(() => calculateSprinklerScore(selectedSprinklerData as any), [selectedSprinklerData]);
   const selectedSprinklerScore = rawSprinklerScore;
   const selectedDetectionScore = selectedSprinklerData.detection_score_1_5 ?? null;
   const selectedFinalScore = selectedSprinklerData.final_active_score_1_5 ?? rawSprinklerScore;
 
-  const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, 3);
+  const autoFlags = generateAutoFlags(selectedSprinklerData as any, rawSprinklerScore, 3);
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
   const installedCoverageUnavailableReason = siteRollup.totalArea_m2 > 0
     ? null
@@ -620,7 +622,7 @@ export default function RE06FireProtectionForm({
       },
     };
 
-    return generateFireProtectionRecommendations(fpModule);
+    return generateFireProtectionRecommendations(fpModule as any);
   }, [fireProtectionData.buildings]);
 
   const hasSufficientSiteRollupData = siteRollup.totalArea_m2 > 0 && siteRollup.coverageDataBuildings > 0;
@@ -720,41 +722,24 @@ export default function RE06FireProtectionForm({
         return { factorKey: question.factor_key, lifecycleState };
       });
 
-      const localisedKnockoutSyncOps = Object.entries(payload.buildings || {}).map(([buildingId, buildingData]) => {
-        const sprinklerData = buildingData?.sprinklerData;
-        const knockoutFailed = sprinklerData?.localised_required === 'Yes' && sprinklerData?.localised_present === 'No';
-
-        return syncAutoRecToRegister({
+      const buildingAutoRecSyncOps = collectRe06AutoRecommendationSyncInputs(payload.buildings).map((input) => (
+        syncAutoRecToRegister({
           documentId: moduleInstance.document_id,
           moduleKey: 'RE_06_FIRE_PROTECTION',
-          canonicalKey: `re06_fp_localised_required_installation:${buildingId}`,
+          canonicalKey: input.canonicalKey,
           moduleInstanceId: moduleInstance.id,
-          rating_1_5: knockoutFailed ? 1 : 5,
+          rating_1_5: input.rating_1_5,
           industryKey,
-        }).then((lifecycleState) => ({ buildingId, lifecycleState }));
-      });
+        }).then((lifecycleState) => ({
+          buildingId: input.buildingId,
+          lifecycleState,
+          kind: input.kind,
+        }))
+      ));
 
-      // Auto-rec for buildings where sprinklers are absent but warranted/recommended
-      const noSprinklersWarrantedSyncOps = Object.entries(payload.buildings || {}).map(([buildingId, buildingData]) => {
-        const sprinklerData = buildingData?.sprinklerData;
-        const isDeficiency =
-          sprinklerData?.sprinklers_installed === 'No' &&
-          sprinklerData?.sprinklers_warranted === 'Yes';
-
-        return syncAutoRecToRegister({
-          documentId: moduleInstance.document_id,
-          moduleKey: 'RE_06_FIRE_PROTECTION',
-          canonicalKey: `re06_fp_sprinklers_warranted_absent:${buildingId}`,
-          moduleInstanceId: moduleInstance.id,
-          rating_1_5: isDeficiency ? 1 : 5,
-          industryKey,
-        }).then((lifecycleState) => ({ buildingId, lifecycleState }));
-      });
-
-      const [supplementarySyncResults, localisedKnockoutSyncResults] = await Promise.all([
+      const [supplementarySyncResults, buildingAutoRecSyncResults] = await Promise.all([
         Promise.allSettled(supplementarySyncOps),
-        Promise.allSettled(localisedKnockoutSyncOps),
-        Promise.allSettled(noSprinklersWarrantedSyncOps),
+        Promise.allSettled(buildingAutoRecSyncOps),
       ]);
 
       setSupplementaryAutoRecStates((prev) => {
@@ -771,9 +756,11 @@ export default function RE06FireProtectionForm({
       setLocalisedKnockoutAutoRecStates((prev) => {
         const next = { ...prev };
 
-        for (const result of localisedKnockoutSyncResults) {
+        for (const result of buildingAutoRecSyncResults) {
           if (result.status !== 'fulfilled') continue;
-          next[result.value.buildingId] = result.value.lifecycleState;
+          if (result.value.kind === 'localised_knockout') {
+            next[result.value.buildingId] = result.value.lifecycleState;
+          }
         }
 
         return next;
@@ -814,7 +801,7 @@ export default function RE06FireProtectionForm({
         [field]: value,
       };
 
-      const sprinklerScore = calculateSprinklerScore(updatedData);
+      const sprinklerScore = calculateSprinklerScore(updatedData as any);
       updatedData.sprinkler_score_1_5 = sprinklerScore;
       updatedData.final_active_score_1_5 = sprinklerScore;
 
@@ -1447,11 +1434,11 @@ export default function RE06FireProtectionForm({
                         <label className="block text-sm font-medium text-slate-700 mb-1">
                           Commentary on suppression absence
                         </label>
-                        <textarea
+                        <AutoExpandTextarea
                           value={selectedSprinklerData.no_sprinklers_commentary ?? ''}
                           onChange={(e) => updateBuildingSprinkler('no_sprinklers_commentary', e.target.value)}
-                          rows={4}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                          minRows={4}
+                          className="px-3 py-2 rounded-md text-sm focus:ring-blue-500"
                           placeholder="Describe reasons for absence, alternative protection measures in place, and any engineering justification..."
                         />
                       </div>
@@ -1477,11 +1464,11 @@ export default function RE06FireProtectionForm({
                       <label className="block text-xs font-medium text-slate-700 mb-1">
                         Notes on sprinkler status
                       </label>
-                      <textarea
+                      <AutoExpandTextarea
                         value={selectedSprinklerData.unknown_status_notes ?? ''}
                         onChange={(e) => updateBuildingSprinkler('unknown_status_notes', e.target.value)}
-                        rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                        minRows={2}
+                        className="px-3 py-2 rounded-md text-sm focus:ring-blue-500"
                         placeholder="e.g., access restrictions, information pending, to be confirmed with site manager..."
                       />
                     </div>
@@ -1831,12 +1818,12 @@ export default function RE06FireProtectionForm({
 
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
-                          <textarea
+                          <AutoExpandTextarea
                             value={selectedSprinklerData.detection_comments || ''}
                             onChange={(e) => updateBuildingSprinkler('detection_comments', e.target.value)}
                             placeholder="Additional details on fire detection system..."
-                            rows={2}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            minRows={2}
+                            className="px-3 py-2 rounded-lg focus:ring-blue-500"
                           />
                         </div>
                       </>
@@ -1870,33 +1857,33 @@ export default function RE06FireProtectionForm({
                   </div>
                 </div>
 
-                {selectedSprinklerData.sprinkler_coverage_required_pct !== undefined &&
+                {selectedSprinklerData.sprinkler_coverage_required_pct != null &&
                   selectedSprinklerData.sprinkler_coverage_required_pct < 100 &&
                   selectedSprinklerData.sprinkler_coverage_required_pct > 0 && (
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-2">
                         Justification for {'<'}100% Required Coverage
                       </label>
-                      <textarea
+                      <AutoExpandTextarea
                         value={selectedSprinklerData.justification_if_required_lt_100 || ''}
                         onChange={(e) =>
                           updateBuildingSprinkler('justification_if_required_lt_100', e.target.value)
                         }
                         placeholder="Explain why full coverage is not required..."
-                        rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        minRows={2}
+                        className="px-3 py-2 rounded-lg focus:ring-blue-500"
                       />
                     </div>
                   )}
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Comments</label>
-                  <textarea
+                  <AutoExpandTextarea
                     value={selectedComments}
                     onChange={(e) => updateBuildingComments(e.target.value)}
                     placeholder="Additional notes on sprinkler system..."
-                    rows={2}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    minRows={2}
+                    className="px-3 py-2 rounded-lg focus:ring-blue-500"
                   />
                 </div>
 
