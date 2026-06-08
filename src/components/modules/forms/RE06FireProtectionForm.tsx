@@ -166,6 +166,23 @@ interface BuildingFireProtection {
   comments?: string;
 }
 
+type RecommendationRating = 1 | 2 | 3 | 4 | 5;
+
+interface RecommendationFireProtectionModule {
+  buildings?: Record<string, {
+    suppression?: {
+      sprinklers?: {
+        rating?: RecommendationRating;
+        provided_pct?: number;
+        required_pct?: number;
+        localised_required?: 'yes' | 'no' | 'unknown';
+        localised_present?: 'yes' | 'no' | 'partial' | 'unknown';
+      };
+    };
+  }>;
+  site?: Record<string, never>;
+}
+
 interface FireProtectionModuleData {
   buildings: Record<string, BuildingFireProtection>;
   site: {
@@ -242,6 +259,7 @@ function shouldIncludeLocalisedScoring(buildings: Record<string, BuildingFirePro
   return Object.values(buildings).some((buildingData) => {
     const sprinklerData = buildingData?.sprinklerData;
     if (!sprinklerData) return false;
+    if (!isSprinklerDetailStatus(sprinklerData.sprinklers_installed)) return false;
     const required = sprinklerData.localised_required === 'Yes';
     const installed = sprinklerData.localised_present === 'Yes';
     const requiredButMissing = required && sprinklerData.localised_present === 'No';
@@ -571,12 +589,12 @@ export default function RE06FireProtectionForm({
   const isLocalisedKnockoutFailed = isLocalisedRequired && selectedSprinklerData.localised_present === 'No';
   const showLocalisedDetailedAssessment = isLocalisedRequired && isLocalisedInstalled;
 
-  const rawSprinklerScore = useMemo(() => calculateSprinklerScore(selectedSprinklerData as any), [selectedSprinklerData]);
+  const rawSprinklerScore = useMemo(() => calculateSprinklerScore(selectedSprinklerData), [selectedSprinklerData]);
   const selectedSprinklerScore = rawSprinklerScore;
   const selectedDetectionScore = selectedSprinklerData.detection_score_1_5 ?? null;
   const selectedFinalScore = selectedSprinklerData.final_active_score_1_5 ?? rawSprinklerScore;
 
-  const autoFlags = generateAutoFlags(selectedSprinklerData as any, rawSprinklerScore, 3);
+  const autoFlags = generateAutoFlags(selectedSprinklerData, rawSprinklerScore, 3);
   const siteRollup = calculateSiteRollup(fireProtectionData, buildings);
   const installedCoverageUnavailableReason = siteRollup.totalArea_m2 > 0
     ? null
@@ -622,14 +640,14 @@ export default function RE06FireProtectionForm({
   }, [supplementaryAssessment.questions]);
 
   const derivedRecommendations = useMemo(() => {
-    const buildingsForRecs: Record<string, unknown> = {};
+    const buildingsForRecs: NonNullable<RecommendationFireProtectionModule['buildings']> = {};
 
     Object.entries(fireProtectionData.buildings).forEach(([buildingId, buildingFP]) => {
       if (!buildingFP.sprinklerData) return;
       buildingsForRecs[buildingId] = {
         suppression: {
           sprinklers: {
-            rating: buildingFP.sprinklerData.sprinkler_score_1_5,
+            rating: buildingFP.sprinklerData.sprinkler_score_1_5 as RecommendationRating | undefined,
             provided_pct: buildingFP.sprinklerData.sprinkler_coverage_installed_pct,
             required_pct: buildingFP.sprinklerData.sprinkler_coverage_required_pct,
             localised_required: buildingFP.sprinklerData.localised_required?.toLowerCase(),
@@ -639,13 +657,12 @@ export default function RE06FireProtectionForm({
       };
     });
 
-    const fpModule = {
+    const fpModule: RecommendationFireProtectionModule = {
       buildings: buildingsForRecs,
-      site: {
-      },
+      site: {},
     };
 
-    return generateFireProtectionRecommendations(fpModule as any);
+    return generateFireProtectionRecommendations(fpModule);
   }, [fireProtectionData.buildings]);
 
   const hasSufficientSiteRollupData = siteRollup.totalArea_m2 > 0 && siteRollup.coverageDataBuildings > 0;
@@ -822,7 +839,7 @@ export default function RE06FireProtectionForm({
         { ...createDefaultBuildingSprinkler(), ...building.sprinklerData },
         value
       );
-      const sprinklerScore = calculateSprinklerScore(updatedData as any);
+      const sprinklerScore = calculateSprinklerScore(updatedData);
       updatedData.sprinkler_score_1_5 = sprinklerScore;
       updatedData.final_active_score_1_5 = sprinklerScore;
 
@@ -853,7 +870,7 @@ export default function RE06FireProtectionForm({
         [field]: field === 'sprinklers_warranted' ? normalizeSprinklersWarranted(value) : value,
       };
 
-      const sprinklerScore = calculateSprinklerScore(updatedData as any);
+      const sprinklerScore = calculateSprinklerScore(updatedData);
       updatedData.sprinkler_score_1_5 = sprinklerScore;
       updatedData.final_active_score_1_5 = sprinklerScore;
 
@@ -1188,27 +1205,15 @@ export default function RE06FireProtectionForm({
             </div>
           </div>
 
-          <div className="border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
-            <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?</label>
-                <select
-                  value={selectedSprinklerData.localised_required || 'Unknown'}
-                  onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                >
-                  <option value="Unknown">Unknown</option>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
-              </div>
-              {selectedSprinklerData.localised_required === 'Yes' && (
+          {sprinklerKnockoutBranch.showDetailQuestions && (
+            <div className="border border-risk-info-border bg-risk-info-bg rounded-lg p-4">
+              <h4 className="font-semibold text-risk-info-fg mb-3">Localised / Special Protection Knockout</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">If yes, is it installed?</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Is localised fire protection required for process/equipment hazards where a fire could develop rapidly or where ceiling sprinkler protection may not provide timely control?</label>
                   <select
-                    value={selectedSprinklerData.localised_present || 'Unknown'}
-                    onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
+                    value={selectedSprinklerData.localised_required || 'Unknown'}
+                    onChange={(e) => updateLocalisedKnockout('localised_required', e.target.value as LocalisedRequired)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   >
                     <option value="Unknown">Unknown</option>
@@ -1216,36 +1221,50 @@ export default function RE06FireProtectionForm({
                     <option value="No">No</option>
                   </select>
                 </div>
-              )}
+                {selectedSprinklerData.localised_required === 'Yes' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">If yes, is it installed?</label>
+                    <select
+                      value={selectedSprinklerData.localised_present || 'Unknown'}
+                      onChange={(e) => updateLocalisedKnockout('localised_present', e.target.value as LocalisedPresent)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    >
+                      <option value="Unknown">Unknown</option>
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {(() => {
+                const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
+                const hasActiveRecommendation = currentState === 'created' || currentState === 'exists';
+
+                if (isLocalisedKnockoutFailed) {
+                  return (
+                    <p className="mt-3 text-sm text-risk-high-fg">
+                      {hasActiveRecommendation ? 'Localised protection knockout recommendation is active.' : 'Localised protection knockout recommendation will be created on save.'}
+                    </p>
+                  );
+                }
+
+                if (hasActiveRecommendation) {
+                  return (
+                    <p className="mt-3 text-sm text-risk-info-fg">
+                      Localised protection knockout recommendation is on file.
+                    </p>
+                  );
+                }
+
+                return null;
+              })()}
+              {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q8–Q9 are shown only when localised protection is required and installed.</p>}
             </div>
-            {(() => {
-              const currentState = selectedBuildingId ? localisedKnockoutAutoRecStates[selectedBuildingId] : 'none';
-              const hasActiveRecommendation = currentState === 'created' || currentState === 'exists';
-
-              if (isLocalisedKnockoutFailed) {
-                return (
-                  <p className="mt-3 text-sm text-risk-high-fg">
-                    {hasActiveRecommendation ? 'Localised protection knockout recommendation is active.' : 'Localised protection knockout recommendation will be created on save.'}
-                  </p>
-                );
-              }
-
-              if (hasActiveRecommendation) {
-                return (
-                  <p className="mt-3 text-sm text-risk-info-fg">
-                    Localised protection knockout recommendation is on file.
-                  </p>
-                );
-              }
-
-              return null;
-            })()}
-            {!showLocalisedDetailedAssessment && <p className="mt-3 text-sm text-risk-info-fg">Q8–Q9 are shown only when localised protection is required and installed.</p>}
-          </div>
+          )}
 
 
 
-          {showLocalisedDetailedAssessment && (
+          {sprinklerKnockoutBranch.showDetailQuestions && showLocalisedDetailedAssessment && (
             <div>
               <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -1443,7 +1462,7 @@ export default function RE06FireProtectionForm({
               <div className="space-y-4">
                 {/* Sprinklers Installed? - Primary gate */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Are sprinklers installed?</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Q1: Are sprinklers installed?</label>
                   <select
                     value={sprinklerKnockoutBranch.status}
                     onChange={(e) => updateSprinklersInstalledStatus(e.target.value as SprinklersInstalled)}
@@ -1509,18 +1528,6 @@ export default function RE06FireProtectionForm({
                           while the installation status remains unknown.
                         </p>
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Notes on sprinkler status
-                      </label>
-                      <AutoExpandTextarea
-                        value={selectedSprinklerData.unknown_status_notes ?? ''}
-                        onChange={(e) => updateBuildingSprinkler('unknown_status_notes', e.target.value)}
-                        minRows={2}
-                        className="px-3 py-2 rounded-md text-sm focus:ring-blue-500"
-                        placeholder="e.g., access restrictions, information pending, to be confirmed with site manager..."
-                      />
                     </div>
                   </div>
                 )}
@@ -1906,7 +1913,8 @@ export default function RE06FireProtectionForm({
                   </div>
                 </div>
 
-                {selectedSprinklerData.sprinkler_coverage_required_pct != null &&
+                {sprinklerKnockoutBranch.showDetailQuestions &&
+                  selectedSprinklerData.sprinkler_coverage_required_pct != null &&
                   selectedSprinklerData.sprinkler_coverage_required_pct < 100 &&
                   selectedSprinklerData.sprinkler_coverage_required_pct > 0 && (
                     <div>

@@ -131,10 +131,20 @@ export function applySprinklerInstalledBranch<T extends BuildingSprinklerData>(
   }
 
   next.system_type = 'Unknown';
+  next.standard = undefined;
+  next.standard_other = '';
+  next.localised_required = 'Unknown';
+  next.localised_present = 'Unknown';
+  next.localised_type = '';
+  next.localised_protected_asset = '';
+  next.localised_comments = '';
   next.sprinkler_coverage_installed_pct = null;
   next.sprinkler_coverage_required_pct = null;
   next.sprinkler_standard = '';
   next.hazard_class = '';
+  next.density_area = '';
+  next.pressure = '';
+  next.number_of_heads = '';
   next.maintenance_status = 'Unknown';
   next.sprinkler_adequacy = 'Unknown';
   next.justification_if_required_lt_100 = '';
