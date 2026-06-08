@@ -108,6 +108,8 @@ interface BuildingSprinklerData {
   sprinklers_warranted?: 'Yes' | 'No' | 'Unknown';
   /** Narrative for why sprinklers are absent, alternatives in place, etc. */
   no_sprinklers_commentary?: string;
+  /** Notes captured when sprinkler presence is Unknown — pending confirmation. */
+  unknown_status_notes?: string;
   system_type?: SystemType;
   standard?: SprinklerStandard;
   standard_other?: string;
@@ -1417,7 +1419,7 @@ export default function RE06FireProtectionForm({
                   </select>
                 </div>
 
-                {selectedSprinklerData.sprinklers_installed === 'No' ? (
+                {selectedSprinklerData.sprinklers_installed === 'No' && (
                   <div className="space-y-4">
                     <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
                       <p className="text-sm font-semibold text-amber-900 mb-1">No sprinklers installed — deficiency assessment required</p>
@@ -1435,23 +1437,60 @@ export default function RE06FireProtectionForm({
                         <option value="">— Select —</option>
                         <option value="Yes">Yes — sprinklers are warranted (material deficiency)</option>
                         <option value="No">No — sprinklers are not warranted for this occupancy/use</option>
-                        <option value="Unknown">Unknown — further information required</option>
+                        <option value="Unknown">Unsure — further information required</option>
                       </select>
                     </div>
+                    {/* Commentary only shown when sprinklers are warranted — this is where the
+                        deficiency narrative belongs; not-warranted buildings need no commentary */}
+                    {selectedSprinklerData.sprinklers_warranted === 'Yes' && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Commentary on suppression absence
+                        </label>
+                        <textarea
+                          value={selectedSprinklerData.no_sprinklers_commentary ?? ''}
+                          onChange={(e) => updateBuildingSprinkler('no_sprinklers_commentary', e.target.value)}
+                          rows={4}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                          placeholder="Describe reasons for absence, alternative protection measures in place, and any engineering justification..."
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Unknown — confirmation required; no scoring, no auto-rec */}
+                {selectedSprinklerData.sprinklers_installed === 'Unknown' && (
+                  <div className="p-4 bg-slate-50 rounded-lg border border-slate-300 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">Sprinkler presence unknown — confirmation required</p>
+                        <p className="text-xs text-slate-600 mt-1">
+                          Confirm whether automatic sprinklers are installed before completing this section.
+                          No sprinkler adequacy score will be generated and no recommendation will be raised
+                          while the installation status remains unknown.
+                        </p>
+                      </div>
+                    </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Commentary on suppression absence
+                      <label className="block text-xs font-medium text-slate-700 mb-1">
+                        Notes on sprinkler status
                       </label>
                       <textarea
-                        value={selectedSprinklerData.no_sprinklers_commentary ?? ''}
-                        onChange={(e) => updateBuildingSprinkler('no_sprinklers_commentary', e.target.value)}
-                        rows={4}
+                        value={selectedSprinklerData.unknown_status_notes ?? ''}
+                        onChange={(e) => updateBuildingSprinkler('unknown_status_notes', e.target.value)}
+                        rows={2}
                         className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
-                        placeholder="Describe reasons for absence, alternative protection measures in place, and any engineering justification..."
+                        placeholder="e.g., access restrictions, information pending, to be confirmed with site manager..."
                       />
                     </div>
                   </div>
-                ) : (
+                )}
+
+                {/* Yes or Partial — full sprinkler detail assessment */}
+                {(selectedSprinklerData.sprinklers_installed === 'Yes' ||
+                  selectedSprinklerData.sprinklers_installed === 'Partial') && (
                   <>
                     {/* Coverage fields - Installed FIRST, Required SECOND, Gap auto */}
                     <div className="grid grid-cols-3 gap-4">

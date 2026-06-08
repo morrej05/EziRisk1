@@ -109,6 +109,13 @@ export function createDefaultBuildingSprinkler(
 
 /**
  * Informational sprinkler adequacy helper for building evidence display only.
+ *
+ * Scoring model:
+ *   Installed (Yes/Partial): score derived from coverage ratio + adequacy + maintenance (1–5)
+ *   Not installed + warranted (Yes): score = 1  — major protection deficiency
+ *   Not installed + not warranted (No): null    — not applicable; excluded from roll-up
+ *   Not installed + unsure/unset:      null    — incomplete; excluded from roll-up
+ *   Unknown installed status:          null    — incomplete; excluded from roll-up
  */
 export function calculateSprinklerScore(data: BuildingSprinklerData): number | null {
   const {
@@ -117,9 +124,18 @@ export function calculateSprinklerScore(data: BuildingSprinklerData): number | n
     sprinkler_coverage_required_pct,
     sprinkler_adequacy,
     maintenance_status,
-  } = data as BuildingSprinklerData & { sprinklers_installed?: 'Yes' | 'No' | 'Partial' | 'Unknown' };
+    sprinklers_warranted,
+  } = data as BuildingSprinklerData & {
+    sprinklers_installed?: 'Yes' | 'No' | 'Partial' | 'Unknown';
+    sprinklers_warranted?: 'Yes' | 'No' | 'Unknown';
+  };
 
-  if (sprinklers_installed === 'No' || sprinklers_installed === 'Unknown') return null;
+  // Not installed — score only when the assessor has judged them warranted
+  if (sprinklers_installed === 'No') {
+    return sprinklers_warranted === 'Yes' ? 1 : null;
+  }
+
+  if (sprinklers_installed === 'Unknown') return null;
   if (!sprinkler_coverage_required_pct || sprinkler_coverage_required_pct === 0) return null;
   if (sprinkler_adequacy === 'Unknown') return null;
 
