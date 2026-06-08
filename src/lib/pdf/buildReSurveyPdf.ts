@@ -18,6 +18,12 @@ import { getModuleDisplayName } from '../modules/moduleDisplay';
 import { addIssuedReportPages } from './issuedPdfPages';
 import { supabase } from '../supabase';
 import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
+import {
+  calculateScenarioLoss,
+  isScenarioBlank,
+  formatLossCurrency,
+  type SumsInsuredData as LossCalcSumsInsured,
+} from '../re/lossScenarioCalculator';
 
 interface DocumentMeta {
   client?: { name?: string };
@@ -1808,24 +1814,119 @@ function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle' | 'e
   const d = module.data || {};
   const expectancy = (d as any)?.[event] || {};
   const bi = expectancy?.business_interruption || {};
-  const estimate = expectancy?.estimated_total ?? expectancy?.estimated_total_loss;
-  const description = expectancy?.scenario_description;
-  const commentary = expectancy?.commentary ?? expectancy?.notes ?? expectancy?.scenario_commentary;
-  const estimateAndCommentary = estimate || commentary
-    ? `${formatDataValue(estimate)} | ${formatDataValue(commentary)}`
-    : 'Data not provided';
 
-  return compactRows([
+  // ── Input rows (what the assessor entered) ────────────────────────────────
+  const inputRows: Row[] = compactRows([
     ['Scenario title', formatDataValue(expectancy?.scenario_summary ?? expectancy?.title)],
-    ['Scenario description', formatDataValue(description)],
-    ['Building damage %', formatDataPercent(expectancy?.property_damage?.buildings_improvements_pct)],
+    ['Scenario description', formatDataValue(expectancy?.scenario_description)],
+    ['Buildings damage %', formatDataPercent(expectancy?.property_damage?.buildings_improvements_pct)],
     ['Plant & machinery damage %', formatDataPercent(expectancy?.property_damage?.plant_machinery_contents_pct)],
     ['Stock damage %', formatDataPercent(expectancy?.property_damage?.stock_wip_pct)],
-    ['BI interruption basis', formatDataValue(bi?.interruption_basis ?? bi?.basis ?? bi?.gross_profit_basis)],
-    ['BI interruption duration', formatDataValue(bi?.outage_duration_months !== undefined ? `${bi?.outage_duration_months} months` : undefined)],
-    ['BI severity input', formatDataPercent(bi?.gross_profit_pct ?? bi?.severity_pct)],
-    ['Estimate / commentary', estimateAndCommentary],
-  ], ['scenario title', 'scenario description']);
+    ['Computers damage %', formatDataPercent(expectancy?.property_damage?.computers_pct)],
+    ['BI outage duration', bi?.outage_duration_months !== undefined && bi?.outage_duration_months !== null
+      ? `${bi.outage_duration_months} months` : 'Data not provided'],
+    ['BI severity %', formatDataPercent(bi?.gross_profit_pct ?? bi?.severity_pct)],
+  ], ['scenario title']);
+
+  // ── Calculated rows ───────────────────────────────────────────────────────
+  const currency = (d as any)?.currency ?? 'GBP';
+  const sumsInsured = (d as any)?.sums_insured as LossCalcSumsInsured | undefined;
+  const otherLabel = (d as any)?.sums_insured?.property_damage?.other_label as string | undefined;
+  const calc = calculateScenarioLoss(sumsInsured, expectancy, otherLabel);
+
+  const fmtCcy = (amount: number) => formatLossCurrency(amount, currency);
+
+  const calcRows: Row[] = [];
+
+  if (calc.canCalculate) {
+    // Property damage components
+    for (const comp of calc.pdComponents) {
+      if (comp.baseValue === null && (comp.damagePercent === null || comp.damagePercent === 0)) continue;
+      if (comp.missingBaseValue) {
+        calcRows.push([`  ${comp.label} loss`, `Cannot calculate — missing ${comp.label} declared value`]);
+      } else if (comp.loss !== null && comp.loss > 0) {
+        const detail = comp.baseValue !== null && comp.damagePercent !== null
+          ? `${fmtCcy(comp.baseValue)} × ${comp.damagePercent}% = ${fmtCcy(comp.loss)}`
+          : fmtCcy(comp.loss);
+        calcRows.push([`  ${comp.label} loss`, detail]);
+      }
+    }
+    calcRows.push(['Property damage total', fmtCcy(calc.pdTotal)]);
+
+    // BI calculation
+    if (calc.biLoss === null) {
+      const missing = calc.biMissingFields.join(', ');
+      calcRows.push(['BI loss', `Cannot calculate — missing ${missing}`]);
+    } else if (calc.biLoss > 0) {
+      const biDetail = calc.biGrossProfit !== null && calc.biSeverityPct !== null && calc.biDurationMonths !== null
+        ? `${fmtCcy(calc.biGrossProfit)} × ${calc.biSeverityPct}% × ${calc.biDurationMonths} months / 12 = ${fmtCcy(calc.biLoss)}`
+        : fmtCcy(calc.biLoss);
+      calcRows.push(['BI loss', biDetail]);
+    }
+  } else if (calc.missingFields.length > 0) {
+    calcRows.push(['Cannot calculate', `Missing: ${calc.missingFields.join(', ')}`]);
+  }
+
+  if (calcRows.length > 0) {
+    // Blank separator row between inputs and calculations
+    inputRows.push(['', '']);
+  }
+
+  return [...inputRows, ...calcRows];
+}
+
+/**
+ * Draw a highlighted "Total [WLE/NLE/EML]" box below a scenario table.
+ * Returns the new yPosition.
+ */
+function drawLossScenarioTotal(
+  page: PDFPage,
+  yPosition: number,
+  label: string,
+  amount: number | null,
+  currency: string,
+  fonts: { regular: any; bold: any },
+): number {
+  const boxHeight = 24;
+  const y = yPosition - 6;
+
+  if (amount === null) {
+    page.drawText(`${label}: Cannot calculate — check missing inputs above`, {
+      x: MARGIN + 6,
+      y: y - 14,
+      size: 9,
+      font: fonts.regular,
+      color: rgb(0.55, 0.2, 0.1),
+    });
+    return y - boxHeight - 4;
+  }
+
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - boxHeight + 4,
+    width: CONTENT_WIDTH,
+    height: boxHeight,
+    color: rgb(0.91, 0.94, 0.98),
+    borderColor: rgb(0.62, 0.72, 0.87),
+    borderWidth: 0.8,
+  });
+  page.drawText(label, {
+    x: MARGIN + 8,
+    y: y - 14,
+    size: 9.5,
+    font: fonts.bold,
+    color: rgb(0.1, 0.18, 0.36),
+  });
+  const amountText = formatLossCurrency(amount, currency);
+  const textWidth = amountText.length * 5.6; // rough estimate
+  page.drawText(amountText, {
+    x: MARGIN + CONTENT_WIDTH - textWidth - 8,
+    y: y - 14,
+    size: 9.5,
+    font: fonts.bold,
+    color: rgb(0.1, 0.18, 0.36),
+  });
+  return y - boxHeight - 4;
 }
 
 
@@ -2785,6 +2886,12 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key === 'RE_12_LOSS_VALUES') {
+      const d12 = module.data || {};
+      const currency12 = (d12 as any)?.currency ?? 'GBP';
+      const sumsInsured12 = (d12 as any)?.sums_insured as LossCalcSumsInsured | undefined;
+      const otherLabel12 = (d12 as any)?.sums_insured?.property_damage?.other_label as string | undefined;
+
+      // ── Declared Values Summary ───────────────────────────────────────────
       const declaredValueRows = getLossValuesStructuredRows(module);
       ({ page, yPosition } = ensurePageSpace(100 + declaredValueRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawBlockHeading(page, yPosition, 'Declared Values Summary', fontBold);
@@ -2796,38 +2903,60 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }));
       yPosition = sectionBreak(yPosition);
 
+      // ── WLE ───────────────────────────────────────────────────────────────
       const wleRows = getLossExpectancyRows(module, 'wle');
-      ({ page, yPosition } = ensurePageSpace(100 + wleRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'WLE (Worse Loss Event)', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], wleRows, { regular: font, bold: fontBold }, {
+      const wleCalc = calculateScenarioLoss(sumsInsured12, (d12 as any)?.wle, otherLabel12);
+      ({ page, yPosition } = ensurePageSpace(120 + wleRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'WLE — Worst Case Loss Estimate', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Detail'], wleRows, { regular: font, bold: fontBold }, {
         colWidths: [185, CONTENT_WIDTH - 185],
         fontSize: 8.5,
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawLossScenarioTotal(page, yPosition, 'Total WLE', wleCalc.totalLoss, currency12, { regular: font, bold: fontBold });
       yPosition = sectionBreak(yPosition);
 
+      // ── NLE ───────────────────────────────────────────────────────────────
       const nleRows = getLossExpectancyRows(module, 'nle');
-      ({ page, yPosition } = ensurePageSpace(100 + nleRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'NLE (Normal Loss Event)', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], nleRows, { regular: font, bold: fontBold }, {
+      const nleCalc = calculateScenarioLoss(sumsInsured12, (d12 as any)?.nle, otherLabel12);
+      ({ page, yPosition } = ensurePageSpace(120 + nleRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawBlockHeading(page, yPosition, 'NLE — Normal Loss Estimate', fontBold);
+      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Detail'], nleRows, { regular: font, bold: fontBold }, {
         colWidths: [185, CONTENT_WIDTH - 185],
         fontSize: 8.5,
         minRowHeight: 18,
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
+      ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
+      yPosition = drawLossScenarioTotal(page, yPosition, 'Total NLE', nleCalc.totalLoss, currency12, { regular: font, bold: fontBold });
       yPosition = sectionBreak(yPosition);
 
-      const emlRows = getLossExpectancyRows(module, 'eml');
-      if (emlRows.length > 0) {
-        ({ page, yPosition } = ensurePageSpace(100 + emlRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-        yPosition = drawBlockHeading(page, yPosition, 'EML (Estimated Maximum Loss)', fontBold);
-        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], emlRows, { regular: font, bold: fontBold }, {
+      // ── EML ───────────────────────────────────────────────────────────────
+      const emlData = (d12 as any)?.eml;
+      const emlEqualsNle = emlData?.eml_equals_nle === true;
+
+      if (emlEqualsNle) {
+        ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'EML — Estimated Maximum Loss', fontBold);
+        yPosition = drawParagraph(page, yPosition, 'EML = NLE. The estimated maximum loss under near-worst-case conditions is equivalent to the normal loss estimate for this site.', font);
+        ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawLossScenarioTotal(page, yPosition, 'Total EML (= NLE)', nleCalc.totalLoss, currency12, { regular: font, bold: fontBold });
+        yPosition = sectionBreak(yPosition);
+      } else if (!isScenarioBlank(emlData)) {
+        const emlRows = getLossExpectancyRows(module, 'eml');
+        const emlCalc = calculateScenarioLoss(sumsInsured12, emlData, otherLabel12);
+        ({ page, yPosition } = ensurePageSpace(120 + emlRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'EML — Estimated Maximum Loss', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Detail'], emlRows, { regular: font, bold: fontBold }, {
           colWidths: [185, CONTENT_WIDTH - 185],
           fontSize: 8.5,
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
+        ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawLossScenarioTotal(page, yPosition, 'Total EML', emlCalc.totalLoss, currency12, { regular: font, bold: fontBold });
         yPosition = sectionBreak(yPosition);
       }
     }

@@ -209,14 +209,65 @@ export function createCanonicalReSurveyFixture() {
           outcome: 'high',
           assessor_notes: `${longNarrative} Loss and values extension: declared asset concentration and BI dependency indicate high materiality; prolonged outage of critical operations would likely drive significant secondary cost pressure through expedited logistics and customer service penalties.`,
           data: {
+            currency: 'GBP',
             sums_insured: {
-              buildings: 26500000,
-              plant_machinery: 14300000,
-              stock: 11800000,
+              property_damage: {
+                buildings_improvements: 26500000,
+                plant_machinery_contents: 14300000,
+                stock_wip: 11800000,
+                computers: 850000,
+                other: null,
+              },
+              business_interruption: {
+                gross_profit_annual: 32700000,
+                indemnity_period_months: 18,
+              },
+              additional_comments: 'Valuations based on desktop reinstatement assessment; stock values reflect Q4 peak loading.',
             },
-            business_interruption: {
-              gross_profit_annual: 32700000,
-              indemnity_period_months: 18,
+            wle: {
+              scenario_summary: 'Uncontrolled fire — whole-facility loss',
+              scenario_description: 'Fire originates in battery-charging bay, spreads via open mezzanine to main storage hall. Sprinkler system fails due to impairment. Fire brigade access delayed by congestion. Total destruction of all high-bay storage and main production block.',
+              property_damage: {
+                buildings_improvements_pct: 100,
+                plant_machinery_contents_pct: 85,
+                stock_wip_pct: 100,
+                computers_pct: 60,
+                other_pct: null,
+              },
+              business_interruption: {
+                outage_duration_months: 18,
+                gross_profit_pct: 100,
+              },
+            },
+            nle: {
+              scenario_summary: 'Sprinkler-controlled fire — partial damage',
+              scenario_description: 'Fire in pick-and-pack mezzanine area controlled by sprinkler activation within 10 minutes. Damage confined to one fire compartment. Partial operational capability retained in adjacent bays.',
+              property_damage: {
+                buildings_improvements_pct: 15,
+                plant_machinery_contents_pct: 20,
+                stock_wip_pct: 25,
+                computers_pct: 10,
+                other_pct: null,
+              },
+              business_interruption: {
+                outage_duration_months: 3,
+                gross_profit_pct: 70,
+              },
+            },
+            eml: {
+              scenario_summary: 'Partial sprinkler failure — extended fire spread',
+              scenario_description: 'Sprinkler system partially effective due to delayed impairment reinstatement. Fire spreads across two compartments before suppression. Significant structural and M&E damage.',
+              property_damage: {
+                buildings_improvements_pct: 45,
+                plant_machinery_contents_pct: 50,
+                stock_wip_pct: 60,
+                computers_pct: 30,
+                other_pct: null,
+              },
+              business_interruption: {
+                outage_duration_months: 8,
+                gross_profit_pct: 90,
+              },
             },
             ratings: { site_rating_1_5: 2 },
           },
