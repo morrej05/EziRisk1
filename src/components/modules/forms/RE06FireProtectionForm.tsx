@@ -7,8 +7,13 @@ import {
   getBuildingRecommendations,
 } from '../../../lib/modules/re04FireProtectionRecommendations';
 import {
+  applySprinklerInstalledBranch,
   calculateSprinklerScore,
   generateAutoFlags,
+  getRe06SprinklerKnockoutBranch,
+  isSprinklerDetailStatus,
+  normalizeSprinklersInstalled,
+  normalizeSprinklersWarranted,
 } from '../../../lib/re/fireProtectionModel';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import { collectRe06AutoRecommendationSyncInputs } from '../../../lib/re/fireProtectionWorkflow';
@@ -319,7 +324,7 @@ function calculateSiteRollup(
   for (const building of buildings) {
     const buildingFP = fireProtectionData.buildings[building.id];
     if (!buildingFP?.sprinklerData) continue;
-    const sprinklersInstalled = buildingFP.sprinklerData.sprinklers_installed === 'Yes';
+    const sprinklersInstalled = isSprinklerDetailStatus(buildingFP.sprinklerData.sprinklers_installed);
 
     const area = resolveBuildingArea(building);
     if (area <= 0) {
@@ -533,6 +538,20 @@ export default function RE06FireProtectionForm({
   }
 
   initialData.supplementary_assessment = normalizeSupplementaryAssessment(initialData.supplementary_assessment);
+  initialData.buildings = Object.fromEntries(
+    Object.entries(initialData.buildings || {}).map(([buildingId, buildingData]) => {
+      const sprinklerData = buildingData?.sprinklerData || createDefaultBuildingSprinkler();
+      const normalizedStatus = normalizeSprinklersInstalled(sprinklerData.sprinklers_installed);
+      const normalizedSprinklerData = applySprinklerInstalledBranch(
+        { ...createDefaultBuildingSprinkler(), ...sprinklerData },
+        normalizedStatus
+      );
+      if (normalizedStatus === 'No') {
+        normalizedSprinklerData.sprinklers_warranted = normalizeSprinklersWarranted(sprinklerData.sprinklers_warranted);
+      }
+      return [buildingId, { ...buildingData, sprinklerData: normalizedSprinklerData }];
+    })
+  );
 
   const [fireProtectionData, setFireProtectionData] = useState<FireProtectionModuleData>(initialData);
 
@@ -543,6 +562,10 @@ export default function RE06FireProtectionForm({
   const selectedComments = selectedBuildingId
     ? fireProtectionData.buildings[selectedBuildingId]?.comments || ''
     : '';
+  const sprinklerKnockoutBranch = getRe06SprinklerKnockoutBranch(
+    selectedSprinklerData.sprinklers_installed,
+    selectedSprinklerData.sprinklers_warranted
+  );
   const isLocalisedRequired = selectedSprinklerData.localised_required === 'Yes';
   const isLocalisedInstalled = selectedSprinklerData.localised_present === 'Yes';
   const isLocalisedKnockoutFailed = isLocalisedRequired && selectedSprinklerData.localised_present === 'No';
@@ -787,6 +810,35 @@ export default function RE06FireProtectionForm({
   }, [saving, fireProtectionData, moduleInstance.id, moduleInstance.document_id, onSaved]);
 
 
+  const updateSprinklersInstalledStatus = (value: SprinklersInstalled) => {
+    if (!selectedBuildingId) return;
+
+    setFireProtectionData((prev) => {
+      const building = prev.buildings[selectedBuildingId] || {
+        sprinklerData: createDefaultBuildingSprinkler(),
+        comments: '',
+      };
+      const updatedData = applySprinklerInstalledBranch(
+        { ...createDefaultBuildingSprinkler(), ...building.sprinklerData },
+        value
+      );
+      const sprinklerScore = calculateSprinklerScore(updatedData as any);
+      updatedData.sprinkler_score_1_5 = sprinklerScore;
+      updatedData.final_active_score_1_5 = sprinklerScore;
+
+      return {
+        ...prev,
+        buildings: {
+          ...prev.buildings,
+          [selectedBuildingId]: {
+            ...building,
+            sprinklerData: updatedData,
+          },
+        },
+      };
+    });
+  };
+
   const updateBuildingSprinkler = (field: keyof BuildingSprinklerData, value: unknown) => {
     if (!selectedBuildingId) return;
 
@@ -798,7 +850,7 @@ export default function RE06FireProtectionForm({
 
       const updatedData = {
         ...building.sprinklerData,
-        [field]: value,
+        [field]: field === 'sprinklers_warranted' ? normalizeSprinklersWarranted(value) : value,
       };
 
       const sprinklerScore = calculateSprinklerScore(updatedData as any);
@@ -1391,22 +1443,20 @@ export default function RE06FireProtectionForm({
               <div className="space-y-4">
                 {/* Sprinklers Installed? - Primary gate */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Sprinklers installed?</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Are sprinklers installed?</label>
                   <select
-                    value={selectedSprinklerData.sprinklers_installed || 'Unknown'}
-                    onChange={(e) =>
-                      updateBuildingSprinkler('sprinklers_installed', e.target.value as SprinklersInstalled)
-                    }
+                    value={sprinklerKnockoutBranch.status}
+                    onChange={(e) => updateSprinklersInstalledStatus(e.target.value as SprinklersInstalled)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="Unknown">Unknown</option>
                     <option value="Yes">Yes</option>
                     <option value="Partial">Partial</option>
                     <option value="No">No</option>
+                    <option value="Unknown">Unknown</option>
                   </select>
                 </div>
 
-                {selectedSprinklerData.sprinklers_installed === 'No' && (
+                {sprinklerKnockoutBranch.showWarrantedQuestion && (
                   <div className="space-y-4">
                     <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
                       <p className="text-sm font-semibold text-amber-900 mb-1">No sprinklers installed — deficiency assessment required</p>
@@ -1429,7 +1479,7 @@ export default function RE06FireProtectionForm({
                     </div>
                     {/* Commentary only shown when sprinklers are warranted — this is where the
                         deficiency narrative belongs; not-warranted buildings need no commentary */}
-                    {selectedSprinklerData.sprinklers_warranted === 'Yes' && (
+                    {sprinklerKnockoutBranch.showWarrantedCommentary && (
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">
                           Commentary on suppression absence
@@ -1447,7 +1497,7 @@ export default function RE06FireProtectionForm({
                 )}
 
                 {/* Unknown — confirmation required; no scoring, no auto-rec */}
-                {selectedSprinklerData.sprinklers_installed === 'Unknown' && (
+                {sprinklerKnockoutBranch.showUnknownConfirmationNotes && (
                   <div className="p-4 bg-slate-50 rounded-lg border border-slate-300 space-y-3">
                     <div className="flex items-start gap-2">
                       <Info className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
@@ -1476,8 +1526,7 @@ export default function RE06FireProtectionForm({
                 )}
 
                 {/* Yes or Partial — full sprinkler detail assessment */}
-                {(selectedSprinklerData.sprinklers_installed === 'Yes' ||
-                  selectedSprinklerData.sprinklers_installed === 'Partial') && (
+                {sprinklerKnockoutBranch.showDetailQuestions && (
                   <>
                     {/* Coverage fields - Installed FIRST, Required SECOND, Gap auto */}
                     <div className="grid grid-cols-3 gap-4">

@@ -6,6 +6,8 @@ export type PowerResilience = 'Good' | 'Mixed' | 'Poor' | 'Unknown';
 export type TestingRegime = 'Documented' | 'Some evidence' | 'None' | 'Unknown';
 export type MaintenanceStatus = 'Good' | 'Mixed' | 'Poor' | 'Unknown';
 export type SprinklerAdequacy = 'Adequate' | 'Inadequate' | 'Unknown';
+export type SprinklersInstalled = 'Yes' | 'No' | 'Partial' | 'Unknown';
+export type SprinklersWarranted = 'Yes' | 'No' | 'Unknown';
 export type SprinklerSystemType = 'wet' | 'dry' | 'esfr' | 'other' | 'unknown';
 export type WaterSupplyType = 'mains' | 'tank' | 'dual' | 'unknown';
 
@@ -34,8 +36,12 @@ export interface SiteWaterRecord {
 }
 
 export interface BuildingSprinklerData {
-  sprinkler_coverage_installed_pct?: number;
-  sprinkler_coverage_required_pct?: number;
+  sprinklers_installed?: SprinklersInstalled | string;
+  sprinklers_warranted?: SprinklersWarranted | string;
+  no_sprinklers_commentary?: string;
+  unknown_status_notes?: string;
+  sprinkler_coverage_installed_pct?: number | null;
+  sprinkler_coverage_required_pct?: number | null;
   sprinkler_standard?: string;
   hazard_class?: string;
   maintenance_status?: MaintenanceStatus;
@@ -44,9 +50,11 @@ export interface BuildingSprinklerData {
   // Phase 1: New optional technical fields
   design_standard?: string;
   hazard_density?: string;
-  system_type?: SprinklerSystemType;
+  system_type?: string;
   water_supply_type?: WaterSupplyType;
   // Phase 1: Derived scores placeholder (no computation yet)
+  sprinkler_score_1_5?: number | null;
+  final_active_score_1_5?: number | null;
   derived?: {
     building_fire_protection_score?: 1 | 2 | 3 | 4 | 5;
   };
@@ -62,6 +70,85 @@ export interface BuildingSprinklerRecord {
   comments?: string;
   created_at: string;
   updated_at: string;
+}
+
+
+export function normalizeSprinklersInstalled(value: unknown): SprinklersInstalled {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['yes', 'y', 'true', 'installed', 'full', 'fully installed'].includes(normalized)) return 'Yes';
+  if (['partial', 'partially installed', 'part', 'limited'].includes(normalized)) return 'Partial';
+  if (['no', 'n', 'false', 'none', 'not installed', 'absent'].includes(normalized)) return 'No';
+  return 'Unknown';
+}
+
+export function normalizeSprinklersWarranted(value: unknown): SprinklersWarranted | undefined {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['yes', 'y', 'true', 'warranted', 'recommended'].includes(normalized)) return 'Yes';
+  if (['no', 'n', 'false', 'not warranted', 'not recommended'].includes(normalized)) return 'No';
+  if (['unknown', 'unsure', 'not sure', 'uncertain'].includes(normalized)) return 'Unknown';
+  return undefined;
+}
+
+export function isSprinklerDetailStatus(value: unknown): boolean {
+  const status = normalizeSprinklersInstalled(value);
+  return status === 'Yes' || status === 'Partial';
+}
+
+export function getRe06SprinklerKnockoutBranch(value: unknown, warrantedValue?: unknown): {
+  status: SprinklersInstalled;
+  showDetailQuestions: boolean;
+  showWarrantedQuestion: boolean;
+  showWarrantedCommentary: boolean;
+  showUnknownConfirmationNotes: boolean;
+} {
+  const status = normalizeSprinklersInstalled(value);
+  const warranted = normalizeSprinklersWarranted(warrantedValue);
+  return {
+    status,
+    showDetailQuestions: status === 'Yes' || status === 'Partial',
+    showWarrantedQuestion: status === 'No',
+    showWarrantedCommentary: status === 'No' && warranted === 'Yes',
+    showUnknownConfirmationNotes: status === 'Unknown',
+  };
+}
+
+export function applySprinklerInstalledBranch<T extends BuildingSprinklerData>(
+  sprinklerData: T,
+  statusValue: unknown,
+): T {
+  const status = normalizeSprinklersInstalled(statusValue);
+  const next = {
+    ...sprinklerData,
+    sprinklers_installed: status,
+  } as T;
+
+  if (status === 'Yes' || status === 'Partial') {
+    next.sprinklers_warranted = undefined;
+    next.no_sprinklers_commentary = '';
+    next.unknown_status_notes = '';
+    return next;
+  }
+
+  next.system_type = 'Unknown';
+  next.sprinkler_coverage_installed_pct = null;
+  next.sprinkler_coverage_required_pct = null;
+  next.sprinkler_standard = '';
+  next.hazard_class = '';
+  next.maintenance_status = 'Unknown';
+  next.sprinkler_adequacy = 'Unknown';
+  next.justification_if_required_lt_100 = '';
+
+  if (status === 'No') {
+    next.sprinklers_warranted = normalizeSprinklersWarranted(next.sprinklers_warranted);
+    next.unknown_status_notes = '';
+    return next;
+  }
+
+  next.sprinklers_warranted = undefined;
+  next.no_sprinklers_commentary = '';
+  next.unknown_status_notes = next.unknown_status_notes || '';
+  return next;
 }
 
 export function createDefaultSiteWater(documentId: string): Partial<SiteWaterRecord> {

@@ -1,3 +1,4 @@
+import { isSprinklerDetailStatus, normalizeSprinklersInstalled, normalizeSprinklersWarranted } from './fireProtectionModel';
 import type { AutoRecommendationLifecycleState } from './recommendations/recommendationPipeline';
 
 export interface Re06AutoRecommendationSyncInput {
@@ -17,8 +18,9 @@ export function collectRe06AutoRecommendationSyncInputs(
 ): Re06AutoRecommendationSyncInput[] {
   return Object.entries(buildings || {}).flatMap(([buildingId, buildingData]) => {
     const sprinklerData = buildingData?.sprinklerData || {};
-    const localisedKnockoutFailed = sprinklerData.localised_required === 'Yes' && sprinklerData.localised_present === 'No';
-    const sprinklersWarrantedAbsent = sprinklerData.sprinklers_installed === 'No' && sprinklerData.sprinklers_warranted === 'Yes';
+    const sprinklerStatus = normalizeSprinklersInstalled(sprinklerData.sprinklers_installed);
+    const localisedKnockoutFailed = isSprinklerDetailStatus(sprinklerStatus) && sprinklerData.localised_required === 'Yes' && sprinklerData.localised_present === 'No';
+    const sprinklersWarrantedAbsent = sprinklerStatus === 'No' && normalizeSprinklersWarranted(sprinklerData.sprinklers_warranted) === 'Yes';
 
     return [
       {
