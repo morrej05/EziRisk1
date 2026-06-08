@@ -1986,9 +1986,9 @@ export default function RE06FireProtectionForm({
             </>
           )}
         </div>
+      </div>
         </>
       )}
-      </div>
 
       <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
         <h3 className="text-base font-semibold text-slate-900">Site Water Supply Inputs</h3>
