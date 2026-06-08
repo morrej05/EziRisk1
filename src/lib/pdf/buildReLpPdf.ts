@@ -304,7 +304,7 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   const baseDocumentId = (document as Partial<{ base_document_id: string }>).base_document_id;
   const issueDateIso = (document as Partial<{ issue_date: string }>).issue_date || new Date().toISOString();
 
-  const { coverPage } = await addIssuedReportPages({
+  const { coverPage, docControlPage } = await addIssuedReportPages({
     pdfDoc,
     document: {
       id: document.id,
@@ -329,6 +329,9 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
     fonts: { bold: fontBold, regular: font },
   });
   totalPages.push(coverPage);
+  // docControlPage was physically created immediately after coverPage by addIssuedReportPages.
+  // Push it here so totalPages order matches the physical PDF page order.
+  totalPages.push(docControlPage);
 
   const { page: coverDetailsPage } = addNewPage(pdfDoc, isDraft, totalPages);
   let yPosition = PAGE_TOP_Y;

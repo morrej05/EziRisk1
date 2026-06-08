@@ -2281,6 +2281,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     fonts: { bold: fontBold, regular: font },
   });
   totalPages.push(coverPage);
+  // docControlPage was physically created immediately after coverPage by addIssuedReportPages.
+  // Push it here so totalPages order matches the physical PDF page order.
+  totalPages.push(docControlPage);
+  sectionStartPages.set('Document Control', totalPages.length);
 
   let { page } = addNewPage(pdfDoc, isDraft, totalPages);
   let yPosition = PAGE_TOP_Y;
@@ -2459,8 +2463,6 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
   }));
 
-  totalPages.push(docControlPage);
-  sectionStartPages.set('Document Control', totalPages.length);
   page = addNewPage(pdfDoc, isDraft, totalPages).page;
   yPosition = PAGE_TOP_Y;
 
@@ -3086,10 +3088,10 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     color: rgb(0.08, 0.08, 0.08),
   });
   const contentsRows: Array<[string, number | undefined]> = [
+    ['Document Control', sectionStartPages.get('Document Control')],
     ['Disclaimer', sectionStartPages.get('Disclaimer')],
     ['Executive Summary', sectionStartPages.get('Executive Summary')],
     ['Risk Scoring Summary', sectionStartPages.get('Risk Scoring Summary')],
-    ['Document Control', sectionStartPages.get('Document Control')],
     ['Construction', sectionStartPages.get('Construction')],
     ['Occupancy', sectionStartPages.get('Occupancy')],
     ['Fire Protection', sectionStartPages.get('Fire Protection')],
