@@ -1,3 +1,4 @@
+import AutoExpandTextarea from '../AutoExpandTextarea';
 import type { AutoRecommendationLifecycleState } from '../../lib/re/recommendations/recommendationPipeline';
 import type { Re04AnswerStateDefinition } from '../../lib/re/re04EngineeringModel';
 
@@ -17,10 +18,10 @@ interface ReEngineeringQuestionCardProps {
 }
 
 function getRatingButtonStyles(value: number, isSelected: boolean): string {
-  if (!isSelected) return 'border-slate-300 bg-white text-slate-700 hover:border-slate-400';
-  if (value <= 1) return 'border-red-600 bg-red-50 text-red-900 font-semibold';
-  if (value === 2) return 'border-amber-600 bg-amber-50 text-amber-900 font-semibold';
-  return 'border-green-600 bg-green-50 text-green-900 font-semibold';
+  if (!isSelected) return 'border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50';
+  if (value <= 1) return 'border-red-500 bg-red-50 text-red-900 ring-1 ring-red-400';
+  if (value === 2) return 'border-amber-500 bg-amber-50 text-amber-900 ring-1 ring-amber-400';
+  return 'border-green-600 bg-green-50 text-green-900 ring-1 ring-green-500';
 }
 
 export default function ReEngineeringQuestionCard({
@@ -35,6 +36,8 @@ export default function ReEngineeringQuestionCard({
   onClearRating,
   onNotesChange,
 }: ReEngineeringQuestionCardProps) {
+  const selectedState = typeof rating === 'number' ? answerStates.find((s) => s.score === rating) : undefined;
+
   const autoRecHint =
     autoRecommendationState === 'created'
       ? 'Targeted recommendation created'
@@ -42,52 +45,73 @@ export default function ReEngineeringQuestionCard({
         ? 'Targeted recommendation on file'
         : typeof rating === 'number' && rating <= 2
           ? 'Targeted recommendation will be created on save'
-          : 'No active recommendation';
+          : null;
 
   return (
-    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3">
-      <p className="text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">{questionId}. {title || prompt}</p>
-      {/* Only render the prompt as a sub-label when it provides different detail from the title */}
-      {title && title !== prompt && (
-        <p className="text-xs text-slate-600 whitespace-pre-wrap break-words">{prompt}</p>
-      )}
-
-      <div className="text-xs text-slate-500">Answer scale: 0–4 (observable state based)</div>
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-        {answerStates.map((state) => (
-          <button
-            key={state.score}
-            type="button"
-            onClick={() => onRatingChange(state.score)}
-            className={`p-2 rounded-lg border-2 text-left ${getRatingButtonStyles(state.score, rating === state.score)}`}
-          >
-            <div className="text-base font-bold">{state.score}</div>
-            <div className="text-[11px] font-semibold">{state.label}</div>
-          </button>
-        ))}
+    <div className="border border-slate-200 rounded-lg bg-white">
+      {/* Question header */}
+      <div className="px-5 pt-4 pb-3 border-b border-slate-100">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-slate-900">
+              {questionId}. {title || prompt}
+            </p>
+            {title && title !== prompt && (
+              <p className="mt-1 text-xs text-slate-500 leading-relaxed">{prompt}</p>
+            )}
+          </div>
+          {typeof rating === 'number' && (
+            <button
+              type="button"
+              onClick={onClearRating}
+              className="shrink-0 text-xs text-slate-400 hover:text-slate-600 underline mt-0.5"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
 
-      {typeof rating === 'number' && (
-        <div className="p-2 bg-slate-50 border border-slate-200 rounded text-xs text-slate-700 whitespace-pre-wrap break-words">
-          {answerStates.find((s) => s.score === rating)?.description}
+      {/* Rating buttons */}
+      <div className="px-5 py-4">
+        <div className="flex gap-2">
+          {answerStates.map((state) => (
+            <button
+              key={state.score}
+              type="button"
+              onClick={() => onRatingChange(state.score)}
+              title={state.description}
+              className={`flex-1 min-w-0 rounded-lg border-2 px-2 py-2.5 text-left transition-colors ${getRatingButtonStyles(state.score, rating === state.score)}`}
+            >
+              <div className="text-base font-bold leading-none">{state.score}</div>
+              <div className="mt-1 text-[11px] font-medium leading-tight">{state.label}</div>
+            </button>
+          ))}
         </div>
-      )}
 
-      <p className="text-xs text-slate-500 whitespace-pre-wrap break-words">{autoRecHint}</p>
-      <button
-        type="button"
-        onClick={onClearRating}
-        className="text-xs text-slate-500 hover:text-slate-700 underline"
-      >
-        Clear rating
-      </button>
-      <textarea
-        rows={3}
-        value={notes}
-        onChange={(e) => onNotesChange(e.target.value)}
-        placeholder="Optional assessor notes / evidence observed"
-        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y whitespace-pre-wrap"
-      />
+        {selectedState && (
+          <p className="mt-2 text-xs text-slate-600 bg-slate-50 rounded px-3 py-2 border border-slate-200">
+            {selectedState.description}
+          </p>
+        )}
+
+        {autoRecHint && (
+          <p className={`mt-2 text-xs ${autoRecommendationState === 'none' ? 'text-amber-700' : 'text-sky-700'}`}>
+            {autoRecHint}
+          </p>
+        )}
+      </div>
+
+      {/* Notes */}
+      <div className="px-5 pb-4">
+        <AutoExpandTextarea
+          value={notes}
+          onChange={(e) => onNotesChange(e.target.value)}
+          placeholder="Assessor notes / evidence observed"
+          minRows={4}
+          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+        />
+      </div>
     </div>
   );
 }
