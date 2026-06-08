@@ -175,6 +175,32 @@ describe('getModuleCompletionDetails for RE modules', () => {
     expect(complete.missingRequirements).toEqual([]);
   });
 
+  it.each([
+    ['no', 'no', false, 'lowercase no/no → complete (not warranted)'],
+    ['NO', 'NO', false, 'uppercase NO/NO → complete (not warranted)'],
+    ['yes', undefined, true, 'lowercase yes with missing warranted → incomplete (warranted question not answered)'],
+    ['', undefined, true, 'empty string → treated as Unknown → incomplete'],
+    [null, undefined, true, 'null → treated as Unknown → incomplete (no assessed buildings)'],
+  ] as const)('RE-06 completeness handles legacy raw value %s/%s → incomplete=%s (%s)', (installed, warranted, expectIncomplete, _label) => {
+    const sprinklerData: Record<string, unknown> = { sprinklers_installed: installed };
+    if (warranted !== undefined) sprinklerData.sprinklers_warranted = warranted;
+    const mod = {
+      module_key: 'RE_06_FIRE_PROTECTION',
+      data: {
+        fire_protection: {
+          buildings: { b1: { sprinklerData } },
+          site: { water_score_1_5: 3 },
+        },
+      } as any,
+    };
+    const result = getModuleCompletionDetails(mod);
+    if (expectIncomplete) {
+      expect(result.state).toBe('incomplete');
+    } else {
+      expect(result.state).toBe('complete');
+    }
+  });
+
   it('requires RE-06 no-sprinkler knockout judgement before showing complete', () => {
     const missingJudgement = getModuleCompletionDetails({
       module_key: 'RE_06_FIRE_PROTECTION',

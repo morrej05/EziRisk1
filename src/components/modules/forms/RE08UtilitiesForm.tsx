@@ -10,6 +10,7 @@ import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommend
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 import { getSuggestedEquipment, STANDARD_EQUIPMENT_OPTIONS, isHeavyOccupancy } from '../../../lib/re/reference/occupancyCriticalEquipment';
 import { Plus, Trash2 } from 'lucide-react';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 
 interface Document {
   id: string;
@@ -389,7 +390,7 @@ export default function RE08UtilitiesForm({
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Power Resilience Notes</label>
-                <textarea
+                <AutoExpandTextarea
                   value={formData.power_resilience.notes}
                   onChange={(e) =>
                     setFormData({
@@ -397,7 +398,7 @@ export default function RE08UtilitiesForm({
                       power_resilience: { ...formData.power_resilience, notes: e.target.value },
                     })
                   }
-                  rows={3}
+                  minRows={3}
                   className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
                   placeholder="Describe power supply arrangements, redundancy, and backup systems"
                 />
@@ -405,7 +406,7 @@ export default function RE08UtilitiesForm({
               {formData.power_resilience.backup_power_present && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Generator Capacity Notes</label>
-                  <textarea
+                  <AutoExpandTextarea
                     value={formData.power_resilience.generator_capacity_notes}
                     onChange={(e) =>
                       setFormData({
@@ -413,7 +414,7 @@ export default function RE08UtilitiesForm({
                         power_resilience: { ...formData.power_resilience, generator_capacity_notes: e.target.value },
                       })
                     }
-                    rows={2}
+                    minRows={2}
                     className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
                     placeholder="Generator capacity, fuel supply, and load coverage"
                   />
@@ -561,10 +562,10 @@ export default function RE08UtilitiesForm({
                     )}
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-                      <textarea
+                      <AutoExpandTextarea
                         value={service.notes}
                         onChange={(e) => updateCriticalService(service.id, { notes: e.target.value })}
-                        rows={2}
+                        minRows={2}
                         className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
                       />
                     </div>
@@ -816,10 +817,10 @@ export default function RE08UtilitiesForm({
                     )}
                     <div className="col-span-2">
                       <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
-                      <textarea
+                      <AutoExpandTextarea
                         value={equipment.notes}
                         onChange={(e) => updateCriticalEquipment(equipment.id, { notes: e.target.value })}
-                        rows={2}
+                        minRows={2}
                         className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
                       />
                     </div>
