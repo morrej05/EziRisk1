@@ -1,5 +1,6 @@
 import { resolveSectionAssessmentOutcome, type ModuleInstanceAssessmentShape } from './moduleAssessment';
 import { HRG_MASTER_MAP } from '../lib/re/reference/hrgMasterMap';
+import { normalizeSprinklersInstalled, normalizeSprinklersWarranted } from '../lib/re/fireProtectionModel';
 
 const RE_MODULE_KEY_PREFIX = 'RE_';
 const RE_ROOT_MODULE_KEY = 'RISK_ENGINEERING';
@@ -237,11 +238,12 @@ function getReModuleMissingRequirements(
 
     const incompleteBuilding = assessedBuildings.some((building: any) => {
       const sprinkler = building?.sprinklerData || {};
-      const status = String(sprinkler.sprinklers_installed || '').trim();
+      const status = normalizeSprinklersInstalled(sprinkler.sprinklers_installed);
 
       if (status === 'No') {
-        if (!hasMeaningfulValue(sprinkler.sprinklers_warranted)) return true;
-        if (sprinkler.sprinklers_warranted === 'Yes' && !hasMeaningfulValue(sprinkler.no_sprinklers_commentary)) return true;
+        const warranted = normalizeSprinklersWarranted(sprinkler.sprinklers_warranted);
+        if (!warranted || warranted === 'Unknown') return true;
+        if (warranted === 'Yes' && !hasMeaningfulValue(sprinkler.no_sprinklers_commentary)) return true;
         return false;
       }
 

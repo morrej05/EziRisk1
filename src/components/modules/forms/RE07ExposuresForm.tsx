@@ -7,6 +7,7 @@ import FloatingSaveBar from './FloatingSaveBar';
 import { updateSectionGrade } from '../../../utils/sectionGrades';
 import { AlertTriangle, Shield, Cloud, Flame, Wind, Mountain } from 'lucide-react';
 import RatingButtons from '../../re/RatingButtons';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
@@ -357,10 +358,10 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
         {getAutoStateLabel(rating, autoRecStates[factorKey] || 'none')}
       </p>
 
-      <textarea
+      <AutoExpandTextarea
         value={notes}
         onChange={(e) => onNotesChange(e.target.value)}
-        rows={3}
+        minRows={3}
         className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
         placeholder="Basis of judgement: hazard severity, mitigation measures, residual risk..."
       />
@@ -459,10 +460,10 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
                   </p>
                 )}
 
-                <textarea
+                <AutoExpandTextarea
                   value={otherNotes}
                   onChange={(e) => setOtherNotes(e.target.value)}
-                  rows={3}
+                  minRows={3}
                   className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
                   placeholder="Basis of judgement..."
                 />
@@ -517,10 +518,10 @@ export default function RE07ExposuresForm({ moduleInstance, document, onSaved }:
             <p className="text-xs text-slate-500">
               Consider: arson exposure, theft/vandalism, public access, isolation/visibility, adjacent activity
             </p>
-            <textarea
+            <AutoExpandTextarea
               value={humanExposureNotes}
               onChange={(e) => setHumanExposureNotes(e.target.value)}
-              rows={8}
+              minRows={8}
               className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
               placeholder="Document location-based exposure factors: arson risk, theft/vandalism potential, public accessibility, site visibility, neighboring activities, any relevant contextual controls..."
             />

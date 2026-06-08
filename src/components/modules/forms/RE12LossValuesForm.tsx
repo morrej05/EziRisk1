@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import FloatingSaveBar from './FloatingSaveBar';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 
 interface Document {
   id: string;
@@ -634,7 +635,7 @@ export default function RE12LossValuesForm({
           {/* Additional Comments */}
           <div className="mt-4">
             <label className="block text-xs font-medium text-slate-700 mb-1">Additional Comments</label>
-            <textarea
+            <AutoExpandTextarea
               value={formData.sums_insured.additional_comments}
               onChange={(e) => setFormData({
                 ...formData,
@@ -643,7 +644,7 @@ export default function RE12LossValuesForm({
                   additional_comments: e.target.value,
                 },
               })}
-              rows={2}
+              minRows={2}
               className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
               placeholder="Any additional notes on sums insured, basis of valuation, or assumptions"
             />
@@ -673,13 +674,13 @@ export default function RE12LossValuesForm({
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Scenario Description</label>
-              <textarea
+              <AutoExpandTextarea
                 value={formData.wle.scenario_description}
                 onChange={(e) => setFormData({
                   ...formData,
                   wle: { ...formData.wle, scenario_description: e.target.value },
                 })}
-                rows={2}
+                minRows={2}
                 className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                 placeholder="Describe ignition source, fire spread path, extent of damage, key assumptions"
               />
@@ -942,13 +943,13 @@ export default function RE12LossValuesForm({
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Scenario Description</label>
-              <textarea
+              <AutoExpandTextarea
                 value={formData.nle.scenario_description}
                 onChange={(e) => setFormData({
                   ...formData,
                   nle: { ...formData.nle, scenario_description: e.target.value },
                 })}
-                rows={2}
+                minRows={2}
                 className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                 placeholder="Describe expected scenario with fire protection operating: detection, suppression, compartmentation, expected fire size and impact"
               />
@@ -1206,10 +1207,10 @@ export default function RE12LossValuesForm({
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Scenario Description</label>
-              <textarea
+              <AutoExpandTextarea
                 value={formData.eml.scenario_description}
                 onChange={(e) => setFormData({ ...formData, eml: { ...formData.eml, scenario_description: e.target.value } })}
-                rows={2}
+                minRows={2}
                 className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
                 placeholder="Describe expected scenario, assumptions about protection effectiveness, fire spread containment and expected loss"
               />

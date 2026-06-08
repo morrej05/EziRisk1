@@ -7,6 +7,7 @@ import { ensureRatingsObject } from '../../../lib/re/scoring/riskEngineeringHelp
 import { updateDocumentMeta } from '../../../lib/documents/updateDocumentMeta';
 import { useAuth } from '../../../contexts/AuthContext';
 import FloatingSaveBar from './FloatingSaveBar';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 import { Plus, X } from 'lucide-react';
 import { resolveDisplayName } from '../../../utils/pdfIdentity';
 
@@ -482,10 +483,10 @@ export default function RE01DocumentControlForm({
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
-              <textarea
+              <AutoExpandTextarea
                 value={formData.client_site.address}
                 onChange={(e) => setFormData(prev => ({ ...prev, client_site: { ...prev.client_site, address: e.target.value } }))}
-                rows={2}
+                minRows={2}
                 className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
               />
             </div>
@@ -680,13 +681,13 @@ export default function RE01DocumentControlForm({
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Limitations & Assumptions</label>
-              <textarea
+              <AutoExpandTextarea
                 value={formData.scope.limitations_assumptions}
                 onChange={(e) => setFormData(prev => ({
                   ...prev,
                   scope: { ...prev.scope, limitations_assumptions: e.target.value }
                 }))}
-                rows={3}
+                minRows={3}
                 className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
                 placeholder="Document any limitations or assumptions for this survey..."
               />

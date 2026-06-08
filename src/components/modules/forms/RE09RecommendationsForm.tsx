@@ -11,6 +11,7 @@ import { useSearchParams } from 'react-router-dom';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import { getModuleDisplayLabel } from '../../../lib/modules/moduleCatalog';
 import { isReDocumentLocked } from '../../../lib/re/documentLock';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 
 interface Document {
   id: string;
@@ -946,13 +947,13 @@ export default function RE09RecommendationsForm({
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Observation
                   </label>
-                  <textarea
+                  <AutoExpandTextarea
                     value={rec.observation_text}
                     onChange={(e) =>
                       !isLocked && updateRecommendation(rec.id, { observation_text: e.target.value })
                     }
                     readOnly={isLocked}
-                    rows={3}
+                    minRows={3}
                     className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="What was observed during the assessment?"
                   />
@@ -963,13 +964,13 @@ export default function RE09RecommendationsForm({
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Action Required
                   </label>
-                  <textarea
+                  <AutoExpandTextarea
                     value={rec.action_required_text}
                     onChange={(e) =>
                       !isLocked && updateRecommendation(rec.id, { action_required_text: e.target.value })
                     }
                     readOnly={isLocked}
-                    rows={3}
+                    minRows={3}
                     className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="What action needs to be taken?"
                   />
@@ -983,13 +984,13 @@ export default function RE09RecommendationsForm({
                       Hazard / Risk Description
                     </label>
                   </div>
-                  <textarea
+                  <AutoExpandTextarea
                     value={rec.hazard_text}
                     onChange={(e) =>
                       !isLocked && updateRecommendation(rec.id, { hazard_text: e.target.value })
                     }
                     readOnly={isLocked}
-                    rows={2}
+                    minRows={2}
                     className={`w-full px-3 py-2 border border-amber-300 rounded-md text-sm bg-white ${isLocked ? 'cursor-default' : ''}`}
                     placeholder="Describe the hazard or risk associated with this recommendation"
                   />
@@ -1000,13 +1001,13 @@ export default function RE09RecommendationsForm({
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Author Comments (Internal Notes)
                   </label>
-                  <textarea
+                  <AutoExpandTextarea
                     value={rec.comments_text || ''}
                     onChange={(e) =>
                       !isLocked && updateRecommendation(rec.id, { comments_text: e.target.value })
                     }
                     readOnly={isLocked}
-                    rows={2}
+                    minRows={2}
                     className={`w-full px-3 py-2 border border-slate-300 rounded-md text-sm ${isLocked ? 'bg-slate-50 cursor-default' : ''}`}
                     placeholder="Internal notes (not included in report)"
                   />

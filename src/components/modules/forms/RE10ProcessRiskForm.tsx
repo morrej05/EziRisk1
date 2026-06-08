@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import { isReDocumentLocked } from '../../../lib/re/documentLock';
 import { sanitizeModuleInstancePayload } from '../../../utils/modulePayloadSanitizer';
 import OutcomePanel from '../OutcomePanel';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 import FloatingSaveBar from './FloatingSaveBar';
 import ReRatingPanel from '../../re/ReRatingPanel';
 import { getHrgConfig } from '../../../lib/re/reference/hrgMasterMap';
@@ -172,10 +173,10 @@ export default function RE10ProcessRiskForm({
 
       <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-4">Additional Notes</h3>
-        <textarea
+        <AutoExpandTextarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          rows={4}
+          minRows={4}
           className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
           placeholder="Additional observations about process risks and controls"
         />

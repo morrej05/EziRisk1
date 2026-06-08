@@ -192,6 +192,29 @@ export default function BuildingsGrid({
         });
 
       if (error) throw error;
+
+      // Also write into the RE02 module instance data so PDF picks up notes
+      // immediately without relying solely on the debounced completion snapshot.
+      if (resolvedModuleInstanceId) {
+        const { data: moduleInstance } = await supabase
+          .from('module_instances')
+          .select('data')
+          .eq('id', resolvedModuleInstanceId)
+          .maybeSingle();
+        if (moduleInstance) {
+          const updatedData = {
+            ...(moduleInstance.data || {}),
+            construction: {
+              ...((moduleInstance.data || {}).construction || {}),
+              site_notes: constructionNotes,
+            },
+          };
+          await supabase
+            .from('module_instances')
+            .update({ data: updatedData })
+            .eq('id', resolvedModuleInstanceId);
+        }
+      }
     } catch (e: any) {
       setError(e?.message ?? 'Failed to save site notes');
     } finally {
