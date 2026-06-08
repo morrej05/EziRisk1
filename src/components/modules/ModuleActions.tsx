@@ -160,10 +160,21 @@ const matchesRecommendationModule = (
 const matchesRecommendationSection = (
   action: ActionLike,
   context: RecommendationMatchContext,
-): boolean => (
-  matchesRecommendationModule(action, context.moduleInstanceId, context.moduleKey) &&
-  detailMatchesAny(action, ["sectionKey", "sourceKey", "source_factor_key"], [context.sectionKey, context.sourceKey])
-);
+): boolean => {
+  if (!matchesRecommendationModule(action, context.moduleInstanceId, context.moduleKey)) {
+    return false;
+  }
+  // Prefer precise sourceKey match. Only fall back to sectionKey when no
+  // sourceKey is stored on the record (legacy recs created before sourceKey
+  // was introduced). This prevents recs from one category (e.g. hot_work)
+  // appearing in sibling categories that share the same sectionKey.
+  const records = getRecommendationDetailRecords(action);
+  const hasStoredSourceKey = records.some((r) => stringValue(r["sourceKey"]) || stringValue(r["source_factor_key"]));
+  if (hasStoredSourceKey) {
+    return detailMatchesAny(action, ["sourceKey", "source_factor_key"], [context.sourceKey]);
+  }
+  return detailMatchesAny(action, ["sectionKey"], [context.sectionKey]);
+};
 
 const getActionSourceLabel = (action: ActionLike, fallback?: string | null): string | null => {
   const records = getRecommendationDetailRecords(action);
@@ -360,11 +371,17 @@ export default function ModuleActions({
         const sectionScopedRecs = recommendationContext
           ? moduleScopedRecs.filter((rec) => {
               const meta = rec.metadata || {};
-              return (
-                rec.source_factor_key === recommendationContext.sourceKey ||
-                meta.sourceKey === recommendationContext.sourceKey ||
-                meta.sectionKey === recommendationContext.sectionKey
-              );
+              // sourceKey/source_factor_key match is definitive.
+              // sectionKey is a fallback only for legacy recs that have no sourceKey,
+              // preventing sibling-category cross-contamination.
+              const hasSourceKey = rec.source_factor_key || meta.sourceKey;
+              if (hasSourceKey) {
+                return (
+                  rec.source_factor_key === recommendationContext.sourceKey ||
+                  meta.sourceKey === recommendationContext.sourceKey
+                );
+              }
+              return meta.sectionKey === recommendationContext.sectionKey;
             })
           : moduleScopedRecs;
 

@@ -45,12 +45,15 @@ export default function ReEngineeringQuestionCard({
           : 'No active recommendation';
 
   return (
-    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3 h-full min-h-0">
+    <div className="border border-slate-200 rounded-lg p-4 bg-white space-y-3">
       <p className="text-sm font-semibold text-slate-900 whitespace-pre-wrap break-words">{questionId}. {title || prompt}</p>
-      <p className="text-xs text-slate-600 whitespace-pre-wrap break-words">{prompt}</p>
+      {/* Only render the prompt as a sub-label when it provides different detail from the title */}
+      {title && title !== prompt && (
+        <p className="text-xs text-slate-600 whitespace-pre-wrap break-words">{prompt}</p>
+      )}
 
       <div className="text-xs text-slate-500">Answer scale: 0–4 (observable state based)</div>
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {answerStates.map((state) => (
           <button
             key={state.score}

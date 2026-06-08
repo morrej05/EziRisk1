@@ -104,6 +104,22 @@ export default function RE12LossValuesForm({
         gross_profit_pct: d.nle?.business_interruption?.gross_profit_pct || null,
       },
     },
+
+    eml: {
+      scenario_summary: d.eml?.scenario_summary || '',
+      scenario_description: d.eml?.scenario_description || '',
+      property_damage: {
+        buildings_improvements_pct: d.eml?.property_damage?.buildings_improvements_pct || null,
+        plant_machinery_contents_pct: d.eml?.property_damage?.plant_machinery_contents_pct || null,
+        stock_wip_pct: d.eml?.property_damage?.stock_wip_pct || null,
+        computers_pct: d.eml?.property_damage?.computers_pct || null,
+        other_pct: d.eml?.property_damage?.other_pct || null,
+      },
+      business_interruption: {
+        outage_duration_months: d.eml?.business_interruption?.outage_duration_months || null,
+        gross_profit_pct: d.eml?.business_interruption?.gross_profit_pct || null,
+      },
+    },
   });
 
   const [assessorNotes] = useState(moduleInstance.assessor_notes || '');
@@ -233,6 +249,32 @@ export default function RE12LossValuesForm({
     if (!totalSums) return 0;
     return (calcNLETotal() / totalSums) * 100;
   };
+
+  // EML calculations (same structure as NLE)
+  const calcEMLPDSubtotal = (category: keyof typeof formData.sums_insured.property_damage, pct: number | null) => {
+    if (!pct) return 0;
+    const value = formData.sums_insured.property_damage[category];
+    return ((value || 0) * pct) / 100;
+  };
+
+  const calcEMLPDTotal = () => {
+    const pd = formData.eml.property_damage;
+    return calcEMLPDSubtotal('buildings_improvements', pd.buildings_improvements_pct) +
+           calcEMLPDSubtotal('plant_machinery_contents', pd.plant_machinery_contents_pct) +
+           calcEMLPDSubtotal('stock_wip', pd.stock_wip_pct) +
+           calcEMLPDSubtotal('computers', pd.computers_pct) +
+           calcEMLPDSubtotal('other', pd.other_pct);
+  };
+
+  const calcEMLBITotal = () => {
+    const bi = formData.eml.business_interruption;
+    const grossProfit = formData.sums_insured.business_interruption.gross_profit_annual || 0;
+    const months = bi.outage_duration_months || 0;
+    const pct = bi.gross_profit_pct || 0;
+    return (grossProfit * (pct / 100) * months) / 12;
+  };
+
+  const calcEMLTotal = () => calcEMLPDTotal() + calcEMLBITotal();
 
   const handleSave = async () => {
     if (isLocked) return;
@@ -1146,6 +1188,141 @@ export default function RE12LossValuesForm({
           </div>
         </div>
 
+        {/* RE-12.4 EML - Estimated Maximum Loss */}
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <h3 className="text-base font-semibold text-slate-900 mb-1">RE-12.4 — Estimated Maximum Loss (EML)</h3>
+          <p className="text-xs text-slate-600 mb-3">Maximum credible loss under near-worst-case fire scenario with protection partially effective (manual entry)</p>
+
+          <div className="space-y-2 mb-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Scenario Summary</label>
+              <input
+                type="text"
+                value={formData.eml.scenario_summary}
+                onChange={(e) => setFormData({ ...formData, eml: { ...formData.eml, scenario_summary: e.target.value } })}
+                className="w-full px-2 py-1 border border-slate-300 rounded text-xs"
+                placeholder="e.g., 'Partial sprinkler failure — fire controlled at building boundary'"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Scenario Description</label>
+              <textarea
+                value={formData.eml.scenario_description}
+                onChange={(e) => setFormData({ ...formData, eml: { ...formData.eml, scenario_description: e.target.value } })}
+                rows={2}
+                className="w-full px-2 py-1.5 border border-slate-300 rounded text-xs"
+                placeholder="Describe expected scenario, assumptions about protection effectiveness, fire spread containment and expected loss"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-3">
+            {/* EML Property Damage */}
+            <div>
+              <h4 className="text-xs font-semibold text-slate-800 mb-2">Property Damage Loss (%)</h4>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-300">
+                    <th className="text-left py-1 text-slate-600 font-semibold">Category</th>
+                    <th className="text-right py-1 text-slate-600 font-semibold w-16">% Loss</th>
+                    <th className="text-right py-1 text-slate-600 font-semibold w-24">Sub-total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(
+                    [
+                      ['buildings_improvements', 'Buildings & Improvements'],
+                      ['plant_machinery_contents', 'Plant, Machinery & Contents'],
+                      ['stock_wip', 'Stock & WIP'],
+                      ['computers', 'Computers & Electronic Equipment'],
+                      ['other', formData.sums_insured.property_damage.other_label],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <tr key={key} className="border-b border-slate-200">
+                      <td className="py-1 text-slate-700">{label}</td>
+                      <td className="py-1">
+                        <input
+                          type="number"
+                          value={(formData.eml.property_damage as any)[`${key}_pct`] || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            eml: {
+                              ...formData.eml,
+                              property_damage: {
+                                ...formData.eml.property_damage,
+                                [`${key}_pct`]: e.target.value ? parseFloat(e.target.value) : null,
+                              },
+                            },
+                          })}
+                          className="w-full px-1 py-0.5 border border-slate-300 rounded text-xs text-right"
+                          placeholder="0" min="0" max="100"
+                        />
+                      </td>
+                      <td className="py-1 text-right text-slate-900">
+                        {(formData.sums_insured.property_damage as any)[key]
+                          ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: formData.currency, maximumFractionDigits: 0 })
+                              .format(((formData.sums_insured.property_damage as any)[key] || 0) * (((formData.eml.property_damage as any)[`${key}_pct`] || 0) / 100))
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 font-semibold">
+                    <td className="py-2 text-slate-900">EML PD Total</td>
+                    <td></td>
+                    <td className="py-2 text-right text-slate-900">{new Intl.NumberFormat('en-GB', { style: 'currency', currency: formData.currency, maximumFractionDigits: 0 }).format(calcEMLPDTotal())}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* EML Business Interruption */}
+            <div>
+              <h4 className="text-xs font-semibold text-slate-800 mb-2">Business Interruption Loss</h4>
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr,100px] gap-2 items-center">
+                  <label className="text-xs text-slate-700">Outage duration (months)</label>
+                  <input
+                    type="number"
+                    value={formData.eml.business_interruption.outage_duration_months || ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      eml: { ...formData.eml, business_interruption: { ...formData.eml.business_interruption, outage_duration_months: e.target.value ? parseFloat(e.target.value) : null } },
+                    })}
+                    className="px-2 py-1 border border-slate-300 rounded text-xs text-right"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="grid grid-cols-[1fr,100px] gap-2 items-center">
+                  <label className="text-xs text-slate-700">% of Gross Profit</label>
+                  <input
+                    type="number"
+                    value={formData.eml.business_interruption.gross_profit_pct || ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      eml: { ...formData.eml, business_interruption: { ...formData.eml.business_interruption, gross_profit_pct: e.target.value ? parseFloat(e.target.value) : null } },
+                    })}
+                    className="px-2 py-1 border border-slate-300 rounded text-xs text-right"
+                    placeholder="0" min="0" max="100"
+                  />
+                </div>
+                <div className="bg-slate-50 p-2 rounded border border-slate-200 mt-3">
+                  <div className="grid grid-cols-[1fr,auto] gap-2 items-center">
+                    <span className="text-xs font-semibold text-slate-900">EML BI Total</span>
+                    <span className="text-xs font-bold text-slate-900">{new Intl.NumberFormat('en-GB', { style: 'currency', currency: formData.currency, maximumFractionDigits: 0 }).format(calcEMLBITotal())}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-bold text-blue-900">EML Total (PD + BI)</span>
+              <span className="text-sm font-bold text-blue-900">{new Intl.NumberFormat('en-GB', { style: 'currency', currency: formData.currency, maximumFractionDigits: 0 }).format(calcEMLTotal())}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Summary Comparison - Compact Table */}
         <div className="bg-white rounded-lg border border-slate-200 p-4">
           <h3 className="text-base font-semibold text-slate-900 mb-3">Loss Expectancy Summary</h3>
@@ -1168,6 +1345,14 @@ export default function RE12LossValuesForm({
                 <td className="py-2 text-slate-700">Normal Loss Expectancy (NLE)</td>
                 <td className="py-2 text-right font-bold text-slate-900">{formatCurrency(calcNLETotal())}</td>
                 <td className="py-2 text-right font-semibold text-slate-700">{formatPct(calcNLETotalPctOfTotal())}</td>
+              </tr>
+
+              <tr className="border-b border-slate-100">
+                <td className="py-2 text-slate-700">Estimated Maximum Loss (EML)</td>
+                <td className="py-2 text-right font-bold text-slate-900">{formatCurrency(calcEMLTotal())}</td>
+                <td className="py-2 text-right font-semibold text-slate-700">
+                  {calcTotalSumsInsured() > 0 ? formatPct((calcEMLTotal() / calcTotalSumsInsured()) * 100) : '—'}
+                </td>
               </tr>
 
               {calcWLETotal() > 0 && (

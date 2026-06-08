@@ -104,6 +104,10 @@ type DetectionMaintenanceStatus = 'Good' | 'Concerns' | 'Unknown';
 interface BuildingSprinklerData {
   // New fields
   sprinklers_installed?: SprinklersInstalled;
+  /** Assessor judgment: are sprinklers warranted for this building? Set when installed = No. */
+  sprinklers_warranted?: 'Yes' | 'No' | 'Unknown';
+  /** Narrative for why sprinklers are absent, alternatives in place, etc. */
+  no_sprinklers_commentary?: string;
   system_type?: SystemType;
   standard?: SprinklerStandard;
   standard_other?: string;
@@ -728,9 +732,27 @@ export default function RE06FireProtectionForm({
         }).then((lifecycleState) => ({ buildingId, lifecycleState }));
       });
 
+      // Auto-rec for buildings where sprinklers are absent but warranted/recommended
+      const noSprinklersWarrantedSyncOps = Object.entries(payload.buildings || {}).map(([buildingId, buildingData]) => {
+        const sprinklerData = buildingData?.sprinklerData;
+        const isDeficiency =
+          sprinklerData?.sprinklers_installed === 'No' &&
+          sprinklerData?.sprinklers_warranted === 'Yes';
+
+        return syncAutoRecToRegister({
+          documentId: moduleInstance.document_id,
+          moduleKey: 'RE_06_FIRE_PROTECTION',
+          canonicalKey: `re06_fp_sprinklers_warranted_absent:${buildingId}`,
+          moduleInstanceId: moduleInstance.id,
+          rating_1_5: isDeficiency ? 1 : 5,
+          industryKey,
+        }).then((lifecycleState) => ({ buildingId, lifecycleState }));
+      });
+
       const [supplementarySyncResults, localisedKnockoutSyncResults] = await Promise.all([
         Promise.allSettled(supplementarySyncOps),
         Promise.allSettled(localisedKnockoutSyncOps),
+        Promise.allSettled(noSprinklersWarrantedSyncOps),
       ]);
 
       setSupplementaryAutoRecStates((prev) => {
@@ -1396,10 +1418,38 @@ export default function RE06FireProtectionForm({
                 </div>
 
                 {selectedSprinklerData.sprinklers_installed === 'No' ? (
-                  <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <p className="text-sm text-slate-700">
-                      <strong>No sprinklers installed.</strong> This building is excluded from sprinkler roll-up.
-                    </p>
+                  <div className="space-y-4">
+                    <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                      <p className="text-sm font-semibold text-amber-900 mb-1">No sprinklers installed — deficiency assessment required</p>
+                      <p className="text-xs text-amber-800">Record whether sprinklers are warranted for this building and provide commentary. This building is excluded from sprinkler coverage roll-up.</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Are automatic sprinklers warranted / recommended for this building?
+                      </label>
+                      <select
+                        value={selectedSprinklerData.sprinklers_warranted ?? ''}
+                        onChange={(e) => updateBuildingSprinkler('sprinklers_warranted', e.target.value || undefined)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                      >
+                        <option value="">— Select —</option>
+                        <option value="Yes">Yes — sprinklers are warranted (material deficiency)</option>
+                        <option value="No">No — sprinklers are not warranted for this occupancy/use</option>
+                        <option value="Unknown">Unknown — further information required</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Commentary on suppression absence
+                      </label>
+                      <textarea
+                        value={selectedSprinklerData.no_sprinklers_commentary ?? ''}
+                        onChange={(e) => updateBuildingSprinkler('no_sprinklers_commentary', e.target.value)}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                        placeholder="Describe reasons for absence, alternative protection measures in place, and any engineering justification..."
+                      />
+                    </div>
                   </div>
                 ) : (
                   <>

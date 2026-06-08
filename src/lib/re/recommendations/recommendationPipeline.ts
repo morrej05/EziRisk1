@@ -29,6 +29,15 @@ interface FallbackContent {
 
 const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
 
+  // Dynamic per-building key: re06_fp_sprinklers_warranted_absent:<buildingId>
+  // Matched by prefix — see buildRecommendationPayload prefix-lookup below
+  re06_fp_sprinklers_warranted_absent: {
+    title: 'Install automatic sprinkler system — warranted protection absent',
+    observation_text: 'No automatic sprinkler system is installed in this building, and the occupancy/hazard profile warrants suppression. The absence of automatic sprinklers represents a material protection deficiency.',
+    action_required_text: 'Commission a sprinkler system design study and implement automatic sprinkler protection in accordance with the applicable standard (EN 12845, NFPA 13 or equivalent) for the occupancy/hazard present.',
+    hazard_text: 'Absence of warranted suppression significantly increases expected fire damage, delays control, and may materially affect property and business interruption loss outcomes.',
+  },
+
   re06_fp_adequacy_fixed_protection_required_provided: {
     title: 'Provide/extend fixed protection where hazard warrants it',
     observation_text: 'Areas requiring fixed fire protection are not adequately protected across the current occupancy/process/storage profile.',

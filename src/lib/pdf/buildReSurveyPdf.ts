@@ -1125,7 +1125,8 @@ function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
     occupancy.fire_load_profile;
   return compactRows([
     ['Occupancy type', formatDataValue(occupancyType)],
-    ['Process / use overview', formatDataValue(processOverview)],
+    // 'Process / use overview' is omitted here — it is rendered as a standalone
+    // paragraph immediately before this table and must not be duplicated.
     ['Shift pattern / operating profile', formatDataValue(occupancy.shift_pattern ?? occupancy.operating_profile ?? occupancy.operating_hours_profile)],
     ['Combustible loading profile', formatDataValue(combustibleLoading)],
     ['Industry-specific special hazards', formatDataValue(occupancy.industry_special_hazards_notes ?? occupancy.special_hazards ?? occupancy.industry_specific_special_hazards)],
@@ -1790,7 +1791,7 @@ function getLossValuesStructuredRows(module: ModuleInstance): Row[] {
   ];
 }
 
-function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle'): Row[] {
+function getLossExpectancyRows(module: ModuleInstance, event: 'wle' | 'nle' | 'eml'): Row[] {
   const d = module.data || {};
   const expectancy = (d as any)?.[event] || {};
   const bi = expectancy?.business_interruption || {};
@@ -2745,9 +2746,23 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
       }));
       yPosition = sectionBreak(yPosition);
+
+      const emlRows = getLossExpectancyRows(module, 'eml');
+      if (emlRows.length > 0) {
+        ({ page, yPosition } = ensurePageSpace(100 + emlRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'EML (Estimated Maximum Loss)', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], emlRows, { regular: font, bold: fontBold }, {
+          colWidths: [185, CONTENT_WIDTH - 185],
+          fontSize: 8.5,
+          minRowHeight: 18,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition);
+      }
     }
 
-    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_06_FIRE_PROTECTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS' && module.module_key !== 'RE_08_UTILITIES' && module.module_key !== 'RE_09_MANAGEMENT' && module.module_key !== 'RE_12_LOSS_VALUES') {
+    // RE_06 was previously excluded here; it now renders its own EI via buildSectionInterpretation
+    if (module.module_key !== 'RE_02_CONSTRUCTION' && module.module_key !== 'RE_07_NATURAL_HAZARDS' && module.module_key !== 'RE_08_UTILITIES' && module.module_key !== 'RE_09_MANAGEMENT' && module.module_key !== 'RE_12_LOSS_VALUES') {
       const interpretation = buildSectionInterpretation(module, breakdown);
       if (interpretation) {
         ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));

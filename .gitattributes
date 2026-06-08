@@ -1,2 +1,86 @@
-# Normalise line endings to LF on commit and checkout
+# ──────────────────────────────────────────────────────────────────────────────
+# EziRisk — line-ending policy
+#
+# Rule: all text is committed and checked out as LF.
+# core.autocrlf is pinned to false at repo level (.git/config) so the Windows
+# system-level autocrlf=true cannot inflate LF→CRLF on checkout.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Default for everything not matched below: auto-detect text, use LF
 * text=auto eol=lf
+
+# ── Explicit text types ───────────────────────────────────────────────────────
+*.ts          text eol=lf
+*.tsx         text eol=lf
+*.js          text eol=lf
+*.jsx         text eol=lf
+*.cjs         text eol=lf
+*.mjs         text eol=lf
+*.json        text eol=lf
+*.jsonc       text eol=lf
+*.css         text eol=lf
+*.scss        text eol=lf
+*.html        text eol=lf
+*.svg         text eol=lf
+*.md          text eol=lf
+*.mdx         text eol=lf
+*.sql         text eol=lf
+*.yaml        text eol=lf
+*.yml         text eol=lf
+*.toml        text eol=lf
+*.txt         text eol=lf
+*.sh          text eol=lf
+*.bash        text eol=lf
+*.py          text eol=lf
+*.env         text eol=lf
+.gitignore    text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+Makefile      text eol=lf
+
+# ── Binary assets — never normalise, never diff as text ──────────────────────
+
+# Images
+*.png         binary
+*.jpg         binary
+*.jpeg        binary
+*.gif         binary
+*.ico         binary
+*.webp        binary
+*.bmp         binary
+*.tiff        binary
+*.tif         binary
+
+# Fonts
+*.woff        binary
+*.woff2       binary
+*.ttf         binary
+*.otf         binary
+*.eot         binary
+
+# Archives & packages
+*.zip         binary
+*.gz          binary
+*.tar         binary
+*.tgz         binary
+*.bz2         binary
+*.7z          binary
+*.rar         binary
+
+# Documents
+*.pdf         binary
+*.docx        binary
+*.xlsx        binary
+*.pptx        binary
+*.doc         binary
+*.xls         binary
+*.ppt         binary
+
+# Media
+*.mp4         binary
+*.mp3         binary
+*.wav         binary
+*.ogg         binary
+*.webm        binary
+*.avi         binary
+*.mov         binary

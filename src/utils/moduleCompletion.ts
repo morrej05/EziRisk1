@@ -216,8 +216,18 @@ function getReModuleMissingRequirements(
   }
 
   if (moduleKey === 'RE_06_FIRE_PROTECTION') {
-    const required = ['fire_protection_water_supply_reliability', 'fire_protection_automatic_suppression'];
-    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required fire protection ratings'];
+    // RE06 stores data in its own module at data.fire_protection, not in the
+    // RISK_ENGINEERING ratings store. Check that at least one building has been
+    // assessed (sprinklerData populated) or that a supplementary overall score exists.
+    const fp = data?.fire_protection as Record<string, any> | undefined;
+    const buildings = fp?.buildings as Record<string, any> | undefined;
+    const hasBuildingData = buildings && Object.values(buildings).some(
+      (b: any) => hasMeaningfulValue(b?.sprinklerData?.sprinklers_installed)
+    );
+    const hasSupplementaryScore = typeof fp?.supplementary_assessment?.overall_score === 'number';
+    return hasBuildingData || hasSupplementaryScore
+      ? []
+      : ['Complete fire protection assessment for at least one building'];
   }
 
   if (moduleKey === 'RE_07_NATURAL_HAZARDS') {
@@ -231,16 +241,25 @@ function getReModuleMissingRequirements(
   }
 
   if (moduleKey === 'RE_09_MANAGEMENT') {
-    const required = [
-      'management_housekeeping',
-      'management_hot_work',
-      'management_impairment_management',
-      'management_contractor_control',
-      'management_maintenance',
-      'management_emergency_planning',
-      'management_change_management',
+    // RE09 stores category ratings in its own module at data.categories[i].rating_1_5,
+    // not in the shared RISK_ENGINEERING ratings store.
+    const requiredCategoryKeys = [
+      'housekeeping',
+      'hot_work',
+      'impairment_management',
+      'contractor_control',
+      'maintenance',
+      'emergency_planning',
+      'change_management',
     ];
-    return required.every((key) => hasRating(ratings, key)) ? [] : ['Complete all required management-system ratings'];
+    const categories: any[] = Array.isArray(data?.categories) ? data.categories : [];
+    const ratedKeys = new Set(
+      categories
+        .filter((c: any) => c.rating_1_5 !== null && c.rating_1_5 !== undefined)
+        .map((c: any) => c.key)
+    );
+    const allRated = requiredCategoryKeys.every((k) => ratedKeys.has(k));
+    return allRated ? [] : ['Complete ratings for all management system categories'];
   }
 
   if (moduleKey === 'RE_12_LOSS_VALUES') {

@@ -10,6 +10,7 @@ import { syncAutoRecToRegister } from "../../../lib/re/recommendations/recommend
 import { bumpActionsVersion } from "../../../lib/actions/actionsInvalidation";
 import type { AutoRecommendationLifecycleState } from "../../../lib/re/recommendations/recommendationPipeline";
 import RatingButtons from "../../re/RatingButtons";
+import AutoExpandTextarea from "../../AutoExpandTextarea";
 
 interface Document {
   id: string;
@@ -119,6 +120,7 @@ export default function RE09ManagementForm({
   const [autoRecStates, setAutoRecStates] = useState<
     Record<string, AutoRecommendationLifecycleState>
   >({});
+  const [isDirty, setIsDirty] = useState(false);
 
   // Refs to track hydration state
   const lastIdRef = useRef<string | null>(null);
@@ -285,6 +287,7 @@ export default function RE09ManagementForm({
 
       return { ...prev, categories: nextCategories };
     });
+    setIsDirty(true);
   };
 
   const getAutoStateLabel = (
@@ -332,6 +335,7 @@ export default function RE09ManagementForm({
 
       if (error) throw error;
 
+      setIsDirty(false);
       onSaved();
 
       // Non-blocking: update RISK_ENGINEERING overall rating + per-factor auto-recommendations
@@ -497,13 +501,13 @@ export default function RE09ManagementForm({
                       <label className="block text-sm font-medium text-slate-700 mb-1">
                         Notes
                       </label>
-                      <textarea
+                      <AutoExpandTextarea
                         value={category.notes ?? ""}
                         onChange={(e) =>
                           updateCategory(category.key, "notes", e.target.value)
                         }
-                        rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                        minRows={2}
+                        className="text-sm"
                         placeholder="Describe current practices, gaps, and observations"
                       />
                     </div>
@@ -546,7 +550,7 @@ export default function RE09ManagementForm({
         )}
       </div>
 
-      <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
+      <FloatingSaveBar onSave={handleSave} isSaving={isSaving} isDirty={isDirty} />
     </>
   );
 }

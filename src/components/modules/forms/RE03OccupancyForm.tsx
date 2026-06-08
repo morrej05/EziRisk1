@@ -11,6 +11,7 @@ import { getRating, setRating } from '../../../lib/re/scoring/riskEngineeringHel
 import { syncAutoRecToRegister } from '../../../lib/re/recommendations/recommendationPipeline';
 import { bumpActionsVersion } from '../../../lib/actions/actionsInvalidation';
 import { Plus, X, AlertCircle, BookOpen } from 'lucide-react';
+import AutoExpandTextarea from '../../AutoExpandTextarea';
 import type { AutoRecommendationLifecycleState } from '../../../lib/re/recommendations/recommendationPipeline';
 
 interface Document {
@@ -92,6 +93,7 @@ export default function RE03OccupancyForm({
   const [industryKey, setIndustryKey] = useState<string | null>(null);
   const [selectedHazardToAdd, setSelectedHazardToAdd] = useState('');
   const [autoRecStates, setAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>({});
+  const [isDirty, setIsDirty] = useState(false);
 
   const [feedback, setFeedback] = useState<{
     isOpen: boolean;
@@ -177,6 +179,9 @@ export default function RE03OccupancyForm({
     }
   };
 
+  // Mark form dirty whenever formData changes after initial mount
+  useEffect(() => { setIsDirty(true); }, [formData]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const addHazardEntry = () => {
     if (!selectedHazardToAdd) return;
 
@@ -227,6 +232,7 @@ export default function RE03OccupancyForm({
         .eq('id', moduleInstance.id);
 
       if (error) throw error;
+      setIsDirty(false);
       onSaved();
     } catch (error) {
       console.error('Error saving module:', error);
@@ -255,11 +261,11 @@ export default function RE03OccupancyForm({
         <p className="text-sm text-slate-600 mb-4">
           Provide a comprehensive overview of the occupancy classification, primary processes, operations, and activities at this site.
         </p>
-        <textarea
+        <AutoExpandTextarea
           value={formData.process_overview}
           onChange={(e) => setFormData({ ...formData, process_overview: e.target.value })}
-          rows={8}
-          className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm font-mono"
+          minRows={8}
+          className="text-sm font-mono"
           placeholder="Describe the site occupancy, business operations, manufacturing processes, storage activities, operating hours, staffing levels, and any other relevant occupancy information..."
         />
       </div>
@@ -286,11 +292,11 @@ export default function RE03OccupancyForm({
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Notes on Industry-Specific Hazards
             </label>
-            <textarea
+            <AutoExpandTextarea
               value={formData.industry_special_hazards_notes}
               onChange={(e) => setFormData({ ...formData, industry_special_hazards_notes: e.target.value })}
-              rows={4}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+              minRows={4}
+              className="text-sm"
               placeholder="Document industry-specific hazards and high-risk processes identified at this site..."
             />
           </div>
@@ -387,6 +393,17 @@ export default function RE03OccupancyForm({
                 </button>
               </div>
 
+              {hazard.hazard_key === 'emerging_risks' && (
+                <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs font-semibold text-amber-900 mb-1">Assessor guidance — Emerging risks (PV / lithium-ion)</p>
+                  <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
+                    <li><strong>PV panels:</strong> Note roof area covered, panel age, inverter location, DC isolation capability, and whether a shutdown procedure is posted for fire service use. PV fires are difficult to extinguish due to continuous DC generation.</li>
+                    <li><strong>Lithium-ion batteries:</strong> Record chemistry type (LFP/NMC/NCA), installation location, thermal management system, and suppression provision. Thermal runaway risk is significant and requires specific suppression strategy.</li>
+                    <li>Confirm whether the insurer has been notified of these installations and whether any endorsements apply.</li>
+                  </ul>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
@@ -438,11 +455,11 @@ export default function RE03OccupancyForm({
           <label className="block text-sm font-medium text-slate-700 mb-1">
             Additional Hazards / Catch-All Notes
           </label>
-          <textarea
+          <AutoExpandTextarea
             value={formData.hazards_free_text}
             onChange={(e) => setFormData({ ...formData, hazards_free_text: e.target.value })}
-            rows={3}
-            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+            minRows={3}
+            className="text-sm"
             placeholder="Any other hazards or observations not captured above..."
           />
         </div>
@@ -453,12 +470,16 @@ export default function RE03OccupancyForm({
             documentId={document.id}
             moduleInstanceId={moduleInstance.id}
             buttonLabel="Add Recommendation"
+            sectionKey="occupancy"
+            sectionLabel="Occupancy"
+            sourceKey="occupancy_module_summary"
+            sourceLabel="Occupancy module summary"
             useInPlaceReRecommendationModal
           />
         )}
       </div>
 
-      <FloatingSaveBar onSave={handleSave} isSaving={isSaving} />
+      <FloatingSaveBar onSave={handleSave} isSaving={isSaving} isDirty={isDirty} />
 
       <FeedbackModal
         isOpen={feedback.isOpen}

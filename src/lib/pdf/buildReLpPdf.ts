@@ -189,8 +189,9 @@ function drawTable(
   yPosition: number,
   headers: string[],
   rows: string[][],
-  fonts: { bold: PDFFont; regular: PDFFont }
-): number {
+  fonts: { bold: PDFFont; regular: PDFFont },
+  ctx?: { pdfDoc: PDFDocument; isDraft: boolean; totalPages: PDFPage[] }
+): { page: PDFPage; yPosition: number } {
   const rowHeight = 18;
   const colWidth = CONTENT_WIDTH / headers.length;
 
@@ -206,20 +207,45 @@ function drawTable(
     });
   });
 
+  let currentPage = page;
   let y = yPosition - rowHeight;
-  for (const row of rows) {
-    const neededHeight = row.reduce((max, value) => {
-      const lines = wrapText(sanitizePdfText(value), colWidth - 8, 8.2, fonts.regular);
-      return Math.max(max, lines.length * 11 + 4);
-    }, rowHeight);
 
-    page.drawRectangle({ x: MARGIN, y: y - neededHeight, width: CONTENT_WIDTH, height: neededHeight, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.5 });
+  for (const row of rows) {
+    const neededHeight = Math.max(
+      rowHeight,
+      row.reduce((max, value) => {
+        const lines = wrapText(sanitizePdfText(value), colWidth - 8, 8.2, fonts.regular);
+        return Math.max(max, lines.length * 11 + 6);
+      }, rowHeight)
+    );
+
+    // Page-break: if this row won't fit, start a new page and re-draw the header
+    if (ctx && y - neededHeight < 60) {
+      const next = addNewPage(ctx.pdfDoc, ctx.isDraft, ctx.totalPages);
+      currentPage = next.page;
+      y = next.yPosition;
+
+      // Re-draw column headers on the new page
+      currentPage.drawRectangle({ x: MARGIN, y: y - rowHeight, width: CONTENT_WIDTH, height: rowHeight, color: rgb(0.93, 0.95, 0.98) });
+      headers.forEach((header, idx) => {
+        currentPage.drawText(sanitizePdfText(header), {
+          x: MARGIN + idx * colWidth + 4,
+          y: y - 12,
+          size: 8.2,
+          font: fonts.bold,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+      });
+      y -= rowHeight;
+    }
+
+    currentPage.drawRectangle({ x: MARGIN, y: y - neededHeight, width: CONTENT_WIDTH, height: neededHeight, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.5 });
 
     row.forEach((value, idx) => {
       const lines = wrapText(sanitizePdfText(value), colWidth - 8, 8.2, fonts.regular);
       let lineY = y - 11;
       lines.forEach((line) => {
-        page.drawText(line, {
+        currentPage.drawText(line, {
           x: MARGIN + idx * colWidth + 4,
           y: lineY,
           size: 8.2,
@@ -233,7 +259,7 @@ function drawTable(
     y -= neededHeight;
   }
 
-  return y - 12;
+  return { page: currentPage, yPosition: y - 12 };
 }
 
 function getTopPriorityRows(recommendations: LpRecommendation[]): string[][] {
@@ -317,7 +343,7 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
     ['Version', String(versionNumber)],
     ['Associated RE Survey', sanitizePdfText(document.title || 'Risk Engineering Survey')],
   ];
-  yPosition = drawTable(coverDetailsPage, yPosition, ['Field', 'Value'], coverRows, { bold: fontBold, regular: font });
+  ({ yPosition } = drawTable(coverDetailsPage, yPosition, ['Field', 'Value'], coverRows, { bold: fontBold, regular: font }));
 
   addExecutiveSummaryPages(
     pdfDoc,
@@ -342,18 +368,19 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   yPosition -= 6;
 
   ({ page, yPosition } = ensurePageSpace(160, page, yPosition, pdfDoc, isDraft, totalPages));
-  yPosition = drawTable(page, yPosition, ['Ref', 'Recommendation', 'Risk Area', 'Priority', 'Timescale'], getTopPriorityRows(recommendations), { bold: fontBold, regular: font });
+  ({ page, yPosition } = drawTable(page, yPosition, ['Ref', 'Recommendation', 'Risk Area', 'Priority', 'Timescale'], getTopPriorityRows(recommendations), { bold: fontBold, regular: font }, { pdfDoc, isDraft, totalPages }));
 
   ({ page, yPosition } = ensurePageSpace(240, page, yPosition, pdfDoc, isDraft, totalPages));
   page.drawText('Action Register', { x: MARGIN, y: yPosition, size: 15, font: fontBold, color: rgb(0, 0, 0) });
   yPosition -= 20;
-  yPosition = drawTable(
+  ({ page, yPosition } = drawTable(
     page,
     yPosition,
     ['Ref', 'Section', 'Recommendation', 'Risk implication', 'Priority', 'Evidence', 'Timescale'],
     recommendations.map((rec) => [rec.ref, rec.riskArea, rec.recommendation, rec.riskImplication, rec.priority, rec.evidenceSummary, rec.timescale]),
-    { bold: fontBold, regular: font }
-  );
+    { bold: fontBold, regular: font },
+    { pdfDoc, isDraft, totalPages }
+  ));
 
   const recommendationsByRiskArea = new Map<string, LpRecommendation[]>();
   for (const rec of recommendations) {
@@ -406,15 +433,16 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
     page.drawText(`${band} (${bandRows.length})`, { x: MARGIN, y: yPosition, size: 12, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
     yPosition -= 16;
 
-    yPosition = drawTable(
+    ({ page, yPosition } = drawTable(
       page,
       yPosition,
       ['Ref', 'Recommendation', 'Priority', 'Timescale'],
       bandRows.length > 0
         ? bandRows.map((rec) => [rec.ref, `${rec.riskArea}: ${rec.recommendation}`, rec.priority, rec.timescale])
         : [['-', 'No actions in this horizon.', '-', '-']],
-      { bold: fontBold, regular: font }
-    );
+      { bold: fontBold, regular: font },
+      { pdfDoc, isDraft, totalPages }
+    ));
   }
 
   ({ page, yPosition } = ensurePageSpace(120, page, yPosition, pdfDoc, isDraft, totalPages));
