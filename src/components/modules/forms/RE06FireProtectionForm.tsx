@@ -1122,8 +1122,9 @@ export default function RE06FireProtectionForm({
             <TrendingUp className="w-5 h-5 text-risk-info-fg" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-slate-900">Engineering Assessment (Primary)</h3>
-            <p className="text-sm text-slate-600">This is the only scoring layer that drives RE-05 overall score. Scores of 4 are intended to be realistically achievable for well-managed normal risks, while 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
+            <h3 className="text-lg font-semibold text-slate-900">Site-level fire protection engineering judgement</h3>
+            <p className="text-sm text-slate-600">Use this section to score the overall adequacy and reliability of fixed fire protection across the site. This includes sprinklers, localised systems, gaseous systems, foam, water spray, detection interfaces, water supplies, impairment control and evidence confidence. It remains applicable even where sprinklers are absent, because absence of warranted fixed protection is itself a scoreable deficiency.</p>
+            <p className="text-xs text-slate-500 mt-1">This is the only scoring layer that drives the RE-05 fire protection section grade. Scores of 4 are intended to be realistically achievable for well-managed normal risks; 5 is reserved for robust, well-evidenced, highly dependable performance.</p>
           </div>
         </div>
 
@@ -1386,7 +1387,7 @@ export default function RE06FireProtectionForm({
                   <div className="flex items-center gap-3">
                     <div>
                       <h3 className="text-lg font-semibold text-slate-900">
-                        {selectedBuilding.ref || 'Building'} - Sprinklers
+                        {selectedBuilding.ref || 'Building'} — Building sprinkler / fixed protection data
                       </h3>
                       {selectedBuilding.description && (
                         <p className="text-sm text-slate-600">{selectedBuilding.description}</p>
