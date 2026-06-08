@@ -46,9 +46,13 @@ describe('RE survey PDF professional narrative helpers', () => {
       },
     } as any;
 
+    // Narrative commentary for RE_02 now returns only assessor notes.
+    // The auto-generated engineering interpretation (with 'Construction score')
+    // is rendered separately by buildSectionInterpretation.
     const narrative = helpers.getNarrativeCommentaryWithBreakdown(module, breakdown);
     expect(narrative).toContain('Legacy masonry adjoins a combustible insulated-panel extension.');
-    expect(narrative).toContain('Construction score');
+    const interpretation = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interpretation).toContain('Site construction score');
   });
 
   it('generates insurer-facing construction interpretation instead of repeating raw inputs', () => {

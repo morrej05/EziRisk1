@@ -326,10 +326,10 @@ function buildFallbackContent(factorKey: string): FallbackContent {
     .trim();
 
   return {
-    title: `Improve ${factorLabel}`,
-    observation_text: `${factorLabel} has been identified as requiring attention based on current site conditions. Control effectiveness is below acceptable standards and requires corrective action.`,
-    action_required_text: `Review and implement improvements to bring ${factorLabel} up to acceptable standards. Address identified deficiencies through documented corrective actions with clear ownership and target dates.`,
-    hazard_text: `Inadequate controls increase the likelihood of loss events escalating beyond planned defenses. A foreseeable incident could develop faster than current safeguards allow, increasing damage extent and recovery time. Strengthening this control reduces overall facility risk profile.`,
+    title: `Strengthen ${factorLabel} to engineering standard`,
+    observation_text: `${factorLabel} has been assessed below the acceptable engineering standard. Current control effectiveness is insufficient to reliably limit loss severity under foreseeable incident conditions.`,
+    action_required_text: `Define and implement specific corrective measures for ${factorLabel} with a named accountable owner and a target completion date. Evidence completion through documented inspection or test records. Interim risk management measures should be applied until permanent remediation is confirmed.`,
+    hazard_text: `Sub-standard performance in ${factorLabel} creates a pathway for incident escalation that current defences may not interrupt reliably. A foreseeable event could develop faster and with greater severity than planning assumptions allow, increasing physical damage, restoration complexity and interruption duration.`,
   };
 }
 

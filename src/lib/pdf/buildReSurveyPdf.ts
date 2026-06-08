@@ -561,10 +561,11 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
       : [];
     const pillar = options.breakdown?.globalPillars.find((p) => p.key === 'fire_protection');
     const count = buildings.length || 1;
+    const hasBuildingData = buildings.length > 0;
     return compactRows([
-      ['Buildings assessed', formatValue(buildings.length || '')],
-      ['Avg sprinkler required coverage', `${Math.round((required / count) * 10) / 10}%`],
-      ['Avg sprinkler installed coverage', `${Math.round((installed / count) * 10) / 10}%`],
+      ['Buildings assessed', formatValue(buildings.length || 'Not entered at building level')],
+      ['Avg sprinkler required coverage', hasBuildingData ? `${Math.round((required / count) * 10) / 10}%` : 'Not entered at building level'],
+      ['Avg sprinkler installed coverage', hasBuildingData ? `${Math.round((installed / count) * 10) / 10}%` : 'Not entered at building level'],
       ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
       ['Supplementary assessment (questions rated)', `${scoredQuestions.length}`],
       ['Supplementary engineering overall score', formatScoreOutOfFive(supplementary.overall_score)],
@@ -688,7 +689,9 @@ export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, brea
   const scoreBand = getScoreBand(rating);
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
-    const context = getConstructionContext(module, breakdown);
+    // Return only the assessor's own narrative notes here.
+    // The auto-generated engineering interpretation is rendered separately by
+    // buildConstructionEngineeringInterpretation via buildSectionInterpretation.
     const construction = (module.data as any)?.construction || module.data || {};
     notes = sanitizePdfText(String(
       notes ||
@@ -698,20 +701,7 @@ export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, brea
       construction?.comments ||
       ''
     )).trim();
-    const buildings = getConstructionBuildings(construction);
-    const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
-    const combustibleValue = context.explicitCombustiblePct ?? context.derivedCombustiblePct;
-    const fireSpreadRisk = combustibleValue === null ? 'uncertain fire spread potential' : combustibleValue >= 40 ? 'elevated fire spread potential' : combustibleValue >= 20 ? 'moderate fire spread potential' : 'more contained fire spread potential';
-    const floorAreaForSizing = context.totalFloorArea ?? context.totalRoofArea;
-    const interruptionSeverity = context.hasMezzanine || context.hasMultipleBuildings || floorAreaForSizing >= 3000
-      ? 'material interruption severity'
-      : 'moderate interruption severity';
-    const scoreText = Number.isFinite(rating as number) ? `${rating}/5` : 'Unavailable';
-    const areaDescription = context.totalFloorArea !== null
-      ? `floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
-      : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
-    const base = `Construction score: ${scoreText} (${scoreBand.label}). The mixed profile means a fire is more likely to spread through combustible envelope/contents even where primary framing is protected steel. With ${context.buildingCount} buildings, ${areaDescription}${context.totalMezzArea > 0 ? ` and mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m²` : ''}, a severe event can produce staged shutdown and phased reinstatement rather than a single quick restart. Cladding is identified on ${claddingPresentCount} building(s), supporting ${fireSpreadRisk}. Expected outcome is ${interruptionSeverity}, with longer strip-out, smoke remediation and programme risk than a fully non-combustible site profile.`;
-    return notes ? `${base} Additional assessor notes: ${notes}` : base;
+    return notes;
   }
 
   if (module.module_key === 'RE_03_OCCUPANCY') {
@@ -719,8 +709,17 @@ export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, brea
   }
 
   if (notes) return notes;
-  const sectionTitle = RE_SECTION_CONFIG[module.module_key]?.title || 'Section';
-  return `${sectionTitle} assessment reflects submitted survey fields and calibrated engineering scoring outputs.`;
+  // Section-specific narrative for modules where assessor notes are absent.
+  // These are insurer-facing engineering summaries, not data-echo boilerplate.
+  const sectionFallbacks: Record<string, string> = {
+    RE_06_FIRE_PROTECTION: 'No supplementary fire-protection narrative has been provided for this survey. The engineering interpretation above is derived from building-level protection inputs and scored assessment factors. Underwriters should review the structured fire-protection tables for installed coverage, detection, water supply and impairment governance evidence.',
+    RE_07_NATURAL_HAZARDS: 'No supplementary natural hazards narrative has been provided. The engineering interpretation is based on submitted exposure inputs and scored assessment factors. Flood, windstorm and external-exposure mapping should be reviewed alongside catastrophe modelling outputs where available.',
+    RE_08_UTILITIES: 'No supplementary utilities narrative has been provided. The engineering interpretation is based on declared critical services, backup power evidence and scored assessment factors. Single-point-of-failure dependencies should be evaluated in conjunction with business continuity assumptions.',
+    RE_09_MANAGEMENT: 'No supplementary management narrative has been provided. The engineering interpretation is based on scored category assessments. Evidence quality, audit cadence and impairment discipline are the primary loss-frequency and loss-severity modifiers for this section.',
+    RE_12_LOSS_VALUES: 'No supplementary commentary has been provided on declared values or loss expectancy. Loss scenario totals should be read together with fire-protection and construction performance to assess the credibility of underlying assumptions.',
+    RE_14_DRAFT_OUTPUTS: '',
+  };
+  return sectionFallbacks[module.module_key] ?? '';
 }
 
 function getScoreBand(rating: number | null): {
@@ -1654,7 +1653,8 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
     .filter(Boolean)
     .slice(0, 3)
     .join(', ');
-  const contextParts = [formatDataValue(occupancyType), formatDataValue(processOverview), hazardLabels || null]
+  // processOverview is rendered separately as a paragraph in the PDF body — omit from interpretation to avoid repetition
+  const contextParts = [formatDataValue(occupancyType), hazardLabels || null]
     .filter((part) => part && part !== 'Data not provided');
   const opening = contextParts.length
     ? `Occupancy context: ${contextParts.join(' | ')}.`
@@ -1964,6 +1964,10 @@ function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdo
 
 function buildManagementEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
   const rows = getManagementCategoryRows(module);
+  if (rows.length === 0) {
+    // No category-level assessments recorded — do not render a score that would contradict an empty table.
+    return 'Engineering interpretation: No management category assessments have been recorded for this module. A score cannot be derived. Complete category-level ratings to enable a scored management interpretation.';
+  }
   const weakRows = rows.filter(([, rating]) => Number(rating) <= 2).map(([category]) => formatIdentifierLabel(category)).slice(0, 3);
   const rating = getRatingByKey(breakdown, 'management_systems') ?? resolveSectionRating(module, breakdown);
   const weakText = weakRows.length
@@ -2426,7 +2430,8 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     yPosition,
     ['Item', 'Detail'],
     compactRows([
-      ['Report', formatValue(document.title || 'Risk Engineering Survey Report')],
+      ['Report type', 'Risk Engineering Survey Report'],
+      ...(document.title && !/^untitled/i.test(document.title.trim()) ? [['Survey title', formatValue(document.title)] as Row] : []),
       ['Organisation', formatValue(organisation.name)],
       ['Client', formatValue(document.meta?.client?.name || document.responsible_person)],
       ['Site', formatValue(document.meta?.site?.name || document.scope_description)],
@@ -2874,15 +2879,17 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
     if (module.module_key === 'RE_09_MANAGEMENT') {
       const managementRows = getManagementCategoryRows(module);
-      ({ page, yPosition } = ensurePageSpace(100 + managementRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Category ratings and notes', fontBold);
-      ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Category', 'Rating (1-5)', 'Notes'], managementRows, { regular: font, bold: fontBold }, {
-        colWidths: [130, 80, CONTENT_WIDTH - 210],
-        fontSize: 8.5,
-        minRowHeight: 18,
-        onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
-      }));
-      yPosition = sectionBreak(yPosition);
+      if (managementRows.length > 0) {
+        ({ page, yPosition } = ensurePageSpace(100 + managementRows.length * 18, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Category ratings and notes', fontBold);
+        ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Category', 'Rating (1-5)', 'Notes'], managementRows, { regular: font, bold: fontBold }, {
+          colWidths: [130, 80, CONTENT_WIDTH - 210],
+          fontSize: 8.5,
+          minRowHeight: 18,
+          onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
+        }));
+        yPosition = sectionBreak(yPosition);
+      }
     }
 
     if (module.module_key === 'RE_12_LOSS_VALUES') {
