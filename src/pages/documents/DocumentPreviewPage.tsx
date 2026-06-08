@@ -810,7 +810,7 @@ export default function DocumentPreviewPage() {
             <div className="border-b border-neutral-200">
               <div className="flex">
                 <button
-                  onClick={() => setReActiveTab('re_survey')}
+                  onClick={() => { setReActiveTab('re_survey'); setSignedUrl(null); setDraftPath(null); }}
                   className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
                     reActiveTab === 're_survey'
                       ? 'border-blue-600 text-blue-600'
@@ -820,7 +820,7 @@ export default function DocumentPreviewPage() {
                   Survey Report
                 </button>
                 <button
-                  onClick={() => setReActiveTab('re_lp')}
+                  onClick={() => { setReActiveTab('re_lp'); setSignedUrl(null); setDraftPath(null); }}
                   className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
                     reActiveTab === 're_lp'
                       ? 'border-blue-600 text-blue-600'
