@@ -1415,6 +1415,8 @@ export default function RE06FireProtectionForm({
           </div>
         </div>
       </div>
+        </>
+      )}
 
       <div className="grid grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
@@ -1986,8 +1988,6 @@ export default function RE06FireProtectionForm({
             </>
           )}
         </div>
-        </>
-      )}
       </div>
 
       <div className="mt-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
