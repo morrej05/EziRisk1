@@ -608,7 +608,7 @@ export default function RE06FireProtectionForm({
       : 'Coverage data unavailable';
   const supplementaryAssessment = normalizeSupplementaryAssessment(fireProtectionData.supplementary_assessment);
   const supplementaryScores = deriveRe04SupplementaryScores(supplementaryAssessment.questions, {
-    includeLocalisedGroup: showLocalisedDetailedAssessment || isLocalisedKnockoutFailed,
+    includeLocalisedGroup: isLocalisedRequired,
   });
   const [supplementaryAutoRecStates, setSupplementaryAutoRecStates] = useState<Record<string, AutoRecommendationLifecycleState>>(
     () => initializeAutoRecStates(supplementaryAssessment.questions)
@@ -1360,7 +1360,8 @@ export default function RE06FireProtectionForm({
             </div>
           )}
 
-          <div>
+          {isLocalisedRequired && (
+            <div>
               <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
               <div className="space-y-4">
                 {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
@@ -1386,6 +1387,7 @@ export default function RE06FireProtectionForm({
                 })}
               </div>
             </div>
+          )}
 
           <div>
             <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
