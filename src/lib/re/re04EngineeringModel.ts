@@ -54,8 +54,8 @@ export const RE04_ENGINEERING_QUESTIONS: Re04EngineeringQuestionDefinition[] = [
     id: 'Q1',
     factorKey: 're06_fp_adequacy_fixed_protection_required_provided',
     group: 'adequacy',
-    uiLabel: 'Fixed protection provided where required',
-    prompt: 'Is fixed protection provided wherever occupancy, process, or storage hazards clearly warrant it?',
+    uiLabel: 'Is fixed fire protection provided where warranted?',
+    prompt: 'Across the site as a whole, is fixed fire protection (sprinklers, gaseous systems, foam, water spray, local application, or equivalent) provided wherever occupancy, process, or storage hazards clearly warrant it? Score this as your overall judgement — not solely whether sprinklers are installed.',
     weight: 0.25,
     answerStates: [
       { score: 0, label: 'Absent where required', description: 'No fixed protection where clearly required by the hazard.' },
