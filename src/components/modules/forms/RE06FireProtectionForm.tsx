@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AlertTriangle, Info, Building as BuildingIcon, TrendingUp } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { isReDocumentLocked } from '../../../lib/re/documentLock';
@@ -1117,6 +1117,104 @@ export default function RE06FireProtectionForm({
     <div className="pb-24">
 
 
+      {/* ── Sprinkler knockout assessment ─────────────────────────────── */}
+      <div className="mb-6 bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-4">
+        <h3 className="text-lg font-semibold text-slate-900">Sprinkler knockout assessment</h3>
+
+        {/* Building selector — shown only when there are multiple buildings */}
+        {buildings.length > 1 && (
+          <div className="flex flex-wrap gap-2">
+            {buildings.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => handleBuildingSelect(b.id)}
+                className={`px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${
+                  selectedBuildingId === b.id
+                    ? 'border-risk-info-border bg-risk-info-bg text-risk-info-fg'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {b.ref || 'Building'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {selectedBuilding && (
+          <div className="space-y-4">
+            {/* Q1 — Primary gate */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Are sprinklers installed?</label>
+              <select
+                value={sprinklerKnockoutBranch.status}
+                onChange={(e) => updateSprinklersInstalledStatus(e.target.value as SprinklersInstalled)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="Yes">Yes</option>
+                <option value="Partial">Partial</option>
+                <option value="No">No</option>
+                <option value="Unknown">Unknown</option>
+              </select>
+            </div>
+
+            {sprinklerKnockoutBranch.showWarrantedQuestion && (
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                  <p className="text-sm font-semibold text-amber-900 mb-1">No sprinklers installed — deficiency assessment required</p>
+                  <p className="text-xs text-amber-800">Record whether sprinklers are warranted for this building and provide commentary. This building is excluded from sprinkler coverage roll-up.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Are automatic sprinklers warranted / recommended for this building?
+                  </label>
+                  <select
+                    value={selectedSprinklerData.sprinklers_warranted ?? ''}
+                    onChange={(e) => updateBuildingSprinkler('sprinklers_warranted', e.target.value || undefined)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                  >
+                    <option value="">— Select —</option>
+                    <option value="Yes">Yes — sprinklers are warranted (material deficiency)</option>
+                    <option value="No">No — sprinklers are not warranted for this occupancy/use</option>
+                    <option value="Unknown">Unsure — further information required</option>
+                  </select>
+                </div>
+                {sprinklerKnockoutBranch.showWarrantedCommentary && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Commentary on suppression absence
+                    </label>
+                    <AutoExpandTextarea
+                      value={selectedSprinklerData.no_sprinklers_commentary ?? ''}
+                      onChange={(e) => updateBuildingSprinkler('no_sprinklers_commentary', e.target.value)}
+                      minRows={4}
+                      className="px-3 py-2 rounded-md text-sm focus:ring-blue-500"
+                      placeholder="Describe reasons for absence, alternative protection measures in place, and any engineering justification..."
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sprinklerKnockoutBranch.showUnknownConfirmationNotes && (
+              <div className="p-4 bg-slate-50 rounded-lg border border-slate-300 space-y-3">
+                <div className="flex items-start gap-2">
+                  <Info className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">Sprinkler presence unknown — confirmation required</p>
+                    <p className="text-xs text-slate-600 mt-1">
+                      Confirm whether automatic sprinklers are installed before completing this section.
+                      No sprinkler adequacy score will be generated and no recommendation will be raised
+                      while the installation status remains unknown.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="grid grid-cols-3 gap-6">
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
           <div className="flex items-center gap-2 mb-4">
@@ -1255,78 +1353,6 @@ export default function RE06FireProtectionForm({
               )}
 
               <div className="space-y-4">
-                {/* Sprinklers Installed? - Primary gate */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Q1: Are sprinklers installed?</label>
-                  <select
-                    value={sprinklerKnockoutBranch.status}
-                    onChange={(e) => updateSprinklersInstalledStatus(e.target.value as SprinklersInstalled)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="Yes">Yes</option>
-                    <option value="Partial">Partial</option>
-                    <option value="No">No</option>
-                    <option value="Unknown">Unknown</option>
-                  </select>
-                </div>
-
-                {sprinklerKnockoutBranch.showWarrantedQuestion && (
-                  <div className="space-y-4">
-                    <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                      <p className="text-sm font-semibold text-amber-900 mb-1">No sprinklers installed — deficiency assessment required</p>
-                      <p className="text-xs text-amber-800">Record whether sprinklers are warranted for this building and provide commentary. This building is excluded from sprinkler coverage roll-up.</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        Are automatic sprinklers warranted / recommended for this building?
-                      </label>
-                      <select
-                        value={selectedSprinklerData.sprinklers_warranted ?? ''}
-                        onChange={(e) => updateBuildingSprinkler('sprinklers_warranted', e.target.value || undefined)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
-                      >
-                        <option value="">— Select —</option>
-                        <option value="Yes">Yes — sprinklers are warranted (material deficiency)</option>
-                        <option value="No">No — sprinklers are not warranted for this occupancy/use</option>
-                        <option value="Unknown">Unsure — further information required</option>
-                      </select>
-                    </div>
-                    {/* Commentary only shown when sprinklers are warranted — this is where the
-                        deficiency narrative belongs; not-warranted buildings need no commentary */}
-                    {sprinklerKnockoutBranch.showWarrantedCommentary && (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Commentary on suppression absence
-                        </label>
-                        <AutoExpandTextarea
-                          value={selectedSprinklerData.no_sprinklers_commentary ?? ''}
-                          onChange={(e) => updateBuildingSprinkler('no_sprinklers_commentary', e.target.value)}
-                          minRows={4}
-                          className="px-3 py-2 rounded-md text-sm focus:ring-blue-500"
-                          placeholder="Describe reasons for absence, alternative protection measures in place, and any engineering justification..."
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Unknown — confirmation required; no scoring, no auto-rec */}
-                {sprinklerKnockoutBranch.showUnknownConfirmationNotes && (
-                  <div className="p-4 bg-slate-50 rounded-lg border border-slate-300 space-y-3">
-                    <div className="flex items-start gap-2">
-                      <Info className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">Sprinkler presence unknown — confirmation required</p>
-                        <p className="text-xs text-slate-600 mt-1">
-                          Confirm whether automatic sprinklers are installed before completing this section.
-                          No sprinkler adequacy score will be generated and no recommendation will be raised
-                          while the installation status remains unknown.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Yes or Partial — full sprinkler detail assessment */}
                 {sprinklerKnockoutBranch.showDetailQuestions && (
                   <>
@@ -1773,33 +1799,28 @@ export default function RE06FireProtectionForm({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Adequacy</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.adequacy_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Reliability</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.reliability_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Localised / Special</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.localised_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-            <div className="text-sm text-slate-600 mb-1">Evidence / Confidence</div>
-            <div className="text-2xl font-bold text-slate-900">{supplementaryScores.evidence_subscore ?? 'Not rated'}</div>
-          </div>
-          <div className="bg-risk-info-bg rounded-lg p-4 border border-risk-info-border">
-            <div className="text-sm text-risk-info-fg mb-1">Overall Engineering Score</div>
-            <div className="text-2xl font-bold text-risk-info-fg">{supplementaryScores.overall_score ?? 'Not rated'}</div>
+        <div className="flex flex-wrap gap-3 text-sm">
+          {[
+            { label: 'Adequacy', value: supplementaryScores.adequacy_subscore },
+            { label: 'Reliability', value: supplementaryScores.reliability_subscore },
+            { label: 'Localised', value: supplementaryScores.localised_subscore },
+            { label: 'Evidence', value: supplementaryScores.evidence_subscore },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <span className="text-slate-500 text-xs">{label}</span>
+              <span className="font-semibold text-slate-800">{value ?? '—'}</span>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 bg-risk-info-bg border border-risk-info-border rounded-lg px-3 py-2">
+            <span className="text-risk-info-fg text-xs">Overall</span>
+            <span className="font-semibold text-risk-info-fg">{supplementaryScores.overall_score ?? '—'}</span>
           </div>
         </div>
 
         <div className="space-y-6">
           <div>
             <h4 className="font-semibold text-slate-900 mb-3">Adequacy (Q1–Q4)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="space-y-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.adequacy.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                 if (!question) return null;
@@ -1826,7 +1847,7 @@ export default function RE06FireProtectionForm({
 
           <div>
             <h4 className="font-semibold text-slate-900 mb-3">Reliability (Q5–Q7)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="space-y-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.reliability.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                 if (!question) return null;
@@ -1913,7 +1934,7 @@ export default function RE06FireProtectionForm({
           {sprinklerKnockoutBranch.showDetailQuestions && showLocalisedDetailedAssessment && (
             <div>
               <h4 className="font-semibold text-slate-900 mb-3">Localised / Special Protection (Q8–Q9)</h4>
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 {RE04_ENGINEERING_QUESTIONS_BY_GROUP.localised.map((definition) => {
                   const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                   if (!question) return null;
@@ -1941,7 +1962,7 @@ export default function RE06FireProtectionForm({
 
           <div>
             <h4 className="font-semibold text-slate-900 mb-3">Evidence / Confidence (Q10)</h4>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div className="space-y-4">
               {RE04_ENGINEERING_QUESTIONS_BY_GROUP.evidence.map((definition) => {
                 const question = supplementaryAssessment.questions.find((q) => q.factor_key === definition.factorKey);
                 if (!question) return null;
