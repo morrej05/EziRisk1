@@ -2321,7 +2321,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     yPosition,
     ['Item', 'Detail'],
     compactRows([
-      ['Report', formatValue(document.title || 'Risk Engineering Survey')],
+      ['Report', formatValue(document.title || 'Risk Engineering Survey Report')],
       ['Organisation', formatValue(organisation.name)],
       ['Client', formatValue(document.meta?.client?.name || document.responsible_person)],
       ['Site', formatValue(document.meta?.site?.name || document.scope_description)],
@@ -3111,7 +3111,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
   }
 
   for (let i = 0; i < totalPages.length; i++) {
-    drawFooter(totalPages[i], document.title, i + 1, totalPages.length, font);
+    drawFooter(totalPages[i], 'Risk Engineering Survey Report', i + 1, totalPages.length, font);
   }
 
   if (applyTrialWatermark) {
