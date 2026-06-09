@@ -2745,13 +2745,78 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}). ${scoreBand.constructionImplication} Site combustible proportion is ${combustibleText}. ${geometryText}${compartmentSection} ${externalCladdingText}${panelSection} ${constructionConsequence}`;
 }
 
-function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
+function buildExecutiveSignificanceNarrative(
+  breakdown: Breakdown,
+  allModules: ModuleInstance[] = [],
+): { level: SignificanceLevel; narrative: string } {
   const percent = breakdown.maxScore > 0 ? (breakdown.totalScore / breakdown.maxScore) * 100 : 0;
   const level = levelFromPercent(percent);
   const industryLabel = breakdown.industryLabel.toLowerCase();
-  // Build the drivers clause from top contributors (up to 3 for the significance narrative).
-  const drivers = breakdown.topContributors.slice(0, 3).map(t => t.label.toLowerCase());
-  const driversClause = drivers.length > 0 ? joinList(drivers) : 'the assessed engineering pillars';
+
+  // Derive site-specific risk drivers from module signals rather than generic pillar labels.
+  // Each signal is only included when the relevant module data supports it.
+  const drivers: string[] = [];
+
+  // Construction: combustible insulated panel / sandwich panel construction
+  const constructionModule = allModules.find(m => m.module_key === 'RE_02_CONSTRUCTION');
+  if (constructionModule) {
+    const ctx = getConstructionContext(constructionModule, breakdown);
+    const SANDWICH_RE = /\b(pur|pir|phenolic|foam[\s-]core|eps|xps|sandwich panels?|composite panels?|insulated panels?)\b/i;
+    const flatText = [
+      (constructionModule.data as any)?.construction?.wall_construction,
+      (constructionModule.data as any)?.construction?.roof_construction,
+      (constructionModule.data as any)?.construction?.primary_construction_type,
+      (constructionModule.data as any)?.construction?.cladding_description,
+    ].filter(Boolean).join(' ');
+    if (SANDWICH_RE.test(flatText)) drivers.push('combustible insulated panel construction');
+    // Compartmentation gap
+    const compScore = breakdown.globalPillars.find(p => p.key === 'construction_and_combustibility')?.rating;
+    if (ctx.buildingCount > 0 && (compScore == null || Number(compScore) <= 2)) {
+      drivers.push('lack of effective fire compartmentation');
+    }
+  }
+
+  // Fire protection: absence of building-wide sprinklers
+  const fpModule = allModules.find(m => m.module_key === 'RE_06_FIRE_PROTECTION');
+  if (fpModule) {
+    const fpRating = getRatingFromModule(fpModule) ?? breakdown.globalPillars.find(p => p.key === 'fire_protection')?.rating;
+    if (Number(fpRating) <= 1.5) drivers.push('absence of building-wide sprinkler protection');
+  }
+
+  // Occupancy: fryer/oil hazards and ammonia refrigeration
+  const occupancyModule = allModules.find(m => m.module_key === 'RE_03_OCCUPANCY');
+  if (occupancyModule) {
+    const bodyText = JSON.stringify((occupancyModule.data as any) || '').toLowerCase();
+    if (bodyText.includes('fryer') || bodyText.includes('frying') || bodyText.includes('deep fat') || bodyText.includes('deep-fat')) {
+      drivers.push('fryer/oil process hazards');
+    }
+    if (bodyText.includes('ammonia') || bodyText.includes('refrigerat')) {
+      drivers.push('ammonia refrigeration dependency');
+    }
+  }
+
+  // Natural hazards: flood exposure
+  const hazardsModule = allModules.find(m => m.module_key === 'RE_07_NATURAL_HAZARDS');
+  if (hazardsModule) {
+    const hazData = (hazardsModule.data as any) || {};
+    const floodRating = Number(hazData?.natural_hazards?.flood?.rating ?? hazData?.flood?.rating ?? NaN);
+    if (Number.isFinite(floodRating) && floodRating <= 2) drivers.push('flood exposure');
+  }
+
+  // Loss values: high BI exposure
+  const lossModule = allModules.find(m => m.module_key === 'RE_12_LOSS_VALUES');
+  if (lossModule) {
+    const loss = getLossValuesSummary((lossModule.data as any) || {});
+    if (loss.grossProfitAnnual > 0 && loss.effectivePropertyTotal > 0 && loss.grossProfitAnnual / loss.effectivePropertyTotal > 1.2) {
+      drivers.push('high business interruption exposure');
+    }
+  }
+
+  // Fall back to generic top-contributors if no module-specific signals were derived.
+  const driversClause = drivers.length > 0
+    ? joinList(drivers)
+    : joinList(breakdown.topContributors.slice(0, 3).map(t => t.label.toLowerCase())) || 'the assessed engineering pillars';
+
   const narrative =
     `The site achieves ${percent.toFixed(0)}% of the available weighted risk-control score for the ${industryLabel} benchmark, resulting in a ${level} overall risk rating. ` +
     `The ${level} rating is driven principally by ${driversClause}.`;
@@ -3287,7 +3352,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     fonts: { regular: font, bold: fontBold },
   });
 
-  const summary = buildExecutiveSignificanceNarrative(breakdown);
+  const summary = buildExecutiveSignificanceNarrative(breakdown, moduleInstances);
   const performanceRatio = (breakdown.totalScore / Math.max(1, breakdown.maxScore)) * 100;
   const overallRating = levelFromPercent(performanceRatio);
   const overallRiskSignificance = summary.level;

@@ -46,7 +46,7 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     title: 'Commission a building-wide automatic sprinkler or engineered fire-control review',
     observation_text: 'The site lacks building-wide automatic suppression or an equivalent engineered fire-control strategy, while the combustible insulated panel construction, uncompartmented fire area, and process hazards indicate a significant fire escalation risk.',
     action_required_text: 'Review the need for building-wide automatic sprinkler protection or equivalent engineered fire-control measures, taking account of the combustible insulated panel roof and wall construction, the uncompartmented fire area, fryer/oil process hazards, cold-chain dependency and high business interruption exposure. The review should confirm the appropriate protection basis, design standard, water supply arrangement, impairment controls and implementation programme.',
-    hazard_text: 'Without effective building-wide automatic suppression or equivalent engineered fire-control measures, a fire developing beyond any localised protection zone could spread through the uncompartmented combustible panel envelope, resulting in major property damage and prolonged business interruption.',
+    hazard_text: 'Without building-wide automatic sprinkler protection or equivalent engineered fire-control measures, a fire developing beyond the localised fryer protection zone could spread through the large uncompartmented combustible panel envelope, resulting in major property damage and prolonged business interruption.',
   },
   re06_fp_adequacy_system_type_hazard_match: {
     title: 'Review protection type/design suitability against actual hazard',

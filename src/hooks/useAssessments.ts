@@ -14,6 +14,8 @@ export interface Document {
   created_at: string;
   updated_at: string;
   assessor_name: string | null;
+  display_author_name?: string | null;
+  author_name_snapshot?: string | null;
   site_id?: string | null;
   building_id?: string | null;
   responsible_person?: string | null;
@@ -64,12 +66,11 @@ function getClientDisplayName(document: Document): string {
 }
 
 function resolveDocumentSurveyor(document: Document): string | null {
-  // 1. Stored assessor_name column (FRA/FSD/DSEAR set this at issue time)
+  // 1. Stored assessor_name column (set at issue time for FRA/FSD/DSEAR)
   const stored = document.assessor_name?.trim();
   if (stored) return stored;
 
-  // 2. RE documents: assessor.name saved in RE_01_DOC_CONTROL or RE_01_DOCUMENT_CONTROL
-  //    module instance data at save time (resolveDisplayName(user) on Save).
+  // 2. RE documents: assessor.name saved in RE_01_DOC_CONTROL module data
   if (document.document_type === 'RE' && Array.isArray(document.module_instances)) {
     const re01 = document.module_instances.find(
       (m) => m.module_key === 'RE_01_DOC_CONTROL' || m.module_key === 'RE_01_DOCUMENT_CONTROL'
@@ -77,6 +78,15 @@ function resolveDocumentSurveyor(document: Document): string | null {
     const assessorName = String((re01?.data as any)?.assessor?.name || '').trim();
     if (assessorName) return assessorName;
   }
+
+  // 3. display_author_name / author_name_snapshot — set server-side by
+  //    trg_enforce_document_author_identity for all document types at creation.
+  //    Covers FRA/FSD/DSEAR/RE docs where assessor_name was never explicitly written.
+  const displayName = document.display_author_name?.trim();
+  if (displayName) return displayName;
+
+  const snapshot = document.author_name_snapshot?.trim();
+  if (snapshot) return snapshot;
 
   return null;
 }
@@ -143,6 +153,8 @@ export function useAssessments(options: UseAssessmentsOptions = {}) {
             created_at,
             updated_at,
             assessor_name,
+            display_author_name,
+            author_name_snapshot,
             issue_status,
             site_id,
             building_id,
