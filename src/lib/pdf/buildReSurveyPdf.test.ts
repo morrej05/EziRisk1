@@ -94,3 +94,69 @@ describe('RE survey PDF professional narrative helpers', () => {
     expect(interpretation).toContain('Hot Work');
   });
 });
+
+// ─── Management Systems — three-state regression ──────────────────────────────
+
+describe('Management Systems — three-state rendering', () => {
+  const baseModule = {
+    id: 'mgmt',
+    module_key: 'RE_09_MANAGEMENT',
+    outcome: null,
+    assessor_notes: '',
+    completed_at: null,
+    updated_at: '',
+  } as any;
+
+  it('categories present + rating present: shows scored interpretation with weak-category list', () => {
+    const module = {
+      ...baseModule,
+      data: {
+        ratings: { site_rating_1_5: 3 },
+        management: {
+          categories: [
+            { key: 'hot_work', label: 'Hot Work', rating_1_5: 2, notes: 'Inconsistent' },
+            { key: 'housekeeping', label: 'Housekeeping', rating_1_5: 4, notes: '' },
+          ],
+        },
+      },
+    };
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).toContain('Management systems score is');
+    expect(interp).toContain('Hot Work');
+    expect(interp).not.toContain('site-level management judgement');
+    expect(interp).not.toContain('not been assessed');
+  });
+
+  it('categories empty + site rating present: shows site-level judgement, no score derived message', () => {
+    const module = {
+      ...baseModule,
+      data: {
+        ratings: { site_rating_1_5: 3 },
+        management: { categories: [] },
+      },
+    };
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).toContain('site-level management judgement');
+    expect(interp).toContain('3/5');
+    expect(interp).not.toContain('cannot be derived');
+    expect(interp).not.toContain('No management category assessments');
+    // Risk Significance must not be suppressed — sectionSignificance should return non-null
+    const sig = helpers.sectionSignificance(module, breakdown);
+    expect(sig).not.toBeNull();
+    expect(sig?.narrative).toContain('site-level management judgement');
+  });
+
+  it('categories empty + no rating: shows "not been assessed" with no numerical score', () => {
+    const module = {
+      ...baseModule,
+      data: { management: {} },
+    };
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).toContain('not been assessed');
+    expect(interp).not.toMatch(/\d\/5/);
+    // Risk Significance should still render (not null) — returns a Moderate default
+    const sig = helpers.sectionSignificance(module, breakdown);
+    expect(sig).not.toBeNull();
+    expect(sig?.narrative).toContain('not been assessed');
+  });
+});

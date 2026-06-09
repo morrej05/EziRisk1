@@ -619,13 +619,14 @@ function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Brea
   }
 
   if (module.module_key === 'RE_03_OCCUPANCY') {
+    // 'Process / use overview' is rendered as a standalone paragraph block in the body —
+    // omit it here to avoid a duplicate entry in the Section Snapshot table.
     const occupancy = (d as any).occupancy || d;
     return compactRows([
-      ['Process / use overview', formatValue(occupancy.process_overview ?? occupancy.process_description ?? occupancy.operations_description)],
       ['Industry hazard notes', formatValue(occupancy.industry_special_hazards_notes)],
       ['Generic hazards logged', formatValue(Array.isArray(occupancy.hazards) ? occupancy.hazards.length : '')],
       ['Additional hazards notes', formatValue(occupancy.hazards_free_text)],
-    ], ['process / use overview']);
+    ], []);
   }
 
   if (module.module_key === 'RE_07_NATURAL_HAZARDS') {
@@ -715,7 +716,14 @@ export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, brea
     RE_06_FIRE_PROTECTION: 'No supplementary fire-protection narrative has been provided for this survey. The engineering interpretation above is derived from building-level protection inputs and scored assessment factors. Underwriters should review the structured fire-protection tables for installed coverage, detection, water supply and impairment governance evidence.',
     RE_07_NATURAL_HAZARDS: 'No supplementary natural hazards narrative has been provided. The engineering interpretation is based on submitted exposure inputs and scored assessment factors. Flood, windstorm and external-exposure mapping should be reviewed alongside catastrophe modelling outputs where available.',
     RE_08_UTILITIES: 'No supplementary utilities narrative has been provided. The engineering interpretation is based on declared critical services, backup power evidence and scored assessment factors. Single-point-of-failure dependencies should be evaluated in conjunction with business continuity assumptions.',
-    RE_09_MANAGEMENT: 'No supplementary management narrative has been provided. The engineering interpretation is based on scored category assessments. Evidence quality, audit cadence and impairment discipline are the primary loss-frequency and loss-severity modifiers for this section.',
+    RE_09_MANAGEMENT: (() => {
+      const mgmt = (module.data as any)?.management || module.data || {};
+      const cats = Array.isArray(mgmt.categories) ? mgmt.categories : [];
+      const siteRating = getRatingFromModule(module);
+      if (cats.length > 0) return 'No supplementary management narrative has been provided. The engineering interpretation is based on the scored category assessments above. Evidence quality, audit cadence and impairment discipline are the primary loss-frequency and loss-severity modifiers for this section.';
+      if (siteRating !== null && Number.isFinite(siteRating)) return 'No supplementary management narrative has been provided. The engineering interpretation is based on the site-level management judgement. No category-level breakdown has been recorded. Evidence quality, audit cadence and impairment discipline are the primary loss-frequency and loss-severity modifiers for this section.';
+      return 'No management narrative or assessment has been provided for this module.';
+    })(),
     RE_12_LOSS_VALUES: 'No supplementary commentary has been provided on declared values or loss expectancy. Loss scenario totals should be read together with fire-protection and construction performance to assess the credibility of underlying assumptions.',
     RE_14_DRAFT_OUTPUTS: '',
   };
@@ -1964,16 +1972,26 @@ function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdo
 
 function buildManagementEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
   const rows = getManagementCategoryRows(module);
-  if (rows.length === 0) {
-    // No category-level assessments recorded — do not render a score that would contradict an empty table.
-    return 'Engineering interpretation: No management category assessments have been recorded for this module. A score cannot be derived. Complete category-level ratings to enable a scored management interpretation.';
+  const moduleRating = getRatingFromModule(module);
+  // Use breakdown pillar only for display once state is determined from module data.
+  const displayRating = moduleRating ?? (getRatingByKey(breakdown, 'management_systems') ?? resolveSectionRating(module, breakdown));
+  const suffix = 'These controls are loss-frequency and loss-severity modifiers because they govern housekeeping, hot work, impairments, contractor activity and emergency response reliability.';
+
+  if (rows.length > 0) {
+    // Full category-level assessment available.
+    const weakRows = rows.filter(([, r]) => Number(r) <= 2).map(([category]) => formatIdentifierLabel(category)).slice(0, 3);
+    const weakText = weakRows.length
+      ? `Weaknesses requiring management attention are ${weakRows.join(', ')}.`
+      : 'No management category is currently rated poor, so emphasis should be on sustaining evidence quality, audit cadence and impairment discipline.';
+    return `Engineering interpretation: Management systems score is ${formatScoreOutOfFive(displayRating)}. ${weakText} ${suffix}`;
   }
-  const weakRows = rows.filter(([, rating]) => Number(rating) <= 2).map(([category]) => formatIdentifierLabel(category)).slice(0, 3);
-  const rating = getRatingByKey(breakdown, 'management_systems') ?? resolveSectionRating(module, breakdown);
-  const weakText = weakRows.length
-    ? `Weaknesses requiring management attention are ${weakRows.join(', ')}.`
-    : 'No management category is currently rated poor, so emphasis should be on sustaining evidence quality, audit cadence and impairment discipline.';
-  return `Engineering interpretation: Management systems score is ${formatScoreOutOfFive(rating)}. ${weakText} These controls are loss-frequency and loss-severity modifiers because they govern housekeeping, hot work, impairments, contractor activity and emergency response reliability.`;
+
+  // No category-level records — use module-level rating if present.
+  if (moduleRating !== null && Number.isFinite(moduleRating)) {
+    return `Engineering interpretation: Management systems are rated ${formatScoreOutOfFive(moduleRating)} based on the site-level management judgement. No category-level breakdown has been recorded. ${suffix}`;
+  }
+
+  return 'Engineering interpretation: Management systems have not been assessed. No category-level ratings and no site-level management rating are recorded. Complete category or module-level assessments to enable a scored interpretation.';
 }
 
 function buildLossValuesEngineeringInterpretation(module: ModuleInstance, _breakdown: Breakdown): string {
@@ -1998,6 +2016,9 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
   const water = fp?.site?.water || {};
   const reliability = formatDataValue(water?.water_reliability).toLowerCase();
   const reliabilityNarrative = reliability.includes('reliable') ? 'water supply reliability appears broadly resilient' : reliability.includes('unreliable') ? 'water supply reliability is a material weakness' : 'water supply reliability is uncertain from submitted evidence';
+  if (buildings.length === 0) {
+    return `Engineering Interpretation: No building-level fire protection records have been entered for this module. Fixed-protection coverage, detection and localised protection cannot be quantified from submitted data. ${reliabilityNarrative}. Assessor narrative and any supplementary inputs should be reviewed to judge installed protection adequacy and suppression reliability.`;
+  }
   return `Engineering Interpretation: Building-level fixed protection records show ${sprinklerInstalledCount} building(s) with installed sprinkler coverage against ${sprinklerRequiredCount} building(s) showing a stated requirement. ${reliabilityNarrative}. Localised/special protection gaps are identified in ${localisedMissing} building(s), and should be prioritised where high-value or high-challenge hazards are present. Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.`;
 }
 
@@ -2020,11 +2041,24 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     : context.combustibilityText;
   const buildings = context.buildings;
   const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
+  // Detect combustible material references in flat construction text fields when
+  // no per-building records have been entered.  Sandwich panels (PUR/PIR/phenolic)
+  // and similar composite systems are combustible regardless of labelling.
+  const COMBUSTIBLE_KEYWORDS = /\b(pur|pir|phenolic|sandwich panel|composite panel|insulated panel|metal faced|foam core|polystyrene|eps|xps)\b/i;
+  const flatConstructionText = [
+    construction?.wall_construction,
+    construction?.roof_construction,
+    construction?.primary_construction_type,
+    construction?.cladding_description,
+  ].filter(Boolean).join(' ');
+  const flatTextIndicatesCombustible = COMBUSTIBLE_KEYWORDS.test(flatConstructionText);
   const claddingText = claddingPresentCount > 0
     ? `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s).`
     : context.buildingCount > 0
       ? 'No combustible cladding is identified in submitted building records.'
-      : 'Building-level cladding records are not available.';
+      : flatTextIndicatesCombustible
+        ? 'Building-level cladding records are not available. Construction description references combustible or sandwich-panel systems — cladding combustibility should be confirmed at building level.'
+        : 'Building-level cladding records are not available.';
   const giaText = context.totalFloorArea !== null
     ? `total floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
     : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
@@ -2040,7 +2074,7 @@ function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: Sig
   return { level, narrative };
 }
 
-function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { level: SignificanceLevel; narrative: string } | null {
+export function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { level: SignificanceLevel; narrative: string } | null {
   const config = RE_SECTION_CONFIG[module.module_key];
   if (!config) return null;
 
@@ -2092,15 +2126,33 @@ function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { le
   }
 
   if (module.module_key === 'RE_09_MANAGEMENT') {
-    const rating = getRatingFromModule(module) ?? breakdown.globalPillars.find(p => p.key === 'management_systems')?.rating;
     const management = (module.data as any)?.management || module.data || {};
     const categories = Array.isArray(management.categories) ? management.categories : [];
-    const weakerControls = categories
-      .filter((category: any) => Number(category?.rating_1_5) > 0 && Number(category?.rating_1_5) <= 2)
-      .map((category: any) => formatDataValue(category?.label ?? category?.key));
-    const level = levelFromRating(rating);
-    const narrative = `Management systems are rated ${formatScoreOutOfFive(rating)} across ${categories.length} category assessment(s). ${weakerControls.length > 0 ? `Lower-scored controls are concentrated in ${weakerControls.slice(0, 3).join(', ')}.` : 'No materially weak management category ratings are recorded.'} Governance quality controls how consistently permitting, impairment, housekeeping and emergency processes reduce both incident likelihood and post-loss severity.`;
-    return { level, narrative };
+    // Use only the module's own stored rating to determine state — the breakdown
+    // pillar is layout data and must not promote an "unassessed" module to "site-level rated".
+    const moduleRating = getRatingFromModule(module);
+    // Once we have a confirmed state we can augment display with breakdown data.
+    const displayRating = moduleRating ?? breakdown.globalPillars.find(p => p.key === 'management_systems')?.rating;
+
+    if (categories.length > 0) {
+      // Full category breakdown recorded.
+      const weakerControls = categories
+        .filter((category: any) => Number(category?.rating_1_5) > 0 && Number(category?.rating_1_5) <= 2)
+        .map((category: any) => formatDataValue(category?.label ?? category?.key));
+      const level = levelFromRating(displayRating);
+      const narrative = `Management systems are rated ${formatScoreOutOfFive(displayRating)} across ${categories.length} category assessment(s). ${weakerControls.length > 0 ? `Lower-scored controls are concentrated in ${weakerControls.slice(0, 3).join(', ')}.` : 'No materially weak management category ratings are recorded.'} Governance quality controls how consistently permitting, impairment, housekeeping and emergency processes reduce both incident likelihood and post-loss severity.`;
+      return { level, narrative };
+    }
+
+    if (moduleRating !== null && Number.isFinite(moduleRating)) {
+      // Site-level rating recorded on the module, no category breakdown.
+      const level = levelFromRating(moduleRating);
+      const narrative = `Management systems are rated ${formatScoreOutOfFive(moduleRating)} based on the site-level management judgement. No category-level breakdown has been recorded. Governance quality controls how consistently permitting, impairment, housekeeping and emergency processes reduce both incident likelihood and post-loss severity.`;
+      return { level, narrative };
+    }
+
+    // Neither category assessments nor module-level site rating available.
+    return { level: 'Moderate', narrative: 'Management systems have not been assessed for this survey. No category-level or site-level management rating is recorded.' };
   }
 
   if (module.module_key === 'RE_12_LOSS_VALUES') {
@@ -2888,6 +2940,15 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           minRowHeight: 18,
           onPageBreak: () => addNewPage(pdfDoc, isDraft, totalPages),
         }));
+        yPosition = sectionBreak(yPosition);
+      } else {
+        // No category breakdown — show a note so the reader understands the basis for any rating.
+        const mgmtSiteRating = getRatingFromModule(module);
+        const mgmtNote = (mgmtSiteRating !== null && Number.isFinite(mgmtSiteRating))
+          ? `Management Systems rated ${formatScoreOutOfFive(mgmtSiteRating)} — site-level judgement only. No category-level assessment has been recorded.`
+          : 'Management Systems — no category assessments or site-level rating recorded.';
+        ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawParagraph(page, yPosition, mgmtNote, font);
         yPosition = sectionBreak(yPosition);
       }
     }
