@@ -2231,7 +2231,7 @@ function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdo
       const occupancyImplications: string[] = [];
       if (occupancyImpliesAmmonia) {
         occupancyImplications.push(
-          'Ammonia refrigeration plant is indicated by the occupancy profile. Ammonia systems are a critical utility dependency: plant failure causes immediate cold-chain loss, product spoilage, and potential site evacuation. Restart requires specialist contractors, system pressure testing, and regulatory clearance — materially extending the interruption period beyond physical repair timescales.'
+          'Ammonia refrigeration plant is indicated by the occupancy profile. Ammonia systems are a critical utility dependency: plant failure causes immediate cold-chain loss, product spoilage, and potential site evacuation. Restart may require specialist refrigeration contractors, integrity checks, pressure testing, recommissioning and, depending on incident severity, regulatory or environmental liaison.'
         );
       }
       if (occupancyImpliesColdChain && !occupancyImpliesAmmonia) {
@@ -2673,7 +2673,7 @@ function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: Sig
   return { level, narrative };
 }
 
-export function sectionSignificance(module: ModuleInstance, breakdown: Breakdown): { level: SignificanceLevel; narrative: string } | null {
+export function sectionSignificance(module: ModuleInstance, breakdown: Breakdown, allModules: ModuleInstance[] = []): { level: SignificanceLevel; narrative: string } | null {
   const config = RE_SECTION_CONFIG[module.module_key];
   if (!config) return null;
 
@@ -2719,8 +2719,53 @@ export function sectionSignificance(module: ModuleInstance, breakdown: Breakdown
       String(entry?.criticality || '').toLowerCase() === 'high' &&
       (String(entry?.redundancy || '').toLowerCase() === 'n+0' || String(entry?.redundancy || '').toLowerCase() === 'unknown')
     )).length;
-    const level: SignificanceLevel = (noBackupPower || weakCriticalityEquipment > 0) ? 'High' : levelFromRating(rating);
-    const narrative = `Utilities resilience is informed by ${services.length} critical service record(s) and ${equipment.length} critical equipment record(s), with ${highCriticalityServices} service(s) and ${weakCriticalityEquipment} equipment item(s) recorded as high criticality with limited/uncertain redundancy. Backup power is ${formatDataValue(data?.power_resilience?.backup_power_present).toLowerCase()}. This profile is a direct indicator of restart dependence and interruption duration following a major incident.`;
+
+    // When no formal utility records exist, cross-reference the occupancy module to detect
+    // inferred dependencies. An empty utility register for a site with refrigeration, cold-chain
+    // and fryer-line occupancy is an information gap, not evidence of low dependency.
+    const hasNoRecords = services.length === 0 && equipment.length === 0;
+    let inferredAmmonia = false;
+    let inferredColdChain = false;
+    let inferredFryers = false;
+    if (hasNoRecords && allModules.length > 0) {
+      const occupancyModule = allModules.find((m) => m.module_key === 'RE_03_OCCUPANCY');
+      if (occupancyModule) {
+        const od = (occupancyModule.data as any)?.occupancy || occupancyModule.data || {};
+        const bodyText = [
+          od?.industry_special_hazards_notes,
+          od?.hazards_free_text,
+          od?.process_description ?? od?.process_overview ?? od?.operations_description,
+        ].filter(Boolean).join(' ').toLowerCase();
+        inferredAmmonia = bodyText.includes('ammonia') || bodyText.includes('refrigerat');
+        inferredColdChain = bodyText.includes('freezer') || bodyText.includes('cold store')
+          || bodyText.includes('cold chain') || bodyText.includes('chilled') || bodyText.includes('frozen');
+        inferredFryers = bodyText.includes('fryer') || bodyText.includes('frying') || bodyText.includes('deep fat') || bodyText.includes('deep-fat');
+      }
+    }
+    const hasInferredDependencies = inferredAmmonia || inferredColdChain || inferredFryers;
+
+    let level: SignificanceLevel;
+    let narrative: string;
+
+    if (hasNoRecords && hasInferredDependencies) {
+      // Treat as High significance — inferred critical dependencies from occupancy profile.
+      level = 'High';
+      const inferredItems: string[] = [];
+      if (inferredAmmonia) inferredItems.push('ammonia refrigeration');
+      if (inferredColdChain && !inferredAmmonia) inferredItems.push('cold storage');
+      else if (inferredColdChain) inferredItems.push('cold storage');
+      if (inferredFryers) inferredItems.push('fryer-line utilities');
+      inferredItems.push('power supply');
+      const inferredList = inferredItems.join(', ');
+      const backupPowerClause = noBackupPower
+        ? ' No backup power provision is recorded.'
+        : '';
+      narrative = `No formal critical service or critical equipment records have been entered in the utilities section. However, the occupancy description identifies material dependencies on ${inferredList}. The absence of structured resilience records should therefore be treated as an information gap, not as evidence of low dependency.${backupPowerClause} Structured critical-services records are required to support credible maximum probable interruption duration estimates.`;
+    } else {
+      level = (noBackupPower || weakCriticalityEquipment > 0) ? 'High' : levelFromRating(rating);
+      narrative = `Utilities resilience is informed by ${services.length} critical service record(s) and ${equipment.length} critical equipment record(s), with ${highCriticalityServices} service(s) and ${weakCriticalityEquipment} equipment item(s) recorded as high criticality with limited/uncertain redundancy. Backup power is ${formatDataValue(data?.power_resilience?.backup_power_present).toLowerCase()}. This profile is a direct indicator of restart dependence and interruption duration following a major incident.`;
+    }
+
     return { level, narrative };
   }
 
@@ -3664,7 +3709,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }
     }
 
-    const significance = sectionSignificance(module, breakdown);
+    const significance = sectionSignificance(module, breakdown, moduleInstances);
     if (significance) {
       ({ page, yPosition } = ensurePageSpace(100, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawRiskSignificanceBlock({
