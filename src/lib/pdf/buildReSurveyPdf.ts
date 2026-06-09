@@ -766,8 +766,6 @@ function resolveSectionRating(module: ModuleInstance, breakdown: Breakdown): num
 
 export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, breakdown: Breakdown): string {
   let notes = sanitizePdfText(module.assessor_notes || '').trim();
-  const rating = resolveSectionRating(module, breakdown);
-  const scoreBand = getScoreBand(rating);
 
   if (module.module_key === 'RE_02_CONSTRUCTION') {
     // Return only the assessor's own narrative notes here.
@@ -789,25 +787,10 @@ export function getNarrativeCommentaryWithBreakdown(module: ModuleInstance, brea
     return notes;
   }
 
+  // If the assessor has not entered narrative notes, suppress the Narrative Commentary
+  // block entirely — the Engineering Interpretation already stands on its own.
   if (notes) return notes;
-  // Section-specific narrative for modules where assessor notes are absent.
-  // These are insurer-facing engineering summaries, not data-echo boilerplate.
-  const sectionFallbacks: Record<string, string> = {
-    RE_06_FIRE_PROTECTION: 'No supplementary fire-protection narrative has been provided for this survey. The engineering interpretation above is derived from building-level protection inputs and scored assessment factors. Underwriters should review the structured fire-protection tables for installed coverage, detection, water supply and impairment governance evidence.',
-    RE_07_NATURAL_HAZARDS: 'No supplementary natural hazards narrative has been provided. The engineering interpretation is based on submitted exposure inputs and scored assessment factors. Flood, windstorm and external-exposure mapping should be reviewed alongside catastrophe modelling outputs where available.',
-    RE_08_UTILITIES: 'No supplementary utilities narrative has been provided. The engineering interpretation is based on declared critical services, backup power evidence and scored assessment factors. Single-point-of-failure dependencies should be evaluated in conjunction with business continuity assumptions.',
-    RE_09_MANAGEMENT: (() => {
-      const mgmt = (module.data as any)?.management || module.data || {};
-      const cats = Array.isArray(mgmt.categories) ? mgmt.categories : [];
-      const siteRating = getRatingFromModule(module);
-      if (cats.length > 0) return 'No supplementary management narrative has been provided. The engineering interpretation is based on the scored category assessments above. Evidence quality, audit cadence and impairment discipline are the primary loss-frequency and loss-severity modifiers for this section.';
-      if (siteRating !== null && Number.isFinite(siteRating)) return 'No supplementary management narrative has been provided. The engineering interpretation is based on the site-level management judgement. No category-level breakdown has been recorded. Evidence quality, audit cadence and impairment discipline are the primary loss-frequency and loss-severity modifiers for this section.';
-      return 'No management narrative or assessment has been provided for this module.';
-    })(),
-    RE_12_LOSS_VALUES: 'No supplementary commentary has been provided on declared values or loss expectancy. Loss scenario totals should be read together with fire-protection and construction performance to assess the credibility of underlying assumptions.',
-    RE_14_DRAFT_OUTPUTS: '',
-  };
-  return sectionFallbacks[module.module_key] ?? '';
+  return '';
 }
 
 function getScoreBand(rating: number | null): {
