@@ -1829,7 +1829,7 @@ export function buildSectionInterpretation(module: ModuleInstance, breakdown: Br
   if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module, allModules);
   if (module.module_key === 'RE_07_NATURAL_HAZARDS') return buildNaturalHazardsEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_08_UTILITIES') return buildUtilitiesEngineeringInterpretation(module, breakdown, allModules);
-  if (module.module_key === 'RE_09_MANAGEMENT') return buildManagementEngineeringInterpretation(module, breakdown);
+  if (module.module_key === 'RE_09_MANAGEMENT') return buildManagementEngineeringInterpretation(module, breakdown, allModules);
   if (module.module_key === 'RE_12_LOSS_VALUES') return buildLossValuesEngineeringInterpretation(module, breakdown);
 
   const rating = resolveSectionRating(module, breakdown);
@@ -2296,25 +2296,89 @@ function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdo
   return [leadText, evidenceText, powerText, coldChainText, closingText].filter(Boolean).join(' ');
 }
 
-function buildManagementEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+function buildManagementEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown, allModules: ModuleInstance[] = []): string {
   const rows = getManagementCategoryRows(module);
   const moduleRating = getRatingFromModule(module);
   // Use breakdown pillar only for display once state is determined from module data.
   const displayRating = moduleRating ?? (getRatingByKey(breakdown, 'management_systems') ?? resolveSectionRating(module, breakdown));
+
+  // --- Occupancy signals (used to tailor maintenance commentary) ---
+  let hasFryerOccupancy = false;
+  let hasAmmoniaOccupancy = false;
+  let hasColdChainOccupancy = false;
+  if (allModules.length > 0) {
+    const occupancyModule = allModules.find((m) => m.module_key === 'RE_03_OCCUPANCY');
+    if (occupancyModule) {
+      const od = (occupancyModule.data as any)?.occupancy || occupancyModule.data || {};
+      const bodyText = [
+        od?.industry_special_hazards_notes,
+        od?.hazards_free_text,
+        od?.process_description ?? od?.process_overview ?? od?.operations_description,
+      ].filter(Boolean).join(' ').toLowerCase();
+      hasFryerOccupancy = bodyText.includes('fryer') || bodyText.includes('frying') || bodyText.includes('deep fat') || bodyText.includes('deep-fat');
+      hasAmmoniaOccupancy = bodyText.includes('ammonia') || bodyText.includes('refrigerat');
+      hasColdChainOccupancy = bodyText.includes('freezer') || bodyText.includes('cold store') || bodyText.includes('cold chain') || bodyText.includes('chilled') || bodyText.includes('frozen');
+    }
+  }
+
   if (rows.length > 0) {
     // Full category-level assessment available.
+    // Build typed category rows to compare individual controls against their actual scores.
+    const management = (module.data as any)?.management || module.data || {};
+    const categories: Array<{ key: string; label: string; rating: number }> = (
+      Array.isArray(management.categories) ? management.categories : []
+    ).map((c: any) => ({
+      key: String(c?.key ?? '').toLowerCase(),
+      label: formatIdentifierLabel(c?.label ?? c?.key ?? ''),
+      rating: Number(c?.rating_1_5),
+    })).filter((c: { key: string; label: string; rating: number }) => Number.isFinite(c.rating) && c.rating >= 1);
+
     const weakRows = rows.filter(([, r]) => Number(r) <= 2).map(([category]) => formatIdentifierLabel(category)).slice(0, 3);
     const goodRows = rows.filter(([, r]) => Number(r) >= 4).map(([category]) => formatIdentifierLabel(category)).slice(0, 2);
+
     const weakText = weakRows.length
       ? `Weaknesses requiring immediate management attention are: ${weakRows.join(', ')}.`
       : 'No management category is currently rated poor.';
     const strengthText = goodRows.length && !weakRows.length
       ? ` Relative strength is recorded in ${goodRows.join(' and ')}.`
       : '';
-    // UW suffix — specific to whether weaknesses were found and what they govern.
-    const suffix = weakRows.length
-      ? `These categories directly govern the frequency and severity of preventable loss events — hot work controls, permit discipline, and impairment management are recurring causes of large fire losses and should receive priority audit attention.`
-      : `Management controls are loss-frequency and loss-severity modifiers. Where no category is rated poor, the emphasis should be on sustaining evidence quality, audit cadence, and impairment discipline to prevent gradual erosion.`;
+
+    // Determine whether large-loss controls (hot work, impairment) are genuinely weak or just generically important.
+    const hotWorkCategory = categories.find((c) => c.key.includes('hot_work') || c.key.includes('hot work'));
+    const impairmentCategory = categories.find((c) => c.key.includes('impairment'));
+    const hotWorkWeak = hotWorkCategory ? hotWorkCategory.rating <= 2 : false;
+    const impairmentWeak = impairmentCategory ? impairmentCategory.rating <= 2 : false;
+
+    // Is maintenance a rated weakness? (drives occupancy-tailored commentary)
+    const maintenanceWeak = categories.some((c) => (c.key.includes('mainten') || c.key.includes('maintenance')) && c.rating <= 2);
+
+    let suffix: string;
+    if (weakRows.length) {
+      const largeLossControlsWeak = hotWorkWeak || impairmentWeak;
+      // Only call out hot work / impairment as priority weaknesses if their scores justify it.
+      // Where they are not weak, name them as important large-loss controls but not current deficiencies.
+      const largeLossWeaknessClause = largeLossControlsWeak
+        ? `${[hotWorkWeak ? 'Hot work controls' : null, impairmentWeak ? 'impairment management' : null].filter(Boolean).join(' and ')} are scored as weak — these categories directly govern the frequency and severity of preventable large-fire losses and warrant immediate corrective attention.`
+        : `Hot work and impairment controls remain important large-loss controls, but the current scoring does not identify them as the primary management deficiency.`;
+
+      // Occupancy-tailored maintenance clause — only relevant when maintenance is the key weakness.
+      let maintenanceClause = '';
+      if (maintenanceWeak) {
+        const criticalSystems: string[] = [];
+        if (hasFryerOccupancy) criticalSystems.push('fryer systems');
+        if (hasFryerOccupancy || hasAmmoniaOccupancy || hasColdChainOccupancy) criticalSystems.push('electrical equipment');
+        if (hasAmmoniaOccupancy || hasColdChainOccupancy) criticalSystems.push('refrigeration plant');
+        criticalSystems.push('detection');
+        if (hasFryerOccupancy || hasAmmoniaOccupancy) criticalSystems.push('localised protection');
+        criticalSystems.push('shutdown controls');
+        maintenanceClause = ` For this occupancy, maintenance quality is particularly important because ${criticalSystems.join(', ')} are all loss-critical.`;
+      }
+
+      suffix = `${largeLossWeaknessClause}${maintenanceClause}`;
+    } else {
+      suffix = `Management controls are loss-frequency and loss-severity modifiers. Where no category is rated poor, the emphasis should be on sustaining evidence quality, audit cadence, and impairment discipline to prevent gradual erosion.`;
+    }
+
     return `Engineering interpretation: Management systems score is ${formatScoreOutOfFive(displayRating)}. ${weakText}${strengthText} ${suffix}`;
   }
 
