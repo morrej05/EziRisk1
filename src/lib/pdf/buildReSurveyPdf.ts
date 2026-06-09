@@ -1525,6 +1525,21 @@ function getCoverageInterpretation(module: ModuleInstance): string {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
   if (buildings.length === 0) return '';
+  // Only emit a coverage statement when at least one building has sprinklers installed.
+  // When sprinklers are absent or all fields are N/A, there is no coverage to characterise —
+  // stating "aligned" would be misleading.
+  const anyInstalled = buildings.some((b: any) => {
+    const s = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+    return s === 'Yes' || s === 'Partial';
+  });
+  if (!anyInstalled) return '';
+  // Also suppress when no building has numeric coverage entries — "aligned" is only meaningful
+  // where installed% and required% have been entered.
+  const hasCoverageData = buildings.some((b: any) => {
+    return Number.isFinite(Number(b?.sprinklerData?.sprinkler_coverage_installed_pct))
+      || Number.isFinite(Number(b?.sprinklerData?.sprinkler_coverage_required_pct));
+  });
+  if (!hasCoverageData) return '';
   const mismatchedCoverage = buildings.some((building: any) => {
     const installed = Number(building?.sprinklerData?.sprinkler_coverage_installed_pct);
     const required = Number(building?.sprinklerData?.sprinkler_coverage_required_pct);
@@ -1811,7 +1826,7 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
 export function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown, allModules: ModuleInstance[] = []): string {
   if (module.module_key === 'RE_02_CONSTRUCTION') return buildConstructionEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation(module, breakdown);
-  if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module);
+  if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module, allModules);
   if (module.module_key === 'RE_07_NATURAL_HAZARDS') return buildNaturalHazardsEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_08_UTILITIES') return buildUtilitiesEngineeringInterpretation(module, breakdown, allModules);
   if (module.module_key === 'RE_09_MANAGEMENT') return buildManagementEngineeringInterpretation(module, breakdown);
@@ -2321,7 +2336,7 @@ function buildLossValuesEngineeringInterpretation(module: ModuleInstance, _break
   return [propText, biText, indemnityFlag, ratioFlag, closing].filter(Boolean).join(' ');
 }
 
-function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): string {
+function buildFireProtectionEngineeringInterpretation(module: ModuleInstance, allModules: ModuleInstance[] = []): string {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
   const water = fp?.site?.water || {};
@@ -2346,9 +2361,71 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
     const w = String(b?.sprinklerData?.sprinklers_warranted ?? '').trim();
     return s === 'No' && w === 'Yes';
   });
+  const localisedPresent = buildings.some(
+    (b: any) => String(b?.sprinklerData?.localised_present ?? '').trim() === 'Yes'
+  );
   const localisedMissing = buildings.filter(
     (b: any) => b?.sprinklerData?.localised_required === 'Yes' && b?.sprinklerData?.localised_present === 'No'
   ).length;
+
+  // --- Cross-module risk signals (used to judge warranted status independently of the surveyor flag) ---
+  // Construction: combustible panel construction, no/low compartmentation, large site area
+  let hasCombustiblePanel = false;
+  let hasNoCompartmentation = false;
+  let largeAreaM2: number | null = null;
+  if (allModules.length > 0) {
+    const constructionModule = allModules.find((m) => m.module_key === 'RE_02_CONSTRUCTION');
+    if (constructionModule) {
+      const constr = (constructionModule.data as any)?.construction || constructionModule.data || {};
+      const constrBuildings: any[] = getConstructionBuildings(constr);
+      const perBldgText = constrBuildings
+        .map((b: any) => [b?.roof_construction, b?.wall_construction, b?.construction_type, b?.primary_construction_type].filter(Boolean).join(' '))
+        .join(' ');
+      const flatConstrText = [
+        constr?.wall_construction, constr?.roof_construction, constr?.primary_construction_type,
+        constr?.cladding_description, constr?.site_notes, perBldgText,
+      ].filter(Boolean).join(' ');
+      const sandwichRx = /\b(pur|pir|phenolic|foam core|eps|xps)\b|\b(sandwich panels?|composite panels?|insulated panels?)\b/i;
+      hasCombustiblePanel = sandwichRx.test(flatConstrText);
+      const firstCB = constrBuildings[0];
+      const compRaw = constr?.compartmentation_quality ?? firstCB?.compartmentation_quality ?? firstCB?.compartmentation ?? firstCB?.fire_compartmentation ?? firstCB?.compartmentation_minutes;
+      const compMins = typeof compRaw === 'number' ? compRaw : null;
+      const compStr = typeof compRaw === 'string' ? compRaw.trim().toLowerCase() : null;
+      hasNoCompartmentation = compMins === 0 || compStr === 'low' || compStr === 'none' || compStr === 'no' || compStr === '0';
+      const giaVals = constrBuildings.map((b: any) => b?.total_floor_area_m2).filter((v: any) => Number.isFinite(Number(v)));
+      const totalGia = giaVals.length > 0 ? giaVals.reduce((s: number, v: any) => s + Number(v), 0) : null;
+      const roofVals = constrBuildings.map((b: any) => b?.roof?.area_sqm ?? b?.roof_area_m2).filter((v: any) => Number.isFinite(Number(v)));
+      const totalRoof = roofVals.length > 0 ? roofVals.reduce((s: number, v: any) => s + Number(v), 0) : 0;
+      largeAreaM2 = totalGia ?? (totalRoof > 0 ? totalRoof : null);
+    }
+  }
+  const hasLargeArea = largeAreaM2 !== null && largeAreaM2 >= 5000;
+  // Occupancy: fryers/oil, ammonia refrigeration, cold-chain (BI multipliers)
+  let hasFryerHazard = false;
+  let hasAmmoniaHazard = false;
+  let hasColdChainHazard = false;
+  if (allModules.length > 0) {
+    const occupancyModule = allModules.find((m) => m.module_key === 'RE_03_OCCUPANCY');
+    if (occupancyModule) {
+      const od = (occupancyModule.data as any)?.occupancy || occupancyModule.data || {};
+      const bodyText = [
+        od?.industry_special_hazards_notes,
+        od?.hazards_free_text,
+        od?.process_description ?? od?.process_overview ?? od?.operations_description,
+      ].filter(Boolean).join(' ').toLowerCase();
+      hasFryerHazard = bodyText.includes('fryer') || bodyText.includes('frying') || bodyText.includes('deep fat') || bodyText.includes('deep-fat');
+      hasAmmoniaHazard = bodyText.includes('ammonia') || bodyText.includes('refrigerat');
+      hasColdChainHazard = bodyText.includes('freezer') || bodyText.includes('cold store') || bodyText.includes('cold chain') || bodyText.includes('chilled') || bodyText.includes('frozen');
+    }
+  }
+  // FP own score — if supplementary_assessment overall score ≤ 1, protection is objectively weak
+  const fpSupplementaryScore = Number(fp?.supplementary_assessment?.overall_score);
+  const hasWeakFpScore = Number.isFinite(fpSupplementaryScore) && fpSupplementaryScore <= 1;
+  // Risk profile warrants automatic sprinkler protection if ANY material indicator is present.
+  // This overrides a surveyor-level "not warranted" flag when the risk evidence says otherwise.
+  const riskProfileWarrantsProtection =
+    hasCombustiblePanel || hasNoCompartmentation || hasLargeArea ||
+    hasFryerHazard || hasAmmoniaHazard || hasColdChainHazard || hasWeakFpScore;
 
   const parts: string[] = [];
 
@@ -2375,8 +2452,34 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
     }).length;
     if (unknownCount === buildings.length) {
       parts.push(`Sprinkler status unknown across ${buildings.length} building(s). Clarify installation status to enable a protection coverage assessment.`);
+    } else if (riskProfileWarrantsProtection) {
+      // Risk signals override the surveyor's "not warranted" assessment —
+      // state the absence and the material weakness directly.
+      const riskFactors: string[] = [];
+      if (hasCombustiblePanel) riskFactors.push('combustible insulated panel construction');
+      if (hasNoCompartmentation) riskFactors.push('absence of effective fire compartmentation');
+      if (hasLargeArea && largeAreaM2 !== null) riskFactors.push(`large uncompartmented fire area (${formatDataValue(largeAreaM2)} m²)`);
+      if (hasFryerHazard) riskFactors.push('fryer/oil process hazards');
+      if (hasAmmoniaHazard) riskFactors.push('ammonia refrigeration dependency');
+      if (hasColdChainHazard && !hasAmmoniaHazard) riskFactors.push('cold-chain and freezer dependency');
+      if (hasWeakFpScore) riskFactors.push('low overall fire protection score');
+      const factorList = riskFactors.length > 0
+        ? `Given ${riskFactors.join(', ')}, `
+        : '';
+      parts.push(
+        `Automatic sprinkler protection is not installed. ${factorList}the absence of automatic sprinkler protection is a material loss-control weakness for this site.`
+      );
+      if (localisedPresent) {
+        parts.push(
+          'Localised protection is recorded for special hazards, but this should not be treated as equivalent to building-wide automatic suppression. Localised systems are designed to control a specific process hazard at source — they do not provide the area-coverage needed to intercept a developing fire that has spread beyond the initial hazard zone.'
+        );
+      }
+      parts.push(
+        'Reliance is therefore placed on detection, localised systems, emergency response and fire service intervention, with limited ability to control a developed fire'
+        + (hasCombustiblePanel ? ' involving combustible panel construction.' : ' at this site.')
+      );
     } else {
-      parts.push(`Automatic sprinkler protection is not installed across ${buildings.length} building(s). Sprinklers are not considered warranted for the assessed occupancy and hazard profile.`);
+      parts.push(`Automatic sprinkler protection is not installed across ${buildings.length} building(s). Sprinklers are not considered warranted for the assessed occupancy and construction profile.`);
     }
   }
 
