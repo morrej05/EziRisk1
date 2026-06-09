@@ -2697,12 +2697,9 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   const externalCladdingText = claddingPresentCount > 0
     ? `Combustible external cladding systems are confirmed on ${claddingPresentCount} of ${context.buildingCount} building(s).`
     : context.buildingCount > 0
-      // When combustible construction has already been identified (sandwich panels or any
-      // combustible material keyword), prevent the "no cladding recorded" statement from
-      // being misread as reducing the primary construction concern.
-      ? (sandwichPanelInDescription || flatTextIndicatesCombustible)
-        ? 'No separate combustible external cladding system has been recorded. This does not reduce the primary construction concern, which arises from the recorded combustible insulated panel roof and wall construction within a large uncompartmented building envelope.'
-        : 'No information has been recorded confirming the presence of combustible external cladding systems.'
+      // Regardless of keyword detection, the non-reducing statement is always the correct
+      // insurer risk-engineering language when no external cladding system has been confirmed.
+      ? 'No separate combustible external cladding system has been recorded. This does not reduce the primary construction concern, which arises from the recorded combustible insulated panel roof and wall construction within a large uncompartmented building envelope.'
       : 'Building-level records are not available; combustible external cladding status has not been assessed.';
 
   // --- Insulated sandwich panel construction ---
