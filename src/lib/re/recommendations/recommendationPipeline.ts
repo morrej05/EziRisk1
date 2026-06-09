@@ -272,6 +272,124 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     action_required_text: 'Design and install suitable localised/special protection for the identified process/equipment hazards.',
     hazard_text: 'Required point-of-hazard suppression absent: ignition can escalate before site-wide systems can control the event.',
   },
+
+  // ─── Module-level fallbacks (used when no factor key is provided) ─────────────
+
+  RE_02_CONSTRUCTION: {
+    title: 'Improve construction standard to reduce fire and loss escalation potential',
+    observation_text: 'The assessed construction standard presents elevated fire spread or structural collapse potential under foreseeable incident conditions.',
+    action_required_text: 'Commission a construction fire risk review focusing on frame type, compartmentation, roof/cladding combustibility, and openings. Implement identified improvements with prioritised actions and accountable owners.',
+    hazard_text: 'Sub-standard construction can allow rapid structural failure and fire spread to adjacent areas, materially increasing property and business interruption loss severity.',
+  },
+
+  RE_03_OCCUPANCY: {
+    title: 'Reduce occupancy fire load and hazard exposure',
+    observation_text: 'The assessed occupancy and process activities present a fire load or hazard profile that is not adequately controlled.',
+    action_required_text: 'Review and reduce fire load concentrations, assess process hazards, and implement targeted controls. Document corrective measures with named owners and target dates.',
+    hazard_text: 'Elevated fire load and uncontrolled process hazards increase ignition likelihood and can allow rapid fire development beyond the capacity of installed protection.',
+  },
+
+  RE_07_NATURAL_HAZARDS: {
+    title: 'Strengthen natural hazard resilience and exposure controls',
+    observation_text: 'The site\'s natural hazard exposure is not adequately mitigated by current controls. Resilience measures are insufficient for the identified hazard profile.',
+    action_required_text: 'Conduct a targeted natural hazard exposure assessment covering flood, wind, seismic, and subsidence risk as applicable. Implement physical and operational resilience measures with a named accountable owner and target completion date.',
+    hazard_text: 'Inadequate natural hazard controls can result in unplanned asset damage, extended business interruption, and compounded loss from concurrent incidents affecting the site.',
+  },
+
+  RE_08_UTILITIES: {
+    title: 'Improve utility reliability and backup arrangements',
+    observation_text: 'Utility supply reliability and backup resilience are not sufficient for the operational and safety demands of the site.',
+    action_required_text: 'Review primary utility dependencies, backup power provision, and automatic changeover capability. Implement reliability improvements and formally document emergency utility response procedures.',
+    hazard_text: 'Utility failure during fire or incident conditions can remove critical safety and suppression systems, materially increasing loss severity and recovery time.',
+  },
+
+  RE_09_MANAGEMENT: {
+    title: 'Strengthen risk management systems and loss-prevention controls',
+    observation_text: 'Risk management systems and loss-prevention controls are assessed below the acceptable engineering standard. Current arrangements do not provide sufficient assurance that hazards are consistently identified and controlled.',
+    action_required_text: 'Define and implement specific improvements to management controls — including permit to work, hot work, housekeeping, contractor management, and impairment procedures — with named owners and target completion dates. Evidence implementation through documented audits or inspection records.',
+    hazard_text: 'Weak management controls increase the frequency and severity of incidents by allowing hazardous conditions to persist undetected and by reducing the effectiveness of other installed controls.',
+  },
+
+  // ─── HRG occupancy driver canonical keys ─────────────────────────────────────
+
+  natural_hazard_exposure_and_controls: {
+    title: 'Strengthen natural hazard exposure controls to engineering standard',
+    observation_text: 'Natural hazard exposure controls have been assessed below the acceptable engineering standard. Current mitigation measures are insufficient to reliably limit loss severity under credible natural hazard scenarios.',
+    action_required_text: 'Conduct a focused natural hazard exposure review and implement corrective measures — including physical protection, operational procedures, and emergency response provisions — with a named accountable owner and target completion date. Evidence completion through documented assessment or inspection records.',
+    hazard_text: 'Sub-standard natural hazard controls create unmitigated pathways for weather, flood, seismic, or subsidence-related damage that can cause significant structural loss and prolonged business interruption.',
+  },
+
+  electrical_and_utilities_reliability: {
+    title: 'Improve electrical and utilities reliability to engineering standard',
+    observation_text: 'Electrical supply and utilities reliability have been assessed below the acceptable engineering standard. Backup arrangements, resilience controls, and failure-mode protection are insufficient.',
+    action_required_text: 'Complete an electrical and utilities resilience review. Implement improvements including backup power provision, automatic changeover, supply monitoring, and utility failure response procedures. Assign a named accountable owner and target completion date.',
+    hazard_text: 'Sub-standard utilities reliability can remove critical safety, suppression, and process control systems during incident conditions, significantly increasing loss severity and business interruption duration.',
+  },
+
+  process_control_and_stability: {
+    title: 'Improve process control and stability to engineering standard',
+    observation_text: 'Process control and stability have been assessed below the acceptable engineering standard. Control effectiveness is insufficient to prevent process deviations that could lead to fire, explosion, or toxic release.',
+    action_required_text: 'Review process control systems, instrumentation, alarm management, and deviation response procedures. Implement corrective measures with a named accountable owner and target completion date.',
+    hazard_text: 'Inadequate process control can allow hazardous process conditions to develop unchecked, increasing fire, explosion, and toxic release risk beyond containment design assumptions.',
+  },
+
+  safety_and_control_systems: {
+    title: 'Strengthen safety and control system performance to engineering standard',
+    observation_text: 'Safety and control system performance has been assessed below the acceptable engineering standard. Current arrangements do not provide sufficient confidence in reliable hazard detection and emergency response.',
+    action_required_text: 'Review safety instrumented systems, emergency shutdown logic, detector coverage, and proof-test frequencies. Implement corrective measures and validate function by independent test. Assign a named owner and target completion date.',
+    hazard_text: 'Under-performing safety systems can allow incident escalation beyond designed containment limits, increasing loss severity and complicating emergency response.',
+  },
+
+  process_safety_management: {
+    title: 'Strengthen process safety management to engineering standard',
+    observation_text: 'Process safety management has been assessed below the acceptable engineering standard. Current arrangements — including management of change, process hazard analysis, and mechanical integrity — are insufficient.',
+    action_required_text: 'Conduct a process safety management gap assessment against the applicable standard (e.g., IEC 61511, API RP 750, or equivalent). Implement prioritised corrective actions with named owners and completion dates. Evidence through documented audits and close-out records.',
+    hazard_text: 'Weak process safety management increases the probability of major loss events from process deviations, inadequate change control, or unidentified hazards, with potentially severe property, liability, and business interruption consequences.',
+  },
+
+  flammable_liquids_and_fire_risk: {
+    title: 'Improve flammable liquid controls and fire risk mitigation',
+    observation_text: 'Flammable liquid handling, storage, and associated fire risk controls have been assessed below the acceptable engineering standard.',
+    action_required_text: 'Review flammable liquid storage, dispensing, containment, ignition source controls, and detection/suppression provision. Implement corrective actions with named owners and target completion dates. Evidence through documented inspection.',
+    hazard_text: 'Sub-standard flammable liquid controls create conditions for rapid fire development with high heat release, increasing both property damage and the risk of structural loss and business interruption.',
+  },
+
+  critical_equipment_reliability: {
+    title: 'Improve critical equipment reliability and maintenance governance',
+    observation_text: 'Critical equipment reliability and maintenance governance have been assessed below the acceptable engineering standard. Maintenance programme quality and evidence are insufficient.',
+    action_required_text: 'Identify critical equipment items, implement risk-based maintenance programmes, and improve defect close-out tracking. Strengthen condition monitoring and spare parts provision for high-consequence items. Assign named owners and target dates.',
+    hazard_text: 'Sub-standard maintenance governance increases the probability of critical equipment failures that could initiate or escalate incidents, and may also reduce the reliability of safety and suppression systems when most needed.',
+  },
+
+  high_energy_materials_control: {
+    title: 'Strengthen control of high-energy materials to engineering standard',
+    observation_text: 'Controls over high-energy or reactive materials have been assessed below the acceptable engineering standard. Storage, handling, and emergency response arrangements are insufficient.',
+    action_required_text: 'Review high-energy material inventories, storage conditions, separation distances, and emergency response procedures. Implement corrective measures with named owners and target dates. Evidence through documented inspection or hazard assessment records.',
+    hazard_text: 'Inadequate control of high-energy or reactive materials creates conditions for rapid escalation that can overwhelm installed protection, cause structural damage, and severely impact surrounding assets.',
+  },
+
+  high_energy_process_equipment: {
+    title: 'Improve high-energy process equipment controls and integrity',
+    observation_text: 'High-energy process equipment controls and mechanical integrity have been assessed below the acceptable engineering standard.',
+    action_required_text: 'Review mechanical integrity programmes for high-energy equipment, pressure protection, inspection schedules, and overpressure response procedures. Implement prioritised corrective actions with named owners and target completion dates.',
+    hazard_text: 'Inadequate control of high-energy process equipment can allow catastrophic equipment failure, increasing loss severity and creating secondary hazards for adjacent assets and personnel.',
+  },
+
+  emergency_response_and_bcp: {
+    title: 'Improve emergency response and business continuity planning',
+    observation_text: 'Emergency response capabilities and business continuity planning have been assessed below the acceptable engineering standard. Current arrangements are insufficient to limit loss severity and support effective recovery.',
+    action_required_text: 'Review and strengthen emergency response plans, on-site resource provisions, brigade arrangements, and business continuity recovery procedures. Conduct drills and document performance. Assign a named owner and target completion date.',
+    hazard_text: 'Sub-standard emergency response and continuity planning can significantly extend incident duration and property damage, and delay resumption of operations, increasing overall loss.',
+  },
+
+  // ─── RE03 occupancy factor keys ───────────────────────────────────────────────
+
+  re03_occ_fire_load_density: {
+    title: 'Reduce fire load density to an acceptable level',
+    observation_text: 'The assessed fire load density is above the acceptable threshold for the occupancy type and available protection standard. Current storage, process, or material arrangements create a high-risk fire load concentration.',
+    action_required_text: 'Review storage arrangements, material quantities, and area utilisation. Implement measures to reduce fire load density including maximum stock height controls, fire load zoning, increased compartmentation, or enhanced suppression in high-density areas.',
+    hazard_text: 'Excessive fire load density can overwhelm installed suppression, accelerate structural heating, and increase the probability of total loss across the affected area.',
+  },
 };
 
 export function resolveFactorFallback(factorKey: string): FallbackContent | null {
