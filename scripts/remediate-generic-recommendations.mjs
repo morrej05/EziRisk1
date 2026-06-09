@@ -2,50 +2,54 @@
 /**
  * remediate-generic-recommendations.mjs
  *
- * One-off admin remediation script.
- * Updates auto-generated RE recommendations that still contain the old generic
- * fallback wording with the new module-specific wording.
+ * One-off admin remediation: update auto-generated RE recommendations that
+ * still contain old generic fallback wording with the new module-specific text.
  *
- * SAFETY RULES:
- *   - Only touches rows where source_type = 'auto'.
- *   - Only touches rows whose hazard_text exactly matches the old constant
- *     generic signature — manually edited recommendations will never match
- *     that signature, so they are never touched.
- *   - Preserves: status, priority, target_date, evidence, photos, metadata,
- *     and every other column except title / observation_text /
- *     action_required_text / hazard_text.
- *   - Runs in DRY-RUN mode by default — prints affected rows without writing.
- *   - Pass --apply to commit changes.
+ * ── Safety rules ──────────────────────────────────────────────────────────────
+ *  • Only touches rows where source_type = 'auto'.
+ *  • Only touches rows whose hazard_text exactly matches the old constant
+ *    generic signature — manually edited recommendations will never match it.
+ *  • Preserved fields: status, priority, target_date, evidence, photos,
+ *    attachments, created_at, metadata, history, and every other column.
+ *  • Only updates: title, observation_text, action_required_text, hazard_text.
+ *  • The UPDATE WHERE clause includes both the hazard_text signature check and
+ *    source_type = 'auto', so a concurrent manual edit cannot be overwritten.
+ *  • Default mode is DRY RUN — no writes, just a report.
+ *  • Writes require an explicit --apply flag.
  *
- * REQUIREMENTS:
- *   - Node 20.6+ (uses --env-file for .env loading)
- *   - @supabase/supabase-js must be installed (it is, as a project dependency)
- *   - Set SUPABASE_SERVICE_ROLE_KEY in your .env (preferred) or the script
- *     falls back to VITE_SUPABASE_ANON_KEY with a warning.
+ * ── Requirements ──────────────────────────────────────────────────────────────
+ *  • Node 20.6+ (--env-file flag used below)
+ *  • SUPABASE_SERVICE_ROLE_KEY in .env (preferred for cross-doc admin access)
+ *    Falls back to VITE_SUPABASE_ANON_KEY with a warning.
+ *  • @supabase/supabase-js (already a project dependency)
  *
- * USAGE:
- *   # Dry run — show what would change, touch nothing:
- *   node --env-file=.env scripts/remediate-generic-recommendations.mjs
+ * ── Usage ─────────────────────────────────────────────────────────────────────
+ *  # Dry run — list all affected rows, write nothing:
+ *  node --env-file=.env scripts/remediate-generic-recommendations.mjs
  *
- *   # Apply changes:
- *   node --env-file=.env scripts/remediate-generic-recommendations.mjs --apply
+ *  # Dry run scoped to one document (recommended before full run):
+ *  node --env-file=.env scripts/remediate-generic-recommendations.mjs \
+ *    --document-id=<uuid>
  *
- *   # Filter to a single document (useful for staging):
- *   node --env-file=.env scripts/remediate-generic-recommendations.mjs --document-id=<uuid>
+ *  # Apply all changes:
+ *  node --env-file=.env scripts/remediate-generic-recommendations.mjs --apply
  *
- *   # Combine:
- *   node --env-file=.env scripts/remediate-generic-recommendations.mjs --document-id=<uuid> --apply
+ *  # Apply scoped to one document:
+ *  node --env-file=.env scripts/remediate-generic-recommendations.mjs \
+ *    --document-id=<uuid> --apply
  */
 
 import { createClient } from '@supabase/supabase-js';
 
 // ─── CLI flags ────────────────────────────────────────────────────────────────
+
 const args = process.argv.slice(2);
 const DRY_RUN = !args.includes('--apply');
 const docIdArg = args.find(a => a.startsWith('--document-id='));
-const FILTER_DOCUMENT_ID = docIdArg ? docIdArg.split('=')[1] : null;
+const FILTER_DOC_ID = docIdArg ? docIdArg.split('=')[1].trim() : null;
 
 // ─── Supabase client ──────────────────────────────────────────────────────────
+
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
@@ -54,17 +58,15 @@ if (!supabaseUrl) {
   console.error('ERROR: VITE_SUPABASE_URL is not set. Run with --env-file=.env');
   process.exit(1);
 }
-
 const apiKey = serviceRoleKey || anonKey;
 if (!apiKey) {
   console.error('ERROR: Neither SUPABASE_SERVICE_ROLE_KEY nor VITE_SUPABASE_ANON_KEY is set.');
   process.exit(1);
 }
-
 if (!serviceRoleKey) {
   console.warn(
-    'WARNING: SUPABASE_SERVICE_ROLE_KEY not found — using anon key. ' +
-    'RLS policies may prevent some updates. Prefer service role for admin scripts.',
+    '\nWARNING: SUPABASE_SERVICE_ROLE_KEY not found — using anon key.\n' +
+    '         RLS may prevent cross-document updates. Prefer service role key.\n',
   );
 }
 
@@ -72,30 +74,34 @@ const supabase = createClient(supabaseUrl, apiKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-// ─── Old generic wording signature ───────────────────────────────────────────
-// This exact hazard text was produced by every old generic fallback. It is
-// constant across all factor keys, making it the safest detection signal.
-// Manually edited recommendations will never contain this text unchanged.
-const OLD_GENERIC_HAZARD_TEXT =
-  'Inadequate controls increase the likelihood of loss events escalating beyond planned defenses. A foreseeable incident could develop faster than current safeguards allow, increasing damage extent and recovery time. Strengthening this control reduces overall facility risk profile.';
+// ─── Old wording signatures (mirrors remediationMap.ts) ───────────────────────
+//
+// The old buildFallbackContent() (before 2026-06-09) emitted an identical
+// hazard_text for every generic recommendation, regardless of factor key.
+// It also had a predictable action_required_text prefix.
 
-// Secondary patterns that also uniquely identify old generic wording.
-// Used as a cross-check when dry-running.
+const OLD_GENERIC_HAZARD_TEXT =
+  'Inadequate controls increase the likelihood of loss events escalating beyond planned defenses. ' +
+  'A foreseeable incident could develop faster than current safeguards allow, increasing damage extent and recovery time. ' +
+  'Strengthening this control reduces overall facility risk profile.';
+
 const OLD_GENERIC_ACTION_PREFIX = 'Review and implement improvements to bring ';
-const OLD_GENERIC_ACTION_SUFFIX = 'up to acceptable standards. Address identified deficiencies through documented corrective actions with clear ownership and target dates.';
-const OLD_GENERIC_OBSERVATION_SUFFIX = 'has been identified as requiring attention based on current site conditions. Control effectiveness is below acceptable standards and requires corrective action.';
+
+function isOldGenericWording(row) {
+  if (row.hazard_text === OLD_GENERIC_HAZARD_TEXT) return true;
+  if (row.action_required_text?.startsWith(OLD_GENERIC_ACTION_PREFIX)) return true;
+  return false;
+}
 
 // ─── New wording map ──────────────────────────────────────────────────────────
-// Mirrors src/lib/re/recommendations/recommendationPipeline.ts FACTOR_SPECIFIC_FALLBACKS
-// for all non-RE06 entries plus the module-level fallbacks added in the wording
-// audit. RE06 entries are included as a safety net for any that used the old
-// generic path.
 //
-// When a sourceFactorKey has a specific entry → use it.
-// When only sourceModuleKey is available → use the module-level entry.
-// Anything else → use the improved generic wording (better than old, still
-//   parameterised by factorLabel).
-const NEW_WORDING = {
+// Mirrors FACTOR_SPECIFIC_FALLBACKS in recommendationPipeline.ts.
+// Only the non-RE06 entries (module-level and HRG occupancy drivers) are needed
+// here because RE06-specific entries had targeted wording in the old code too,
+// and are unlikely to have hit the generic path.  They are included as a safety
+// net.
+
+const WORDING_MAP = {
   // ── Module-level ──────────────────────────────────────────────────────────
   RE_02_CONSTRUCTION: {
     title: 'Improve construction standard to reduce fire and loss escalation potential',
@@ -199,139 +205,221 @@ const NEW_WORDING = {
   },
 };
 
-// ─── Improved generic fallback (for keys not in NEW_WORDING) ──────────────────
-// Used for any old-wording record whose factor key isn't in the map above.
-// Produces: "Strengthen <Factor Label> to engineering standard" style content.
-function humanizeFactorKey(key) {
+// ─── Wording resolution (mirrors remediationMap.ts) ───────────────────────────
+
+function humanizeKey(key) {
   return key
+    .replace(/^re\d+_fp_/i, '')
+    .replace(/^RE_\d+_/i, '')
+    .toLowerCase()
     .split('_')
+    .filter(Boolean)
     .map(w => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
-    .replace(/^Re\d+\s+/i, '')
-    .replace(/^re\d+_fp_/i, '')
     .trim();
 }
 
-function improvedGenericFallback(factorKey) {
-  const label = humanizeFactorKey(factorKey);
+function improvedGeneric(key) {
+  const label = humanizeKey(key);
   return {
     title: `Strengthen ${label} to engineering standard`,
-    observation_text: `${label} has been assessed below the acceptable engineering standard. Current control effectiveness is insufficient to reliably limit loss severity under foreseeable incident conditions.`,
-    action_required_text: `Define and implement specific corrective measures for ${label} with a named accountable owner and a target completion date. Evidence completion through documented inspection or test records. Interim risk management measures should be applied until permanent remediation is confirmed.`,
-    hazard_text: `Sub-standard performance in ${label} creates a pathway for incident escalation that current defences may not interrupt reliably. A foreseeable event could develop faster and with greater severity than planning assumptions allow, increasing physical damage, restoration complexity and interruption duration.`,
+    observation_text:
+      `${label} has been assessed below the acceptable engineering standard. ` +
+      `Current control effectiveness is insufficient to reliably limit loss severity under foreseeable incident conditions.`,
+    action_required_text:
+      `Define and implement specific corrective measures for ${label} with a named accountable owner and a target completion date. ` +
+      `Evidence completion through documented inspection or test records. ` +
+      `Interim risk management measures should be applied until permanent remediation is confirmed.`,
+    hazard_text:
+      `Sub-standard performance in ${label} creates a pathway for incident escalation that current defences may not interrupt reliably. ` +
+      `A foreseeable event could develop faster and with greater severity than planning assumptions allow, ` +
+      `increasing physical damage, restoration complexity and interruption duration.`,
   };
 }
 
-// Look up the best available new wording for a record.
-function resolveNewWording(sourceFactorKey, sourceModuleKey) {
-  const key = sourceFactorKey || sourceModuleKey || '';
-  return NEW_WORDING[key] || improvedGenericFallback(key || 'unknown_factor');
+function resolveWording(sourceFactorKey, sourceModuleKey) {
+  // 1. Specific factor key (strip :buildingId suffix for synthetic keys)
+  if (sourceFactorKey) {
+    const base = sourceFactorKey.split(':')[0];
+    if (WORDING_MAP[base]) return WORDING_MAP[base];
+  }
+  // 2. Module-level key
+  if (sourceModuleKey && WORDING_MAP[sourceModuleKey]) {
+    return WORDING_MAP[sourceModuleKey];
+  }
+  // 3. Improved generic
+  return improvedGeneric(sourceFactorKey ?? sourceModuleKey ?? 'unknown_factor');
+}
+
+// ─── Output helpers ───────────────────────────────────────────────────────────
+
+const RESET  = '\x1b[0m';
+const BOLD   = '\x1b[1m';
+const DIM    = '\x1b[2m';
+const YELLOW = '\x1b[33m';
+const GREEN  = '\x1b[32m';
+const RED    = '\x1b[31m';
+const CYAN   = '\x1b[36m';
+
+function truncate(str, n) {
+  if (!str) return '(empty)';
+  return str.length <= n ? str : str.slice(0, n - 1) + '…';
+}
+
+function col(value, width) {
+  const s = String(value ?? '');
+  return s.padEnd(width).slice(0, width);
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
+  const modeLabel = DRY_RUN
+    ? `${YELLOW}DRY RUN${RESET} — no changes will be written`
+    : `${RED}${BOLD}APPLY${RESET}   — database will be updated`;
+
   console.log('');
-  console.log('RE Recommendation Generic-Wording Remediation');
-  console.log('═══════════════════════════════════════════════');
-  console.log(`Mode          : ${DRY_RUN ? 'DRY RUN (no changes will be written)' : '⚠  APPLY — database will be updated'}`);
-  console.log(`Filter doc    : ${FILTER_DOCUMENT_ID || '(all documents)'}`);
+  console.log(`${BOLD}RE Recommendation Generic-Wording Remediation${RESET}`);
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`Mode     : ${modeLabel}`);
+  console.log(`Scope    : ${FILTER_DOC_ID ? `document ${FILTER_DOC_ID}` : 'all documents'}`);
   console.log('');
 
-  // ── Query affected rows ───────────────────────────────────────────────────
+  // ── Query ─────────────────────────────────────────────────────────────────
+  // Fetch by source_type + hazard_text signature.  This is the tightest safe
+  // filter: no manually edited row will carry the constant old generic text.
   let query = supabase
     .from('re_recommendations')
-    .select('id, document_id, source_type, source_module_key, source_factor_key, title, observation_text, action_required_text, hazard_text, status, priority')
+    .select([
+      'id',
+      'document_id',
+      'source_type',
+      'source_module_key',
+      'source_factor_key',
+      'title',
+      'observation_text',
+      'action_required_text',
+      'hazard_text',
+      'status',
+      'priority',
+    ].join(', '))
     .eq('source_type', 'auto')
     .eq('hazard_text', OLD_GENERIC_HAZARD_TEXT);
 
-  if (FILTER_DOCUMENT_ID) {
-    query = query.eq('document_id', FILTER_DOCUMENT_ID);
+  if (FILTER_DOC_ID) {
+    query = query.eq('document_id', FILTER_DOC_ID);
   }
 
   const { data: rows, error } = await query;
 
   if (error) {
-    console.error('ERROR querying re_recommendations:', error.message);
+    console.error(`${RED}ERROR querying re_recommendations:${RESET}`, error.message);
     process.exit(1);
   }
 
   if (!rows || rows.length === 0) {
-    console.log('✓ No rows found matching the old generic wording signature. Nothing to do.');
+    console.log(`${GREEN}✓ No rows match the old generic wording signature. Nothing to do.${RESET}`);
     return;
   }
 
+  // Also catch any row where action_required_text starts with the old prefix
+  // but hazard_text was already touched — belt-and-braces.  We handle the
+  // primary query result set only; log a reminder.
+  console.log(
+    `${CYAN}${BOLD}${rows.length} row(s)${RESET}${CYAN} found with old generic wording signature.${RESET}\n`,
+  );
+
   // ── Group by factor key for summary ──────────────────────────────────────
-  const byKey = {};
+  /** @type {Map<string, number>} */
+  const keyCount = new Map();
   for (const row of rows) {
-    const key = row.source_factor_key || row.source_module_key || '(no key)';
-    (byKey[key] = byKey[key] || []).push(row);
+    const k = row.source_factor_key || row.source_module_key || '(no key)';
+    keyCount.set(k, (keyCount.get(k) ?? 0) + 1);
   }
 
-  console.log(`Found ${rows.length} row(s) with old generic wording across ${Object.keys(byKey).length} distinct factor/module key(s).\n`);
-  console.log('Affected factor/module keys:');
-  for (const [key, keyRows] of Object.entries(byKey)) {
-    const newWording = resolveNewWording(
-      keyRows[0].source_factor_key,
-      keyRows[0].source_module_key,
+  console.log(`${BOLD}Affected factor / module keys:${RESET}`);
+  for (const [key, count] of [...keyCount].sort()) {
+    const sample = rows.find(r => (r.source_factor_key || r.source_module_key || '(no key)') === key);
+    const newW = resolveWording(sample.source_factor_key, sample.source_module_key);
+    console.log(
+      `  ${CYAN}${key.padEnd(48)}${RESET}` +
+      `${DIM}×${RESET} ${String(count).padStart(3)}  →  ${truncate(newW.title, 60)}`,
     );
-    console.log(`  ${key.padEnd(45)} × ${String(keyRows.length).padStart(3)} row(s) → "${newWording.title}"`);
   }
   console.log('');
 
-  // ── Show detail in dry run ────────────────────────────────────────────────
+  // ── Tabular dry-run detail ────────────────────────────────────────────────
+  const COL = { docId: 36, recId: 36, module: 22, factor: 38, curTitle: 44, newTitle: 44 };
+  const HEADER =
+    `${'document_id'.padEnd(COL.docId)}  ` +
+    `${'rec_id'.padEnd(COL.recId)}  ` +
+    `${'source_module'.padEnd(COL.module)}  ` +
+    `${'source_factor'.padEnd(COL.factor)}  ` +
+    `${'current_title'.padEnd(COL.curTitle)}  ` +
+    `proposed_title`;
+  const DIVIDER = '─'.repeat(HEADER.length);
+
+  console.log(`${BOLD}${HEADER}${RESET}`);
+  console.log(DIVIDER);
+
+  for (const row of rows) {
+    const newW = resolveWording(row.source_factor_key, row.source_module_key);
+    console.log(
+      `${col(row.document_id,        COL.docId)}  ` +
+      `${col(row.id,                 COL.recId)}  ` +
+      `${col(row.source_module_key,  COL.module)}  ` +
+      `${col(row.source_factor_key,  COL.factor)}  ` +
+      `${YELLOW}${col(truncate(row.title, COL.curTitle), COL.curTitle)}${RESET}  ` +
+      `${GREEN}${truncate(newW.title, COL.newTitle)}${RESET}`,
+    );
+  }
+
+  console.log(DIVIDER);
+  console.log(`${BOLD}${rows.length} row(s) would be updated.${RESET}`);
+  console.log('');
+
   if (DRY_RUN) {
-    console.log('Dry-run details (first 20 rows):');
-    const preview = rows.slice(0, 20);
-    for (const row of preview) {
-      const newWording = resolveNewWording(row.source_factor_key, row.source_module_key);
-      console.log(`  id=${row.id}`);
-      console.log(`    document_id : ${row.document_id}`);
-      console.log(`    factor_key  : ${row.source_factor_key || '(none)'}`);
-      console.log(`    module_key  : ${row.source_module_key}`);
-      console.log(`    status      : ${row.status || '(none)'} | priority: ${row.priority || '(none)'}`);
-      console.log(`    old title   : ${row.title}`);
-      console.log(`    new title   : ${newWording.title}`);
-      console.log('');
-    }
-    if (rows.length > 20) {
-      console.log(`  … and ${rows.length - 20} more row(s) not shown.`);
-      console.log('');
-    }
-    console.log('DRY RUN complete. Re-run with --apply to commit these changes.');
+    console.log(
+      `${YELLOW}Dry run complete.${RESET} ` +
+      'Re-run with --apply to commit these changes.',
+    );
+    console.log('');
     return;
   }
 
-  // ── Apply updates ─────────────────────────────────────────────────────────
-  console.log('Applying updates…');
+  // ── Apply ─────────────────────────────────────────────────────────────────
+  console.log(`${BOLD}Applying updates…${RESET}`);
   let updated = 0;
-  let failed = 0;
-  const failedIds = [];
+  let skipped = 0;
+  const errors = [];
 
-  // Update in batches of 50 to avoid timeout on large sets
+  // Batches of 50 to avoid request timeout on large sets
   for (let i = 0; i < rows.length; i += 50) {
     const batch = rows.slice(i, i + 50);
     await Promise.all(
       batch.map(async (row) => {
-        const newWording = resolveNewWording(row.source_factor_key, row.source_module_key);
-        const { error: updateError } = await supabase
+        const newW = resolveWording(row.source_factor_key, row.source_module_key);
+        const { error: updateError, count } = await supabase
           .from('re_recommendations')
           .update({
-            title: newWording.title,
-            observation_text: newWording.observation_text,
-            action_required_text: newWording.action_required_text,
-            hazard_text: newWording.hazard_text,
+            title:                newW.title,
+            observation_text:     newW.observation_text,
+            action_required_text: newW.action_required_text,
+            hazard_text:          newW.hazard_text,
           })
-          .eq('id', row.id)
-          // Double-check guard: only update if hazard_text still matches
-          // the old signature (prevents re-updating manually changed rows
-          // that were somehow in the result set)
-          .eq('hazard_text', OLD_GENERIC_HAZARD_TEXT)
-          .eq('source_type', 'auto');
+          // Double-guard: re-assert both identity conditions.
+          // If a manual edit changed hazard_text between our SELECT and this
+          // UPDATE the WHERE won't match, and count will be 0 — we skip safely.
+          .eq('id',          row.id)
+          .eq('source_type', 'auto')
+          .eq('hazard_text', OLD_GENERIC_HAZARD_TEXT);
 
         if (updateError) {
-          console.error(`  FAILED id=${row.id}: ${updateError.message}`);
-          failed++;
-          failedIds.push(row.id);
+          errors.push({ id: row.id, message: updateError.message });
+        } else if (count === 0) {
+          // Row changed between SELECT and UPDATE — skip, log.
+          skipped++;
+          console.log(`  ${YELLOW}SKIPPED${RESET} ${row.id} (changed since read)`);
         } else {
           updated++;
           process.stdout.write('.');
@@ -342,21 +430,24 @@ async function main() {
 
   console.log('');
   console.log('');
-  console.log('═══════════════════════════════════════════════');
-  console.log(`Updated : ${updated} row(s)`);
-  if (failed > 0) {
-    console.log(`Failed  : ${failed} row(s)`);
-    console.log('Failed IDs:', failedIds.join(', '));
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(`${GREEN}${BOLD}Updated ${RESET}: ${updated} row(s)`);
+  if (skipped > 0) console.log(`${YELLOW}Skipped ${RESET}: ${skipped} row(s) (changed between read and write)`);
+  if (errors.length > 0) {
+    console.log(`${RED}Errors  ${RESET}: ${errors.length} row(s)`);
+    for (const e of errors) console.log(`  id=${e.id}: ${e.message}`);
   }
   console.log('');
-  console.log('Preserved fields: status, priority, target_date, evidence,');
-  console.log('  photos, metadata, history, and all other columns.');
+  console.log('Preserved : status, priority, target_date, evidence, photos,');
+  console.log('            attachments, created_at, metadata, history,');
+  console.log('            source_module_key, source_factor_key, and all');
+  console.log('            other columns not listed above.');
   console.log('');
-  console.log('Manually edited recommendations were not touched (they do not');
-  console.log('  contain the old constant hazard text signature).');
+  console.log('Manually edited recommendations were NOT touched — they do not');
+  console.log('carry the old constant hazard_text signature.');
 }
 
 main().catch(err => {
-  console.error('Fatal error:', err);
+  console.error(`${RED}Fatal:${RESET}`, err.message ?? err);
   process.exit(1);
 });
