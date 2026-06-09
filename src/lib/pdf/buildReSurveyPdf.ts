@@ -942,8 +942,14 @@ function describeOccupancyHazardSignals(hazards: any[], occupancy: any): {
   biSensitivity: string;
 } {
   const tokens = hazards.map((hazard) => String(hazard?.hazard_label || hazard?.hazard_key || '').toLowerCase()).filter(Boolean);
-  const bodyText = `${occupancy?.industry_special_hazards_notes || ''} ${occupancy?.hazards_free_text || ''} ${hazards.map((h) => h?.free_text || '').join(' ')}`.toLowerCase();
-  const hasFryers = tokens.some((token) => token.includes('fryer')) || bodyText.includes('fryer') || bodyText.includes('deep fat');
+  const bodyText = [
+    occupancy?.industry_special_hazards_notes,
+    occupancy?.hazards_free_text,
+    occupancy?.process_description ?? occupancy?.process_overview ?? occupancy?.operations_description,
+    ...hazards.map((h) => h?.free_text || ''),
+  ].filter(Boolean).join(' ').toLowerCase();
+  const hasFryers = tokens.some((token) => token.includes('fryer') || token.includes('fry'))
+    || bodyText.includes('fryer') || bodyText.includes('frying') || bodyText.includes('deep fat') || bodyText.includes('deep-fat');
   const hasThermalOil = tokens.some((token) => token.includes('thermal oil')) || bodyText.includes('thermal oil') || bodyText.includes('hot oil');
   const hasFlammable = tokens.some((token) => token.includes('ignitable') || token.includes('flammable') || token.includes('gas')) || bodyText.includes('flammable') || bodyText.includes('solvent');
   const hasDustExplosion = tokens.some((token) => token.includes('dust') || token.includes('explosive')) || bodyText.includes('dust') || bodyText.includes('powder');
@@ -2360,12 +2366,23 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   // classified the per-building cladding_present flag.
   // Note: the regex uses `s?` to match both singular ("panel") and plural ("panels").
   const COMBUSTIBLE_KEYWORDS = /\b(pur|pir|phenolic|eps|xps|polystyrene|foam core)\b|\b(sandwich panels?|composite panels?|insulated panels?|metal[\s-]faced)\b/i;
+  // Also aggregate per-building roof/wall construction material descriptions so that
+  // PUR/phenolic text stored in building-level fields (not module-level flat fields)
+  // is picked up by the combustible-keyword test below.
+  const perBuildingConstructionText = buildings
+    .map((b: any) => [
+      b?.roof_construction ?? b?.roof?.construction_desc ?? b?.roof?.construction_type,
+      b?.wall_construction ?? b?.walls?.construction_desc ?? b?.walls?.construction_type,
+      b?.construction_type ?? b?.primary_construction_type,
+    ].filter(Boolean).join(' '))
+    .join(' ');
   const flatConstructionText = [
     construction?.wall_construction,
     construction?.roof_construction,
     construction?.primary_construction_type,
     construction?.cladding_description,
     construction?.site_notes,
+    perBuildingConstructionText || undefined,
   ].filter(Boolean).join(' ');
   const flatTextIndicatesCombustible = COMBUSTIBLE_KEYWORDS.test(flatConstructionText);
   // Identify PUR/PIR/phenolic sandwich-panel systems specifically — highest concealed-spread risk.
