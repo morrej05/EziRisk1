@@ -2733,9 +2733,14 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
   const percent = breakdown.maxScore > 0 ? (breakdown.totalScore / breakdown.maxScore) * 100 : 0;
-  const top = breakdown.topContributors.slice(0, 2).map(t => t.label).join(' and ');
   const level = levelFromPercent(percent);
-  const narrative = `The assessed ${breakdown.industryLabel} risk profile achieves ${percent.toFixed(0)}% of the weighted industry benchmark score. The principal engineering contributors to loss potential are ${top || 'the major engineering pillars'}, indicating where resilience investment and underwriting attention are most material to probable property damage and business interruption outcomes.`;
+  const industryLabel = breakdown.industryLabel.toLowerCase();
+  // Build the drivers clause from top contributors (up to 3 for the significance narrative).
+  const drivers = breakdown.topContributors.slice(0, 3).map(t => t.label.toLowerCase());
+  const driversClause = drivers.length > 0 ? joinList(drivers) : 'the assessed engineering pillars';
+  const narrative =
+    `The site achieves ${percent.toFixed(0)}% of the available weighted risk-control score for the ${industryLabel} benchmark, resulting in a ${level} overall risk rating. ` +
+    `The ${level} rating is driven principally by ${driversClause}.`;
   return { level, narrative };
 }
 

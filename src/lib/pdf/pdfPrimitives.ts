@@ -151,15 +151,27 @@ export function drawRiskSignificanceBlock(args: {
     color: PDF_THEME.colours.ink,
   });
 
+  // ── Label row: "Risk significance:" label + badge on the same line ──────────
   const badgeText = level.toUpperCase();
   const badgeFontSize = 9;
   const badgeTextWidth = fonts.bold.widthOfTextAtSize(badgeText, badgeFontSize);
   const badgeW = badgeTextWidth + 10;
   const badgeH = 14;
-  const badgeX = x + w - badgeW;
-  const badgeTextGap = 26;
-  const labelY = titleY - 24;
-  const badgeY = labelY + badgeH - 3;
+  const labelRowY = titleY - 26;
+  const labelText = 'Risk significance:';
+  const labelFontSize = 10;
+
+  page.drawText(labelText, {
+    x,
+    y: labelRowY,
+    size: labelFontSize,
+    font: fonts.bold,
+    color: PDF_THEME.colours.ink,
+  });
+
+  const labelTextWidth = fonts.bold.widthOfTextAtSize(labelText, labelFontSize);
+  const badgeX = x + labelTextWidth + 6;
+  const badgeY = labelRowY + badgeH - 3;
 
   page.drawRectangle({
     x: badgeX,
@@ -173,22 +185,21 @@ export function drawRiskSignificanceBlock(args: {
   });
 
   page.drawText(badgeText, {
-    x: badgeX + 7,
+    x: badgeX + 5,
     y: badgeY - badgeH + 3,
     size: badgeFontSize,
     font: fonts.bold,
     color: colour.fg,
   });
 
-  const narrativeX = x;
-  const narrativeWidth = Math.max(120, w - badgeW - badgeTextGap);
-  const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
-  // Start narrative directly at labelY — the badge already identifies the level; no label needed.
-  let cursorY = labelY;
+  // ── Narrative: full-width paragraph below the label row ──────────────────
+  const narrativeY = labelRowY - 18;
+  const lines = wrapText(sanitizePdfText(narrative), w, 10, fonts.regular);
+  let cursorY = narrativeY;
 
   for (const line of lines) {
     page.drawText(line, {
-      x: narrativeX,
+      x,
       y: cursorY,
       size: 10,
       font: fonts.regular,
@@ -199,7 +210,7 @@ export function drawRiskSignificanceBlock(args: {
 
   return {
     y: cursorY - 6,
-    estimatedHeight: 44 + lines.length * 13,
+    estimatedHeight: 60 + lines.length * 13,
   };
 }
 
