@@ -1808,12 +1808,12 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
   return [opening, weaknessNarrative, resilienceNarrative, closing].filter(Boolean).join('\n\n');
 }
 
-export function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+export function buildSectionInterpretation(module: ModuleInstance, breakdown: Breakdown, allModules: ModuleInstance[] = []): string {
   if (module.module_key === 'RE_02_CONSTRUCTION') return buildConstructionEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_03_OCCUPANCY') return buildOccupancyEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_06_FIRE_PROTECTION') return buildFireProtectionEngineeringInterpretation(module);
   if (module.module_key === 'RE_07_NATURAL_HAZARDS') return buildNaturalHazardsEngineeringInterpretation(module, breakdown);
-  if (module.module_key === 'RE_08_UTILITIES') return buildUtilitiesEngineeringInterpretation(module, breakdown);
+  if (module.module_key === 'RE_08_UTILITIES') return buildUtilitiesEngineeringInterpretation(module, breakdown, allModules);
   if (module.module_key === 'RE_09_MANAGEMENT') return buildManagementEngineeringInterpretation(module, breakdown);
   if (module.module_key === 'RE_12_LOSS_VALUES') return buildLossValuesEngineeringInterpretation(module, breakdown);
 
@@ -2108,7 +2108,7 @@ function buildNaturalHazardsEngineeringInterpretation(module: ModuleInstance, br
   return `Engineering interpretation: Natural hazards score is ${formatScoreOutOfFive(rating)}. ${focus} ${closingByRating}`;
 }
 
-function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown, allModules: ModuleInstance[] = []): string {
   const data = module.data as any;
   const services: any[] = Array.isArray(data?.critical_services) ? data.critical_services : [];
   const equipment: any[] = Array.isArray(data?.critical_equipment) ? data.critical_equipment : [];
@@ -2138,9 +2138,63 @@ function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdo
   const leadText = `Utilities and critical-services resilience is ${formatScoreOutOfFive(rating)}.`;
 
   // Evidence narrative — describe content, not just count.
+  // When no explicit critical services/equipment records exist, cross-reference the
+  // occupancy module to identify process dependencies that imply utility criticality.
+  let occupancySignals: ReturnType<typeof describeOccupancyHazardSignals> | null = null;
+  let occupancyData: any = null;
+  if (services.length === 0 && equipment.length === 0 && allModules.length > 0) {
+    const occupancyModule = allModules.find(
+      (m) => m.module_key === 'RE_03_OCCUPANCY'
+    );
+    if (occupancyModule) {
+      const od = (occupancyModule.data as any)?.occupancy || occupancyModule.data || {};
+      occupancyData = od;
+      const hazards: any[] = Array.isArray(od?.hazards) ? od.hazards : [];
+      occupancySignals = describeOccupancyHazardSignals(hazards, od);
+    }
+  }
+  // Derive occupancy-based cold-chain and ammonia signals from occupancy module
+  // (only relevant when utilities module has no explicit service records).
+  const occupancyBodyText = occupancyData
+    ? [
+        occupancyData?.industry_special_hazards_notes,
+        occupancyData?.hazards_free_text,
+        occupancyData?.process_description ?? occupancyData?.process_overview ?? occupancyData?.operations_description,
+      ].filter(Boolean).join(' ').toLowerCase()
+    : '';
+  const occupancyImpliesAmmonia = occupancyBodyText.includes('ammonia') || occupancyBodyText.includes('refrigerat');
+  const occupancyImpliesColdChain = occupancyBodyText.includes('freezer') || occupancyBodyText.includes('cold store')
+    || occupancyBodyText.includes('cold chain') || occupancyBodyText.includes('chilled') || occupancyBodyText.includes('frozen');
+  const occupancyImpliesFryers = occupancyBodyText.includes('fryer') || occupancyBodyText.includes('frying') || occupancyBodyText.includes('deep fat');
+
   let evidenceText: string;
   if (services.length === 0 && equipment.length === 0) {
-    evidenceText = 'Critical services and equipment dependencies have not been recorded. Without this evidence, maximum probable interruption duration cannot be credibly assessed.';
+    if (occupancySignals && (occupancyImpliesAmmonia || occupancyImpliesColdChain || occupancyImpliesFryers)) {
+      // Build occupancy-informed utilities narrative
+      const occupancyImplications: string[] = [];
+      if (occupancyImpliesAmmonia) {
+        occupancyImplications.push(
+          'Ammonia refrigeration plant is indicated by the occupancy profile. Ammonia systems are a critical utility dependency: plant failure causes immediate cold-chain loss, product spoilage, and potential site evacuation. Restart requires specialist contractors, system pressure testing, and regulatory clearance — materially extending the interruption period beyond physical repair timescales.'
+        );
+      }
+      if (occupancyImpliesColdChain && !occupancyImpliesAmmonia) {
+        occupancyImplications.push(
+          'Cold-chain and freezer operations are indicated by the occupancy profile. Refrigeration continuity is a critical utility dependency: power or system failure begins causing product stock deterioration immediately, and thermal restabilisation after reinstatement extends the effective interruption period beyond plant repair timescales.'
+        );
+      } else if (occupancyImpliesColdChain && occupancyImpliesAmmonia) {
+        occupancyImplications.push(
+          'Freezer and cold-store operations depend directly on the ammonia refrigeration plant — loss of plant operation means immediate cold-chain failure and progressive product stock loss.'
+        );
+      }
+      if (occupancyImpliesFryers) {
+        occupancyImplications.push(
+          'Industrial frying lines are indicated by the occupancy profile. These are high-value, long-lead production assets: frying lines, oil management systems, and their utility services (gas, thermal oil, power) are bottleneck dependencies that directly constrain restart timescales.'
+        );
+      }
+      evidenceText = `Critical services and equipment dependencies have not been individually recorded in this section. Cross-referencing the occupancy profile, the following utility dependencies are implied and should be assessed: ${occupancyImplications.join(' ')} Formal critical-services and critical-equipment records are required to support credible maximum probable interruption duration estimates.`;
+    } else {
+      evidenceText = 'Critical services and equipment dependencies have not been recorded. Without this evidence, maximum probable interruption duration cannot be credibly assessed.';
+    }
   } else {
     const parts: string[] = [];
     if (highCritServices.length > 0) {
@@ -2160,13 +2214,19 @@ function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdo
   }
 
   // Backup power statement — influences both safety systems and process restart.
+  // When occupancy implies refrigeration/cold-chain and no backup power is recorded,
+  // make the consequence chain explicit.
   const powerText = noBackupPower
-    ? 'No backup power provision is recorded — this is a direct vulnerability for safety systems, suppression, and process control during a mains failure event.'
+    ? (occupancyImpliesAmmonia || occupancyImpliesColdChain)
+      ? 'No backup power provision is recorded. For a site with refrigeration and cold-chain operations, mains power loss triggers an immediate cascading failure: refrigeration plant stops, freezer and cold-store temperatures rise, product stock begins to deteriorate, and cold-chain integrity is broken. Backup power for refrigeration continuity is a direct determinant of stock loss quantum and effective business interruption duration.'
+      : 'No backup power provision is recorded — this is a direct vulnerability for safety systems, suppression, and process control during a mains failure event.'
     : hasBackupPower
       ? 'Backup power provision is confirmed, supporting safety and critical process systems during mains disruption.'
       : '';
 
   // Cold-chain/refrigeration addendum — this is the main BI multiplier for food/pharma sites.
+  // When explicit services/equipment records exist, name them. When only implied by occupancy,
+  // the occupancy cross-reference in evidenceText already covers this — suppress the duplicate.
   const coldChainText = refrigerationItems.length > 0
     ? `Refrigeration/cold-chain dependencies are identified (${refrigerationItems.map((i: any) => String(i?.custom_label ?? i?.service_name ?? i?.equipment_name ?? '').trim() || 'unnamed item').slice(0, 3).join(', ')}). Cold-chain loss begins immediately on power or system failure — expected interruption duration and product-stock loss estimates must account for refrigeration reinstatement and thermal restabilisation time, not just physical repair.`
     : '';
@@ -2359,6 +2419,36 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     ? `${Number(combustibleValue)}%`
     : context.combustibilityText;
   const buildings = context.buildings;
+  // Compartmentation — read from the same field resolution used by the Section Snapshot.
+  const firstBuilding = buildings[0];
+  const compartmentationRaw =
+    construction?.compartmentation_quality ??
+    firstBuilding?.compartmentation_quality ??
+    firstBuilding?.compartmentation ??
+    firstBuilding?.fire_compartmentation ??
+    firstBuilding?.compartmentation_minutes;
+  const compartmentationMins = typeof compartmentationRaw === 'number' ? compartmentationRaw : null;
+  const compartmentationStr = typeof compartmentationRaw === 'string' ? compartmentationRaw.trim().toLowerCase() : null;
+  const noEffectiveCompartmentation =
+    compartmentationMins === 0 ||
+    compartmentationStr === 'low' ||
+    compartmentationStr === 'none' ||
+    compartmentationStr === 'no' ||
+    compartmentationStr === '0 min' ||
+    compartmentationStr === '0';
+  const areaRef = context.totalFloorArea !== null
+    ? `${formatDataValue(context.totalFloorArea)} m² GIA`
+    : context.totalRoofArea > 0
+      ? `${formatDataValue(context.totalRoofArea)} m² (roof area)`
+      : null;
+  const mezzSuffix = context.totalMezzArea > 0
+    ? ` Mezzanine construction (${formatDataValue(context.totalMezzArea)} m²) adds a multi-level spread vector within the same uncompartmented envelope.`
+    : '';
+  const compartmentationText = noEffectiveCompartmentation
+    ? `No effective fire compartmentation is recorded for this site.${areaRef ? ` The recorded site area of ${areaRef} therefore represents a single uncontrolled fire zone — lateral fire and smoke spread are constrained only by the suppression system and response time.` : ''}${mezzSuffix}`
+    : compartmentationRaw !== null && compartmentationRaw !== undefined
+      ? `Compartmentation is recorded as ${normalizeCompartmentationLabel(compartmentationRaw)}.`
+      : '';
   const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
   // Detect combustible material references in flat construction text fields.
   // These fields capture site-level construction notes that often name specific materials
@@ -2426,7 +2516,8 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
         ? 'The primary underwriting consequence is elevated escalation risk and non-trivial reinstatement complexity under a severe fire scenario.'
         : 'The underwriting relevance is reinstatement complexity and business interruption duration — both are sensitive to frame type, compartment integrity, and roof construction performance under fire conditions.';
   const panelSection = sandwichPanelText ? ` ${sandwichPanelText}` : '';
-  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}). ${scoreBand.constructionImplication} Site combustible proportion is ${combustibleText}. ${geometryText} ${externalCladdingText}${panelSection} ${constructionConsequence}`;
+  const compartmentSection = compartmentationText ? ` ${compartmentationText}` : '';
+  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}). ${scoreBand.constructionImplication} Site combustible proportion is ${combustibleText}. ${geometryText}${compartmentSection} ${externalCladdingText}${panelSection} ${constructionConsequence}`;
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
@@ -3409,7 +3500,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     if (module.module_key !== 'RE_14_DRAFT_OUTPUTS') {
-      const interpretation = buildSectionInterpretation(module, breakdown);
+      const interpretation = buildSectionInterpretation(module, breakdown, moduleInstances);
       if (interpretation) {
         ({ page, yPosition } = ensurePageSpace(90, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'Engineering Interpretation', fontBold);
