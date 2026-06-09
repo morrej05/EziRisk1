@@ -937,6 +937,7 @@ function describeOccupancyHazardSignals(hazards: any[], occupancy: any): {
   fireLoadSeverity: string;
   controlsDependency: string;
   processSpecificNarrative: string;
+  biSensitivity: string;
 } {
   const tokens = hazards.map((hazard) => String(hazard?.hazard_label || hazard?.hazard_key || '').toLowerCase()).filter(Boolean);
   const bodyText = `${occupancy?.industry_special_hazards_notes || ''} ${occupancy?.hazards_free_text || ''} ${hazards.map((h) => h?.free_text || '').join(' ')}`.toLowerCase();
@@ -945,18 +946,29 @@ function describeOccupancyHazardSignals(hazards: any[], occupancy: any): {
   const hasFlammable = tokens.some((token) => token.includes('ignitable') || token.includes('flammable') || token.includes('gas')) || bodyText.includes('flammable') || bodyText.includes('solvent');
   const hasDustExplosion = tokens.some((token) => token.includes('dust') || token.includes('explosive')) || bodyText.includes('dust') || bodyText.includes('powder');
   const hasBatteryRisk = tokens.some((token) => token.includes('lithium') || token.includes('battery')) || bodyText.includes('lithium') || bodyText.includes('battery');
-  const highHazardCount = [hasFlammable, hasDustExplosion, hasBatteryRisk, hasFryers, hasThermalOil].filter(Boolean).length;
+  // Ammonia and cold-chain detection — common in food processing, cold storage, brewing
+  const hasAmmonia = tokens.some((token) => token.includes('ammonia') || token.includes('refrigerat'))
+    || bodyText.includes('ammonia') || bodyText.includes('refrigerat');
+  const hasColdChain = tokens.some((token) => token.includes('cold') || token.includes('freez') || token.includes('chill'))
+    || bodyText.includes('cold store') || bodyText.includes('freezer') || bodyText.includes('chilled') || bodyText.includes('cold chain');
+  const highHazardCount = [hasFlammable, hasDustExplosion, hasBatteryRisk, hasFryers, hasThermalOil, hasAmmonia].filter(Boolean).length;
 
   const ignitionLikelihood = highHazardCount >= 2 ? 'high ignition likelihood' : highHazardCount === 1 ? 'moderate ignition likelihood' : 'baseline ignition likelihood';
   const fireLoadSeverity = hasFlammable || hasDustExplosion || hasFryers || hasThermalOil ? 'elevated fire load/severity potential' : 'moderate fire load/severity potential';
   const controlsDependency = highHazardCount >= 2 ? 'high dependency on engineered and procedural controls' : 'moderate dependency on controls';
   const hazardSummary = tokens.length ? tokens.slice(0, 4).join(', ') : 'no explicit hazard entries';
+  // biSensitivity: qualifies whether process interruption is expected to extend well beyond physical repair
+  const biSensitivity = (hasAmmonia || hasColdChain || hasFryers)
+    ? 'high process-BI sensitivity — interruption is likely to extend beyond physical repair timescales'
+    : 'moderate process-BI sensitivity';
   const processSpecificNarrative = [
     hasFryers ? 'Industrial fryers introduce sustained high-temperature ignition sources and oil-fire severity potential.' : '',
     hasThermalOil ? 'Thermal oil systems introduce high-temperature leak scenarios that can accelerate escalation behaviour.' : '',
+    hasAmmonia ? 'Ammonia refrigeration systems introduce toxic release risk — a fire or mechanical failure can cause site evacuation, product contamination, and cold-chain disruption that extends well beyond physical repair timescales.' : '',
+    hasColdChain && !hasAmmonia ? 'Cold-chain dependency means expected business interruption extends beyond physical repair, pending refrigeration reinstatement and thermal restabilisation of stored product.' : '',
   ].filter(Boolean).join(' ');
 
-  return { hazardSummary, ignitionLikelihood, fireLoadSeverity, controlsDependency, processSpecificNarrative };
+  return { hazardSummary, ignitionLikelihood, fireLoadSeverity, controlsDependency, processSpecificNarrative, biSensitivity };
 }
 
 function getConstructionBuildingEvidenceRows(module: ModuleInstance): Row[] {
@@ -1778,7 +1790,12 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
 
   const overallRating = resolveSectionRating(module, breakdown);
   const implication = getScoreBand(overallRating).occupancyImplication;
-  const closing = `Overall occupancy score is ${formatScoreOutOfFive(overallRating)}. ${implication} This profile should be read as a direct indicator of ignition potential, fire/explosion escalation risk, and interruption sensitivity.`;
+  // Call the hazard-signal analyser to derive process-specific loss-mechanism commentary.
+  const signals = describeOccupancyHazardSignals(hazards, occupancy);
+  const processNarrative = signals.processSpecificNarrative
+    ? signals.processSpecificNarrative + ' '
+    : '';
+  const closing = `Overall occupancy score is ${formatScoreOutOfFive(overallRating)}. ${implication} ${processNarrative}This profile represents ${signals.ignitionLikelihood} with ${signals.fireLoadSeverity} and ${signals.biSensitivity} — directly relevant to underwriting assessment of ignition frequency, severity potential, and business interruption duration.`;
 
   return [opening, weaknessNarrative, resilienceNarrative, closing].filter(Boolean).join('\n\n');
 }
@@ -2036,28 +2053,122 @@ function getRatingByKey(breakdown: Breakdown, key: string): number | null {
 }
 
 function buildNaturalHazardsEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
+  // Extract individual named perils so the narrative can say "Flood" rather than "Environmental perils".
+  const exposures = (module.data as any)?.exposures || module.data || {};
+  const perils = exposures?.environmental?.perils || {};
+  const NAMED_PERILS: Array<[string, string]> = [
+    ['Flood', 'flood'],
+    ['Windstorm', 'wind'],
+    ['Earthquake', 'earthquake'],
+    ['Wildfire', 'wildfire'],
+  ];
+  const weakerPerils: string[] = [];
+  const moderatePerils: string[] = [];
+  for (const [label, key] of NAMED_PERILS) {
+    const r = Number(perils?.[key]?.rating);
+    if (Number.isFinite(r)) {
+      if (r <= 2) weakerPerils.push(label);
+      else if (r === 3) moderatePerils.push(label);
+    }
+  }
+  // Also check human exposure and other peril fields via structured rows for any ratings not captured above.
   const rows = getExposuresStructuredRows(module);
-  const weakerPerils = rows
-    .filter(([, detail]) => /rating\s*[12]\b/i.test(String(detail)))
-    .map(([label]) => label)
-    .slice(0, 3);
+  const humanRow = rows.find(([label]) => /human/i.test(label));
+  if (humanRow) {
+    const detail = String(humanRow[1]);
+    if (/rating\s*[12]\b/i.test(detail)) weakerPerils.push('Human threat exposure');
+    else if (/rating\s*3\b/i.test(detail)) moderatePerils.push('Human threat exposure');
+  }
+  // Deduplicate and cap at 3 for readability.
+  const weakUniq = [...new Set(weakerPerils)].slice(0, 3);
+  const modUniq = [...new Set(moderatePerils)].slice(0, 3);
   const rating = getRatingByKey(breakdown, 'natural_hazards_and_external_exposures') ?? resolveSectionRating(module, breakdown);
-  const focus = weakerPerils.length
-    ? `Priority exposure attention is indicated for ${weakerPerils.join(', ')}.`
-    : 'No low-rated peril has been isolated from the entered exposure table, but site-specific exposure evidence should still be validated against flood, wind, wildfire and human-threat data.';
-  return `Engineering interpretation: Natural hazards score is ${formatScoreOutOfFive(rating)}. ${focus} The underwriting relevance is the potential for common-mode damage, access constraints and extended restoration time rather than only physical damage at the surveyed buildings.`;
+  // Focus narrative — names specific perils where rated, or qualifies the absence of data.
+  const focus = weakUniq.length
+    ? `Priority peril attention is indicated for ${weakUniq.join(', ')}, where the rated exposure creates material probability of asset damage, access disruption, or common-mode utility impact.`
+    : modUniq.length
+      ? `${modUniq.join(', ')} are rated at a moderate level and should be tested against realistic worst-case scenarios for site access, utility disruption, and restoration timescales.`
+      : 'No peril has been rated as a priority exposure from the submitted data. Site-specific flood, wind, seismic, and human-threat evidence should be validated against local datasets before this section is treated as confirmed low-exposure.';
+  // Closing — varies by rating to name the specific UW mechanism.
+  const closingByRating = !Number.isFinite(Number(rating)) || !rating
+    ? 'Natural hazard exposure cannot be quantified without a scored rating — this section should not be read as a confirmed low-risk conclusion.'
+    : Number(rating) <= 2
+      ? 'At this exposure level the underwriting concern is compounded loss: a single natural-hazard event can simultaneously cause physical damage, disrupt utilities and access, and trigger BI before the main peril has even been resolved.'
+      : Number(rating) <= 3.5
+        ? 'The primary underwriting consideration is access and utility disruption extending the BI period beyond the physical repair timeline, rather than only the direct property damage quantum.'
+        : 'Where exposure is broadly controlled the residual underwriting concern is low-probability, high-consequence tail events — the kind of scenario that may not appear in historical data but is within the site exposure range.';
+  return `Engineering interpretation: Natural hazards score is ${formatScoreOutOfFive(rating)}. ${focus} ${closingByRating}`;
 }
 
 function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
-  const rows = getUtilitiesStructuredRows(module);
-  const criticalEquipmentRows = rows.find(([label]) => label === 'Critical equipment')?.[1];
-  const criticalServicesRows = rows.find(([label]) => label === 'Critical services')?.[1];
+  const data = module.data as any;
+  const services: any[] = Array.isArray(data?.critical_services) ? data.critical_services : [];
+  const equipment: any[] = Array.isArray(data?.critical_equipment) ? data.critical_equipment : [];
   const rating = getRatingByKey(breakdown, 'electrical_and_utilities_reliability') ?? resolveSectionRating(module, breakdown);
-  const evidence = [criticalServicesRows, criticalEquipmentRows].filter((value) => !isMissingDataValue(String(value))).length;
-  const evidenceText = evidence > 0
-    ? 'Critical services/equipment dependencies have been recorded and should be tested against single-point-of-failure and spares assumptions.'
-    : 'Critical services/equipment dependencies are not yet evidenced, limiting confidence in downtime estimates.';
-  return `Engineering interpretation: Utilities and critical-services resilience is ${formatScoreOutOfFive(rating)}. ${evidenceText} For insurance purposes this section influences expected interruption duration, restart complexity and the credibility of any loss-mitigation assumptions.`;
+  const noBackupPower = data?.power_resilience?.backup_power_present === false;
+  const hasBackupPower = data?.power_resilience?.backup_power_present === true;
+
+  // Items labelled high-criticality without adequate redundancy — these drive BI duration directly.
+  const highCritWithLimitedRedundancy = equipment.filter((e: any) => {
+    const crit = String(e?.criticality || '').toLowerCase();
+    const red = String(e?.redundancy || '').toLowerCase();
+    return crit === 'high' && (red === 'n+0' || red === 'unknown' || red === '');
+  });
+  const highCritServices = services.filter((s: any) => String(s?.criticality || '').toLowerCase() === 'high');
+
+  // Detect refrigeration/cold-chain dependency — extends BI well beyond physical repair.
+  const allItems = [...services, ...equipment];
+  const refrigerationItems = allItems.filter((item: any) => {
+    const label = String(
+      item?.custom_label ?? item?.service_name ?? item?.equipment_name ?? item?.equipment_type ?? item?.name ?? ''
+    ).toLowerCase();
+    return label.includes('refrigerat') || label.includes('ammonia') || label.includes('cold store')
+      || label.includes('freezer') || label.includes('chiller') || label.includes('cold chain');
+  });
+
+  // Lead sentence — score + headline condition.
+  const leadText = `Utilities and critical-services resilience is ${formatScoreOutOfFive(rating)}.`;
+
+  // Evidence narrative — describe content, not just count.
+  let evidenceText: string;
+  if (services.length === 0 && equipment.length === 0) {
+    evidenceText = 'Critical services and equipment dependencies have not been recorded. Without this evidence, maximum probable interruption duration cannot be credibly assessed.';
+  } else {
+    const parts: string[] = [];
+    if (highCritServices.length > 0) {
+      parts.push(`${highCritServices.length} high-criticality service(s) are recorded`);
+    }
+    if (highCritWithLimitedRedundancy.length > 0) {
+      const names = highCritWithLimitedRedundancy
+        .map((e: any) => String(e?.custom_label ?? e?.equipment_name ?? e?.equipment_type ?? '').trim())
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(', ');
+      parts.push(`${highCritWithLimitedRedundancy.length} high-criticality equipment item(s) with limited or unconfirmed redundancy${names ? ` (${names})` : ''}`);
+    }
+    evidenceText = parts.length
+      ? `${parts.join('; ')}. These items should be tested against single-point-of-failure, lead-time, and spares assumptions to establish a credible BI duration range.`
+      : `${services.length} critical service(s) and ${equipment.length} critical equipment record(s) are entered. Review these against single-point-of-failure and procurement lead-time assumptions.`;
+  }
+
+  // Backup power statement — influences both safety systems and process restart.
+  const powerText = noBackupPower
+    ? 'No backup power provision is recorded — this is a direct vulnerability for safety systems, suppression, and process control during a mains failure event.'
+    : hasBackupPower
+      ? 'Backup power provision is confirmed, supporting safety and critical process systems during mains disruption.'
+      : '';
+
+  // Cold-chain/refrigeration addendum — this is the main BI multiplier for food/pharma sites.
+  const coldChainText = refrigerationItems.length > 0
+    ? `Refrigeration/cold-chain dependencies are identified (${refrigerationItems.map((i: any) => String(i?.custom_label ?? i?.service_name ?? i?.equipment_name ?? '').trim() || 'unnamed item').slice(0, 3).join(', ')}). Cold-chain loss begins immediately on power or system failure — expected interruption duration and product-stock loss estimates must account for refrigeration reinstatement and thermal restabilisation time, not just physical repair.`
+    : '';
+
+  // Closing UW consequence — scaled to severity of identified weaknesses.
+  const closingText = (noBackupPower || highCritWithLimitedRedundancy.length > 0 || refrigerationItems.length > 0)
+    ? 'The identified utility dependencies are a direct determinant of maximum probable interruption duration and should be reflected in the loss expectancy assumptions for this site.'
+    : 'For insurance purposes this section informs the credibility of stated indemnity periods and restart assumptions — utility dependencies constrain how quickly a site can resume operations after a major incident.';
+
+  return [leadText, evidenceText, powerText, coldChainText, closingText].filter(Boolean).join(' ');
 }
 
 function buildManagementEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
@@ -2065,36 +2176,81 @@ function buildManagementEngineeringInterpretation(module: ModuleInstance, breakd
   const moduleRating = getRatingFromModule(module);
   // Use breakdown pillar only for display once state is determined from module data.
   const displayRating = moduleRating ?? (getRatingByKey(breakdown, 'management_systems') ?? resolveSectionRating(module, breakdown));
-  const suffix = 'These controls are loss-frequency and loss-severity modifiers because they govern housekeeping, hot work, impairments, contractor activity and emergency response reliability.';
-
   if (rows.length > 0) {
     // Full category-level assessment available.
     const weakRows = rows.filter(([, r]) => Number(r) <= 2).map(([category]) => formatIdentifierLabel(category)).slice(0, 3);
+    const goodRows = rows.filter(([, r]) => Number(r) >= 4).map(([category]) => formatIdentifierLabel(category)).slice(0, 2);
     const weakText = weakRows.length
-      ? `Weaknesses requiring management attention are ${weakRows.join(', ')}.`
-      : 'No management category is currently rated poor, so emphasis should be on sustaining evidence quality, audit cadence and impairment discipline.';
-    return `Engineering interpretation: Management systems score is ${formatScoreOutOfFive(displayRating)}. ${weakText} ${suffix}`;
+      ? `Weaknesses requiring immediate management attention are: ${weakRows.join(', ')}.`
+      : 'No management category is currently rated poor.';
+    const strengthText = goodRows.length && !weakRows.length
+      ? ` Relative strength is recorded in ${goodRows.join(' and ')}.`
+      : '';
+    // UW suffix — specific to whether weaknesses were found and what they govern.
+    const suffix = weakRows.length
+      ? `These categories directly govern the frequency and severity of preventable loss events — hot work controls, permit discipline, and impairment management are recurring causes of large fire losses and should receive priority audit attention.`
+      : `Management controls are loss-frequency and loss-severity modifiers. Where no category is rated poor, the emphasis should be on sustaining evidence quality, audit cadence, and impairment discipline to prevent gradual erosion.`;
+    return `Engineering interpretation: Management systems score is ${formatScoreOutOfFive(displayRating)}. ${weakText}${strengthText} ${suffix}`;
   }
 
   // No category-level records — use module-level rating if present.
   if (moduleRating !== null && Number.isFinite(moduleRating)) {
-    return `Engineering interpretation: Management systems are rated ${formatScoreOutOfFive(moduleRating)} based on the site-level management judgement. No category-level breakdown has been recorded. ${suffix}`;
+    return `Engineering interpretation: Management systems are rated ${formatScoreOutOfFive(moduleRating)} based on the site-level management judgement. No category-level breakdown has been recorded. Management controls are loss-frequency and loss-severity modifiers that directly govern housekeeping, hot work, impairments, contractor activity, and emergency response reliability — a category-level assessment would enable a more precise underwriting view.`;
   }
 
-  return 'Engineering interpretation: Management systems have not been assessed. No category-level ratings and no site-level management rating are recorded. Complete category or module-level assessments to enable a scored interpretation.';
+  return 'Engineering interpretation: Management systems have not been assessed for this survey. Without a management rating, the assessment cannot quantify the extent to which procedural and governance controls are modifying the frequency or severity of preventable loss events.';
 }
 
 function buildLossValuesEngineeringInterpretation(module: ModuleInstance, _breakdown: Breakdown): string {
   const loss = getLossValuesSummary((module.data as any) || {});
-  const insuredValueText = [
-    loss.buildings ? `buildings ${formatDataValue(loss.buildings)}` : '',
-    loss.plantMachinery ? `plant/machinery ${formatDataValue(loss.plantMachinery)}` : '',
-    loss.stock ? `stock ${formatDataValue(loss.stock)}` : '',
-  ].filter(Boolean).join(', ');
-  const biText = loss.grossProfitAnnual || loss.indemnityMonths
-    ? `BI inputs include gross profit ${formatDataValue(loss.grossProfitAnnual)} and indemnity period ${formatDataValue(loss.indemnityMonths)} months.`
-    : 'BI values or indemnity assumptions are not fully evidenced.';
-  return `Engineering interpretation: Declared values frame the financial materiality of the engineering findings${insuredValueText ? ` (${insuredValueText})` : ''}. ${biText} Loss expectancy scenarios should be sense-checked against construction/fire-protection performance so the report does not treat sums insured as isolated accounting fields.`;
+  const currency = (module.data as any)?.currency ?? 'GBP';
+  const fmt = (n: number) => n > 0 ? formatLossCurrency(n, currency) : null;
+
+  // Property value summary — formatted for readability.
+  const propParts = [
+    loss.buildings     ? `buildings ${fmt(loss.buildings)}`            : null,
+    loss.plantMachinery? `plant/machinery ${fmt(loss.plantMachinery)}` : null,
+    loss.stock         ? `stock ${fmt(loss.stock)}`                    : null,
+  ].filter(Boolean) as string[];
+  const propText = propParts.length
+    ? `Declared property values: ${propParts.join(', ')} (effective total ${fmt(loss.effectivePropertyTotal) ?? 'not stated'}).`
+    : 'Property sums insured have not been fully declared.';
+
+  // BI assessment.
+  let biText: string;
+  if (loss.grossProfitAnnual && loss.indemnityMonths) {
+    const biMax = formatLossCurrency(loss.grossProfitAnnual * (loss.indemnityMonths / 12), currency);
+    biText = `BI: gross profit ${fmt(loss.grossProfitAnnual)}, indemnity period ${loss.indemnityMonths} months (maximum BI exposure circa ${biMax}).`;
+  } else if (loss.grossProfitAnnual) {
+    biText = `BI gross profit is declared at ${fmt(loss.grossProfitAnnual)} but the indemnity period has not been stated — maximum BI exposure cannot be calculated.`;
+  } else {
+    biText = 'BI values or indemnity period assumptions are not fully evidenced — the BI exposure profile cannot be assessed.';
+  }
+
+  // Indemnity period adequacy — flag short periods relative to process-restart complexity.
+  let indemnityFlag = '';
+  if (loss.indemnityMonths > 0 && loss.indemnityMonths < 18) {
+    indemnityFlag = `The stated indemnity period of ${loss.indemnityMonths} months should be reviewed against the reinstatement and restart complexity for this occupancy type. For sites with specialist process plant, cold-chain dependencies, or lengthy procurement lead times, periods under 18 months carry a material risk of under-insurance.`;
+  } else if (loss.indemnityMonths >= 36) {
+    indemnityFlag = `The ${loss.indemnityMonths}-month indemnity period indicates the assessor or client has recognised extended reinstatement or restart exposure — the loss expectancy scenarios should confirm the basis for this assumption.`;
+  }
+
+  // BI/PD ratio flag — a dominant BI relative to PD suggests high process sensitivity.
+  let ratioFlag = '';
+  if (loss.grossProfitAnnual > 0 && loss.effectivePropertyTotal > 0) {
+    const biFullYear = loss.grossProfitAnnual;
+    const ratio = biFullYear / loss.effectivePropertyTotal;
+    if (ratio > 1.5) {
+      ratioFlag = `Business interruption exposure (annual GP ${fmt(loss.grossProfitAnnual)}) is materially larger than the declared property sum insured — this profile indicates high process-sensitivity and suggests that controlling fire spread speed and enabling rapid restart are more material to total loss outcome than the property damage alone.`;
+    }
+  }
+
+  // Closing — links financial data to engineering findings.
+  const closing = loss.effectivePropertyTotal > 0 || loss.grossProfitAnnual > 0
+    ? 'These values frame the financial materiality of the construction, fire-protection, and occupancy findings — loss expectancy percentages should be applied against the declared sums to translate engineering risk judgements into expected loss quantum.'
+    : 'Without complete declared values, loss expectancy scenarios cannot be translated into financial quantum. Obtaining complete sums insured — including BI — is necessary before the engineering findings can be assessed for underwriting adequacy.';
+
+  return [propText, biText, indemnityFlag, ratioFlag, closing].filter(Boolean).join(' ');
 }
 
 function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): string {
@@ -2159,10 +2315,20 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): s
   parts.push(`${reliabilityNarrative}.`);
 
   if (localisedMissing > 0) {
-    parts.push(`Localised/special protection gaps are identified in ${localisedMissing} building(s) and should be prioritised where high-value or high-challenge hazards are present.`);
+    parts.push(`Localised/special protection gaps are identified in ${localisedMissing} building(s) — these should be prioritised where high-value plant, hazardous processes or high-challenge fuels are present, as localised systems are the last line of defence before general-area escalation.`);
   }
 
-  parts.push('Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.');
+  // Closing — varies by dominant protection status to name the specific UW exposure.
+  if (warrantedAbsent.length > 0 && installedBuildings.length === 0) {
+    // All buildings lack warranted suppression — most severe scenario.
+    parts.push('The absence of warranted suppression is the primary underwriting exposure for this site. An unchecked fire in this occupancy profile would be expected to develop to full area involvement before effective manual intervention is achievable, with direct damage likely to approach or exceed the maximum foreseeable loss.');
+  } else if (warrantedAbsent.length > 0) {
+    // Mixed — some installed, some warranted-absent.
+    parts.push('The warranted-absent buildings represent material protection gaps within the overall site — a fire originating in or spreading to an unprotected area would not benefit from the suppression installed elsewhere.');
+  } else if (installedBuildings.length > 0) {
+    // All buildings have systems — focus on reliability and coverage.
+    parts.push('Where suppression is installed, the underwriting concern shifts from presence to performance: ITM quality, water supply resilience and impairment governance are the controls that determine whether the system operates as rated under a severe, real-event demand.');
+  }
 
   return `Engineering Interpretation: ${parts.join(' ')}`;
 }
@@ -2197,8 +2363,13 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     construction?.cladding_description,
   ].filter(Boolean).join(' ');
   const flatTextIndicatesCombustible = COMBUSTIBLE_KEYWORDS.test(flatConstructionText);
+  // Cladding description — name sandwich/insulated panel types explicitly when detected.
+  const sandwichPanelKeywords = /\b(pur|pir|phenolic|sandwich panel|composite panel|insulated panel|metal faced|foam core|polystyrene|eps|xps)\b/i;
+  const sandwichPanelInDescription = sandwichPanelKeywords.test(flatConstructionText);
   const claddingText = claddingPresentCount > 0
-    ? `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s).`
+    ? sandwichPanelInDescription
+      ? `Combustible cladding (including insulated sandwich/composite panel systems) is identified on ${claddingPresentCount} of ${context.buildingCount} building(s). These systems carry rapid fire spread and dense smoke generation risk that is disproportionate to their apparent area contribution.`
+      : `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s).`
     : context.buildingCount > 0
       ? 'No combustible cladding is identified in submitted building records.'
       : flatTextIndicatesCombustible
@@ -2207,8 +2378,17 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   const giaText = context.totalFloorArea !== null
     ? `total floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
     : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
-  const geometryText = `Recorded geometry: ${giaText}${context.totalMezzArea > 0 ? `, mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m²` : ''} across ${context.buildingCount} building(s).`;
-  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}) with site combustible proportion ${combustibleText}. ${geometryText} ${claddingText} The underwriting relevance is potential fire spread, smoke-remediation scope, reinstatement complexity and business interruption duration.`;
+  const mezzNote = context.totalMezzArea > 0
+    ? `, mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m² (elevated fire-load and multi-level spread exposure)`
+    : '';
+  const geometryText = `Recorded geometry: ${giaText}${mezzNote} across ${context.buildingCount} building(s).`;
+  // Closing: use the score-band implication then add a site-specific UW consequence statement.
+  const constructionConsequence = (claddingPresentCount > 0 || flatTextIndicatesCombustible)
+    ? 'The primary underwriting consequence is elevated fire spread velocity, smoke-contamination scope extending beyond directly damaged areas, and disproportionate reinstatement complexity relative to initial ignition size.'
+    : scoreBand.resilienceLabel === 'weaker'
+      ? 'The primary underwriting consequence is elevated escalation risk and non-trivial reinstatement complexity under a severe fire scenario.'
+      : 'The underwriting relevance is reinstatement complexity and business interruption duration — both are sensitive to frame type, compartment integrity, and roof construction performance under fire conditions.';
+  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}). ${scoreBand.constructionImplication} Site combustible proportion is ${combustibleText}. ${geometryText} ${claddingText} ${constructionConsequence}`;
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
