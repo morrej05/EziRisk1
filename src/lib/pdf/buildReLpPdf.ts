@@ -17,6 +17,8 @@ import {
 import { addIssuedReportPages } from './issuedPdfPages';
 import { getModuleDisplayName } from '../modules/moduleDisplay';
 import { resolvePdfPreparedByName } from '../../utils/pdfIdentity';
+import { resolveFactorFallback } from '../re/recommendations/recommendationPipeline';
+import { OLD_GENERIC_ACTION_PREFIX, OLD_GENERIC_HAZARD_TEXT } from '../re/recommendations/remediationMap';
 
 interface Document {
   id: string;
@@ -53,6 +55,8 @@ interface ModuleInstance {
 interface Action {
   id: string;
   recommended_action: string;
+  action_required_text?: string | null;
+  title?: string | null;
   description?: string | null;
   priority_band: string;
   status: string;
@@ -63,6 +67,7 @@ interface Action {
   created_at: string;
   reference_number?: string | null;
   source_module_key?: string | null;
+  source_factor_key?: string | null;
   hazard_text?: string | null;
   photos?: Array<unknown> | null;
 }
@@ -105,12 +110,107 @@ const RISK_AREA_BY_MODULE: Record<string, string> = {
   RE_02_CONSTRUCTION: 'Construction',
   RE_03_OCCUPANCY: 'Occupancy',
   RE_06_FIRE_PROTECTION: 'Fire Protection',
-  RE_07_NATURAL_HAZARDS: 'Natural Hazards',
+  // Use "Exposures" to match Survey Appendix C taxonomy.
+  RE_07_NATURAL_HAZARDS: 'Exposures',
   RE_08_UTILITIES: 'Utilities',
   RE_09_MANAGEMENT: 'Management',
   RE_12_LOSS_VALUES: 'Loss & Values',
   RE_14_DRAFT_OUTPUTS: 'Outputs / Documentation',
 };
+
+// ── Shared recommendation-quality pipeline (mirrors buildReSurveyPdf.ts) ──────
+
+/** Stale action text prefixes that should be replaced at render time. */
+const LP_STALE_ACTION_TEXT_PREFIXES = [
+  OLD_GENERIC_ACTION_PREFIX,
+  'Provide or improve localised/special hazard protection for identified hazards',
+  'Provide or extend fixed fire protection in warranted areas',
+];
+
+/** Factor key prefixes whose recommendations are always rendered as P1. */
+const LP_HIGH_PRIORITY_FACTOR_PREFIXES = [
+  're06_fp_sprinklers_warranted_absent',
+  're06_fp_adequacy_fixed_protection',
+  're06_fp_localised_required_installation',
+];
+
+/** Resolve stale-detection-adjusted body text for an action. */
+function lpGetBodyText(action: Action): string {
+  const stored =
+    action.action_required_text ||
+    action.recommended_action ||
+    action.description ||
+    action.title;
+  const isStale =
+    (typeof stored === 'string' &&
+      LP_STALE_ACTION_TEXT_PREFIXES.some((p) => stored.startsWith(p))) ||
+    action.hazard_text === OLD_GENERIC_HAZARD_TEXT;
+  if (isStale && action.source_factor_key) {
+    const fallback = resolveFactorFallback(action.source_factor_key);
+    if (fallback?.action_required_text) return fallback.action_required_text;
+  }
+  return String(stored || 'Not provided');
+}
+
+/** Resolve stale-adjusted hazard text for an action. */
+function lpGetHazardText(action: Action): string {
+  if (!action.hazard_text) return '';
+  const isStale =
+    action.hazard_text === OLD_GENERIC_HAZARD_TEXT ||
+    action.hazard_text === 'Uncontrolled special hazards can escalate before general area protection can contain the event.';
+  if (isStale && action.source_factor_key) {
+    const fallback = resolveFactorFallback(action.source_factor_key);
+    if (fallback?.hazard_text) return fallback.hazard_text;
+  }
+  return action.hazard_text;
+}
+
+/** Render-time priority override — mirrors resolveRecommendationPriority in Survey. */
+function lpResolvePriority(action: Action): LpPriority {
+  const fk = action.source_factor_key || '';
+  if (fk && LP_HIGH_PRIORITY_FACTOR_PREFIXES.some((p) => fk.startsWith(p))) return 'P1';
+  return normalizePriority(action.priority_band);
+}
+
+/** Minimum quality threshold — skip very short recs with no hazard context. */
+function lpMeetsQualityThreshold(action: Action): boolean {
+  const body = lpGetBodyText(action).trim();
+  if (body.length < 30 && !action.hazard_text) return false;
+  return true;
+}
+
+/** Deduplicate — same logic as Survey deduplicateRecommendations. */
+function lpDeduplicateActions(actions: Action[]): Action[] {
+  const hasPerilSpecific = actions.some(
+    (a) => typeof a.source_factor_key === 'string' && a.source_factor_key.startsWith('exposures_')
+  );
+  const hasSpecificLocalisedRec = actions.some(
+    (a) =>
+      typeof a.source_factor_key === 'string' &&
+      (a.source_factor_key.startsWith('re06_fp_localised_required_provided') ||
+        a.source_factor_key.startsWith('re06_fp_localised_required_installation'))
+  );
+  const seen = new Set<string>();
+  return actions.filter((action) => {
+    // Suppress generic natural-hazard rec when peril-specific recs are present
+    if (hasPerilSpecific && action.source_factor_key === 'natural_hazard_exposure_and_controls') return false;
+    // Suppress generic ITM/testing rec when a more specific localised rec is present
+    if (
+      hasSpecificLocalisedRec &&
+      action.source_factor_key === 're06_fp_localised_reliability_testing_integration'
+    ) return false;
+    if (!action.source_factor_key) return true;
+    const key = `${action.source_module_key || ''}::${action.source_factor_key}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** Full pre-render action pipeline: quality → deduplication. */
+function prepareLpActions(actions: Action[]): Action[] {
+  return lpDeduplicateActions(actions.filter(lpMeetsQualityThreshold));
+}
 
 function normalizePriority(priorityBand: string | null | undefined): LpPriority {
   const normalized = String(priorityBand || 'P3').toUpperCase().trim();
@@ -146,20 +246,26 @@ function deriveRoadmapBand(priority: LpPriority): RoadmapBand {
 function toLpRecommendations(actions: Action[], moduleInstances: ModuleInstance[]): LpRecommendation[] {
   const moduleById = new Map(moduleInstances.map((m) => [m.id, m]));
 
-  return actions
+  // Apply the full quality/deduplication pipeline before mapping to LP shape.
+  const filtered = prepareLpActions(actions);
+
+  return filtered
     .map((action, index) => {
-      const priority = normalizePriority(action.priority_band);
+      const priority = lpResolvePriority(action);
       const linkedModule = moduleById.get(action.module_instance_id);
       const moduleKey = action.source_module_key || linkedModule?.module_key || '';
       const riskArea = RISK_AREA_BY_MODULE[moduleKey] || getModuleDisplayName(moduleKey || 'General') || 'General';
       const ref = sanitizePdfText(action.reference_number || `LP-${String(index + 1).padStart(3, '0')}`);
       const evidenceCount = Array.isArray(action.photos) ? action.photos.length : 0;
+      // Use stale-adjusted body and hazard text — mirrors Survey rendering.
+      const bodyText = lpGetBodyText(action);
+      const hazardText = lpGetHazardText(action);
       return {
         ref,
-        recommendation: sanitizePdfText(deriveAutoActionTitle(action)),
+        recommendation: sanitizePdfText(bodyText),
         riskArea,
         priority,
-        riskImplication: sanitizePdfText(action.hazard_text || 'Not recorded'),
+        riskImplication: sanitizePdfText(hazardText || 'Not recorded'),
         evidenceSummary: evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached',
         effort: deriveEffortFromPriority(priority),
         benefit: deriveBenefitFromPriority(priority),
@@ -190,31 +296,38 @@ function drawTable(
   headers: string[],
   rows: string[][],
   fonts: { bold: PDFFont; regular: PDFFont },
-  ctx?: { pdfDoc: PDFDocument; isDraft: boolean; totalPages: PDFPage[] }
+  ctx?: { pdfDoc: PDFDocument; isDraft: boolean; totalPages: PDFPage[] },
+  colWidths?: number[],
 ): { page: PDFPage; yPosition: number } {
   const rowHeight = 18;
-  const colWidth = CONTENT_WIDTH / headers.length;
+  // Compute cumulative X offsets from colWidths (or equal split if not provided).
+  const defaultW = CONTENT_WIDTH / headers.length;
+  const widths = colWidths && colWidths.length === headers.length ? colWidths : headers.map(() => defaultW);
+  const colOffsets = widths.reduce<number[]>((acc, w) => { acc.push((acc[acc.length - 1] ?? 0) + w); return acc; }, []);
+  const startOffsets = [0, ...colOffsets.slice(0, -1)];
 
-  page.drawRectangle({ x: MARGIN, y: yPosition - rowHeight, width: CONTENT_WIDTH, height: rowHeight, color: rgb(0.93, 0.95, 0.98) });
-
-  headers.forEach((header, idx) => {
-    page.drawText(sanitizePdfText(header), {
-      x: MARGIN + idx * colWidth + 4,
-      y: yPosition - 12,
-      size: 8.2,
-      font: fonts.bold,
-      color: rgb(0.1, 0.1, 0.1),
+  function drawHeaderRow(p: PDFPage, y: number) {
+    p.drawRectangle({ x: MARGIN, y: y - rowHeight, width: CONTENT_WIDTH, height: rowHeight, color: rgb(0.93, 0.95, 0.98) });
+    headers.forEach((header, idx) => {
+      p.drawText(sanitizePdfText(header), {
+        x: MARGIN + startOffsets[idx] + 4,
+        y: y - 12,
+        size: 8.2,
+        font: fonts.bold,
+        color: rgb(0.1, 0.1, 0.1),
+      });
     });
-  });
+  }
 
+  drawHeaderRow(page, yPosition);
   let currentPage = page;
   let y = yPosition - rowHeight;
 
   for (const row of rows) {
     const neededHeight = Math.max(
       rowHeight,
-      row.reduce((max, value) => {
-        const lines = wrapText(sanitizePdfText(value), colWidth - 8, 8.2, fonts.regular);
+      row.reduce((max, value, idx) => {
+        const lines = wrapText(sanitizePdfText(value), widths[idx] - 8, 8.2, fonts.regular);
         return Math.max(max, lines.length * 11 + 6);
       }, rowHeight)
     );
@@ -224,29 +337,18 @@ function drawTable(
       const next = addNewPage(ctx.pdfDoc, ctx.isDraft, ctx.totalPages);
       currentPage = next.page;
       y = next.yPosition;
-
-      // Re-draw column headers on the new page
-      currentPage.drawRectangle({ x: MARGIN, y: y - rowHeight, width: CONTENT_WIDTH, height: rowHeight, color: rgb(0.93, 0.95, 0.98) });
-      headers.forEach((header, idx) => {
-        currentPage.drawText(sanitizePdfText(header), {
-          x: MARGIN + idx * colWidth + 4,
-          y: y - 12,
-          size: 8.2,
-          font: fonts.bold,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-      });
+      drawHeaderRow(currentPage, y);
       y -= rowHeight;
     }
 
     currentPage.drawRectangle({ x: MARGIN, y: y - neededHeight, width: CONTENT_WIDTH, height: neededHeight, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 0.5 });
 
     row.forEach((value, idx) => {
-      const lines = wrapText(sanitizePdfText(value), colWidth - 8, 8.2, fonts.regular);
+      const lines = wrapText(sanitizePdfText(value), widths[idx] - 8, 8.2, fonts.regular);
       let lineY = y - 11;
       lines.forEach((line) => {
         currentPage.drawText(line, {
-          x: MARGIN + idx * colWidth + 4,
+          x: MARGIN + startOffsets[idx] + 4,
           y: lineY,
           size: 8.2,
           font: fonts.regular,
@@ -344,7 +446,11 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
     ['Assessment date', assessmentDate],
     ['Issue date', issueDate],
     ['Version', String(versionNumber)],
-    ['Associated RE Survey', sanitizePdfText(document.title || 'Risk Engineering Survey')],
+    // Prefer the site/client name from document meta over the internal document title,
+    // which may be a placeholder like "Untitled Risk Engineering Site".
+    ['Associated RE Survey', sanitizePdfText(
+      String(siteMeta.name || clientMeta.name || document.scope_description || document.title || 'Risk Engineering Survey').trim()
+    )],
   ];
   ({ yPosition } = drawTable(coverDetailsPage, yPosition, ['Field', 'Value'], coverRows, { bold: fontBold, regular: font }));
 
@@ -364,9 +470,16 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
 
   page.drawText('Executive Action Summary', { x: MARGIN, y: yPosition, size: 16, font: fontBold, color: rgb(0, 0, 0) });
   yPosition -= 24;
+  const p1Count = recommendations.filter((r) => r.priority === 'P1').length;
+  const p2Count = recommendations.filter((r) => r.priority === 'P2').length;
+  const p3PlusCount = recommendations.filter((r) => r.priority !== 'P1' && r.priority !== 'P2').length;
+  const priorityParts: string[] = [];
+  if (p1Count > 0) priorityParts.push(`${p1Count} P1 immediate action${p1Count === 1 ? '' : 's'}`);
+  if (p2Count > 0) priorityParts.push(`${p2Count} P2 medium-term action${p2Count === 1 ? '' : 's'}`);
+  if (p3PlusCount > 0) priorityParts.push(`${p3PlusCount} longer-term action${p3PlusCount === 1 ? '' : 's'}`);
   const riskOverview = recommendations.length === 0
     ? 'No actionable recommendations were identified in the current assessment cycle.'
-    : `This loss prevention output identifies ${recommendations.length} actionable recommendation(s). Priority concentration is ${recommendations.filter((r) => r.priority === 'P1' || r.priority === 'P2').length} high-urgency item(s), supporting immediate risk reduction focus.`;
+    : `This loss prevention output identifies ${recommendations.length} actionable recommendation${recommendations.length === 1 ? '' : 's'}${priorityParts.length > 0 ? ', including ' + priorityParts.join(' and ') : ''}.`;
   yPosition = drawParagraph(page, riskOverview, yPosition, font, 10);
   yPosition -= 6;
 
@@ -376,13 +489,18 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   ({ page, yPosition } = ensurePageSpace(240, page, yPosition, pdfDoc, isDraft, totalPages));
   page.drawText('Action Register', { x: MARGIN, y: yPosition, size: 15, font: fontBold, color: rgb(0, 0, 0) });
   yPosition -= 20;
+  // Action Register — variable column widths so Recommendation and Risk Implication
+  // columns get enough space to wrap text rather than truncating with ellipses.
+  // Total must equal CONTENT_WIDTH (495).  [Ref, Section, Recommendation, Risk implication, Priority, Evidence, Timescale]
+  const actionRegisterColWidths = [38, 68, 140, 140, 30, 46, 33];
   ({ page, yPosition } = drawTable(
     page,
     yPosition,
     ['Ref', 'Section', 'Recommendation', 'Risk implication', 'Priority', 'Evidence', 'Timescale'],
     recommendations.map((rec) => [rec.ref, rec.riskArea, rec.recommendation, rec.riskImplication, rec.priority, rec.evidenceSummary, rec.timescale]),
     { bold: fontBold, regular: font },
-    { pdfDoc, isDraft, totalPages }
+    { pdfDoc, isDraft, totalPages },
+    actionRegisterColWidths,
   ));
 
   const recommendationsByRiskArea = new Map<string, LpRecommendation[]>();
@@ -398,7 +516,7 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   page.drawText('Recommendations by Risk Area', { x: MARGIN, y: yPosition, size: 16, font: fontBold, color: rgb(0, 0, 0) });
   yPosition -= 24;
 
-  const orderedAreas = ['Construction', 'Occupancy', 'Fire Protection'];
+  const orderedAreas = ['Construction', 'Occupancy', 'Fire Protection', 'Exposures'];
   const allAreas = [...new Set([...orderedAreas, ...Array.from(recommendationsByRiskArea.keys())])];
   for (const area of allAreas) {
     const recs = recommendationsByRiskArea.get(area) || [];
