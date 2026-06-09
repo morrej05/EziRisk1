@@ -138,7 +138,7 @@ describe('resolveRemediationWording — factor key resolution', () => {
       're06_fp_sprinklers_warranted_absent:building-123',
       'RE_06_FIRE_PROTECTION',
     );
-    expect(wording.title).toBe('Install automatic sprinkler system — warranted protection absent');
+    expect(wording.title).toBe('Review need for building-wide automatic sprinkler or engineered fire-control measures');
   });
 
   it('falls back to improved generic for an unknown factor key', () => {

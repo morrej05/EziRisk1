@@ -24,6 +24,11 @@ import {
   formatLossCurrency,
   type SumsInsuredData as LossCalcSumsInsured,
 } from '../re/lossScenarioCalculator';
+import { resolveFactorFallback } from '../re/recommendations/recommendationPipeline';
+import {
+  OLD_GENERIC_ACTION_PREFIX,
+  OLD_GENERIC_HAZARD_TEXT,
+} from '../re/recommendations/remediationMap';
 
 interface DocumentMeta {
   client?: { name?: string };
@@ -2933,14 +2938,36 @@ async function embedEvidenceImage(
   return promise;
 }
 
+// Factor-key prefixes that always warrant High priority regardless of the stored priority_band.
+// This corrects legacy records created before the HIGH_PRIORITY_FACTOR_PREFIXES list was complete.
+const HIGH_PRIORITY_RENDER_PREFIXES = [
+  're06_fp_sprinklers_warranted_absent',
+  're06_fp_adequacy_fixed_protection',   // covers _required, _required_provided, _provided, etc.
+  're06_fp_adequacy_fixed_protection_required',
+  're06_fp_localised_required_installation',
+];
+
+function resolveRecommendationPriority(action: Action): string {
+  const fk = action.source_factor_key || '';
+  if (fk && HIGH_PRIORITY_RENDER_PREFIXES.some((prefix) => fk.startsWith(prefix))) {
+    return 'High';
+  }
+  return String(action.priority_band || 'Not provided');
+}
+
 function getRecommendationBodyText(action: Action): string {
-  return String(
-    action.action_required_text ||
-    action.recommended_action ||
-    action.description ||
-    action.title ||
-    'Not provided'
-  );
+  const stored = action.action_required_text || action.recommended_action || action.description || action.title;
+  // Detect old generic wording created before the 2026-06-09 factor-specific wording audit.
+  // If a factor key is present, substitute the current specific fallback text so the PDF
+  // always shows the best available wording — the DB record remains untouched.
+  const isOldGeneric =
+    (typeof stored === 'string' && stored.startsWith(OLD_GENERIC_ACTION_PREFIX)) ||
+    (action.hazard_text === OLD_GENERIC_HAZARD_TEXT);
+  if (isOldGeneric && action.source_factor_key) {
+    const fallback = resolveFactorFallback(action.source_factor_key);
+    if (fallback?.action_required_text) return fallback.action_required_text;
+  }
+  return String(stored || 'Not provided');
 }
 
 function isCompletedRecommendationStatus(action: Pick<Action, 'status' | 'completed_at' | 'is_complete'>): boolean {
@@ -3970,8 +3997,18 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     // (same source_module_key + source_factor_key) entries beyond the first occurrence.
     // This prevents double entries where two module save cycles created the same factor rec.
     function deduplicateRecommendations(recs: Action[]): Action[] {
+      // When peril-specific exposures_* recs exist, suppress the general
+      // natural_hazard_exposure_and_controls rec — it is redundant and the
+      // specific peril recs are more actionable.
+      const hasPerilSpecificRec = recs.some(
+        (a) => typeof a.source_factor_key === 'string' && a.source_factor_key.startsWith('exposures_')
+      );
       const seen = new Set<string>();
       return recs.filter((action) => {
+        // Suppress general natural hazard rec when specific peril recs are present
+        if (hasPerilSpecificRec && action.source_factor_key === 'natural_hazard_exposure_and_controls') {
+          return false;
+        }
         const moduleKey = action.source_module_key || '';
         const factorKey = action.source_factor_key || action.id;
         // Only deduplicate when both keys are present — manual/assessor recs (no factor key) always shown
@@ -3997,14 +4034,24 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
           : (recAttachmentCounts.get(action.module_instance_id) ?? 0);
         // Suppress "Risk: Not recorded" — omit the label entirely rather than advertise
         // that hazard_text was never populated (common in pre-audit legacy recommendations).
-        const riskImplication = action.hazard_text ? `Risk: ${action.hazard_text}` : '';
+        // Also substitute old generic hazard text (created before wording audit) with the
+        // current factor-specific fallback hazard text so the PDF always shows the best wording.
+        const resolvedHazardText = (() => {
+          if (!action.hazard_text) return '';
+          if (action.hazard_text === OLD_GENERIC_HAZARD_TEXT && action.source_factor_key) {
+            const fallback = resolveFactorFallback(action.source_factor_key);
+            if (fallback?.hazard_text) return fallback.hazard_text;
+          }
+          return action.hazard_text;
+        })();
+        const riskImplication = resolvedHazardText ? `Risk: ${resolvedHazardText}` : '';
         const evidenceText = evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached';
         return [
           sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),
           sanitizePdfText(sectionLabel),
           sanitizePdfText(getRecommendationBodyText(action)),
           sanitizePdfText(riskImplication),
-          sanitizePdfText(String(action.priority_band || 'Not provided')),
+          sanitizePdfText(resolveRecommendationPriority(action)),
           sanitizePdfText(action.target_date ? formatDate(action.target_date) : String(action.timescale || 'Not set')),
           sanitizePdfText(evidenceText),
           sanitizePdfText(String(action.status || 'Not provided')),

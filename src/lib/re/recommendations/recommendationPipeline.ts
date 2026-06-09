@@ -36,17 +36,17 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
   // Dynamic per-building key: re06_fp_sprinklers_warranted_absent:<buildingId>
   // Matched by prefix — see buildRecommendationPayload prefix-lookup below
   re06_fp_sprinklers_warranted_absent: {
-    title: 'Install automatic sprinkler system — warranted protection absent',
-    observation_text: 'No automatic sprinkler system is installed in this building, and the occupancy/hazard profile warrants suppression. The absence of automatic sprinklers represents a material protection deficiency.',
-    action_required_text: 'Commission a sprinkler system design study and implement automatic sprinkler protection in accordance with the applicable standard (EN 12845, NFPA 13 or equivalent) for the occupancy/hazard present.',
-    hazard_text: 'Absence of warranted suppression significantly increases expected fire damage, delays control, and may materially affect property and business interruption loss outcomes.',
+    title: 'Review need for building-wide automatic sprinkler or engineered fire-control measures',
+    observation_text: 'No automatic sprinkler system is installed in this building, and the occupancy and construction risk profile indicates that building-wide suppression or an equivalent engineered fire-control strategy is warranted. The absence of automatic suppression represents a material protection deficiency.',
+    action_required_text: 'Review the need for building-wide automatic sprinkler protection or equivalent engineered fire-control measures, taking account of construction type, building area, compartmentation quality, process/storage hazards, special-hazard dependencies, and business interruption exposure. Commission a system design study aligned to the applicable standard (EN 12845, NFPA 13 or equivalent) and implement suppression measures with a named accountable owner and target completion date.',
+    hazard_text: 'Absence of warranted suppression significantly increases expected fire damage, delays control, and may materially affect property and business interruption loss outcomes. Without building-wide suppression, fire growth in a large uncompartmented area can develop beyond manual attack capacity before emergency services arrive.',
   },
 
   re06_fp_adequacy_fixed_protection_required_provided: {
-    title: 'Provide/extend fixed protection where hazard warrants it',
-    observation_text: 'Areas requiring fixed fire protection are not adequately protected across the current occupancy/process/storage profile.',
-    action_required_text: 'Provide or extend fixed fire protection in warranted areas based on occupancy/process/storage hazards and current risk profile.',
-    hazard_text: 'Unprotected warranted areas can permit rapid fire growth before intervention, increasing loss severity.',
+    title: 'Provide or extend engineered fixed fire protection where hazard profile warrants it',
+    observation_text: 'Areas or processes requiring fixed fire protection are not adequately protected under the current occupancy, construction and storage/process hazard profile.',
+    action_required_text: 'Identify all areas and processes where fixed protection is warranted based on construction type, hazard class, and compartmentation. Commission engineering design to provide or extend fixed protection systems in those areas, with a named owner and target completion date. Confirm that the installed or planned protection type is appropriate for the specific hazard (e.g., suppression density, medium, and discharge strategy).',
+    hazard_text: 'Unprotected warranted areas can permit rapid fire growth before suppression or manual intervention can contain the event, increasing both property damage and business interruption severity.',
   },
   re06_fp_adequacy_system_type_hazard_match: {
     title: 'Review protection type/design suitability against actual hazard',
@@ -271,10 +271,10 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     hazard_text: 'Delayed or ineffective operator response can allow process-fed fires to escalate beyond suppression design assumptions.',
   },
   re06_fp_localised_required_installation: {
-    title: 'Install required localised/special fire protection',
-    observation_text: 'Localised/special protection has been identified as required but is not currently installed.',
-    action_required_text: 'Design and install suitable localised/special protection for the identified process/equipment hazards.',
-    hazard_text: 'Required point-of-hazard suppression absent: ignition can escalate before site-wide systems can control the event.',
+    title: 'Install required localised/special hazard fire protection',
+    observation_text: 'Localised or special hazard fire protection has been identified as required for specific process or equipment hazards but is not currently installed or confirmed as adequate.',
+    action_required_text: 'Review the fire protection arrangements for identified process and equipment hazards (including cooking/frying systems, oil-handling equipment, plant rooms, and other special hazards) against the actual hazard configuration — fuel/oil volume, extraction and ventilation arrangement, shutdown interfaces, and detection coverage. Confirm that localised automatic suppression, fuel/power interlocks, and manual emergency controls are suitable for the hazard, tested to the appropriate standard, and fully documented. Design and install any missing localised protection with a named accountable owner and target completion date.',
+    hazard_text: 'Required point-of-hazard suppression absent: ignition at a special hazard location can escalate rapidly before site-wide systems can contain the event. Oil fires and process equipment fires are a leading cause of large industrial losses where localised protection is inadequate or absent.',
   },
 
   // ─── Module-level fallbacks (used when no factor key is provided) ─────────────
@@ -644,7 +644,7 @@ async function buildRecommendationPayload(params: {
   // most severe underwriting exposure regardless of how the factor was scored.
   const HIGH_PRIORITY_FACTOR_PREFIXES = [
     're06_fp_sprinklers_warranted_absent',
-    're06_fp_adequacy_fixed_protection_required',
+    're06_fp_adequacy_fixed_protection',   // covers _required, _required_provided, _provided, etc.
     're06_fp_localised_required_installation',
   ];
   const forceHigh = HIGH_PRIORITY_FACTOR_PREFIXES.some(
