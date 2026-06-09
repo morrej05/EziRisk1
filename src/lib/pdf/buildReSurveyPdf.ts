@@ -623,7 +623,18 @@ export function getSectionTableRows(module: ModuleInstance, options: { breakdown
       sprinklerSummaryRow = ['Sprinkler status', `Sprinklers absent; protection warranted (${warrantedAbsentBuildings.length} building(s))`];
       coverageRow = ['Sprinkler coverage', 'Not applicable - system absent'];
     } else if (notWarrantedBuildings.length > 0) {
-      sprinklerSummaryRow = ['Sprinkler status', 'Sprinklers absent; not considered warranted'];
+      // Check whether the FP supplementary score or pillar rating indicates a weak
+      // protection profile — if so, the snapshot should not say "not considered warranted"
+      // because that contradicts the engineering interpretation's risk-signal findings.
+      const fpSupplementaryScore = Number(supplementary.overall_score);
+      const fpPillarRating = pillar ? Number(pillar.rating) : NaN;
+      const snapshotRiskSignal =
+        (Number.isFinite(fpSupplementaryScore) && fpSupplementaryScore <= 2) ||
+        (Number.isFinite(fpPillarRating) && fpPillarRating <= 2);
+      const sprinklerStatusLabel = snapshotRiskSignal
+        ? 'Sprinklers absent; fixed protection appears warranted by risk profile'
+        : 'Sprinklers absent; not considered warranted';
+      sprinklerSummaryRow = ['Sprinkler status', sprinklerStatusLabel];
       coverageRow = ['Sprinkler coverage', 'Not applicable'];
     } else {
       // Unknown or unrecorded status
