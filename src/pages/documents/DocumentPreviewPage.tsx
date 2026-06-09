@@ -571,6 +571,7 @@ export default function DocumentPreviewPage() {
               hazard_text,
               photos,
               source_module_key,
+              source_factor_key,
               priority,
               status,
               target_date,
@@ -601,11 +602,18 @@ export default function DocumentPreviewPage() {
 
           const lpActions = (reRecommendations || []).map((rec: any, index: number) => ({
             id: rec.id,
+            // Keep action_required_text and title as separate fields so the LP
+            // stale-detection pipeline can inspect them independently.
+            action_required_text: rec.action_required_text || null,
+            title: rec.title || null,
             recommended_action: rec.action_required_text || rec.title || `Recommendation ${index + 1}`,
             description: rec.observation_text || null,
             hazard_text: rec.hazard_text || null,
             photos: Array.isArray(rec.photos) ? rec.photos : [],
             source_module_key: rec.source_module_key || null,
+            // source_factor_key is required for stale-text substitution, priority
+            // override, and deduplication in the LP pipeline.
+            source_factor_key: rec.source_factor_key || null,
             priority_band: priorityToBand[String(rec.priority || '').toLowerCase()] || 'P3',
             status: statusMap[rec.status] || 'open',
             owner_user_id: null,

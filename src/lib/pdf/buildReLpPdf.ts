@@ -492,7 +492,8 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   // Action Register — variable column widths so Recommendation and Risk Implication
   // columns get enough space to wrap text rather than truncating with ellipses.
   // Total must equal CONTENT_WIDTH (495).  [Ref, Section, Recommendation, Risk implication, Priority, Evidence, Timescale]
-  const actionRegisterColWidths = [38, 68, 140, 140, 30, 46, 33];
+  // Priority column needs ≥42 pt to render the 8-char "Priority" header without merging into Evidence.
+  const actionRegisterColWidths = [36, 64, 132, 132, 44, 52, 35];
   ({ page, yPosition } = drawTable(
     page,
     yPosition,
