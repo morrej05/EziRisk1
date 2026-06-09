@@ -9,7 +9,7 @@ describe('RE-04 recommendation fallback mapping content', () => {
     expect(file).toContain('re06_fp_adequacy_critical_area_coverage');
     expect(file).toContain('Extend protection to unprotected critical areas');
     expect(file).toContain('re06_fp_localised_required_provided');
-    expect(file).toContain('Provide or improve localised/special hazard protection');
+    expect(file).toContain('Verify suitability, testing and documentation of installed localised/special hazard protection');
     expect(file).toContain('re06_fp_evidence_design_performance_change_control');
     expect(file).toContain('documentation, performance evidence, and change-control discipline');
   });

@@ -2971,15 +2971,23 @@ function resolveRecommendationPriority(action: Action): string {
   return String(action.priority_band || 'Not provided');
 }
 
+// Stale wording signatures that pre-date factor-specific fallback improvements.
+// When detected, the current FACTOR_SPECIFIC_FALLBACKS text is substituted at render time.
+const STALE_ACTION_TEXT_PREFIXES = [
+  OLD_GENERIC_ACTION_PREFIX,
+  // re06_fp_localised_required_provided wording updated to verification-focused in 2026-06-09
+  // audit — old "Provide or improve" text is no longer appropriate when protection is present.
+  'Provide or improve localised/special hazard protection for identified hazards',
+];
+
 function getRecommendationBodyText(action: Action): string {
   const stored = action.action_required_text || action.recommended_action || action.description || action.title;
-  // Detect old generic wording created before the 2026-06-09 factor-specific wording audit.
-  // If a factor key is present, substitute the current specific fallback text so the PDF
-  // always shows the best available wording — the DB record remains untouched.
-  const isOldGeneric =
-    (typeof stored === 'string' && stored.startsWith(OLD_GENERIC_ACTION_PREFIX)) ||
+  // Detect stale wording patterns. If a factor key is present, substitute the current specific
+  // fallback text so the PDF always shows the best available wording — the DB record is untouched.
+  const isStale =
+    (typeof stored === 'string' && STALE_ACTION_TEXT_PREFIXES.some((prefix) => stored.startsWith(prefix))) ||
     (action.hazard_text === OLD_GENERIC_HAZARD_TEXT);
-  if (isOldGeneric && action.source_factor_key) {
+  if (isStale && action.source_factor_key) {
     const fallback = resolveFactorFallback(action.source_factor_key);
     if (fallback?.action_required_text) return fallback.action_required_text;
   }
@@ -4054,7 +4062,11 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         // current factor-specific fallback hazard text so the PDF always shows the best wording.
         const resolvedHazardText = (() => {
           if (!action.hazard_text) return '';
-          if (action.hazard_text === OLD_GENERIC_HAZARD_TEXT && action.source_factor_key) {
+          // Substitute old generic or stale hazard text with the current factor-specific fallback.
+          const isStaleHazard =
+            action.hazard_text === OLD_GENERIC_HAZARD_TEXT ||
+            action.hazard_text === 'Uncontrolled special hazards can escalate before general area protection can contain the event.';
+          if (isStaleHazard && action.source_factor_key) {
             const fallback = resolveFactorFallback(action.source_factor_key);
             if (fallback?.hazard_text) return fallback.hazard_text;
           }

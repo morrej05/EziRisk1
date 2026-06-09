@@ -85,10 +85,10 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     hazard_text: 'Poor impairment governance can leave protection outages uncontrolled during fire events.',
   },
   re06_fp_localised_required_provided: {
-    title: 'Provide or improve localised/special hazard protection',
-    observation_text: 'Localised/special hazard protection is absent, limited, or incomplete for identified hazards.',
-    action_required_text: 'Provide or improve localised/special hazard protection for identified hazards where required.',
-    hazard_text: 'Uncontrolled special hazards can escalate before general area protection can contain the event.',
+    title: 'Verify suitability, testing and documentation of installed localised/special hazard protection',
+    observation_text: 'Localised/special hazard protection is installed but its suitability, design basis, testing arrangements, and integration with shutdown and detection systems have not been confirmed as adequate for the identified process and equipment hazards.',
+    action_required_text: 'Verify that localised protection for identified process and equipment hazards is suitable for the actual equipment arrangement, fuel/oil volume, extraction and ventilation layout, shutdown interfaces and detection coverage. Confirm that testing, maintenance, interlocks and impairment arrangements are documented and current.',
+    hazard_text: 'Localised systems may fail to control a fire at source if design basis, shutdown interfaces, maintenance or testing arrangements are not clearly documented and periodically verified.',
   },
   re06_fp_localised_reliability_testing_integration: {
     title: 'Improve localised protection testing, maintenance, and integration',
