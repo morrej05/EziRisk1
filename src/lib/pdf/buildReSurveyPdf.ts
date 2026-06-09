@@ -2952,8 +2952,10 @@ function joinList(items: string[]): string {
   return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
 }
 
-// Factor-key prefixes that always warrant High priority regardless of the stored priority_band.
+// Factor-key prefixes that always warrant P1 priority regardless of the stored priority_band.
 // This corrects legacy records created before the HIGH_PRIORITY_FACTOR_PREFIXES list was complete.
+// Returns 'P1' (not 'High') so that priority is consistent with all other recommendations in
+// the register, which use P1/P2/P3/P4 via the DocumentPreviewPage priorityToBand mapping.
 const HIGH_PRIORITY_RENDER_PREFIXES = [
   're06_fp_sprinklers_warranted_absent',
   're06_fp_adequacy_fixed_protection',   // covers _required, _required_provided, _provided, etc.
@@ -2964,7 +2966,7 @@ const HIGH_PRIORITY_RENDER_PREFIXES = [
 function resolveRecommendationPriority(action: Action): string {
   const fk = action.source_factor_key || '';
   if (fk && HIGH_PRIORITY_RENDER_PREFIXES.some((prefix) => fk.startsWith(prefix))) {
-    return 'High';
+    return 'P1';
   }
   return String(action.priority_band || 'Not provided');
 }
