@@ -22,21 +22,25 @@ export const DEFAULT_LOGO_PDF = '/ezirisk-logo-primary.svg';
 // export const PDF_DEBUG_LAYOUT = import.meta.env.VITE_PDF_DEBUG_LAYOUT === 'true';
 export const PDF_DEBUG_LAYOUT = false;
 
+// ASCII-safe quote characters — defined via charCode to prevent editors from substituting smart quotes.
+const ASCII_APOSTROPHE = String.fromCharCode(0x27); // U+0027 straight apostrophe
+const ASCII_DOUBLE_QUOTE = String.fromCharCode(0x22); // U+0022 straight double-quote
+
 export function sanitizePdfText(input: unknown): string {
-  const s = (input ?? '').toString();
+  const s = (input == null ? `` : String(input));
 
   let sanitized = s
-    .replace(/⚠/g, '!')
-    .replace(/✅/g, '[OK]')
-    .replace(/❌/g, '[X]')
-    .replace(/✓/g, '[OK]')
-    .replace(/✗/g, '[X]')
-    .replace(/[""]/g, '"')
-    .replace(/['']/g, "'")
-    .replace(/—/g, '-')
-    .replace(/–/g, '-')
-    .replace(/…/g, '...')
-    .replace(/•/g, '*')
+    .replace(/⚠/g, `!`)
+    .replace(/✅/g, `[OK]`)
+    .replace(/❌/g, `[X]`)
+    .replace(/✓/g, `[OK]`)
+    .replace(/✗/g, `[X]`)
+    .replace(/[“”]/g, ASCII_DOUBLE_QUOTE)
+    .replace(/[‘’]/g, ASCII_APOSTROPHE)
+    .replace(/—/g, `-`)
+    .replace(/–/g, `-`)
+    .replace(/…/g, `...`)
+    .replace(/•/g, `*`)
     .replace(/°/g, ' deg')
     .replace(/×/g, 'x')
     .replace(/÷/g, '/')

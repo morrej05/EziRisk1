@@ -1782,8 +1782,12 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
     (module.data as any)?.activityOverview
   );
   // Normalise legacy hazard labels that used '&' or informal phrasing.
+  // The stored label 'Flammable gases & chemicals' is the generic form-option label;
+  // in a food/processing context where ammonia refrigeration is the primary hazard,
+  // a more precise engineering descriptor is used in the PDF.
   const HAZARD_LABEL_NORMALISE: Record<string, string> = {
-    'Flammable gases & chemicals': 'Flammable gases and chemicals',
+    'Flammable gases & chemicals': 'Refrigerants and process chemicals',
+    'Flammable gases and chemicals': 'Refrigerants and process chemicals',
   };
   const hazardLabels = hazards
     .map((hazard: any) => {
