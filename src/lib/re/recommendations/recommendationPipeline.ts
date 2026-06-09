@@ -10,15 +10,19 @@ interface RecommendationFromRatingParams {
 }
 
 /**
- * 'none'    — no recommendation was created or already existed.
- * 'created' — a new recommendation was just created for the first time.
- * 'exists'  — a recommendation already exists for this factor; left untouched.
+ * 'none'     — no recommendation was created or already existed.
+ * 'created'  — a new recommendation was just created for the first time.
+ * 'exists'   — a recommendation already exists for this factor; left untouched.
+ * 'resolved' — an open recommendation was auto-completed because its data-field
+ *              trigger condition is no longer active (e.g. sprinklers_warranted
+ *              changed from Yes to No). Only applies to data-assessment recs that
+ *              opt in via resolveWhenNotTriggered in syncAutoRecToRegister.
  *
  * 'updated', 'restored', and 'suppressed' are intentionally removed:
  * auto recommendations are now independent records after creation and are
- * never mutated or suppressed by the pipeline.
+ * never mutated or suppressed by the pipeline except via explicit opt-in.
  */
-export type AutoRecommendationLifecycleState = 'none' | 'created' | 'exists';
+export type AutoRecommendationLifecycleState = 'none' | 'created' | 'exists' | 'resolved';
 
 interface FallbackContent {
   title: string;
@@ -724,6 +728,79 @@ export async function hasAutoRecommendation(
 }
 
 
+/**
+ * Suppress an open auto-recommendation whose data-field trigger condition is
+ * no longer active, without implying that any physical corrective work was done.
+ *
+ * Background:
+ *   The `re_recommendations` status column is constrained to
+ *   ('Open', 'In Progress', 'Completed'). 'Completed' carries the semantic of
+ *   physical remediation, which is incorrect when the trigger condition simply
+ *   changes (e.g. sprinklers_warranted changes from Yes to No). Using
+ *   'Completed' for a data-change dismissal would mislead PDF readers and
+ *   portfolio metrics.
+ *
+ *   Instead, this function sets is_suppressed = true — which removes the rec
+ *   from both the PDF (DocumentPreviewPage queries filter is_suppressed = false)
+ *   and the workspace recommendation panel. The reason is preserved in
+ *   metadata.auto_dismissed_* so the decision is auditable.
+ *
+ * Rules:
+ *   - Only acts on records with status = 'Open'. Never touches 'In Progress'
+ *     or 'Completed' records — those have been manually actioned by the assessor.
+ *   - source_type must be 'auto' (never touches manual recommendations).
+ *   - Performs a read-modify-write to preserve existing metadata fields
+ *     (e.g. triggered_by_rating) while appending the dismissal keys.
+ *   - Returns true if a record was suppressed, false otherwise.
+ */
+async function suppressStaleAutoRec(params: {
+  documentId: string;
+  sourceModuleKey: string;
+  sourceFactorKey: string;
+  moduleInstanceId?: string;
+  reason: string;
+}): Promise<boolean> {
+  const { documentId, sourceModuleKey, sourceFactorKey, moduleInstanceId, reason } = params;
+
+  const { data: existingRow, error: readError } = await supabase
+    .from('re_recommendations')
+    .select('id, status, metadata')
+    .eq('document_id', documentId)
+    .eq('source_type', 'auto')
+    .eq('source_module_key', sourceModuleKey)
+    .eq('source_factor_key', sourceFactorKey)
+    .eq('module_instance_id', moduleInstanceId || null)
+    .maybeSingle();
+
+  if (readError || !existingRow) return false;
+
+  // Only suppress if still Open — never overwrite records the assessor has progressed.
+  const status = String((existingRow as any).status || '').trim().toLowerCase();
+  if (status !== 'open') return false;
+
+  // Merge dismissal keys into existing metadata (preserves triggered_by_rating etc.)
+  const existingMetadata: Record<string, unknown> = (existingRow as any).metadata || {};
+  const mergedMetadata: Record<string, unknown> = {
+    ...existingMetadata,
+    auto_dismissed: true,
+    auto_dismissed_reason: reason,
+    auto_dismissed_at: new Date().toISOString(),
+    auto_dismissed_by: 'system',
+  };
+
+  const { error: updateError } = await supabase
+    .from('re_recommendations')
+    .update({ is_suppressed: true, metadata: mergedMetadata })
+    .eq('id', (existingRow as any).id);
+
+  if (updateError) {
+    if (import.meta.env.DEV) console.error('suppressStaleAutoRec: update failed', updateError);
+    return false;
+  }
+
+  return true;
+}
+
 export async function syncAutoRecToRegister(params: {
   documentId: string;
   moduleKey: string;
@@ -731,8 +808,32 @@ export async function syncAutoRecToRegister(params: {
   moduleInstanceId?: string;
   rating_1_5: number;
   industryKey: string | null;
+  /**
+   * When true and the current rating is > 2 (trigger condition no longer active),
+   * any open auto-recommendation for this factor is suppressed (is_suppressed = true)
+   * with a metadata dismissal record. The rec becomes invisible in the PDF and
+   * workspace without implying that physical corrective work was done.
+   *
+   * Use this ONLY for data-assessment recommendations where the trigger is a
+   * field value (e.g. sprinklers_warranted), not a corrective action.
+   * Standard action-based recommendations must never be auto-suppressed.
+   */
+  resolveWhenNotTriggered?: boolean;
 }): Promise<AutoRecommendationLifecycleState> {
-  const { documentId, moduleKey, canonicalKey, moduleInstanceId, rating_1_5, industryKey } = params;
+  const { documentId, moduleKey, canonicalKey, moduleInstanceId, rating_1_5, industryKey, resolveWhenNotTriggered } = params;
+
+  // When the trigger condition is no longer active and the caller opts in:
+  // suppress the open rec so the PDF is immediately consistent with the data.
+  if (resolveWhenNotTriggered && rating_1_5 > 2) {
+    const suppressed = await suppressStaleAutoRec({
+      documentId,
+      sourceModuleKey: moduleKey,
+      sourceFactorKey: canonicalKey,
+      moduleInstanceId,
+      reason: 'No longer applicable — data-field trigger condition is no longer active',
+    });
+    if (suppressed) return 'resolved';
+  }
 
   return ensureRecommendationFromRating({
     documentId,

@@ -770,6 +770,10 @@ export default function RE06FireProtectionForm({
           moduleInstanceId: moduleInstance.id,
           rating_1_5: input.rating_1_5,
           industryKey,
+          // Building-level recs are data-assessment driven (sprinklers_warranted field).
+          // When the field changes to "not warranted", any open rec is no longer valid
+          // and should be auto-completed so the PDF is immediately consistent.
+          resolveWhenNotTriggered: input.kind === 'sprinklers_warranted_absent',
         }).then((lifecycleState) => ({
           buildingId: input.buildingId,
           lifecycleState,

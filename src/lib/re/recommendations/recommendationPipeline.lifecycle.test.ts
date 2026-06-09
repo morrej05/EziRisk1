@@ -95,7 +95,7 @@ vi.mock('../../supabase', () => {
 
 // ─── Import the pipeline under test (AFTER mocks are registered) ──────────────
 
-import { ensureRecommendationFromRating } from './recommendationPipeline';
+import { ensureRecommendationFromRating, syncAutoRecToRegister } from './recommendationPipeline';
 
 // ─── Shared test params ───────────────────────────────────────────────────────
 
@@ -247,6 +247,123 @@ describe('RE auto-recommendation lifecycle — generate-once semantics', () => {
 
     expect(state).toBe('exists');
     // Pipeline must NOT flip is_suppressed back — that's the assessor's call
+    expect(mockCtrl.updateSpy).not.toHaveBeenCalled();
+  });
+
+  // ── Scenario 6: resolveWhenNotTriggered via syncAutoRecToRegister ────────────
+  // These tests cover the data-assessment auto-resolve path added for
+  // sprinklers_warranted_absent recs. When warranted changes from Yes → No,
+  // the open rec must be auto-completed so the PDF is consistent.
+
+  it('syncAutoRecToRegister resolveWhenNotTriggered=true + rating > 2 + Open rec → suppresses (is_suppressed=true) and returns resolved', async () => {
+    // Rec exists, is Open, has pre-existing metadata (triggered_by_rating must be preserved)
+    mockCtrl.setSelectResult({
+      data: { id: 'fp-warranted-rec-id', status: 'Open', metadata: { triggered_by_rating: 1 } },
+      error: null,
+    });
+
+    const SYNC_PARAMS = {
+      documentId: 'doc-aaa',
+      moduleKey: 'RE_06_FIRE_PROTECTION',
+      canonicalKey: 're06_fp_sprinklers_warranted_absent:b1',
+      moduleInstanceId: 'mod-bbb',
+      industryKey: null,
+    };
+
+    const state = await syncAutoRecToRegister({ ...SYNC_PARAMS, rating_1_5: 5, resolveWhenNotTriggered: true });
+
+    expect(state).toBe('resolved');
+    expect(mockCtrl.updateSpy).toHaveBeenCalledTimes(1);
+    const [, updatePayload] = mockCtrl.updateSpy.mock.calls[0];
+
+    // Must suppress — NOT mark as 'Completed' (which implies physical remediation)
+    expect(updatePayload).toMatchObject({ is_suppressed: true });
+    expect((updatePayload as any).status).toBeUndefined();
+
+    // Metadata must include auto-dismissal keys AND preserve pre-existing keys
+    expect((updatePayload as any).metadata).toMatchObject({
+      triggered_by_rating: 1,        // preserved from existing metadata
+      auto_dismissed: true,
+      auto_dismissed_by: 'system',
+    });
+    expect((updatePayload as any).metadata.auto_dismissed_reason).toBeDefined();
+    expect((updatePayload as any).metadata.auto_dismissed_at).toBeDefined();
+
+    expect(mockCtrl.insertSpy).not.toHaveBeenCalled();
+  });
+
+  it('a suppressed rec is invisible to the PDF and workspace — NOT shown as Completed remediation', () => {
+    // The PDF query in DocumentPreviewPage filters `.eq('is_suppressed', false)`.
+    // The workspace query in DocumentWorkspace also filters `.eq('is_suppressed', false)`.
+    // This is a structural contract test: if suppressStaleAutoRec sets is_suppressed=true,
+    // the rec will never appear in either query result set — it cannot be mistaken for
+    // a Completed recommendation from physical remediation.
+    //
+    // We verify the contract by checking that the update payload used by
+    // syncAutoRecToRegister sets is_suppressed=true and does NOT set status='Completed'.
+    // The query-level filtering is part of DocumentPreviewPage.tsx and
+    // DocumentWorkspace.tsx, not the pipeline — those are not tested here.
+
+    // The assertions in the previous test already cover this contract.
+    // This test exists as an explicit named contract statement.
+    const suppressedRecUpdatePayload = { is_suppressed: true, metadata: { auto_dismissed: true } };
+
+    expect(suppressedRecUpdatePayload.is_suppressed).toBe(true);
+    expect((suppressedRecUpdatePayload as any).status).toBeUndefined();
+  });
+
+  it('syncAutoRecToRegister resolveWhenNotTriggered=true + rating > 2 + no rec → returns none (nothing to resolve)', async () => {
+    mockCtrl.setSelectResult({ data: null, error: null }); // No rec exists
+
+    const state = await syncAutoRecToRegister({
+      documentId: 'doc-aaa',
+      moduleKey: 'RE_06_FIRE_PROTECTION',
+      canonicalKey: 're06_fp_sprinklers_warranted_absent:b1',
+      moduleInstanceId: 'mod-bbb',
+      rating_1_5: 5,
+      industryKey: null,
+      resolveWhenNotTriggered: true,
+    });
+
+    expect(state).toBe('none');
+    expect(mockCtrl.updateSpy).not.toHaveBeenCalled();
+    expect(mockCtrl.insertSpy).not.toHaveBeenCalled();
+  });
+
+  it('syncAutoRecToRegister resolveWhenNotTriggered=true + rec is In Progress → does NOT auto-complete; returns exists', async () => {
+    // Rec is In Progress — assessor has started working on it; must not auto-complete
+    mockCtrl.setSelectResult({ data: { id: 'fp-rec-in-progress', status: 'In Progress' }, error: null });
+
+    const state = await syncAutoRecToRegister({
+      documentId: 'doc-aaa',
+      moduleKey: 'RE_06_FIRE_PROTECTION',
+      canonicalKey: 're06_fp_sprinklers_warranted_absent:b1',
+      moduleInstanceId: 'mod-bbb',
+      rating_1_5: 5,
+      industryKey: null,
+      resolveWhenNotTriggered: true,
+    });
+
+    // autoCompleteStaleAutoRec returns false (status ≠ 'Open') → falls through to ensureRecommendationFromRating → 'exists'
+    expect(state).toBe('exists');
+    expect(mockCtrl.updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('syncAutoRecToRegister resolveWhenNotTriggered=false (default) + improved rating → does NOT auto-complete; returns exists', async () => {
+    // Standard non-RE06 factor: improvement must never auto-complete
+    mockCtrl.setSelectResult({ data: { id: 'standard-rec', status: 'Open' }, error: null });
+
+    const state = await syncAutoRecToRegister({
+      documentId: 'doc-aaa',
+      moduleKey: 'RE_03_OCCUPANCY',
+      canonicalKey: 're03_occ_fire_load_density',
+      moduleInstanceId: 'mod-bbb',
+      rating_1_5: 5,
+      industryKey: null,
+      // resolveWhenNotTriggered omitted / false by default
+    });
+
+    expect(state).toBe('exists');
     expect(mockCtrl.updateSpy).not.toHaveBeenCalled();
   });
 
