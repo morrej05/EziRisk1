@@ -2076,7 +2076,7 @@ function getRatingByKey(breakdown: Breakdown, key: string): number | null {
 }
 
 function buildNaturalHazardsEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {
-  // Extract individual named perils so the narrative can say "Flood" rather than "Environmental perils".
+  // Extract individual named perils so the narrative can say "Flood 1/5" rather than "Environmental perils".
   const exposures = (module.data as any)?.exposures || module.data || {};
   const perils = exposures?.environmental?.perils || {};
   const NAMED_PERILS: Array<[string, string]> = [
@@ -2085,16 +2085,20 @@ function buildNaturalHazardsEngineeringInterpretation(module: ModuleInstance, br
     ['Earthquake', 'earthquake'],
     ['Wildfire', 'wildfire'],
   ];
-  const weakerPerils: string[] = [];
-  const moderatePerils: string[] = [];
+
+  // Collect all rated perils with their numeric values.
+  const ratedPerils: Array<{ label: string; rating: number }> = [];
   for (const [label, key] of NAMED_PERILS) {
     const r = Number(perils?.[key]?.rating);
-    if (Number.isFinite(r)) {
-      if (r <= 2) weakerPerils.push(label);
-      else if (r === 3) moderatePerils.push(label);
-    }
+    if (Number.isFinite(r) && r >= 1) ratedPerils.push({ label, rating: r });
   }
-  // Also check human exposure and other peril fields via structured rows for any ratings not captured above.
+  // Sort worst (lowest score) first so we can lead with the priority peril.
+  ratedPerils.sort((a, b) => a.rating - b.rating);
+
+  const weakerPerils = ratedPerils.filter((p) => p.rating <= 2).map((p) => p.label);
+  const moderatePerils = ratedPerils.filter((p) => p.rating === 3).map((p) => p.label);
+
+  // Also check human exposure via structured rows for any ratings not captured above.
   const rows = getExposuresStructuredRows(module);
   const humanRow = rows.find(([label]) => /human/i.test(label));
   if (humanRow) {
@@ -2102,25 +2106,63 @@ function buildNaturalHazardsEngineeringInterpretation(module: ModuleInstance, br
     if (/rating\s*[12]\b/i.test(detail)) weakerPerils.push('Human threat exposure');
     else if (/rating\s*3\b/i.test(detail)) moderatePerils.push('Human threat exposure');
   }
+
   // Deduplicate and cap at 3 for readability.
   const weakUniq = [...new Set(weakerPerils)].slice(0, 3);
   const modUniq = [...new Set(moderatePerils)].slice(0, 3);
+
   const rating = getRatingByKey(breakdown, 'natural_hazards_and_external_exposures') ?? resolveSectionRating(module, breakdown);
-  // Focus narrative — names specific perils where rated, or qualifies the absence of data.
-  const focus = weakUniq.length
-    ? `Priority peril attention is indicated for ${weakUniq.join(', ')}, where the rated exposure creates material probability of asset damage, access disruption, or common-mode utility impact.`
-    : modUniq.length
-      ? `${modUniq.join(', ')} are rated at a moderate level and should be tested against realistic worst-case scenarios for site access, utility disruption, and restoration timescales.`
-      : 'No peril has been rated as a priority exposure from the submitted data. Site-specific flood, wind, seismic, and human-threat evidence should be validated against local datasets before this section is treated as confirmed low-exposure.';
-  // Closing — varies by rating to name the specific UW mechanism.
-  const closingByRating = !Number.isFinite(Number(rating)) || !rating
-    ? 'Natural hazard exposure cannot be quantified without a scored rating — this section should not be read as a confirmed low-risk conclusion.'
-    : Number(rating) <= 2
+  const aggregateValid = Number.isFinite(Number(rating)) && Number(rating) >= 1;
+  const hasPerilRatings = ratedPerils.length > 0;
+
+  // --- Lead sentence ---
+  // When the aggregate section score is valid, use it. When it is absent but individual perils
+  // are scored, lead with the peril data rather than stating "score is 0/5" — that is contradictory.
+  let leadSentence: string;
+  if (aggregateValid) {
+    leadSentence = `Natural hazards score is ${formatScoreOutOfFive(rating)}.`;
+  } else if (hasPerilRatings) {
+    // The worst-rated peril (first after sort) drives the lead.
+    const worstPeril = ratedPerils[0];
+    const otherPerils = ratedPerils.slice(1);
+    const othersText = otherPerils.length > 0
+      ? ` ${otherPerils.map((p) => `${p.label} is recorded as ${formatScoreOutOfFive(p.rating)}`).join('; ')}.`
+      : '';
+    leadSentence = `Natural hazard exposure is driven principally by the ${worstPeril.label.toLowerCase()} rating of ${formatScoreOutOfFive(worstPeril.rating)}.${othersText}`;
+  } else {
+    leadSentence = 'Natural hazards exposure data has not been fully scored — individual peril ratings are required to quantify site exposure.';
+  }
+
+  // --- Focus narrative ---
+  // When the lead sentence already names the priority peril, the focus narrative adds the
+  // underwriting consequence (asset damage, access disruption, BI).
+  let focus: string;
+  if (weakUniq.length) {
+    // If the lead sentence already names the single weakest peril, don't repeat it verbatim.
+    const weakList = weakUniq.join(', ');
+    focus = `${weakList.charAt(0).toUpperCase() + weakList.slice(1)} should therefore receive priority underwriting attention, particularly in relation to asset damage, site access, utility interruption, stock protection and recovery delay.`;
+  } else if (modUniq.length) {
+    focus = `${modUniq.join(', ')} are rated at a moderate level and should be tested against realistic worst-case scenarios for site access, utility disruption, and restoration timescales.`;
+  } else if (hasPerilRatings) {
+    // All rated perils are 4 or 5 — broadly controlled exposure.
+    focus = 'All scored perils indicate broadly controlled natural hazard exposure. The residual underwriting concern is tail-event scenarios not represented in historical data.';
+  } else {
+    focus = 'Site-specific flood, wind, seismic, and human-threat evidence should be validated against local datasets before this section is treated as confirmed low-exposure.';
+  }
+
+  // --- Closing ---
+  // Use the aggregate rating if valid; otherwise derive from the worst peril rating.
+  // Only state "cannot be quantified" when NEITHER aggregate NOR individual peril ratings exist.
+  const effectiveRating = aggregateValid ? Number(rating) : (hasPerilRatings ? ratedPerils[0].rating : null);
+  const closingByRating = effectiveRating === null
+    ? 'No scored peril ratings have been entered — natural hazard exposure cannot be assessed from submitted data. This section should not be read as a confirmed low-risk conclusion.'
+    : effectiveRating <= 2
       ? 'At this exposure level the underwriting concern is compounded loss: a single natural-hazard event can simultaneously cause physical damage, disrupt utilities and access, and trigger BI before the main peril has even been resolved.'
-      : Number(rating) <= 3.5
+      : effectiveRating <= 3.5
         ? 'The primary underwriting consideration is access and utility disruption extending the BI period beyond the physical repair timeline, rather than only the direct property damage quantum.'
         : 'Where exposure is broadly controlled the residual underwriting concern is low-probability, high-consequence tail events — the kind of scenario that may not appear in historical data but is within the site exposure range.';
-  return `Engineering interpretation: Natural hazards score is ${formatScoreOutOfFive(rating)}. ${focus} ${closingByRating}`;
+
+  return `Engineering interpretation: ${leadSentence} ${focus} ${closingByRating}`;
 }
 
 function buildUtilitiesEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown, allModules: ModuleInstance[] = []): string {
