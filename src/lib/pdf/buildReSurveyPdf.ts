@@ -2388,25 +2388,28 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
   // Identify PUR/PIR/phenolic sandwich-panel systems specifically — highest concealed-spread risk.
   const sandwichPanelKeywords = /\b(pur|pir|phenolic|foam core|eps|xps)\b|\b(sandwich panels?|composite panels?|insulated panels?)\b/i;
   const sandwichPanelInDescription = sandwichPanelKeywords.test(flatConstructionText);
-  // Derive the cladding statement.
-  // Priority order:
-  //   1. Per-building records show combustible cladding is present
-  //   2. Flat construction text references combustible systems (overrides "no cladding" conclusion)
-  //   3. Per-building records exist but none flag combustible cladding (only if flat text is also clean)
-  //   4. No building records at all
-  const claddingText = claddingPresentCount > 0
-    ? sandwichPanelInDescription
-      ? `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s), including insulated sandwich/composite panel systems (PUR/PIR/phenolic). These systems carry concealed-void ignition pathways, rapid fire spread potential, and dense smoke generation risk that is disproportionate to their apparent area contribution.`
-      : `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s).`
+  // --- External cladding statement ---
+  // This is based solely on the dedicated per-building cladding-present boolean flag
+  // (combustible_cladding.present / cladding_present). It refers specifically to
+  // combustible external façade/cladding systems (e.g. ACM/EWI retrofits), not to
+  // the primary construction material of the building envelope.
+  // "Not assessed" is materially different from "confirmed absent" — do not state
+  // "no combustible cladding" unless the surveyor has explicitly confirmed absence.
+  const externalCladdingText = claddingPresentCount > 0
+    ? `Combustible external cladding systems are confirmed on ${claddingPresentCount} of ${context.buildingCount} building(s).`
+    : context.buildingCount > 0
+      ? 'No information has been recorded confirming the presence of combustible external cladding systems.'
+      : 'Building-level records are not available; combustible external cladding status has not been assessed.';
+
+  // --- Insulated sandwich panel construction ---
+  // Sandwich panel construction (PUR/PIR/phenolic foam-core panels used as the primary
+  // building envelope — roof and walls) is a distinct engineering issue from external cladding.
+  // It is identified from construction material descriptions, not from the cladding flag.
+  const sandwichPanelText = sandwichPanelInDescription
+    ? 'The building envelope incorporates insulated sandwich panel systems (PUR/PIR and/or phenolic foam-core panels). Sandwich panel construction presents a distinct fire risk independent of external cladding status: combustion within the panel core can propagate concealed from view and detectors, producing dense toxic smoke and rapid structural degradation. Panel-core fires are not reliably controlled by conventional suppression and may require specialist intervention to access the burning core. Reinstatement of damaged sandwich panel structures requires specialist contractors and extended lead times, materially prolonging the business interruption period beyond physical repair timescales.'
     : flatTextIndicatesCombustible
-      // Even when building records exist, if construction descriptions reference combustible
-      // systems, the "no cladding" conclusion cannot be relied upon.
-      ? sandwichPanelInDescription
-        ? `Construction descriptions reference insulated sandwich/composite panel systems (including PUR, PIR, and/or phenolic insulated panels). These systems introduce concealed fire spread pathways and toxic/dense smoke risk — per-building cladding records should be completed to confirm the extent of combustible envelope exposure.`
-        : `Construction descriptions reference potentially combustible systems. Per-building cladding records should be completed to confirm the extent of combustible envelope exposure.`
-      : context.buildingCount > 0
-        ? 'No combustible cladding is identified in submitted building records.'
-        : 'Building-level cladding records are not available.';
+      ? 'Construction descriptions reference materials with combustible components; the extent of combustible construction should be confirmed in per-building records.'
+      : '';
   const giaText = context.totalFloorArea !== null
     ? `total floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
     : `roof area ${formatDataValue(context.totalRoofArea)} m²`;
@@ -2414,13 +2417,16 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     ? `, mezzanine / upper floor area ${formatDataValue(context.totalMezzArea)} m² (elevated fire-load and multi-level spread exposure)`
     : '';
   const geometryText = `Recorded geometry: ${giaText}${mezzNote} across ${context.buildingCount} building(s).`;
-  // Closing: use the score-band implication then add a site-specific UW consequence statement.
-  const constructionConsequence = (claddingPresentCount > 0 || flatTextIndicatesCombustible)
-    ? 'The primary underwriting consequence is elevated fire spread velocity, smoke-contamination scope extending beyond directly damaged areas, and disproportionate reinstatement complexity relative to initial ignition size.'
-    : scoreBand.resilienceLabel === 'weaker'
-      ? 'The primary underwriting consequence is elevated escalation risk and non-trivial reinstatement complexity under a severe fire scenario.'
-      : 'The underwriting relevance is reinstatement complexity and business interruption duration — both are sensitive to frame type, compartment integrity, and roof construction performance under fire conditions.';
-  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}). ${scoreBand.constructionImplication} Site combustible proportion is ${combustibleText}. ${geometryText} ${claddingText} ${constructionConsequence}`;
+  // Closing: UW consequence statement — references sandwich panel risk when detected.
+  const constructionConsequence = sandwichPanelInDescription
+    ? 'The primary underwriting consequence is elevated fire spread velocity due to concealed panel-core propagation, smoke-contamination scope extending well beyond the immediate area of origin, and disproportionate reinstatement complexity relative to the apparent damage quantum.'
+    : claddingPresentCount > 0
+      ? 'The primary underwriting consequence is elevated fire spread velocity, smoke-contamination scope extending beyond directly damaged areas, and disproportionate reinstatement complexity relative to initial ignition size.'
+      : scoreBand.resilienceLabel === 'weaker'
+        ? 'The primary underwriting consequence is elevated escalation risk and non-trivial reinstatement complexity under a severe fire scenario.'
+        : 'The underwriting relevance is reinstatement complexity and business interruption duration — both are sensitive to frame type, compartment integrity, and roof construction performance under fire conditions.';
+  const panelSection = sandwichPanelText ? ` ${sandwichPanelText}` : '';
+  return `Engineering Interpretation: Site construction score is ${scoreText} (${scoreBand.label}). ${scoreBand.constructionImplication} Site combustible proportion is ${combustibleText}. ${geometryText} ${externalCladdingText}${panelSection} ${constructionConsequence}`;
 }
 
 function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: SignificanceLevel; narrative: string } {
