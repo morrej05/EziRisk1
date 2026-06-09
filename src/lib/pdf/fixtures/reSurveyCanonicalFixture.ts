@@ -136,9 +136,48 @@ export function createCanonicalReSurveyFixture() {
           assessor_notes: `${longNarrative} Fire protection narrative extension: routine testing is generally timely, yet impairment handover quality is inconsistent during multi-contractor works and return-to-service sign-off occasionally lacks clear accountable owner confirmation.`,
           data: {
             fire_protection: {
-              sprinklers_present: 'Yes — wet-pipe ESFR system in main storage halls with mixed-age branch upgrades in extension zones',
-              automatic_detection: 'Addressable detection with aspirating points in selected high-value mezzanine zones',
-              hydrants: 'On-site private ring main with external hydrants; latest flow tests indicate marginal pressure at furthest standpipe during peak demand',
+              // Building-level records: Scenario C — sprinklers installed, coverage gap present.
+              buildings: {
+                'building-main-hall': {
+                  sprinklerData: {
+                    sprinklers_installed: 'Yes',
+                    sprinkler_coverage_installed_pct: 85,
+                    sprinkler_coverage_required_pct: 100,
+                    sprinkler_adequacy: 'Inadequate',
+                    maintenance_status: 'Mixed',
+                    system_type: 'esfr',
+                    sprinkler_standard: 'EN 12845',
+                    hazard_class: 'OH3',
+                    no_sprinklers_commentary: '',
+                    localised_required: 'Yes',
+                    localised_present: 'No',
+                    localised_type: 'CO2 suppression',
+                    localised_protected_asset: 'Battery charging bay',
+                    detection_installed: 'Yes',
+                    detection_types: ['Smoke', 'Aspirating'],
+                    alarm_monitoring: 'ARC',
+                  },
+                },
+              },
+              site: {
+                water: {
+                  water_reliability: 'Reliable',
+                  supply_type: 'Private ring main with external hydrants',
+                  pumps_present: true,
+                  pump_arrangement: 'Duty+Standby',
+                  power_resilience: 'Good',
+                  testing_regime: 'Documented',
+                  key_weaknesses: 'Marginal pressure at furthest standpipe during peak demand',
+                },
+              },
+              supplementary_assessment: {
+                overall_score: 3,
+                questions: [
+                  { key: 'design_basis', label: 'Design basis verified', score_1_5: 3 },
+                  { key: 'itm_quality', label: 'ITM quality', score_1_5: 3 },
+                  { key: 'impairment_governance', label: 'Impairment governance', score_1_5: 2 },
+                ],
+              },
             },
             management: {
               impairment_management: 'Documented impairment permit in place, but temporary bypass periods and overnight monitoring duties are not always evidenced with consistent timestamps',

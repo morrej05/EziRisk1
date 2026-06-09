@@ -278,6 +278,8 @@ function resolveFireProtectionField(...fields: unknown[]): string {
 }
 
 function formatDataPercent(value: unknown): string {
+  // Treat null/undefined as absent data, not as 0. Number(null) === 0 would be misleading.
+  if (value === null || value === undefined) return 'Data not provided';
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 'Data not provided';
   return `${numeric}%`;
@@ -548,24 +550,88 @@ function drawSimpleTable(
   return { page, yPosition: yPosition - 8 };
 }
 
-function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Breakdown; linkedRecommendationCount?: number } = {}): Row[] {
+export function getSectionTableRows(module: ModuleInstance, options: { breakdown?: Breakdown; linkedRecommendationCount?: number } = {}): Row[] {
   const d = module.data || {};
   if (module.module_key === 'RE_06_FIRE_PROTECTION') {
     const fp = (d as any).fire_protection || {};
     const buildings = Object.values((fp.buildings || {}) as Record<string, any>);
-    const required = buildings.reduce((sum: number, b: any) => sum + Number(b?.sprinklerData?.sprinkler_coverage_required_pct || 0), 0);
-    const installed = buildings.reduce((sum: number, b: any) => sum + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct || 0), 0);
     const supplementary = fp.supplementary_assessment || {};
     const scoredQuestions = Array.isArray(supplementary.questions)
       ? supplementary.questions.filter((q: any) => Number.isFinite(Number(q?.score_1_5)))
       : [];
     const pillar = options.breakdown?.globalPillars.find((p) => p.key === 'fire_protection');
-    const count = buildings.length || 1;
-    const hasBuildingData = buildings.length > 0;
+
+    if (!buildings.length) {
+      return compactRows([
+        ['Buildings assessed', 'Not entered at building level'],
+        ['Sprinkler coverage', 'Not entered at building level'],
+        ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
+        ['Supplementary assessment (questions rated)', `${scoredQuestions.length}`],
+        ['Supplementary engineering overall score', formatScoreOutOfFive(supplementary.overall_score)],
+        ['Fire protection weighted contribution', pillar ? formatWeightedScore(pillar.score, pillar.maxScore) : 'Not stated'],
+        ['Linked recommendations', `${options.linkedRecommendationCount ?? 0}`],
+      ]);
+    }
+
+    // Classify each building by its sprinkler installation status so the PDF never
+    // shows misleading 0%/0% coverage for buildings where sprinklers are simply absent.
+    const installedBuildings = buildings.filter((b: any) => {
+      const status = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+      return status === 'Yes' || status === 'Partial';
+    });
+    const warrantedAbsentBuildings = buildings.filter((b: any) => {
+      const status = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+      const warranted = String(b?.sprinklerData?.sprinklers_warranted ?? '').trim();
+      return status === 'No' && warranted === 'Yes';
+    });
+    const notWarrantedBuildings = buildings.filter((b: any) => {
+      const status = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+      const warranted = String(b?.sprinklerData?.sprinklers_warranted ?? '').trim();
+      return status === 'No' && (warranted === 'No' || warranted === '');
+    });
+
+    // Derive a single summary statement for sprinkler status/coverage.
+    // These four cases are mutually exclusive in priority order.
+    let sprinklerSummaryRow: Row;
+    let coverageRow: Row;
+
+    if (installedBuildings.length > 0 && warrantedAbsentBuildings.length > 0) {
+      // Mixed site — some buildings have systems, others have an unmitigated gap.
+      const reqSum = installedBuildings.reduce(
+        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_required_pct ?? 0), 0
+      );
+      const instSum = installedBuildings.reduce(
+        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct ?? 0), 0
+      );
+      const n = installedBuildings.length;
+      sprinklerSummaryRow = ['Sprinkler status', `Installed in ${installedBuildings.length} building(s); absent (warranted) in ${warrantedAbsentBuildings.length} building(s)`];
+      coverageRow = ['Sprinkler coverage (avg required / installed)', `${Math.round((reqSum / n) * 10) / 10}% req / ${Math.round((instSum / n) * 10) / 10}% inst (installed buildings only)`];
+    } else if (installedBuildings.length > 0) {
+      const reqSum = installedBuildings.reduce(
+        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_required_pct ?? 0), 0
+      );
+      const instSum = installedBuildings.reduce(
+        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct ?? 0), 0
+      );
+      const n = installedBuildings.length;
+      sprinklerSummaryRow = ['Sprinkler status', `Installed in ${installedBuildings.length} of ${buildings.length} building(s)`];
+      coverageRow = ['Sprinkler coverage (avg required / installed)', `${Math.round((reqSum / n) * 10) / 10}% req / ${Math.round((instSum / n) * 10) / 10}% inst`];
+    } else if (warrantedAbsentBuildings.length > 0) {
+      sprinklerSummaryRow = ['Sprinkler status', `Sprinklers absent; protection warranted (${warrantedAbsentBuildings.length} building(s))`];
+      coverageRow = ['Sprinkler coverage', 'Not applicable - system absent'];
+    } else if (notWarrantedBuildings.length > 0) {
+      sprinklerSummaryRow = ['Sprinkler status', 'Sprinklers absent; not considered warranted'];
+      coverageRow = ['Sprinkler coverage', 'Not applicable'];
+    } else {
+      // Unknown or unrecorded status
+      sprinklerSummaryRow = ['Sprinkler status', 'Sprinkler status unknown'];
+      coverageRow = ['Sprinkler coverage', 'Not assessed'];
+    }
+
     return compactRows([
-      ['Buildings assessed', formatValue(buildings.length || 'Not entered at building level')],
-      ['Avg sprinkler required coverage', hasBuildingData ? `${Math.round((required / count) * 10) / 10}%` : 'Not entered at building level'],
-      ['Avg sprinkler installed coverage', hasBuildingData ? `${Math.round((installed / count) * 10) / 10}%` : 'Not entered at building level'],
+      ['Buildings assessed', `${buildings.length}`],
+      sprinklerSummaryRow,
+      coverageRow,
       ['Water supply reliability', formatValue(fp.site?.water?.water_reliability)],
       ['Supplementary assessment (questions rated)', `${scoredQuestions.length}`],
       ['Supplementary engineering overall score', formatScoreOutOfFive(supplementary.overall_score)],
@@ -1187,11 +1253,35 @@ function getFireProtectionCoverageTable(module: ModuleInstance): { headers: stri
   const rows = compactRows(Object.entries(buildings).map(([buildingId, buildingData]: [string, any], index: number): Row => {
     const sprinklerData = buildingData?.sprinklerData || {};
     const displayName = resolveBuildingDisplayName(buildingId, buildingData, index);
+    const installedStatus = String(sprinklerData?.sprinklers_installed ?? '').trim();
+    const warrantedStatus = String(sprinklerData?.sprinklers_warranted ?? '').trim();
+
+    // Coverage cells depend on whether sprinklers actually exist.
+    let installedCoverageCell: string;
+    let requiredCoverageCell: string;
+    if (installedStatus === 'Yes' || installedStatus === 'Partial') {
+      // Installed system — show actual coverage percentages (null shows as "Data not provided").
+      installedCoverageCell = resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_installed_pct));
+      requiredCoverageCell  = resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_required_pct));
+    } else if (installedStatus === 'No') {
+      if (warrantedStatus === 'Yes') {
+        installedCoverageCell = 'Not applicable - system absent';
+        requiredCoverageCell  = 'Not applicable - system absent';
+      } else {
+        installedCoverageCell = 'Not applicable';
+        requiredCoverageCell  = 'Not applicable';
+      }
+    } else {
+      // Unknown or unset
+      installedCoverageCell = 'Not assessed';
+      requiredCoverageCell  = 'Not assessed';
+    }
+
     return [
       formatDataValue(displayName),
       resolveFireProtectionField(sprinklerData?.sprinklers_installed),
-      resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_installed_pct)),
-      resolveFireProtectionField(formatDataPercent(sprinklerData?.sprinkler_coverage_required_pct)),
+      installedCoverageCell,
+      requiredCoverageCell,
       resolveFireProtectionField(sprinklerData?.system_type),
       resolveFireProtectionField(sprinklerData?.standard ?? sprinklerData?.sprinkler_standard),
     ];
@@ -2010,16 +2100,71 @@ function buildLossValuesEngineeringInterpretation(module: ModuleInstance, _break
 function buildFireProtectionEngineeringInterpretation(module: ModuleInstance): string {
   const fp = ((module.data as any)?.fire_protection || module.data || {}) as any;
   const buildings = Object.values((fp?.buildings || {}) as Record<string, any>);
-  const sprinklerRequiredCount = buildings.filter((b: any) => Number.isFinite(Number(b?.sprinklerData?.sprinkler_coverage_required_pct)) && Number(b?.sprinklerData?.sprinkler_coverage_required_pct) > 0).length;
-  const sprinklerInstalledCount = buildings.filter((b: any) => (b?.sprinklerData?.sprinklers_installed === 'Yes' || Number(b?.sprinklerData?.sprinkler_coverage_installed_pct) > 0)).length;
-  const localisedMissing = buildings.filter((b: any) => b?.sprinklerData?.localised_required === 'Yes' && b?.sprinklerData?.localised_present === 'No').length;
   const water = fp?.site?.water || {};
   const reliability = formatDataValue(water?.water_reliability).toLowerCase();
-  const reliabilityNarrative = reliability.includes('reliable') ? 'water supply reliability appears broadly resilient' : reliability.includes('unreliable') ? 'water supply reliability is a material weakness' : 'water supply reliability is uncertain from submitted evidence';
+  const reliabilityNarrative = reliability.includes('reliable')
+    ? 'water supply reliability appears broadly resilient'
+    : reliability.includes('unreliable')
+      ? 'water supply reliability is a material weakness'
+      : 'water supply reliability is uncertain from submitted evidence';
+
   if (buildings.length === 0) {
     return `Engineering Interpretation: No building-level fire protection records have been entered for this module. Fixed-protection coverage, detection and localised protection cannot be quantified from submitted data. ${reliabilityNarrative}. Assessor narrative and any supplementary inputs should be reviewed to judge installed protection adequacy and suppression reliability.`;
   }
-  return `Engineering Interpretation: Building-level fixed protection records show ${sprinklerInstalledCount} building(s) with installed sprinkler coverage against ${sprinklerRequiredCount} building(s) showing a stated requirement. ${reliabilityNarrative}. Localised/special protection gaps are identified in ${localisedMissing} building(s), and should be prioritised where high-value or high-challenge hazards are present. Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.`;
+
+  // Classify by actual installation status — never infer from coverage percentages alone.
+  const installedBuildings = buildings.filter((b: any) => {
+    const s = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+    return s === 'Yes' || s === 'Partial';
+  });
+  const warrantedAbsent = buildings.filter((b: any) => {
+    const s = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+    const w = String(b?.sprinklerData?.sprinklers_warranted ?? '').trim();
+    return s === 'No' && w === 'Yes';
+  });
+  const localisedMissing = buildings.filter(
+    (b: any) => b?.sprinklerData?.localised_required === 'Yes' && b?.sprinklerData?.localised_present === 'No'
+  ).length;
+
+  const parts: string[] = [];
+
+  if (installedBuildings.length > 0) {
+    const reqCount = installedBuildings.filter(
+      (b: any) => Number(b?.sprinklerData?.sprinkler_coverage_required_pct) > 0
+    ).length;
+    parts.push(
+      `${installedBuildings.length} of ${buildings.length} building(s) have automatic sprinkler systems installed; ${reqCount} show a stated coverage requirement.`
+    );
+  }
+
+  if (warrantedAbsent.length > 0) {
+    parts.push(
+      `${warrantedAbsent.length} building(s) have no automatic sprinklers installed. Protection is considered warranted based on the assessed hazard profile — this represents a material protection deficiency.`
+    );
+  }
+
+  if (installedBuildings.length === 0 && warrantedAbsent.length === 0) {
+    // All buildings are either not warranted or status unknown
+    const unknownCount = buildings.filter((b: any) => {
+      const s = String(b?.sprinklerData?.sprinklers_installed ?? '').trim();
+      return s === 'Unknown' || s === '';
+    }).length;
+    if (unknownCount === buildings.length) {
+      parts.push(`Sprinkler status unknown across ${buildings.length} building(s). Clarify installation status to enable a protection coverage assessment.`);
+    } else {
+      parts.push(`Automatic sprinkler protection is not installed across ${buildings.length} building(s). Sprinklers are not considered warranted for the assessed occupancy and hazard profile.`);
+    }
+  }
+
+  parts.push(`${reliabilityNarrative}.`);
+
+  if (localisedMissing > 0) {
+    parts.push(`Localised/special protection gaps are identified in ${localisedMissing} building(s) and should be prioritised where high-value or high-challenge hazards are present.`);
+  }
+
+  parts.push('Supplementary fire-engineering outputs, testing evidence and impairment governance records should be read together to judge expected suppression reliability during a severe event.');
+
+  return `Engineering Interpretation: ${parts.join(' ')}`;
 }
 
 function buildConstructionEngineeringInterpretation(module: ModuleInstance, breakdown: Breakdown): string {

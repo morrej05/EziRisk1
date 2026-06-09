@@ -160,3 +160,109 @@ describe('Management Systems — three-state rendering', () => {
     expect(sig?.narrative).toContain('not been assessed');
   });
 });
+
+// ─── RE06 Fire Protection — three sprinkler scenarios ────────────────────────
+
+function makeRe06Module(buildings: Record<string, unknown>): any {
+  return {
+    id: 're06',
+    module_key: 'RE_06_FIRE_PROTECTION',
+    outcome: null,
+    assessor_notes: '',
+    completed_at: null,
+    updated_at: '',
+    data: { fire_protection: { buildings } },
+  };
+}
+
+describe('RE06 Fire Protection — sprinkler scenario rendering', () => {
+  // ── Scenario A: No sprinklers, warranted = Yes ─────────────────────────────
+  it('Scenario A — absent + warranted: Section Snapshot status = "Sprinklers absent; protection warranted"', () => {
+    const module = makeRe06Module({
+      b1: { sprinklerData: { sprinklers_installed: 'No', sprinklers_warranted: 'Yes', sprinkler_coverage_installed_pct: null, sprinkler_coverage_required_pct: null } },
+    });
+    const rows = helpers.getSectionTableRows(module, {});
+    const statusRow = rows.find((r: string[]) => r[0] === 'Sprinkler status');
+    expect(statusRow).toBeDefined();
+    expect(statusRow![1]).toContain('Sprinklers absent');
+    expect(statusRow![1]).toContain('warranted');
+    const coverageRow = rows.find((r: string[]) => r[0] === 'Sprinkler coverage');
+    expect(coverageRow![1]).toBe('Not applicable - system absent');
+    expect(coverageRow![1]).not.toMatch(/\b0%/);
+  });
+
+  it('Scenario A — absent + warranted: Engineering Interpretation mentions warranted deficiency', () => {
+    const module = makeRe06Module({
+      b1: { sprinklerData: { sprinklers_installed: 'No', sprinklers_warranted: 'Yes', sprinkler_coverage_installed_pct: null, sprinkler_coverage_required_pct: null } },
+    });
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).toContain('warranted');
+    expect(interp).toContain('deficiency');
+    expect(interp).not.toContain('0 building(s) with installed');
+  });
+
+  // ── Scenario B: No sprinklers, warranted = No ───────────────────────────────
+  it('Scenario B — absent + not warranted: status = "Sprinklers absent; not considered warranted"', () => {
+    const module = makeRe06Module({
+      b1: { sprinklerData: { sprinklers_installed: 'No', sprinklers_warranted: 'No', sprinkler_coverage_installed_pct: null, sprinkler_coverage_required_pct: null } },
+    });
+    const rows = helpers.getSectionTableRows(module, {});
+    const statusRow = rows.find((r: string[]) => r[0] === 'Sprinkler status');
+    expect(statusRow![1]).toBe('Sprinklers absent; not considered warranted');
+    const coverageRow = rows.find((r: string[]) => r[0] === 'Sprinkler coverage');
+    expect(coverageRow![1]).toBe('Not applicable');
+    expect(coverageRow![1]).not.toMatch(/\b0%/);
+
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).not.toContain('protection deficiency');
+    expect(interp).not.toContain('material protection deficiency');
+    expect(interp).toContain('not considered warranted');
+  });
+
+  // ── Scenario Unknown ────────────────────────────────────────────────────────
+  it('Scenario Unknown — sprinkler status not recorded: shows "Sprinkler status unknown"', () => {
+    const module = makeRe06Module({
+      b1: { sprinklerData: { sprinklers_installed: 'Unknown' } },
+    });
+    const rows = helpers.getSectionTableRows(module, {});
+    const statusRow = rows.find((r: string[]) => r[0] === 'Sprinkler status');
+    expect(statusRow![1]).toBe('Sprinkler status unknown');
+    const coverageRow = rows.find((r: string[]) => r[0] === 'Sprinkler coverage');
+    expect(coverageRow![1]).toBe('Not assessed');
+  });
+
+  // ── Scenario C: Sprinklers installed ───────────────────────────────────────
+  it('Scenario C — sprinklers installed: shows actual required/installed percentages', () => {
+    const module = makeRe06Module({
+      b1: { sprinklerData: { sprinklers_installed: 'Yes', sprinkler_coverage_required_pct: 100, sprinkler_coverage_installed_pct: 80 } },
+    });
+    const rows = helpers.getSectionTableRows(module, {});
+    const coverageRow = rows.find((r: string[]) => r[0]?.includes('avg'));
+    expect(coverageRow![1]).toContain('100%');
+    expect(coverageRow![1]).toContain('80%');
+
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).toContain('installed');
+    expect(interp).not.toContain('warranted based on the assessed hazard');
+  });
+
+  // ── Scenario C mixed: some installed, some absent+warranted ────────────────
+  it('Scenario C — mixed: installed building coverage + warranted-absent deficiency both surfaced', () => {
+    const module = makeRe06Module({
+      b1: { sprinklerData: { sprinklers_installed: 'Yes', sprinkler_coverage_required_pct: 100, sprinkler_coverage_installed_pct: 90 } },
+      b2: { sprinklerData: { sprinklers_installed: 'No', sprinklers_warranted: 'Yes', sprinkler_coverage_required_pct: null, sprinkler_coverage_installed_pct: null } },
+    });
+    const rows = helpers.getSectionTableRows(module, {});
+    const statusRow = rows.find((r: string[]) => r[0] === 'Sprinkler status');
+    expect(statusRow![1]).toContain('absent (warranted)');
+    const coverageRow = rows.find((r: string[]) => r[0]?.includes('avg'));
+    expect(coverageRow![1]).toContain('90%');
+    const buildingRow = rows.find((r: string[]) => r[0]?.toLowerCase().includes('buildings'));
+    expect(buildingRow![1]).toBe('2');
+
+    const interp = helpers.buildSectionInterpretation(module, breakdown);
+    expect(interp).toContain('installed');
+    expect(interp).toContain('warranted');
+    expect(interp).toContain('deficiency');
+  });
+});
