@@ -386,6 +386,87 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
     hazard_text: 'Sub-standard emergency response and continuity planning can significantly extend incident duration and property damage, and delay resumption of operations, increasing overall loss.',
   },
 
+  // ─── RE07 Exposures / natural-hazard peril factor keys ────────────────────────
+
+  exposures_flood: {
+    title: 'Commission site-specific flood resilience review',
+    observation_text: 'Flood exposure has been assessed as presenting a material risk to the site. Current flood resilience measures have not been confirmed as adequate for the assessed flood source and expected depth.',
+    action_required_text: 'Undertake a site-specific flood resilience review for the factory, including flood source, expected flood depth, critical plant exposure, stock vulnerability, drainage condition, access constraints and emergency response arrangements. Confirm whether temporary or permanent flood barriers, raised storage, plant protection, drainage maintenance or emergency relocation procedures are required.',
+    hazard_text: 'Inadequate flood resilience can result in prolonged inundation of process equipment, stock, and utilities, with direct property loss compounded by extended business interruption pending drainage, decontamination, and equipment recommissioning.',
+  },
+
+  exposures_wind_storm: {
+    title: 'Improve windstorm resilience for roof, cladding and critical plant',
+    observation_text: 'Windstorm exposure has been assessed as presenting a material risk. Roof, cladding, and external plant resilience to wind loading have not been confirmed as adequate.',
+    action_required_text: 'Assess roof sheet fixings, cladding anchorage, rooflights, external plant, and drainage outlets against design wind load for the site location. Identify and rectify items that could fail or dislodge in a severe windstorm event. Confirm emergency response arrangements for wind-damage scenarios.',
+    hazard_text: 'Roof and cladding failure in a severe windstorm can cause direct structural damage, expose process equipment and stock to weather, and create secondary fire or equipment hazards from dislodged services.',
+  },
+
+  exposures_wildfire: {
+    title: 'Implement wildfire buffer and external exposure controls',
+    observation_text: 'Wildfire exposure has been assessed as presenting a material risk. External fire spread from vegetation or surroundings has not been adequately controlled.',
+    action_required_text: 'Assess vegetation management, defensible space, and external construction materials in relation to wildfire hazard. Implement and maintain a vegetation clearance and management plan. Review emergency procedures for site evacuation and utility isolation under wildfire threat.',
+    hazard_text: 'Wildfire can cause rapid external ignition and structural loss, with limited opportunity for effective fire service intervention under severe conditions. Smoke and heat damage can affect process equipment, stock, and utilities beyond the directly ignited area.',
+  },
+
+  exposures_earthquake: {
+    title: 'Assess and improve seismic resilience for critical plant and structure',
+    observation_text: 'Seismic exposure has been assessed as presenting a material risk. Structural seismic resilience and critical plant anchorage have not been confirmed as adequate.',
+    action_required_text: 'Commission a seismic risk assessment covering structural resilience, critical plant and equipment anchorage, utility connection flexibility, and emergency response capability. Implement priority mitigations for highest-consequence items and confirm emergency shutdown procedures for seismic events.',
+    hazard_text: 'Inadequate seismic resilience can result in structural damage, critical plant failure, utility disruption, and secondary fire or chemical release hazards, with compounded business interruption from concurrent damage across the site.',
+  },
+
+  exposures_human_malicious: {
+    title: 'Strengthen perimeter security and malicious-act resilience',
+    observation_text: 'The site\'s exposure to deliberate or opportunistic loss from human threat has been assessed as requiring attention. Access controls, perimeter security, and threat-response arrangements are not confirmed as adequate.',
+    action_required_text: 'Review perimeter security arrangements, access control effectiveness, CCTV coverage, and response protocols for deliberate or opportunistic loss. Identify and address specific vulnerability points for this site type and location. Document emergency response procedures for security incidents.',
+    hazard_text: 'Inadequate security controls create vulnerability to malicious damage, arson, or opportunistic loss, with the potential for fire or chemical incidents that are more difficult to detect and control than accidental events.',
+  },
+
+  // ─── RE09 Management category factor keys ────────────────────────────────────
+
+  management_hot_work: {
+    title: 'Strengthen hot work permit and control procedures',
+    observation_text: 'Hot work controls have been assessed below the acceptable engineering standard. Permit discipline, competency, and fire watch/extinguishment arrangements are insufficient for the work types undertaken on this site.',
+    action_required_text: 'Review and strengthen the hot work permit-to-work system, covering pre-work risk assessment, area preparation, equipment condition checks, permit authority, fire watch duration, and sign-off requirements. Confirm that all contractors and in-house trades are subject to the permit system and that compliance is audited periodically.',
+    hazard_text: 'Inadequate hot work controls are a recurring cause of large fire losses, particularly where combustible construction is present. Sparks, slag, or heat transfer can initiate fire in concealed locations that are not detected until a full fire has developed.',
+  },
+
+  management_maintenance: {
+    title: 'Improve planned maintenance governance for loss-critical equipment',
+    observation_text: 'Maintenance programme quality has been assessed below the acceptable engineering standard. Planned maintenance scheduling, defect close-out tracking, and evidence retention are insufficient.',
+    action_required_text: 'Define a risk-based planned maintenance schedule for loss-critical equipment including fryer systems, electrical equipment, refrigeration plant, detection systems, localised protection, and emergency shutdown controls. Implement tracked defect close-out with named accountable owners and completion-date discipline. Retain maintenance records as evidence of system condition.',
+    hazard_text: 'Weak maintenance governance increases the probability of equipment failure that initiates or escalates incidents, and reduces the reliability of protection systems when most needed. For this occupancy, degraded fryer controls, electrical faults, or refrigeration failures are direct loss drivers.',
+  },
+
+  management_impairment_management: {
+    title: 'Strengthen impairment control and protection system downtime management',
+    observation_text: 'Impairment management has been assessed below the acceptable engineering standard. Protection system outages are not consistently controlled, tracked, or restored within defined timeframes.',
+    action_required_text: 'Implement or strengthen formal impairment control procedures covering permit authorisation, compensatory protection measures, escalation triggers, and restoration verification for all fire protection and detection system outages. Maintain a live impairment register and review at management level.',
+    hazard_text: 'Uncontrolled protection impairments can leave the site without suppression, detection, or alarm capability during the period most likely to produce a large loss — when systems are under maintenance or test.',
+  },
+
+  management_contractor_control: {
+    title: 'Improve contractor management and site induction controls',
+    observation_text: 'Contractor management has been assessed below the acceptable engineering standard. Site induction, permit compliance, and contractor oversight are insufficient.',
+    action_required_text: 'Strengthen contractor management controls including pre-qualification, site induction content, permit-to-work supervision, and post-work sign-off for all contractors working on site. Confirm emergency evacuation and communication procedures are covered in induction and understood by contractors.',
+    hazard_text: 'Inadequate contractor controls are a leading cause of fire incidents from hot work, electrical work, and inadvertent hazardous-material contact. Contractors unfamiliar with site hazards present elevated ignition and escalation risk.',
+  },
+
+  management_emergency_planning: {
+    title: 'Improve emergency response planning and drill frequency',
+    observation_text: 'Emergency response planning has been assessed below the acceptable engineering standard. Plans, drills, and on-site emergency resource provision are insufficient for credible incident scenarios.',
+    action_required_text: 'Review and update site emergency response plans covering fire, chemical release, utility failure, flood, and evacuation scenarios applicable to this site. Schedule and record drills at appropriate frequency. Confirm emergency service liaison and access arrangements. Document business continuity actions for extended production outage.',
+    hazard_text: 'Inadequate emergency response capability extends incident duration and damage scope, and can delay site access for emergency services. For this occupancy, delayed response to ammonia or fryer fire incidents carries particular escalation risk.',
+  },
+
+  management_housekeeping: {
+    title: 'Improve site housekeeping and fire load management',
+    observation_text: 'Site housekeeping has been assessed below the acceptable engineering standard. Combustible waste accumulation, storage discipline, and housekeeping routine are insufficient.',
+    action_required_text: 'Implement a housekeeping inspection regime with regular scheduled checks, documented results, and accountable ownership. Address combustible waste accumulation, particularly near process plant, ignition sources, and electrical equipment. Establish clear storage disciplines for raw materials, packaging, and finished goods.',
+    hazard_text: 'Poor housekeeping creates additional fire load close to ignition sources, increases flame spread velocity, and can obstruct fire service access. Combustible waste near fryer extraction or electrical equipment is a direct ignition pathway.',
+  },
+
   // ─── RE03 occupancy factor keys ───────────────────────────────────────────────
 
   re03_occ_fire_load_density: {
@@ -558,7 +639,18 @@ async function buildRecommendationPayload(params: {
   });
 
   const fallback = buildFallbackContent(sourceFactorKey || sourceModuleKey);
-  const priority = rating_1_5 === 1 ? 'High' : 'Medium';
+  // Warranted-absent sprinklers and required-but-missing fixed protection are always High
+  // priority regardless of the numeric rating — absence of warranted suppression is the
+  // most severe underwriting exposure regardless of how the factor was scored.
+  const HIGH_PRIORITY_FACTOR_PREFIXES = [
+    're06_fp_sprinklers_warranted_absent',
+    're06_fp_adequacy_fixed_protection_required',
+    're06_fp_localised_required_installation',
+  ];
+  const forceHigh = HIGH_PRIORITY_FACTOR_PREFIXES.some(
+    (prefix) => sourceFactorKey?.startsWith(prefix)
+  );
+  const priority = forceHigh || rating_1_5 === 1 ? 'High' : 'Medium';
 
   if (libraryTemplate) {
     return {

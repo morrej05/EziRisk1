@@ -105,6 +105,7 @@ interface Action {
   title?: string | null;
   hazard_text?: string | null;
   source_module_key?: string | null;
+  source_factor_key?: string | null;
   photos?: Array<unknown> | null;
   priority_band: string;
   status: string;
@@ -3950,12 +3951,46 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     });
     yPosition = sectionBreak(yPosition, 12);
 
+    // Natural hazard / exposure factor keys: recs carrying these factor keys must always
+    // show under the Exposures section regardless of which module created them.
+    // This corrects recs created from the RE03 Occupancy form for the cross-cutting
+    // natural_hazard_exposure_and_controls driver (module key stored as RE_03_OCCUPANCY).
+    const NATURAL_HAZARD_FACTOR_KEY_PATTERNS = [
+      /^exposures_/,
+      /^natural_hazard/,
+    ];
+    function resolveRecommendationSectionLabel(action: Action): string {
+      const factorKey = action.source_factor_key || '';
+      if (factorKey && NATURAL_HAZARD_FACTOR_KEY_PATTERNS.some((rx) => rx.test(factorKey))) {
+        return getModuleDisplayName('RE_07_NATURAL_HAZARDS');
+      }
+      const linkedModule = modulesById.get(action.module_instance_id);
+      return getModuleDisplayName(action.source_module_key || linkedModule?.module_key || '');
+    }
+
+    // Deduplicate recommendations: within each status group, suppress exact-duplicate
+    // (same source_module_key + source_factor_key) entries beyond the first occurrence.
+    // This prevents double entries where two module save cycles created the same factor rec.
+    function deduplicateRecommendations(recs: Action[]): Action[] {
+      const seen = new Set<string>();
+      return recs.filter((action) => {
+        const moduleKey = action.source_module_key || '';
+        const factorKey = action.source_factor_key || action.id;
+        // Only deduplicate when both keys are present — manual/assessor recs (no factor key) always shown
+        if (!action.source_factor_key) return true;
+        const dedupeKey = `${moduleKey}::${factorKey}`;
+        if (seen.has(dedupeKey)) return false;
+        seen.add(dedupeKey);
+        return true;
+      });
+    }
+
     const drawRecommendationSection = (heading: string, rows: Action[]) => {
+      const deduped = deduplicateRecommendations(rows);
       yPosition = drawBlockHeading(page, yPosition, heading, fontBold);
       yPosition = sectionBreak(yPosition, 8);
-      const tableRows = rows.map((action) => {
-        const linkedModule = modulesById.get(action.module_instance_id);
-        const sectionLabel = getModuleDisplayName(action.source_module_key || linkedModule?.module_key || '');
+      const tableRows = deduped.map((action) => {
+        const sectionLabel = resolveRecommendationSectionLabel(action);
         // JSONB is per-recommendation accurate; attachment count is a fallback
         // for recs where JSONB is absent (upload succeeded, save did not finish).
         const jsonbPhotoCount = Array.isArray(action.photos) ? action.photos.length : 0;

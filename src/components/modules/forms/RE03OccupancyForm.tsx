@@ -154,9 +154,15 @@ export default function RE03OccupancyForm({
 
       setRiskEngData(updatedRiskEngData);
 
+      // The natural_hazard_exposure_and_controls driver is cross-cutting — its recommendation
+      // belongs under the Exposures section (RE_07_NATURAL_HAZARDS), not Occupancy. Use the
+      // correct module key so the PDF renders it under the right section heading.
+      const recModuleKey = canonicalKey === 'natural_hazard_exposure_and_controls'
+        ? 'RE_07_NATURAL_HAZARDS'
+        : 'RE_03_OCCUPANCY';
       const lifecycleState = await syncAutoRecToRegister({
         documentId: moduleInstance.document_id,
-        moduleKey: 'RE_03_OCCUPANCY',
+        moduleKey: recModuleKey,
         canonicalKey,
         moduleInstanceId: moduleInstance.id,
         rating_1_5: newRating,
