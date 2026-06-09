@@ -1781,8 +1781,15 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
     (module.data as any)?.occupancyProductsServices,
     (module.data as any)?.activityOverview
   );
+  // Normalise legacy hazard labels that used '&' or informal phrasing.
+  const HAZARD_LABEL_NORMALISE: Record<string, string> = {
+    'Flammable gases & chemicals': 'Flammable gases and chemicals',
+  };
   const hazardLabels = hazards
-    .map((hazard: any) => String(hazard?.hazard_label || hazard?.hazard_key || '').trim())
+    .map((hazard: any) => {
+      const raw = String(hazard?.hazard_label || hazard?.hazard_key || '').trim();
+      return HAZARD_LABEL_NORMALISE[raw] ?? raw;
+    })
     .filter(Boolean)
     .slice(0, 3)
     .join(', ');
@@ -2436,7 +2443,7 @@ function buildLossValuesEngineeringInterpretation(module: ModuleInstance, _break
 
   // Closing — links financial data to engineering findings.
   const closing = loss.effectivePropertyTotal > 0 || loss.grossProfitAnnual > 0
-    ? 'These values frame the financial materiality of the construction, fire-protection, and occupancy findings — loss expectancy percentages should be applied against the declared sums to translate engineering risk judgements into expected loss quantum.'
+    ? 'These values frame the financial materiality of the construction, fire-protection, and occupancy findings — loss expectancy percentages should be applied against the declared sums to translate engineering risk judgements into expected loss quantum. Loss expectancy scenario descriptions are assessor-estimated narratives; any construction proportions or percentages stated within them are indicative and should be cross-referenced against the calculated outputs in the Construction section.'
     : 'Without complete declared values, loss expectancy scenarios cannot be translated into financial quantum. Obtaining complete sums insured — including BI — is necessary before the engineering findings can be assessed for underwriting adequacy.';
 
   return [propText, biText, indemnityFlag, ratioFlag, closing].filter(Boolean).join(' ');
@@ -2451,7 +2458,7 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance, al
     ? 'Water supply reliability appears broadly resilient'
     : reliability.includes('unreliable')
       ? 'Water supply reliability is a material weakness'
-      : 'Water supply reliability is uncertain from submitted evidence';
+      : 'Water supply reliability is uncertain from the submitted evidence';
 
   if (buildings.length === 0) {
     return `Engineering Interpretation: No building-level fire protection records have been entered for this module. Fixed-protection coverage, detection and localised protection cannot be quantified from submitted data. ${reliabilityNarrative}. Assessor narrative and any supplementary inputs should be reviewed to judge installed protection adequacy and suppression reliability.`;
@@ -3784,7 +3791,7 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       if (emlEqualsNle) {
         ({ page, yPosition } = ensurePageSpace(60, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawBlockHeading(page, yPosition, 'EML — Estimated Maximum Loss', fontBold);
-        yPosition = drawParagraph(page, yPosition, 'EML = NLE. The estimated maximum loss under near-worst-case conditions is equivalent to the normal loss estimate for this site.', font);
+        yPosition = drawParagraph(page, yPosition, 'The Estimated Maximum Loss is assessed as equivalent to the Normal Loss Estimate for this site. The engineering conditions do not indicate a credible scenario materially exceeding the normal loss expectancy.', font);
         ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
         yPosition = drawLossScenarioTotal(page, yPosition, 'Total EML (= NLE)', nleCalc.totalLoss, currency12, { regular: font, bold: fontBold });
         yPosition = sectionBreak(yPosition);

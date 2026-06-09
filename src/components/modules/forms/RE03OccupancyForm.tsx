@@ -55,7 +55,7 @@ function getIndustrySpecialHazardKeys(industryKey: string | null): string[] {
 
 const GENERIC_HAZARD_OPTIONS = [
   { key: 'ignitable_liquids', label: 'Ignitable liquids' },
-  { key: 'flammable_gases_chemicals', label: 'Flammable gases & chemicals' },
+  { key: 'flammable_gases_chemicals', label: 'Flammable gases and chemicals' },
   { key: 'dusts_explosive_atmospheres', label: 'Dusts and explosive atmospheres' },
   { key: 'specialised_industrial_equipment', label: 'Specialised industrial equipment' },
   { key: 'emerging_risks', label: 'Emerging risks (PV panels, lithium-ion, etc.)' },
