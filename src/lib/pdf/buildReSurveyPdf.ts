@@ -595,27 +595,29 @@ export function getSectionTableRows(module: ModuleInstance, options: { breakdown
     let sprinklerSummaryRow: Row;
     let coverageRow: Row;
 
+    // Helper: null-safe coverage average — only averages buildings where the value was actually entered.
+    // Using ?? 0 would produce "0%" for unrecorded fields, which is misleading.
+    const avgCoverage = (bldgs: any[], field: 'sprinkler_coverage_required_pct' | 'sprinkler_coverage_installed_pct'): string => {
+      const entered = bldgs.filter((b: any) => {
+        const v = b?.sprinklerData?.[field];
+        return v !== null && v !== undefined && Number.isFinite(Number(v));
+      });
+      if (entered.length === 0) return 'Not entered';
+      const avg = entered.reduce((s: number, b: any) => s + Number(b?.sprinklerData?.[field]), 0) / entered.length;
+      return `${Math.round(avg * 10) / 10}%`;
+    };
+
     if (installedBuildings.length > 0 && warrantedAbsentBuildings.length > 0) {
       // Mixed site — some buildings have systems, others have an unmitigated gap.
-      const reqSum = installedBuildings.reduce(
-        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_required_pct ?? 0), 0
-      );
-      const instSum = installedBuildings.reduce(
-        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct ?? 0), 0
-      );
-      const n = installedBuildings.length;
+      const avgReq  = avgCoverage(installedBuildings, 'sprinkler_coverage_required_pct');
+      const avgInst = avgCoverage(installedBuildings, 'sprinkler_coverage_installed_pct');
       sprinklerSummaryRow = ['Sprinkler status', `Installed in ${installedBuildings.length} building(s); absent (warranted) in ${warrantedAbsentBuildings.length} building(s)`];
-      coverageRow = ['Sprinkler coverage (avg required / installed)', `${Math.round((reqSum / n) * 10) / 10}% req / ${Math.round((instSum / n) * 10) / 10}% inst (installed buildings only)`];
+      coverageRow = ['Sprinkler coverage (avg required / installed)', `${avgReq} req / ${avgInst} inst (installed buildings only)`];
     } else if (installedBuildings.length > 0) {
-      const reqSum = installedBuildings.reduce(
-        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_required_pct ?? 0), 0
-      );
-      const instSum = installedBuildings.reduce(
-        (s: number, b: any) => s + Number(b?.sprinklerData?.sprinkler_coverage_installed_pct ?? 0), 0
-      );
-      const n = installedBuildings.length;
+      const avgReq  = avgCoverage(installedBuildings, 'sprinkler_coverage_required_pct');
+      const avgInst = avgCoverage(installedBuildings, 'sprinkler_coverage_installed_pct');
       sprinklerSummaryRow = ['Sprinkler status', `Installed in ${installedBuildings.length} of ${buildings.length} building(s)`];
-      coverageRow = ['Sprinkler coverage (avg required / installed)', `${Math.round((reqSum / n) * 10) / 10}% req / ${Math.round((instSum / n) * 10) / 10}% inst`];
+      coverageRow = ['Sprinkler coverage (avg required / installed)', `${avgReq} req / ${avgInst} inst`];
     } else if (warrantedAbsentBuildings.length > 0) {
       sprinklerSummaryRow = ['Sprinkler status', `Sprinklers absent; protection warranted (${warrantedAbsentBuildings.length} building(s))`];
       coverageRow = ['Sprinkler coverage', 'Not applicable - system absent'];
@@ -2352,28 +2354,41 @@ function buildConstructionEngineeringInterpretation(module: ModuleInstance, brea
     : context.combustibilityText;
   const buildings = context.buildings;
   const claddingPresentCount = buildings.filter((building: any) => resolveCladdingDescriptor(building).toLowerCase().startsWith('yes')).length;
-  // Detect combustible material references in flat construction text fields when
-  // no per-building records have been entered.  Sandwich panels (PUR/PIR/phenolic)
-  // and similar composite systems are combustible regardless of labelling.
-  const COMBUSTIBLE_KEYWORDS = /\b(pur|pir|phenolic|sandwich panel|composite panel|insulated panel|metal faced|foam core|polystyrene|eps|xps)\b/i;
+  // Detect combustible material references in flat construction text fields.
+  // These fields capture site-level construction notes that often name specific materials
+  // (PUR, phenolic, sandwich panels) that are combustible regardless of how the surveyor
+  // classified the per-building cladding_present flag.
+  // Note: the regex uses `s?` to match both singular ("panel") and plural ("panels").
+  const COMBUSTIBLE_KEYWORDS = /\b(pur|pir|phenolic|eps|xps|polystyrene|foam core)\b|\b(sandwich panels?|composite panels?|insulated panels?|metal[\s-]faced)\b/i;
   const flatConstructionText = [
     construction?.wall_construction,
     construction?.roof_construction,
     construction?.primary_construction_type,
     construction?.cladding_description,
+    construction?.site_notes,
   ].filter(Boolean).join(' ');
   const flatTextIndicatesCombustible = COMBUSTIBLE_KEYWORDS.test(flatConstructionText);
-  // Cladding description — name sandwich/insulated panel types explicitly when detected.
-  const sandwichPanelKeywords = /\b(pur|pir|phenolic|sandwich panel|composite panel|insulated panel|metal faced|foam core|polystyrene|eps|xps)\b/i;
+  // Identify PUR/PIR/phenolic sandwich-panel systems specifically — highest concealed-spread risk.
+  const sandwichPanelKeywords = /\b(pur|pir|phenolic|foam core|eps|xps)\b|\b(sandwich panels?|composite panels?|insulated panels?)\b/i;
   const sandwichPanelInDescription = sandwichPanelKeywords.test(flatConstructionText);
+  // Derive the cladding statement.
+  // Priority order:
+  //   1. Per-building records show combustible cladding is present
+  //   2. Flat construction text references combustible systems (overrides "no cladding" conclusion)
+  //   3. Per-building records exist but none flag combustible cladding (only if flat text is also clean)
+  //   4. No building records at all
   const claddingText = claddingPresentCount > 0
     ? sandwichPanelInDescription
-      ? `Combustible cladding (including insulated sandwich/composite panel systems) is identified on ${claddingPresentCount} of ${context.buildingCount} building(s). These systems carry rapid fire spread and dense smoke generation risk that is disproportionate to their apparent area contribution.`
+      ? `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s), including insulated sandwich/composite panel systems (PUR/PIR/phenolic). These systems carry concealed-void ignition pathways, rapid fire spread potential, and dense smoke generation risk that is disproportionate to their apparent area contribution.`
       : `Combustible cladding is identified on ${claddingPresentCount} of ${context.buildingCount} building(s).`
-    : context.buildingCount > 0
-      ? 'No combustible cladding is identified in submitted building records.'
-      : flatTextIndicatesCombustible
-        ? 'Building-level cladding records are not available. Construction description references combustible or sandwich-panel systems — cladding combustibility should be confirmed at building level.'
+    : flatTextIndicatesCombustible
+      // Even when building records exist, if construction descriptions reference combustible
+      // systems, the "no cladding" conclusion cannot be relied upon.
+      ? sandwichPanelInDescription
+        ? `Construction descriptions reference insulated sandwich/composite panel systems (including PUR, PIR, and/or phenolic insulated panels). These systems introduce concealed fire spread pathways and toxic/dense smoke risk — per-building cladding records should be completed to confirm the extent of combustible envelope exposure.`
+        : `Construction descriptions reference potentially combustible systems. Per-building cladding records should be completed to confirm the extent of combustible envelope exposure.`
+      : context.buildingCount > 0
+        ? 'No combustible cladding is identified in submitted building records.'
         : 'Building-level cladding records are not available.';
   const giaText = context.totalFloorArea !== null
     ? `total floor area (GIA) ${formatDataValue(context.totalFloorArea)} m²`
@@ -3055,10 +3070,26 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
 
     if (module.module_key === 'RE_03_OCCUPANCY') {
       const occupancyRows = getOccupancyStructuredRows(module);
-      ({ page, yPosition } = ensurePageSpace(100 + occupancyRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
-      yPosition = drawBlockHeading(page, yPosition, 'Inputs — Process / use overview', fontBold);
-      yPosition = drawParagraph(page, yPosition, formatDataValue((module.data as any)?.occupancy?.process_overview ?? (module.data as any)?.occupancy?.process_description ?? (module.data as any)?.occupancy?.operations_description ?? (module.data as any)?.occupancy?.process_use_overview ?? (module.data as any)?.occupancy?.occupancy_type ?? (module.data as any)?.occupancyProductsServices ?? (module.data as any)?.activityOverview), font);
-      yPosition = sectionBreak(yPosition, 12);
+      // Resolve process overview text — do NOT fall back to occupancy_type here because
+      // occupancy_type is separately rendered in the structured fields table below.
+      // Falling back would produce a verbatim duplicate of that row.
+      const processOverviewText = formatDataValue(
+        (module.data as any)?.occupancy?.process_overview ??
+        (module.data as any)?.occupancy?.process_description ??
+        (module.data as any)?.occupancy?.operations_description ??
+        (module.data as any)?.occupancy?.process_use_overview ??
+        (module.data as any)?.occupancyProductsServices ??
+        (module.data as any)?.activityOverview
+      );
+      const hasProcessOverview = processOverviewText && processOverviewText !== 'Data not provided' && processOverviewText !== 'Not provided';
+      if (hasProcessOverview) {
+        ({ page, yPosition } = ensurePageSpace(100 + occupancyRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawBlockHeading(page, yPosition, 'Inputs — Process / use overview', fontBold);
+        yPosition = drawParagraph(page, yPosition, processOverviewText, font);
+        yPosition = sectionBreak(yPosition, 12);
+      } else {
+        ({ page, yPosition } = ensurePageSpace(100 + occupancyRows.length * 20, page, yPosition, pdfDoc, isDraft, totalPages));
+      }
       yPosition = drawBlockHeading(page, yPosition, 'Inputs — Occupancy structured fields', fontBold);
       ({ page, yPosition } = drawSimpleTable(page, yPosition, ['Item', 'Entered detail'], occupancyRows, { regular: font, bold: fontBold }, {
         colWidths: [170, CONTENT_WIDTH - 170],
@@ -3563,7 +3594,9 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
         const evidenceCount = jsonbPhotoCount > 0
           ? jsonbPhotoCount
           : (recAttachmentCounts.get(action.module_instance_id) ?? 0);
-        const riskImplication = action.hazard_text ? `Risk: ${action.hazard_text}` : 'Risk: Not recorded';
+        // Suppress "Risk: Not recorded" — omit the label entirely rather than advertise
+        // that hazard_text was never populated (common in pre-audit legacy recommendations).
+        const riskImplication = action.hazard_text ? `Risk: ${action.hazard_text}` : '';
         const evidenceText = evidenceCount > 0 ? `${evidenceCount} evidence item${evidenceCount === 1 ? '' : 's'}` : 'No evidence attached';
         return [
           sanitizePdfText(String(action.reference_number || action.id || 'Not provided')),

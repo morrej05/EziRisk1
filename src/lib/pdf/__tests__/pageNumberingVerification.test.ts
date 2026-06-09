@@ -26,7 +26,7 @@ vi.mock('../../supabase', () => ({
           data: [],
           error: null,
         }),
-        in: () => ({ data: [], error: null }),
+        in: () => ({ is: () => ({ data: [], error: null }), data: [], error: null }),
         data: [],
         error: null,
       }),
