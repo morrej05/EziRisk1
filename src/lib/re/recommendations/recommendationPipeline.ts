@@ -43,10 +43,10 @@ const FACTOR_SPECIFIC_FALLBACKS: Record<string, FallbackContent> = {
   },
 
   re06_fp_adequacy_fixed_protection_required_provided: {
-    title: 'Provide or extend engineered fixed fire protection where hazard profile warrants it',
-    observation_text: 'Areas or processes requiring fixed fire protection are not adequately protected under the current occupancy, construction and storage/process hazard profile.',
-    action_required_text: 'Identify all areas and processes where fixed protection is warranted based on construction type, hazard class, and compartmentation. Commission engineering design to provide or extend fixed protection systems in those areas, with a named owner and target completion date. Confirm that the installed or planned protection type is appropriate for the specific hazard (e.g., suppression density, medium, and discharge strategy).',
-    hazard_text: 'Unprotected warranted areas can permit rapid fire growth before suppression or manual intervention can contain the event, increasing both property damage and business interruption severity.',
+    title: 'Commission a building-wide automatic sprinkler or engineered fire-control review',
+    observation_text: 'The site lacks building-wide automatic suppression or an equivalent engineered fire-control strategy, while the combustible insulated panel construction, uncompartmented fire area, and process hazards indicate a significant fire escalation risk.',
+    action_required_text: 'Review the need for building-wide automatic sprinkler protection or equivalent engineered fire-control measures, taking account of the combustible insulated panel roof and wall construction, the uncompartmented fire area, fryer/oil process hazards, cold-chain dependency and high business interruption exposure. The review should confirm the appropriate protection basis, design standard, water supply arrangement, impairment controls and implementation programme.',
+    hazard_text: 'Without effective building-wide automatic suppression or equivalent engineered fire-control measures, a fire developing beyond any localised protection zone could spread through the uncompartmented combustible panel envelope, resulting in major property damage and prolonged business interruption.',
   },
   re06_fp_adequacy_system_type_hazard_match: {
     title: 'Review protection type/design suitability against actual hazard',

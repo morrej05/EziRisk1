@@ -1196,15 +1196,24 @@ function getConstructionSiteSummaryRows(module: ModuleInstance, breakdown: Break
   ], ['site construction score', 'site combustible %']);
 }
 
+// Normalise legacy hazard labels that used '&' or informal phrasing.
+// Extracted as a module-level constant so it is applied consistently in both the
+// occupancy structured table and the engineering interpretation narrative.
+const HAZARD_LABEL_NORMALISE: Record<string, string> = {
+  'Flammable gases & chemicals': 'Refrigerants and process chemicals',
+  'Flammable gases and chemicals': 'Refrigerants and process chemicals',
+};
+
 function getOccupancyStructuredRows(module: ModuleInstance): Row[] {
   const occupancy = (module.data as any)?.occupancy || module.data || {};
   const hazards = Array.isArray(occupancy.hazards) ? occupancy.hazards : [];
   const hazardList = hazards
     .map((hazard: any) => {
-      const label = hazard?.hazard_label || hazard?.hazard_key || 'Hazard';
+      const rawLabel = String(hazard?.hazard_label || hazard?.hazard_key || 'Hazard').trim();
+      const label = HAZARD_LABEL_NORMALISE[rawLabel] ?? rawLabel;
       const assessment = hazard?.assessment ? ` (${hazard.assessment})` : '';
       const detail = hazard?.free_text || hazard?.description;
-      const formattedLabel = String(label).replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+      const formattedLabel = label.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
       return detail
         ? `- ${formattedLabel}${assessment} — ${String(detail).trim().replace(/\s+/g, ' ')}`
         : `- ${formattedLabel}${assessment}`;
@@ -1781,14 +1790,8 @@ function buildOccupancyEngineeringInterpretation(module: ModuleInstance, breakdo
     (module.data as any)?.occupancyProductsServices,
     (module.data as any)?.activityOverview
   );
-  // Normalise legacy hazard labels that used '&' or informal phrasing.
-  // The stored label 'Flammable gases & chemicals' is the generic form-option label;
-  // in a food/processing context where ammonia refrigeration is the primary hazard,
-  // a more precise engineering descriptor is used in the PDF.
-  const HAZARD_LABEL_NORMALISE: Record<string, string> = {
-    'Flammable gases & chemicals': 'Refrigerants and process chemicals',
-    'Flammable gases and chemicals': 'Refrigerants and process chemicals',
-  };
+  // HAZARD_LABEL_NORMALISE is defined at module level above getOccupancyStructuredRows
+  // so the same map applies in both the structured occupancy table and here.
   const hazardLabels = hazards
     .map((hazard: any) => {
       const raw = String(hazard?.hazard_label || hazard?.hazard_key || '').trim();
@@ -2991,6 +2994,9 @@ const STALE_ACTION_TEXT_PREFIXES = [
   // re06_fp_localised_required_provided wording updated to verification-focused in 2026-06-09
   // audit — old "Provide or improve" text is no longer appropriate when protection is present.
   'Provide or improve localised/special hazard protection for identified hazards',
+  // re06_fp_adequacy_fixed_protection_required_provided wording updated 2026-06-09 to site-specific
+  // sprinkler/engineered fire-control review wording — supersedes the prior generic text.
+  'Provide or extend fixed fire protection in warranted areas',
 ];
 
 function getRecommendationBodyText(action: Action): string {
@@ -3771,6 +3777,13 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }));
       ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawLossScenarioTotal(page, yPosition, 'Total WLE', wleCalc.totalLoss, currency12, { regular: font, bold: fontBold });
+      // Soft warning: if the scenario description contains shorthand notation (e.g. NLE=EML,
+      // WLE=EML) that may benefit from expansion before issue.
+      const wleDesc = String((d12 as any)?.wle?.scenario_description || '');
+      if (/[A-Z]{2,4}=[A-Z]{2,4}/.test(wleDesc)) {
+        ({ page, yPosition } = ensurePageSpace(30, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawParagraph(page, yPosition, 'Note: The WLE scenario description above contains shorthand notation that may benefit from expansion before this report is issued.', font);
+      }
       yPosition = sectionBreak(yPosition);
 
       // ── NLE ───────────────────────────────────────────────────────────────
@@ -3786,6 +3799,12 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       }));
       ({ page, yPosition } = ensurePageSpace(36, page, yPosition, pdfDoc, isDraft, totalPages));
       yPosition = drawLossScenarioTotal(page, yPosition, 'Total NLE', nleCalc.totalLoss, currency12, { regular: font, bold: fontBold });
+      // Soft warning: if the scenario description contains shorthand notation.
+      const nleDesc = String((d12 as any)?.nle?.scenario_description || '');
+      if (/[A-Z]{2,4}=[A-Z]{2,4}/.test(nleDesc)) {
+        ({ page, yPosition } = ensurePageSpace(30, page, yPosition, pdfDoc, isDraft, totalPages));
+        yPosition = drawParagraph(page, yPosition, 'Note: The NLE scenario description above contains shorthand notation that may benefit from expansion before this report is issued.', font);
+      }
       yPosition = sectionBreak(yPosition);
 
       // ── EML ───────────────────────────────────────────────────────────────
@@ -4040,10 +4059,29 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
       const hasPerilSpecificRec = recs.some(
         (a) => typeof a.source_factor_key === 'string' && a.source_factor_key.startsWith('exposures_')
       );
+      // When a more specific localised protection rec is present
+      // (re06_fp_localised_required_provided or _installation), suppress the generic
+      // ITM/maintenance rec (re06_fp_localised_reliability_testing_integration) for the
+      // same module — the specific rec already covers testing/maintenance requirements.
+      const localisedSpecificModuleKeys = new Set(
+        recs
+          .filter((a) => {
+            const fk = a.source_factor_key || '';
+            return fk === 're06_fp_localised_required_provided' || fk === 're06_fp_localised_required_installation';
+          })
+          .map((a) => a.source_module_key || '')
+      );
       const seen = new Set<string>();
       return recs.filter((action) => {
         // Suppress general natural hazard rec when specific peril recs are present
         if (hasPerilSpecificRec && action.source_factor_key === 'natural_hazard_exposure_and_controls') {
+          return false;
+        }
+        // Suppress generic ITM rec when a more specific localised rec covers the same module
+        if (
+          action.source_factor_key === 're06_fp_localised_reliability_testing_integration' &&
+          localisedSpecificModuleKeys.has(action.source_module_key || '')
+        ) {
           return false;
         }
         const moduleKey = action.source_module_key || '';
@@ -4058,7 +4096,21 @@ export async function buildReSurveyPdf(options: BuildPdfOptions): Promise<Uint8A
     }
 
     const drawRecommendationSection = (heading: string, rows: Action[]) => {
-      const deduped = deduplicateRecommendations(rows);
+      const deduped = deduplicateRecommendations(rows).filter((action) => {
+        // Minimum quality threshold: skip recommendations whose action_required_text is
+        // fewer than 30 characters and has no meaningful hazard/risk text. These are
+        // typically incomplete or placeholder entries that should not appear in issued PDFs.
+        // Threshold of 30 chars catches stubs like "Improve hot work" (16 chars) while
+        // preserving all properly authored recommendations.
+        const bodyText = (action.action_required_text || action.recommended_action || action.description || action.title || '').trim();
+        if (bodyText.length < 30 && !action.hazard_text?.trim()) {
+          if (import.meta.env.DEV) {
+            console.warn('[PDF RE] Skipping incomplete recommendation (body < 30 chars, no hazard text):', action.id, JSON.stringify(bodyText));
+          }
+          return false;
+        }
+        return true;
+      });
       yPosition = drawBlockHeading(page, yPosition, heading, fontBold);
       yPosition = sectionBreak(yPosition, 8);
       const tableRows = deduped.map((action) => {

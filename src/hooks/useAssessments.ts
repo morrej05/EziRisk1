@@ -63,6 +63,24 @@ function getClientDisplayName(document: Document): string {
   return rawOrgName;
 }
 
+function resolveDocumentSurveyor(document: Document): string | null {
+  // 1. Stored assessor_name column (FRA/FSD/DSEAR set this at issue time)
+  const stored = document.assessor_name?.trim();
+  if (stored) return stored;
+
+  // 2. RE documents: assessor.name saved in RE_01_DOC_CONTROL or RE_01_DOCUMENT_CONTROL
+  //    module instance data at save time (resolveDisplayName(user) on Save).
+  if (document.document_type === 'RE' && Array.isArray(document.module_instances)) {
+    const re01 = document.module_instances.find(
+      (m) => m.module_key === 'RE_01_DOC_CONTROL' || m.module_key === 'RE_01_DOCUMENT_CONTROL'
+    );
+    const assessorName = String((re01?.data as any)?.assessor?.name || '').trim();
+    if (assessorName) return assessorName;
+  }
+
+  return null;
+}
+
 function mapDocumentToViewModel(document: Document): AssessmentViewModel {
   const typeMap: Record<string, { display: string; discipline: string }> = {
     FRA: { display: 'FRA', discipline: 'Fire' },
@@ -83,7 +101,7 @@ function mapDocumentToViewModel(document: Document): AssessmentViewModel {
     type: typeInfo.display,
     status: document.status.charAt(0).toUpperCase() + document.status.slice(1),
     issueStatus: document.issue_status,
-    surveyor: document.assessor_name,
+    surveyor: resolveDocumentSurveyor(document),
     updatedAt: new Date(document.updated_at),
     createdAt: new Date(document.created_at),
   };
