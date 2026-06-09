@@ -93,6 +93,7 @@ type RoadmapBand = 'Immediate' | 'Medium' | 'Long-term';
 
 interface LpRecommendation {
   ref: string;
+  shortTitle: string;
   recommendation: string;
   riskArea: string;
   priority: LpPriority;
@@ -172,10 +173,10 @@ function lpResolvePriority(action: Action): LpPriority {
   return normalizePriority(action.priority_band);
 }
 
-/** Minimum quality threshold — skip very short recs with no hazard context. */
+/** Minimum quality threshold — skip very short recs regardless of context. */
 function lpMeetsQualityThreshold(action: Action): boolean {
   const body = lpGetBodyText(action).trim();
-  if (body.length < 30 && !action.hazard_text) return false;
+  if (body.length < 30) return false;
   return true;
 }
 
@@ -243,6 +244,22 @@ function deriveRoadmapBand(priority: LpPriority): RoadmapBand {
   return 'Long-term';
 }
 
+/**
+ * Derive a concise action title for use in summary tables and roadmaps (~65 chars max).
+ * Priority: stored title (if short) → first sentence of body text → truncated body.
+ */
+function deriveShortTitle(action: Action, bodyText: string): string {
+  const stored = action.title?.trim();
+  if (stored && stored.length > 4 && stored.length <= 70) return stored;
+  // First sentence of body text
+  const firstSentence = bodyText.split(/[.!?]/)[0]?.trim() || bodyText.trim();
+  if (firstSentence.length <= 70) return firstSentence;
+  // Truncate to last word boundary before 67 chars
+  const truncated = firstSentence.slice(0, 67);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return (lastSpace > 30 ? truncated.slice(0, lastSpace) : truncated) + '...';
+}
+
 function toLpRecommendations(actions: Action[], moduleInstances: ModuleInstance[]): LpRecommendation[] {
   const moduleById = new Map(moduleInstances.map((m) => [m.id, m]));
 
@@ -262,6 +279,7 @@ function toLpRecommendations(actions: Action[], moduleInstances: ModuleInstance[
       const hazardText = lpGetHazardText(action);
       return {
         ref,
+        shortTitle: sanitizePdfText(deriveShortTitle(action, bodyText)),
         recommendation: sanitizePdfText(bodyText),
         riskArea,
         priority,
@@ -364,10 +382,94 @@ function drawTable(
   return { page: currentPage, yPosition: y - 12 };
 }
 
+/**
+ * Card-style renderer for a single LP recommendation.
+ * Draws a header band (ref | risk area | priority | timescale), then
+ * Recommendation paragraph, optional Risk implication paragraph, and Evidence line.
+ * Handles its own page-break check — never splits mid-card.
+ */
+function drawActionCard(
+  rec: LpRecommendation,
+  pageIn: PDFPage,
+  yIn: number,
+  fonts: { bold: PDFFont; regular: PDFFont },
+  pdfDoc: PDFDocument,
+  isDraft: boolean,
+  totalPages: PDFPage[],
+): { page: PDFPage; yPosition: number } {
+  const CARD_W = CONTENT_WIDTH;
+  const HEADER_H = 18;
+  const PAD = 5;
+  const BODY_SIZE = 9;
+  const LABEL_SIZE = 7.5;
+
+  const recLines = wrapText(sanitizePdfText(rec.recommendation), CARD_W - 16, BODY_SIZE, fonts.regular);
+  const showImp = rec.riskImplication !== 'Not recorded' && rec.riskImplication.trim().length > 0;
+  const impLines = showImp ? wrapText(sanitizePdfText(rec.riskImplication), CARD_W - 16, BODY_SIZE, fonts.regular) : [];
+
+  // Estimate total card height for page-break check
+  const estH = HEADER_H
+    + PAD + 12 + recLines.length * 11
+    + (showImp ? PAD + 12 + impLines.length * 11 : 0)
+    + PAD + 12
+    + 6;
+
+  let page = pageIn;
+  let y = yIn;
+
+  if (y - estH < 60) {
+    const next = addNewPage(pdfDoc, isDraft, totalPages);
+    page = next.page;
+    y = next.yPosition;
+  }
+
+  const cardTop = y;
+
+  // ── Header band ────────────────────────────────────────────────────────────
+  page.drawRectangle({ x: MARGIN, y: y - HEADER_H, width: CARD_W, height: HEADER_H, color: rgb(0.91, 0.94, 0.98) });
+  page.drawText(rec.ref, { x: MARGIN + 5, y: y - 13, size: 8.5, font: fonts.bold, color: rgb(0.1, 0.1, 0.1) });
+  page.drawText(sanitizePdfText(rec.riskArea), { x: MARGIN + 52, y: y - 13, size: 8.5, font: fonts.regular, color: rgb(0.25, 0.25, 0.25) });
+  // Priority and timescale pinned to right side of header
+  page.drawText(rec.priority, { x: MARGIN + 295, y: y - 13, size: 8.5, font: fonts.bold, color: rgb(0.12, 0.12, 0.12) });
+  page.drawText(sanitizePdfText(rec.timescale), { x: MARGIN + 330, y: y - 13, size: 8.5, font: fonts.regular, color: rgb(0.25, 0.25, 0.25) });
+
+  y -= HEADER_H + PAD;
+
+  // ── Recommendation paragraph ───────────────────────────────────────────────
+  page.drawText('Recommendation', { x: MARGIN + 5, y, size: LABEL_SIZE, font: fonts.bold, color: rgb(0.15, 0.15, 0.15) });
+  y -= 12;
+  for (const line of recLines) {
+    page.drawText(line, { x: MARGIN + 10, y, size: BODY_SIZE, font: fonts.regular, color: rgb(0.18, 0.18, 0.18) });
+    y -= 11;
+  }
+
+  // ── Risk implication paragraph ─────────────────────────────────────────────
+  if (showImp) {
+    y -= PAD;
+    page.drawText('Risk implication', { x: MARGIN + 5, y, size: LABEL_SIZE, font: fonts.bold, color: rgb(0.15, 0.15, 0.15) });
+    y -= 12;
+    for (const line of impLines) {
+      page.drawText(line, { x: MARGIN + 10, y, size: BODY_SIZE, font: fonts.regular, color: rgb(0.30, 0.16, 0.16) });
+      y -= 11;
+    }
+  }
+
+  // ── Evidence line ──────────────────────────────────────────────────────────
+  y -= PAD;
+  page.drawText(sanitizePdfText(`Evidence: ${rec.evidenceSummary}`), { x: MARGIN + 5, y, size: LABEL_SIZE, font: fonts.regular, color: rgb(0.5, 0.5, 0.5) });
+  y -= 12;
+
+  // ── Card border outline (drawn last so it sits over background, under text) ─
+  const actualH = cardTop - y + 2;
+  page.drawRectangle({ x: MARGIN, y: y - 2, width: CARD_W, height: actualH, borderColor: rgb(0.76, 0.86, 0.94), borderWidth: 0.6 });
+
+  return { page, yPosition: y - 8 };
+}
+
 function getTopPriorityRows(recommendations: LpRecommendation[]): string[][] {
-  return recommendations.slice(0, 5).map((rec) => [
+  return recommendations.map((rec) => [
     rec.ref,
-    rec.recommendation,
+    rec.shortTitle,
     rec.riskArea,
     rec.priority,
     rec.timescale,
@@ -484,25 +586,25 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
   yPosition -= 6;
 
   ({ page, yPosition } = ensurePageSpace(160, page, yPosition, pdfDoc, isDraft, totalPages));
-  ({ page, yPosition } = drawTable(page, yPosition, ['Ref', 'Recommendation', 'Risk Area', 'Priority', 'Timescale'], getTopPriorityRows(recommendations), { bold: fontBold, regular: font }, { pdfDoc, isDraft, totalPages }));
-
-  ({ page, yPosition } = ensurePageSpace(240, page, yPosition, pdfDoc, isDraft, totalPages));
-  page.drawText('Action Register', { x: MARGIN, y: yPosition, size: 15, font: fontBold, color: rgb(0, 0, 0) });
-  yPosition -= 20;
-  // Action Register — variable column widths so Recommendation and Risk Implication
-  // columns get enough space to wrap text rather than truncating with ellipses.
-  // Total must equal CONTENT_WIDTH (495).  [Ref, Section, Recommendation, Risk implication, Priority, Evidence, Timescale]
-  // Priority column needs ≥42 pt to render the 8-char "Priority" header without merging into Evidence.
-  const actionRegisterColWidths = [36, 64, 132, 132, 44, 52, 35];
+  // Columns: Ref(50) + Action summary(250) + Risk area(95) + Priority(45) + Timescale(55) = 495
   ({ page, yPosition } = drawTable(
-    page,
-    yPosition,
-    ['Ref', 'Section', 'Recommendation', 'Risk implication', 'Priority', 'Evidence', 'Timescale'],
-    recommendations.map((rec) => [rec.ref, rec.riskArea, rec.recommendation, rec.riskImplication, rec.priority, rec.evidenceSummary, rec.timescale]),
+    page, yPosition,
+    ['Ref', 'Action summary', 'Risk area', 'Priority', 'Timescale'],
+    getTopPriorityRows(recommendations),
     { bold: fontBold, regular: font },
     { pdfDoc, isDraft, totalPages },
-    actionRegisterColWidths,
+    [50, 250, 95, 45, 55],
   ));
+
+  ({ page, yPosition } = ensurePageSpace(80, page, yPosition, pdfDoc, isDraft, totalPages));
+  page.drawText('Action Register', { x: MARGIN, y: yPosition, size: 15, font: fontBold, color: rgb(0, 0, 0) });
+  yPosition -= 20;
+  // Card-style layout: one card per recommendation.
+  // Each card shows a coloured header (ref | section | priority | timescale),
+  // then the Recommendation paragraph, optional Risk implication paragraph, and Evidence line.
+  for (const rec of recommendations) {
+    ({ page, yPosition } = drawActionCard(rec, page, yPosition, { bold: fontBold, regular: font }, pdfDoc, isDraft, totalPages));
+  }
 
   const recommendationsByRiskArea = new Map<string, LpRecommendation[]>();
   for (const rec of recommendations) {
@@ -531,15 +633,27 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
       continue;
     }
 
-    recs.forEach((rec) => {
-      const bullet = `${rec.ref} [${rec.priority}] ${rec.recommendation} Evidence: ${rec.evidenceSummary}`;
-      const lines = wrapText(bullet, CONTENT_WIDTH - 10, 9, font);
-      lines.forEach((line) => {
-        page.drawText(line, { x: MARGIN + 10, y: yPosition, size: 9, font, color: rgb(0.2, 0.2, 0.2) });
+    for (const rec of recs) {
+      const headerLine = `${rec.ref}  –  ${rec.priority}  –  ${sanitizePdfText(rec.shortTitle)}`;
+      const bodyLines = wrapText(sanitizePdfText(rec.recommendation), CONTENT_WIDTH - 20, 9, font);
+      const blockH = 14 + bodyLines.length * 11 + 14 + 4;
+      ({ page, yPosition } = ensurePageSpace(blockH + 20, page, yPosition, pdfDoc, isDraft, totalPages));
+      // Ref / Priority / short title header
+      page.drawText(sanitizePdfText(headerLine), { x: MARGIN + 8, y: yPosition, size: 9.5, font: fontBold, color: rgb(0.1, 0.1, 0.3) });
+      yPosition -= 13;
+      // Recommendation body
+      for (const line of bodyLines) {
+        page.drawText(line, { x: MARGIN + 12, y: yPosition, size: 9, font, color: rgb(0.2, 0.2, 0.2) });
         yPosition -= 11;
-      });
-      yPosition -= 3;
-    });
+      }
+      // Evidence line
+      page.drawText(sanitizePdfText(`Evidence: ${rec.evidenceSummary}`), { x: MARGIN + 12, y: yPosition, size: 8, font, color: rgb(0.5, 0.5, 0.5) });
+      yPosition -= 10;
+      // Thin separator rule
+      page.drawRectangle({ x: MARGIN + 12, y: yPosition, width: CONTENT_WIDTH - 24, height: 0.3, color: rgb(0.8, 0.8, 0.8) });
+      yPosition -= 7;
+    }
+    yPosition -= 4;
   }
 
   section = addNewPage(pdfDoc, isDraft, totalPages);
@@ -555,15 +669,17 @@ export async function buildReLpPdf(options: BuildPdfOptions): Promise<Uint8Array
     page.drawText(`${band} (${bandRows.length})`, { x: MARGIN, y: yPosition, size: 12, font: fontBold, color: rgb(0.1, 0.1, 0.1) });
     yPosition -= 16;
 
+    // Columns: Ref(50) + Action summary(255) + Risk area(95) + Timescale(95) = 495
     ({ page, yPosition } = drawTable(
       page,
       yPosition,
-      ['Ref', 'Recommendation', 'Priority', 'Timescale'],
+      ['Ref', 'Action summary', 'Risk area', 'Timescale'],
       bandRows.length > 0
-        ? bandRows.map((rec) => [rec.ref, `${rec.riskArea}: ${rec.recommendation}`, rec.priority, rec.timescale])
+        ? bandRows.map((rec) => [rec.ref, rec.shortTitle, rec.riskArea, rec.timescale])
         : [['-', 'No actions in this horizon.', '-', '-']],
       { bold: fontBold, regular: font },
-      { pdfDoc, isDraft, totalPages }
+      { pdfDoc, isDraft, totalPages },
+      [50, 255, 95, 95],
     ));
   }
 
