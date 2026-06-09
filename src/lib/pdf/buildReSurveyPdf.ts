@@ -2371,7 +2371,7 @@ function buildManagementEngineeringInterpretation(module: ModuleInstance, breakd
         criticalSystems.push('detection');
         if (hasFryerOccupancy || hasAmmoniaOccupancy) criticalSystems.push('localised protection');
         criticalSystems.push('shutdown controls');
-        maintenanceClause = ` For this occupancy, maintenance quality is particularly important because ${criticalSystems.join(', ')} are all loss-critical.`;
+        maintenanceClause = ` For this occupancy, maintenance quality is particularly important because ${joinList(criticalSystems)} are all loss-critical.`;
       }
 
       suffix = `${largeLossWeaknessClause}${maintenanceClause}`;
@@ -2448,10 +2448,10 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance, al
   const water = fp?.site?.water || {};
   const reliability = formatDataValue(water?.water_reliability).toLowerCase();
   const reliabilityNarrative = reliability.includes('reliable')
-    ? 'water supply reliability appears broadly resilient'
+    ? 'Water supply reliability appears broadly resilient'
     : reliability.includes('unreliable')
-      ? 'water supply reliability is a material weakness'
-      : 'water supply reliability is uncertain from submitted evidence';
+      ? 'Water supply reliability is a material weakness'
+      : 'Water supply reliability is uncertain from submitted evidence';
 
   if (buildings.length === 0) {
     return `Engineering Interpretation: No building-level fire protection records have been entered for this module. Fixed-protection coverage, detection and localised protection cannot be quantified from submitted data. ${reliabilityNarrative}. Assessor narrative and any supplementary inputs should be reviewed to judge installed protection adequacy and suppression reliability.`;
@@ -2563,7 +2563,7 @@ function buildFireProtectionEngineeringInterpretation(module: ModuleInstance, al
       // state the absence and the material weakness directly.
       const riskFactors: string[] = [];
       if (hasCombustiblePanel) riskFactors.push('combustible insulated panel construction');
-      if (hasNoCompartmentation) riskFactors.push('absence of effective fire compartmentation');
+      if (hasNoCompartmentation) riskFactors.push('the absence of effective fire compartmentation');
       if (hasLargeArea && largeAreaM2 !== null) riskFactors.push(`large uncompartmented fire area (${formatDataValue(largeAreaM2)} m²)`);
       if (hasFryerHazard) riskFactors.push('fryer/oil process hazards');
       if (hasAmmoniaHazard) riskFactors.push('ammonia refrigeration dependency');
@@ -2737,7 +2737,7 @@ function buildExecutiveSignificanceNarrative(breakdown: Breakdown): { level: Sig
   const percent = breakdown.maxScore > 0 ? (breakdown.totalScore / breakdown.maxScore) * 100 : 0;
   const top = breakdown.topContributors.slice(0, 2).map(t => t.label).join(' and ');
   const level = levelFromPercent(percent);
-  const narrative = `${breakdown.industryLabel} risk profile currently performs at ${percent.toFixed(0)}% of weighted benchmark. Primary loss drivers are ${top || 'the major engineering pillars'}, indicating where underwriting attention and resilience controls are most material for probable property and BI loss outcomes.`;
+  const narrative = `The assessed ${breakdown.industryLabel} risk profile achieves ${percent.toFixed(0)}% of the weighted industry benchmark score. The principal engineering contributors to loss potential are ${top || 'the major engineering pillars'}, indicating where resilience investment and underwriting attention are most material to probable property damage and business interruption outcomes.`;
   return { level, narrative };
 }
 
@@ -2824,7 +2824,7 @@ export function sectionSignificance(module: ModuleInstance, breakdown: Breakdown
       else if (inferredColdChain) inferredItems.push('cold storage');
       if (inferredFryers) inferredItems.push('fryer-line utilities');
       inferredItems.push('power supply');
-      const inferredList = inferredItems.join(', ');
+      const inferredList = joinList(inferredItems);
       const backupPowerClause = noBackupPower
         ? ' No backup power provision is recorded.'
         : '';
@@ -2936,6 +2936,19 @@ async function embedEvidenceImage(
 
   cache?.embedded.set(storagePath, promise);
   return promise;
+}
+
+/**
+ * Join a list with Oxford comma and "and" before the last item.
+ * ["a"] → "a"
+ * ["a", "b"] → "a and b"
+ * ["a", "b", "c"] → "a, b, and c"
+ */
+function joinList(items: string[]): string {
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
 }
 
 // Factor-key prefixes that always warrant High priority regardless of the stored priority_band.

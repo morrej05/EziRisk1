@@ -158,7 +158,6 @@ export function drawRiskSignificanceBlock(args: {
   const badgeH = 14;
   const badgeX = x + w - badgeW;
   const badgeTextGap = 26;
-  const levelLabel = `${badgeText}:`;
   const labelY = titleY - 24;
   const badgeY = labelY + badgeH - 3;
 
@@ -184,16 +183,8 @@ export function drawRiskSignificanceBlock(args: {
   const narrativeX = x;
   const narrativeWidth = Math.max(120, w - badgeW - badgeTextGap);
   const lines = wrapText(sanitizePdfText(narrative), narrativeWidth, 10, fonts.regular);
+  // Start narrative directly at labelY — the badge already identifies the level; no label needed.
   let cursorY = labelY;
-
-  page.drawText(levelLabel, {
-    x,
-    y: cursorY,
-    size: 10,
-    font: fonts.bold,
-    color: colour.fg,
-  });
-  cursorY -= 16;
 
   for (const line of lines) {
     page.drawText(line, {
