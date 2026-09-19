@@ -14,7 +14,7 @@ export default function HeroScreenshot() {
           </div>
           <img
             src="/images/portfolio-dashboard.png"
-            alt="EziRisk assessment dashboard overview"
+            alt="EziRisk fire risk assessment software dashboard"
             className="block w-full"
           />
         </div>

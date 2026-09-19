@@ -3,19 +3,19 @@ import { useFadeInOnScroll } from '../../hooks/useFadeInOnScroll';
 const workflowFriction = [
   {
     image: '/what-create.webp',
-    alt: 'Structured assessment form',
+    alt: 'EziRisk structured risk engineering assessment form',
     title: 'Replace blank-document reporting',
     description: 'Start from structured assessment sections — premises, hazards, persons at risk and controls — not a blank document.',
   },
   {
     image: '/what-recommendations.webp',
-    alt: 'Recommendations linked to assessment findings',
+    alt: 'Fire risk assessment recommendation tracking in EziRisk',
     title: 'Keep recommendations connected',
     description: 'Actions, priorities and supporting evidence stay linked to the finding they came from — through review, revision and final issue.',
   },
   {
     image: '/what-export.webp',
-    alt: 'Professional report output',
+    alt: 'EziRisk branded fire risk assessment PDF report',
     title: 'Issue with more control',
     description: 'Run readiness checks, resolve outstanding items and lock a versioned report — so clients receive a complete, defensible record.',
   },

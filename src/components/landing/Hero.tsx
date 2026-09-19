@@ -24,12 +24,16 @@ export default function Hero() {
           For fire risk assessors, consultants and risk engineers
         </p>
 
-        <h1 className="mb-6 max-w-3xl text-4xl font-bold leading-tight text-white sm:text-5xl md:text-6xl">
-          From site walk to issued report — structured, traceable and defensible.
+        <h1 className="mb-4 max-w-4xl text-4xl font-bold leading-tight text-white sm:text-5xl md:text-6xl">
+          Fire Risk Assessment &amp; Risk Engineering Reporting Software
         </h1>
 
-        <p className="mb-5 max-w-xl text-lg leading-8 text-blue-100">
-          Structure findings, link evidence and produce traceable recommendations — then issue defensible reports with readiness checks and a full audit trail built in.
+        <p className="mb-4 max-w-3xl text-xl font-medium leading-8 text-blue-100 sm:text-2xl">
+          From site walk to issued report — structured, traceable and defensible.
+        </p>
+
+        <p className="mb-5 max-w-3xl text-lg leading-8 text-blue-100">
+          EziRisk is cloud-based fire risk assessment and risk engineering reporting software for fire risk assessors, consultants and risk engineers. Create structured FRA, DSEAR and risk engineering assessments, capture photo evidence, generate recommendations and issue professional branded reports with clear action registers.
         </p>
 
         <div className="mb-7 flex flex-wrap gap-2">
