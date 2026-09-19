@@ -9,6 +9,9 @@ const SOCIAL_IMAGE = `${SITE_URL}/hero-risk.webp`;
 const SOCIAL_IMAGE_ALT = 'Fire risk assessor completing a site inspection';
 const FRA_SOFTWARE_TITLE = 'Fire Risk Assessment Software UK | FRA Reporting | EziRisk';
 const FRA_SOFTWARE_DESCRIPTION = 'Fire risk assessment software for professional UK assessors. Create structured FRAs, capture photo evidence, manage recommendations and issue branded reports with clear action registers.';
+const JURISDICTIONS_ARTICLE_PATH = '/insights/fire-risk-assessments-england-wales-scotland';
+const JURISDICTIONS_ARTICLE_TITLE = 'Fire Risk Assessments in England, Wales & Scotland | EziRisk';
+const JURISDICTIONS_ARTICLE_DESCRIPTION = 'Understand the key differences between fire risk assessment requirements in England, Wales and Scotland, and why jurisdiction matters when preparing FRA reports.';
 
 type RouteMeta = { title: string; description: string; canonical: string; type?: string };
 
@@ -17,6 +20,7 @@ const routeMeta: Record<string, RouteMeta> = {
   '/pricing': { title: 'EziRisk Pricing | Risk Assessment Software Plans', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/pricing`, type: 'website' },
   '/contact': { title: 'Contact EziRisk | Risk Assessment Software', description: 'Contact EziRisk about trial access, product demonstrations, platform support or fire risk assessment reporting software.', canonical: `${SITE_URL}/contact`, type: 'website' },
   '/fire-risk-assessment-software': { title: FRA_SOFTWARE_TITLE, description: FRA_SOFTWARE_DESCRIPTION, canonical: `${SITE_URL}/fire-risk-assessment-software`, type: 'website' },
+  [JURISDICTIONS_ARTICLE_PATH]: { title: JURISDICTIONS_ARTICLE_TITLE, description: JURISDICTIONS_ARTICLE_DESCRIPTION, canonical: `${SITE_URL}${JURISDICTIONS_ARTICLE_PATH}`, type: 'article' },
   '/security': { title: 'EziRisk Security | Platform Security and Trust', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/security`, type: 'article' },
   '/privacy': { title: 'EziRisk Privacy Policy', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/privacy`, type: 'article' },
   '/terms': { title: 'EziRisk Terms of Use', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/terms`, type: 'article' },

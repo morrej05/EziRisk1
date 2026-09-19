@@ -48,6 +48,14 @@ export default function Footer() {
             <ul className="space-y-2">
               <li>
                 <Link
+                  to="/insights/fire-risk-assessments-england-wales-scotland"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  Insights
+                </Link>
+              </li>
+              <li>
+                <Link
                   to="/fire-risk-assessment-software"
                   className="text-neutral-400 hover:text-white transition-colors"
                 >
