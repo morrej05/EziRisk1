@@ -51,6 +51,7 @@ import CookieConsentBanner from './components/CookieConsentBanner';
 import SeoManager from './components/SeoManager';
 import PricingPage from './pages/PricingPage';
 import ContactPage from './pages/ContactPage';
+import FireRiskAssessmentSoftwarePage from './pages/FireRiskAssessmentSoftwarePage';
 import { supabase } from './lib/supabase';
 
 
@@ -127,6 +128,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/fire-risk-assessment-software" element={<FireRiskAssessmentSoftwarePage />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/login" element={<SignIn />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />

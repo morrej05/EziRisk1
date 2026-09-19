@@ -47,6 +47,14 @@ export default function Footer() {
             <h4 className="text-white font-semibold mb-4">Navigation</h4>
             <ul className="space-y-2">
               <li>
+                <Link
+                  to="/fire-risk-assessment-software"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  FRA software
+                </Link>
+              </li>
+              <li>
                 <button
                   onClick={() => scrollToSection('how-it-works')}
                   className="text-neutral-400 hover:text-white transition-colors"

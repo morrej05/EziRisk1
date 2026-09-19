@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
 
 const NAV_LINKS = [
+  { label: 'FRA software', href: '/fire-risk-assessment-software' },
   { label: 'How it works', href: '#how-it-works' },
   { label: "Who it's for", href: '#who-its-for' },
   { label: 'Pricing', href: '/pricing' },
