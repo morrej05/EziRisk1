@@ -7,6 +7,8 @@ const HOMEPAGE_DESCRIPTION = 'Fire risk assessment, DSEAR and risk engineering r
 const DEFAULT_DESCRIPTION = 'EziRisk assessment and risk engineering reporting software for UK consultants.';
 const SOCIAL_IMAGE = `${SITE_URL}/hero-risk.webp`;
 const SOCIAL_IMAGE_ALT = 'Fire risk assessor completing a site inspection';
+const FRA_SOFTWARE_TITLE = 'Fire Risk Assessment Software UK | FRA Reporting | EziRisk';
+const FRA_SOFTWARE_DESCRIPTION = 'Fire risk assessment software for professional UK assessors. Create structured FRAs, capture photo evidence, manage recommendations and issue branded reports with clear action registers.';
 
 type RouteMeta = { title: string; description: string; canonical: string; type?: string };
 
@@ -14,6 +16,7 @@ const routeMeta: Record<string, RouteMeta> = {
   '/': { title: HOMEPAGE_TITLE, description: HOMEPAGE_DESCRIPTION, canonical: `${SITE_URL}/`, type: 'website' },
   '/pricing': { title: 'EziRisk Pricing | Risk Assessment Software Plans', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/pricing`, type: 'website' },
   '/contact': { title: 'Contact EziRisk | Risk Assessment Software', description: 'Contact EziRisk about trial access, product demonstrations, platform support or fire risk assessment reporting software.', canonical: `${SITE_URL}/contact`, type: 'website' },
+  '/fire-risk-assessment-software': { title: FRA_SOFTWARE_TITLE, description: FRA_SOFTWARE_DESCRIPTION, canonical: `${SITE_URL}/fire-risk-assessment-software`, type: 'website' },
   '/security': { title: 'EziRisk Security | Platform Security and Trust', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/security`, type: 'article' },
   '/privacy': { title: 'EziRisk Privacy Policy', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/privacy`, type: 'article' },
   '/terms': { title: 'EziRisk Terms of Use', description: DEFAULT_DESCRIPTION, canonical: `${SITE_URL}/terms`, type: 'article' },
