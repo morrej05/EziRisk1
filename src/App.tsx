@@ -52,6 +52,7 @@ import SeoManager from './components/SeoManager';
 import PricingPage from './pages/PricingPage';
 import ContactPage from './pages/ContactPage';
 import FireRiskAssessmentSoftwarePage from './pages/FireRiskAssessmentSoftwarePage';
+import FireRiskAssessmentsJurisdictionsPage from './pages/FireRiskAssessmentsJurisdictionsPage';
 import { supabase } from './lib/supabase';
 
 
@@ -129,6 +130,7 @@ function App() {
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/fire-risk-assessment-software" element={<FireRiskAssessmentSoftwarePage />} />
+          <Route path="/insights/fire-risk-assessments-england-wales-scotland" element={<FireRiskAssessmentsJurisdictionsPage />} />
           <Route path="/signin" element={<SignIn />} />
           <Route path="/login" element={<SignIn />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
