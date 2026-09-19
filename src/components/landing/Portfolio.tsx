@@ -53,9 +53,9 @@ export default function Portfolio() {
                 <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center mb-4">
                   <Icon className="w-6 h-6 text-white" />
                 </div>
-                <p className="text-neutral-900 text-lg font-semibold leading-snug mb-2">
+                <h3 className="text-neutral-900 text-lg font-semibold leading-snug mb-2">
                   {feature.title}
-                </p>
+                </h3>
                 <p className="text-sm leading-6 text-neutral-600">
                   {feature.description}
                 </p>

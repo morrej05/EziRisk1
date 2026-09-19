@@ -31,7 +31,7 @@ export default function SupportedReports() {
           <div className="overflow-hidden rounded-xl border border-slate-200 shadow-xl ring-1 ring-black/[0.04]">
             <img
               src="/images/portfolio-dashboard.png"
-              alt="EziRisk assessment workflow preview"
+              alt="EziRisk risk engineering assessment portfolio dashboard"
               className="block w-full"
             />
           </div>
